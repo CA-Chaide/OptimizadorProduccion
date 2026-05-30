@@ -5,44 +5,35 @@
 
 ## 2. Reglas de Negocio Maestras
 
-### 2.1. Planificación Pull (Explosión de Componentes)
+### 2.1. Planificación Pull y Balanceo Dinámico
 - **Origen:** Órdenes Previsionales de Forros.
-- **Jerarquía de Fechas:** 
-    - Fecha mínima = Producción para **GYE** (Prioridad Máxima).
-    - Fecha siguiente = Producción para **Quito** (Prioridad Secundaria).
-- **Gestión de Capacidad:** 
-    - Si una máquina "HR" se satura, proteger siempre la producción de GYE.
-    - Mover el excedente de Quito (Fecha 2) al día posterior.
+- **Jerarquía de Ajuste de Capacidad:**
+    1. **Versión de Fabricación:** Si hay sobrecarga, buscar versiones alternativas del material en otras máquinas compatibles antes de postergar.
+    2. **Postergación:** Mover excedentes de Fecha 2 (Quito) al día posterior si el balanceo por versión no es suficiente.
+- **Prioridad de Fecha:** GYE (Fecha 1) siempre tiene prioridad absoluta sobre Quito (Fecha 2).
 
-### 2.2. Vínculo Técnico y Sincronización
-- **Prefijo HR:** Todas las máquinas se resuelven mediante el prefijo **"HR-"**.
-- **Sincronización de Tapas:** Las máquinas de Tapas (`HR-PEFXX`) y Acolchado (`HR-ACHXX`) deben compartir el mismo número de máquina `XX` (**02, 06, 08, 09, 10**) y la **misma fecha de producción**. La capacidad la dictan las acolchadoras.
+### 2.2. Vínculo Técnico y Sincronización Estricta
+- **Regla Espejo ACH-PEF:** El número de máquina `XX` de Acolchado (`HR-ACHXX`) y Tapas (`HR-PEFXX`) debe ser el mismo. Si una orden se mueve a `ACH09` por balanceo, su tapa debe ir a `PEF09`.
 - **Especialización de Acolchado:** 
-    - **ACH10, 06, 02:** Línea Económica, Zafiro, Imperial, Alternativa, Rubí y Premium (Estándar).
-    - **ACH08, 09:** Continental, Grand Hotel, Ortopédico, Suave Brisa.
-    - **ACH09 (Exclusivo):** Grand Palace, Escape, Resiflex.
-- **Sincronización de Bandas:** 
-    - El flujo inicia en `HR-ACH11`/`12` (o `HR-BO01`) produciendo en **metros por lotes**. 
-    - El rematado (**HR-RMTBx**) y el proceso final (**HR-RMTBm**) se calculan en **unidades**.
-    - Los procesos adicionales de cocido (**HR-COS3D**) y encintado (**HR-ENCBD**) se calculan en **metros**.
-- **Proceso de Interiores:** Flujo iniciado en `HR-INTPR` o `HR-INTPT` (según referencia) y consolidado en el puesto final **HR-INTPf**. Requiere vinculación con acolchado de banda en `HR-ACH11`/`12`.
-- **Proceso de Bases (HR-FBASE):** 
-    - **Tapa Superior (HR-MTBS1):** Requiere vinculación con demanda de acolchado en **HR-ACH11/12**.
-    - **Tapa con Cierre (HR-MTBS):** Genera demanda de telas.
-- **Corte de Telas:** Puestos `HR-CTBAN`, `HR-CTBSC`, `HR-CTCHN`, `HR-CTINT`. La capacidad total de estos puestos se limita a **una sola jornada**. Atiende interiores, bases y forros de tela.
-- **Telas y Fundas (TTCF / TTSUP):**
-    - Capacidad ajustada para **una sola persona**.
-    - Flexibilidad: `HR-TTCF` puede ser absorbido por `HR-INTPf` si hay saturación en `HR-TTSUP`.
-- **Flexibilidad de Personal:** El personal es móvil. Se permite la planificación de puestos al **50% de capacidad** para optimizar el recurso humano entre dos tareas.
-- **Cobertura de Inventario:** La producción de componentes de banda debe satisfacer la demanda de forros y reponer el **Stock de Seguridad**.
-- **Punto de Ajuste:** La capacidad se mide y ajusta según las máquinas críticas de acolchado, ya que los procesos de confección suelen tener recursos excedentes.
+    - **ACH10, 06, 02:** Líneas Económica a Premium Estándar.
+    - **ACH08, 09:** Líneas Superiores (Continental, etc.).
+    - **ACH09 (Exclusivo):** Referencias Top (Grand Palace, Escape, Resiflex).
+
+### 2.3. Flujos de Componentes
+- **Bandas:** Inicio en `ACH11/12/BO01` (Metros) -> `RMTBx` (Unidades). Procesos extras `COS3D/ENCBD` en metros.
+- **Interiores:** `INTPR/T` -> `INTPf`. Requiere bandas de `ACH11/12`.
+- **Bases:** `MTBS1` (Tapa superior, requiere `ACH11/12`) y `MTBS` (Tapa cierre).
+- **Corte de Telas:** Capacidad limitada a una sola jornada para todos los puestos `HR-CT`.
+- **Telas y Fundas:** Capacidad de una sola persona. Flexibilidad `TTCF` -> `INTPf`.
+
+### 2.4. Flexibilidad de Personal
+- Se permite planificación de puestos al **50% de capacidad** para compartir un operario entre dos tareas.
 
 ## 3. Protocolo de Datos
-- **Códigos de Material:** Siempre normalizar eliminando ceros a la izquierda para comparaciones.
-- **Fechas:** Usar zona horaria de Ecuador (America/Guayaquil) para determinar "Hoy" y "Mañana".
-- **Visualización:** Tiempos y cantidades deben mostrar siempre **dos decimales**.
-- **Cruce de Tiempos:** El cálculo de tiempo total debe ser `Cantidad * Tiempo Unitario` del puesto "HR" correspondiente.
+- **Códigos de Material:** Normalizar eliminando ceros a la izquierda.
+- **Versiones de Fabricación:** Usar la versión 1 por defecto; versiones superiores para balanceo de carga.
+- **Visualización:** Tiempos y cantidades con **dos decimales**.
 
 ## 4. Estilo de Interacción
-- Actuar como socio intelectual, cuestionando supuestos y validando la lógica MRP antes de codificar.
-- Mantener la documentación (`business_rules.md`) actualizada con cada nueva enseñanza del usuario.
+- Validar la sincronización de máquinas `XX` en cada movimiento de carga.
+- Mantener la documentación actualizada con cada regla de balanceo aprendida.

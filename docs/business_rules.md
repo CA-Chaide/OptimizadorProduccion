@@ -29,74 +29,52 @@ Esta lógica rige la generación automática de la "Programación Componentes":
     - **Fecha 2 (Lejana):** Destino **Quito**. Se planifica con la capacidad remanente.
 2.  **Explosión de Materiales (BOM)**:
     - La demanda de un Forro genera necesidades automáticas de componentes (Tapas acolchadas, Bandas, Interiores).
-    - Cada componente debe validar la existencia de sus procesos dependientes.
 3.  **Lead Time de Componentes**:
     - Se maneja un desfase de 1 día. Los componentes se planifican para estar listos el mismo día o un día antes de la necesidad del forro.
-4.  **Gestión de Capacidad Finita (Saturación)**:
-    - Si una máquina "HR" se satura:
-        - Se asegura primero el 100% de los componentes para la **Fecha 1 (GYE)**.
-        - Se asigna el resto a la **Fecha 2 (Quito)** hasta agotar el tiempo.
-        - El sobrante de la Fecha 2 se **desplaza automáticamente al día siguiente**.
+4.  **Gestión de Capacidad y Balanceo**:
+    - Si una máquina se satura, el sistema aplica la siguiente jerarquía:
+        1. **Balanceo por Versión de Fabricación:** Si el material tiene una versión alterna (ej. V2) habilitada en otra máquina con disponibilidad, se mueve la orden a esa máquina.
+        2. **Postergación:** Si no hay versiones alternas o todas las máquinas compatibles están llenas, el excedente de la Fecha 2 (Quito) se desplaza al día siguiente.
 
 ### 2.3. Sincronización de Procesos (Tapas y Acolchado)
 Existe una dependencia técnica estricta entre las máquinas de confección de tapas y las de acolchado:
 - **Regla de Sufijo:** La máquina de la Tapa (`HR-PEFXX`) debe coincidir con la del Acolchado (`HR-ACHXX`).
+- **Sincronización por Versión:** Si se cambia la versión de fabricación para mover una orden de `HR-ACH08` a `HR-ACH09`, el proceso de tapas DEBE moverse automáticamente a `HR-PEF09`.
 - **Identificadores Válidos:** Los números de máquina (XX) son: **02, 06, 08, 09 y 10**.
-- **Sincronización de Fechas:** Ambos procesos (Tapa y Acolchado) deben planificarse para la **mismo fecha**.
-- **Cuello de Botella Técnico:** El ajuste de capacidad se realiza sobre las acolchadoras (`HR-ACHXX`). Las máquinas de tapas (`HR-PEFXX`) tienen capacidad adicional para cubrir cualquier exceso generado por el acolchado.
 - **Asignación por Referencia y Capacidad**:
-    - Las máquinas tienen velocidades diferentes, lo que impacta directamente en el tiempo de proceso por unidad.
     - **HR-ACH10, HR-ACH06 y HR-ACH02:** Procesan líneas **Económica, Zafiro, Imperial, Alternativa, Rubí y Premium (Estándar)**.
     - **HR-ACH08 y HR-ACH09:** Procesan líneas de categoría superior como **Continental, Grand Hotel, Ortopédico y Suave Brisa**.
-    - **HR-ACH09 (Exclusividad):** Es la única máquina habilitada para procesar referencias Premium de alta gama: **Grand Palace, Escape y Resiflex**.
+    - **HR-ACH09 (Exclusividad):** Es la única habilitada para **Grand Palace, Escape y Resiflex**.
 
 ### 2.4. Proceso de Bandas
-Las bandas siguen un flujo de producción específico por lotes:
-1.  **Inicio (Acolchado de Banda):** Se realiza en `HR-ACH11`, `HR-ACH12` o la máquina especial `HR-BO01`.
-2.  **Unidad de Medida (Acolchado):** La producción en acolchado se mide en **metros**.
-3.  **Lógica de Necesidad:** La cantidad a producir debe cubrir la **Necesidad Neta** (Órdenes de Forros) + el **Stock de Seguridad**.
-4.  **Rematado:** Proceso subsiguiente en máquinas **HR-RMTBx**. Se mide en **unidades**.
-5.  **Procesos Adicionales (en metros):** 
-    - Referencias que salen de `HR-ACH11/12` pueden requerir cocido de banda en **HR-COS3D**.
-    - Referencias específicas requieren encintado en el puesto **HR-ENCBD**.
-6.  **Proceso Final (en unidades):**
-    - Referencias específicas requieren el puesto **HR-RMTBm** como paso final del componente.
+1.  **Inicio (Acolchado de Banda):** `HR-ACH11`, `HR-ACH12` o `HR-BO01` (especiales). Medido en **metros**.
+2.  **Rematado:** Puesto **HR-RMTBx**. Medido en **unidades**.
+3.  **Procesos Adicionales (en metros):** 
+    - **HR-COS3D:** Cocido de banda.
+    - **HR-ENCBD:** Encintado.
+4.  **Proceso Final (en unidades):** Puesto **HR-RMTBm**.
 
 ### 2.5. Proceso de Interiores
-Los interiores siguen un flujo de pegado e integración final:
-1.  **Puestos Iniciales:** Se procesan en `HR-INTPR` o `HR-INTPT` (según referencia). Consiste en pegado de banda en tela no tejida.
-2.  **Proceso Final:** El paso siguiente que integra todas las referencias es el puesto **HR-INTPf** (Interior Final).
-3.  **Dependencia Transversal:** Los procesos iniciales generan automáticamente demanda de bandas acolchadas en las máquinas **HR-ACH11** y **HR-ACH12**.
+1.  **Puestos Iniciales:** `HR-INTPR` o `HR-INTPT` (pegado de banda). Generan demanda en **HR-ACH11/12**.
+2.  **Proceso Final:** Puesto **HR-INTPf** (Integra todas las referencias).
 
-### 2.6. Proceso de Bases
-Orientado a cubrir las necesidades de forros de base (**HR-FBASE**):
-1.  **Tapa Superior (HR-MTBS1):** Proceso de cosido de banda a tela no tejida o antideslizante. Genera demanda de bandas acolchadas en **HR-ACH11** y **HR-ACH12**.
-2.  **Tapa con Cierre (HR-MTBS):** Fabricación de tapa con cierre. Genera demanda de materias primas (telas).
+### 2.6. Proceso de Bases (HR-FBASE)
+1.  **Tapa Superior (HR-MTBS1):** Cosido de banda. Genera demanda en **HR-ACH11/12**.
+2.  **Tapa con Cierre (HR-MTBS):** Genera demanda de telas.
 
 ### 2.7. Proceso de Corte de Telas
-Punto de control central para la preparación de materiales textiles:
-1.  **Puestos de Trabajo:** `HR-CTBAN`, `HR-CTBSC`, `HR-CTCHN` y `HR-CTINT`.
-2.  **Lógica de Capacidad:** Toda la carga de estos puestos debe ajustarse estrictamente al tiempo de **una sola jornada laboral**.
-3.  **Alcance:** Procesa necesidades de:
-    *   Interiores y Bases.
-    *   Forros que utilizan tela directamente (sin tapas acolchadas).
-    *   Referencias de forros que incorporan piezas de tela cortada.
+- **Puestos:** `HR-CTBAN`, `HR-CTBSC`, `HR-CTCHN`, `HR-CTINT`.
+- **Capacidad:** Ajustada a **una sola jornada laboral** total.
 
 ### 2.8. Proceso de Telas y Fundas (Complementos de Forros)
-Puestos especializados para piezas específicas y fundas:
-1.  **Puestos de Trabajo:** `HR-TTCF` y `HR-TTSUP`.
-2.  **Funciones:**
-    *   **HR-TTCF:** Cosido de telas y pegado de falso (parte del forro).
-    *   **HR-TTSUP:** Procesamiento de forros tipo funda (cosido de cortes generados en otras áreas).
-3.  **Restricción de Mano de Obra:** La capacidad de estos puestos se calcula para **una sola persona**.
-4.  **Lógica de Flexibilidad:** Si el tiempo en `HR-TTSUP` es alto y bloquea el procesamiento de `HR-TTCF`, la carga de `HR-TTCF` se puede desplazar automáticamente al puesto de **Interiores (HR-INTPf)**, ya que el proceso técnico es equivalente.
+- **Puestos:** `HR-TTCF` y `HR-TTSUP`.
+- **Restricción:** Capacidad para **una sola persona**.
+- **Flexibilidad:** Excedente de `HR-TTCF` puede enviarse a `HR-INTPf`.
 
 ### 2.9. Gestión de Personal y Flexibilidad de Carga
-Para optimizar el uso de los recursos humanos según la demanda:
-1.  **Movilidad de Personal:** El personal se mueve entre puestos según la saturación de la demanda.
-2.  **Puestos al 50%:** Algunos puestos pueden configurarse para trabajar al **50% de su capacidad** de tiempo para permitir que el operario cubra dos estaciones de trabajo diferentes en la misma jornada.
-3.  **Polivalencia:** El motor de planificación debe considerar que puestos técnicos similares (ej. costura en `TTCF` e `INTPf`) pueden compartir recursos.
+- **Movilidad:** Personal móvil según saturación.
+- **Puestos al 50%:** Permite a un operario cubrir dos estaciones en la misma jornada.
 
 ### 2.10. Cálculo de Tiempos
-- El tiempo de fabricación es el **cuello de botella** de la línea o el tiempo asignado al identificador "HR" específico en el maestro.
+- El tiempo de fabricación es el **cuello de botella** de la línea.
 - Todos los tiempos deben mostrarse con **dos decimales**.
