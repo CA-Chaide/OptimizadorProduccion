@@ -42,7 +42,8 @@ Esta lógica rige la generación automática de la "Programación Componentes":
 Existe una dependencia técnica estricta entre las máquinas de confección de tapas y las de acolchado:
 - **Regla de Sufijo:** La máquina de la Tapa (`HR-PEFXX`) debe coincidir con la del Acolchado (`HR-ACHXX`).
 - **Identificadores Válidos:** Los números de máquina (XX) son: **02, 06, 08, 09 y 10**.
-- **Ejemplo:** Si un material requiere la máquina `HR-PEF08`, su orden de acolchado dependiente debe asignarse forzosamente a la `HR-ACH08`.
+- **Sincronización de Fechas:** Ambos procesos (Tapa y Acolchado) deben planificarse para la **misma fecha**.
+- **Cuello de Botella Técnico:** El ajuste de capacidad se realiza sobre las acolchadoras (`HR-ACHXX`). Las máquinas de tapas (`HR-PEFXX`) tienen capacidad adicional para cubrir cualquier exceso generado por el acolchado.
 
 ### 2.4. Cálculo de Tiempos
 - El tiempo de fabricación es el **cuello de botella** de la línea o el tiempo asignado al identificador "HR" específico en el maestro.
