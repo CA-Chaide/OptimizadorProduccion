@@ -64,7 +64,7 @@ Existe una dependencia técnica estricta entre las máquinas de confección de t
 
 ### 2.7. Proceso de Corte de Telas
 - **Puestos:** `HR-CTBAN`, `HR-CTBSC`, `HR-CTCHN`, `HR-CTINT`.
-- **Capacidad:** Ajustada a **una sola jornada laboral** total.
+- **Capacidad:** Ajustada a **una sola jornada laboral** total (un solo operario para el grupo de puestos).
 
 ### 2.8. Proceso de Telas y Fundas (Complementos de Forros)
 - **Puestos:** `HR-TTCF` y `HR-TTSUP`.
@@ -73,7 +73,7 @@ Existe una dependencia técnica estricta entre las máquinas de confección de t
 
 ### 2.9. Gestión de Personal y Flexibilidad de Carga
 - **Movilidad:** Personal móvil según saturación.
-- **Puestos al 50%:** Permite a un operario cubrir dos estaciones en la misma jornada.
+- **Puestos al 50%:** Permite a un operario cubrir dos estaciones en la misma jornada dividiendo su capacidad.
 
 ### 2.10. Cálculo de Tiempos
 - El tiempo de fabricación es el **cuello de botella** de la línea.
