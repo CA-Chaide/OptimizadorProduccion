@@ -44,6 +44,7 @@ Existe una dependencia técnica estricta entre las máquinas de confección de t
 - **Identificadores Válidos:** Los números de máquina (XX) son: **02, 06, 08, 09 y 10**.
 - **Sincronización de Fechas:** Ambos procesos (Tapa y Acolchado) deben planificarse para la **mismo fecha**.
 - **Cuello de Botella Técnico:** El ajuste de capacidad se realiza sobre las acolchadoras (`HR-ACHXX`). Las máquinas de tapas (`HR-PEFXX`) tienen capacidad adicional para cubrir cualquier exceso generado por el acolchado.
+- **Asignación por Referencia:** Las líneas de producto **Económica, Zafiro, Imperial, Alternativa, Rubí y Premium** se procesan exclusivamente en las máquinas **HR-ACH10, HR-ACH06 y HR-ACH02**.
 
 ### 2.4. Proceso de Bandas
 Las bandas siguen un flujo de producción específico por lotes:
