@@ -19,7 +19,8 @@
 - **Sincronización de Tapas:** Las máquinas de Tapas (`HR-PEFXX`) y Acolchado (`HR-ACHXX`) deben compartir el mismo número de máquina `XX` (**02, 06, 08, 09, 10**) y la **misma fecha de producción**.
 - **Sincronización de Bandas:** 
     - El flujo inicia en `HR-ACH11`/`12` (o `HR-BO01`) produciendo en **metros por lotes**. 
-    - Procesos posteriores incluyen **HR-RMTBx**, **HR-COS3D** (cocido de banda) y opcionalmente **HR-RMTBm**.
+    - El rematado (**HR-RMTBx**) y el proceso final (**HR-RMTBm**) se calculan en **unidades**.
+    - Los procesos adicionales de cocido (**HR-COS3D**) y encintado (**HR-ENCBD**) se calculan en **metros**.
 - **Cobertura de Inventario:** La producción de componentes de banda debe satisfacer la demanda de forros y reponer el **Stock de Seguridad**.
 - **Punto de Ajuste:** La capacidad se mide y ajusta según las máquinas críticas de acolchado, ya que los procesos de confección suelen tener recursos excedentes.
 

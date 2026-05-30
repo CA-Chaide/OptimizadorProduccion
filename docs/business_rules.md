@@ -48,11 +48,13 @@ Existe una dependencia técnica estricta entre las máquinas de confección de t
 ### 2.4. Proceso de Bandas
 Las bandas siguen un flujo de producción específico por lotes:
 1.  **Inicio (Acolchado de Banda):** Se realiza en `HR-ACH11`, `HR-ACH12` o la máquina especial `HR-BO01`.
-2.  **Unidad de Medida:** La producción en acolchado se mide en **metros**.
+2.  **Unidad de Medida (Acolchado):** La producción en acolchado se mide en **metros**.
 3.  **Lógica de Necesidad:** La cantidad a producir debe cubrir la **Necesidad Neta** (Órdenes de Forros) + el **Stock de Seguridad**.
-4.  **Rematado:** Proceso subsiguiente en máquinas **HR-RMTBx**.
-5.  **Procesos Adicionales:** 
+4.  **Rematado:** Proceso subsiguiente en máquinas **HR-RMTBx**. Se mide en **unidades**.
+5.  **Procesos Adicionales (en metros):** 
     - Referencias que salen de `HR-ACH11/12` pueden requerir cocido de banda en **HR-COS3D**.
+    - Referencias específicas requieren encintado en el puesto **HR-ENCBD**.
+6.  **Proceso Final (en unidades):**
     - Referencias específicas requieren el puesto **HR-RMTBm** como paso final del componente.
 
 ### 2.5. Cálculo de Tiempos
