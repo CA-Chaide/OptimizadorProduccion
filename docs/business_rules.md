@@ -42,15 +42,16 @@ Esta lógica rige la generación automática de la "Programación Componentes":
 Existe una dependencia técnica estricta entre las máquinas de confección de tapas y las de acolchado:
 - **Regla de Sufijo:** La máquina de la Tapa (`HR-PEFXX`) debe coincidir con la del Acolchado (`HR-ACHXX`).
 - **Identificadores Válidos:** Los números de máquina (XX) son: **02, 06, 08, 09 y 10**.
-- **Sincronización de Fechas:** Ambos procesos (Tapa y Acolchado) deben planificarse para la **misma fecha**.
+- **Sincronización de Fechas:** Ambos procesos (Tapa y Acolchado) deben planificarse para la **mismo fecha**.
 - **Cuello de Botella Técnico:** El ajuste de capacidad se realiza sobre las acolchadoras (`HR-ACHXX`). Las máquinas de tapas (`HR-PEFXX`) tienen capacidad adicional para cubrir cualquier exceso generado por el acolchado.
 
 ### 2.4. Proceso de Bandas
-Las bandas siguen un flujo de producción específico:
-1.  **Inicio (Acolchado de Banda):** Se realiza en `HR-ACH11` o `HR-ACH12`.
-2.  **Referencias Especiales:** Algunos materiales inician en la máquina `HR-BO01`.
-3.  **Rematado:** Proceso subsiguiente en máquinas **HR-RMTBx**.
-4.  **Proceso Adicional:** Referencias específicas requieren el puesto **HR-RMTBm** como paso final del componente.
+Las bandas siguen un flujo de producción específico por lotes:
+1.  **Inicio (Acolchado de Banda):** Se realiza en `HR-ACH11`, `HR-ACH12` o la máquina especial `HR-BO01`.
+2.  **Unidad de Medida:** La producción en acolchado se mide en **metros**.
+3.  **Lógica de Necesidad:** La cantidad a producir debe cubrir la **Necesidad Neta** (Órdenes de Forros) + el **Stock de Seguridad**.
+4.  **Rematado:** Proceso subsiguiente en máquinas **HR-RMTBx**.
+5.  **Proceso Adicional:** Referencias específicas requieren el puesto **HR-RMTBm** como paso final del componente.
 
 ### 2.5. Cálculo de Tiempos
 - El tiempo de fabricación es el **cuello de botella** de la línea o el tiempo asignado al identificador "HR" específico en el maestro.

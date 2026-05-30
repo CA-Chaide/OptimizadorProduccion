@@ -17,7 +17,8 @@
 ### 2.2. Vínculo Técnico y Sincronización
 - **Prefijo HR:** Todas las máquinas se resuelven mediante el prefijo **"HR-"**.
 - **Sincronización de Tapas:** Las máquinas de Tapas (`HR-PEFXX`) y Acolchado (`HR-ACHXX`) deben compartir el mismo número de máquina `XX` (**02, 06, 08, 09, 10**) y la **misma fecha de producción**.
-- **Sincronización de Bandas:** El flujo inicia en `HR-ACH11`/`12` (o `HR-BO01`) y continúa en **HR-RMTBx** y opcionalmente **HR-RMTBm**.
+- **Sincronización de Bandas:** El flujo inicia en `HR-ACH11`/`12` (o `HR-BO01`) produciendo en **metros por lotes**. Continúa en **HR-RMTBx** y opcionalmente **HR-RMTBm**.
+- **Cobertura de Inventario:** La producción de componentes de banda debe satisfacer la demanda de forros y reponer el **Stock de Seguridad**.
 - **Punto de Ajuste:** La capacidad se mide y ajusta según las máquinas críticas de acolchado, ya que los procesos de confección suelen tener recursos excedentes.
 
 ## 3. Protocolo de Datos
