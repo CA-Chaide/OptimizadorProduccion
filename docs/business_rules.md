@@ -86,6 +86,12 @@ Puestos especializados para piezas específicas y fundas:
 3.  **Restricción de Mano de Obra:** La capacidad de estos puestos se calcula para **una sola persona**.
 4.  **Lógica de Flexibilidad:** Si el tiempo en `HR-TTSUP` es alto y bloquea el procesamiento de `HR-TTCF`, la carga de `HR-TTCF` se puede desplazar automáticamente al puesto de **Interiores (HR-INTPf)**, ya que el proceso técnico es equivalente.
 
-### 2.9. Cálculo de Tiempos
+### 2.9. Gestión de Personal y Flexibilidad de Carga
+Para optimizar el uso de los recursos humanos según la demanda:
+1.  **Movilidad de Personal:** El personal se mueve entre puestos según la saturación de la demanda.
+2.  **Puestos al 50%:** Algunos puestos pueden configurarse para trabajar al **50% de su capacidad** de tiempo para permitir que el operario cubra dos estaciones de trabajo diferentes en la misma jornada.
+3.  **Polivalencia:** El motor de planificación debe considerar que puestos técnicos similares (ej. costura en `TTCF` e `INTPf`) pueden compartir recursos.
+
+### 2.10. Cálculo de Tiempos
 - El tiempo de fabricación es el **cuello de botella** de la línea o el tiempo asignado al identificador "HR" específico en el maestro.
 - Todos los tiempos deben mostrarse con **dos decimales**.

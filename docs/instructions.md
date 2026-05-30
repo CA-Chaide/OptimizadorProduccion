@@ -29,6 +29,7 @@
 - **Telas y Fundas (TTCF / TTSUP):**
     - Capacidad ajustada para **una sola persona**.
     - Flexibilidad: `HR-TTCF` puede ser absorbido por `HR-INTPf` si hay saturación en `HR-TTSUP`.
+- **Flexibilidad de Personal:** El personal es móvil. Se permite la planificación de puestos al **50% de capacidad** para optimizar el recurso humano entre dos tareas.
 - **Cobertura de Inventario:** La producción de componentes de banda debe satisfacer la demanda de forros y reponer el **Stock de Seguridad**.
 - **Punto de Ajuste:** La capacidad se mide y ajusta según las máquinas críticas de acolchado, ya que los procesos de confección suelen tener recursos excedentes.
 
