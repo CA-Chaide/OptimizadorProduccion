@@ -17,7 +17,10 @@
 ### 2.2. Vínculo Técnico y Sincronización
 - **Prefijo HR:** Todas las máquinas se resuelven mediante el prefijo **"HR-"**.
 - **Sincronización de Tapas:** Las máquinas de Tapas (`HR-PEFXX`) y Acolchado (`HR-ACHXX`) deben compartir el mismo número de máquina `XX` (**02, 06, 08, 09, 10**) y la **misma fecha de producción**. La capacidad la dictan las acolchadoras.
-- **Restricción de Acolchado:** Las líneas **Económica, Zafiro, Imperial, Alternativa, Rubí y Premium** se procesan solo en **HR-ACH10, HR-ACH06 y HR-ACH02**.
+- **Especialización de Acolchado:** 
+    - **ACH10, 06, 02:** Línea Económica, Zafiro, Imperial, Alternativa, Rubí y Premium (Estándar).
+    - **ACH08, 09:** Continental, Grand Hotel, Ortopédico, Suave Brisa.
+    - **ACH09 (Exclusivo):** Grand Palace, Escape, Resiflex.
 - **Sincronización de Bandas:** 
     - El flujo inicia en `HR-ACH11`/`12` (o `HR-BO01`) produciendo en **metros por lotes**. 
     - El rematado (**HR-RMTBx**) y el proceso final (**HR-RMTBm**) se calculan en **unidades**.
