@@ -17,7 +17,8 @@ import {
   BarChart3,
   Clock,
   Search,
-  Calendar as CalendarIconLucide
+  Calendar as CalendarIconLucide,
+  MapPin
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@radix-ui/react-tabs';
@@ -291,13 +292,11 @@ export const TacticalPlanForrosSection: React.FC = () => {
     );
 
     if (matches.length > 0) {
-      // 1. Prioridad: Buscar cualquier campo que inicie con HR
       for (const m of matches) {
         const values = Object.values(m).map(v => String(v || '').trim().toUpperCase());
         const hrValue = values.find(v => v.startsWith('HR'));
         if (hrValue) return hrValue;
       }
-      // 2. Fallback: Primer registro con tiempo
       const best = matches.find(m => Number(m.Tiempo || m.Tiempo_Min) > 0) || matches[0];
       return String(best.PuestoTrabajo || best.Maquina || best.nombre_estacion || '').trim().toUpperCase();
     }
@@ -679,51 +678,57 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
         <TabsContent value="forros-chn-bases">
           <div className="space-y-6">
-            {/* Cuadros de resumen de producción */}
+            {/* Cuadros de resumen de producción con lógica de GYE y Quito */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Card className="bg-white border-l-4 border-l-blue-500 shadow-sm">
+              <Card className="bg-white border-l-4 border-l-orange-500 shadow-md">
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
                     <div className="space-y-1">
-                      <p className="text-sm font-medium text-gray-500 uppercase tracking-wider">Producción para:</p>
-                      <p className="text-lg font-bold text-gray-900">{formattedToday}</p>
+                      <div className="flex items-center gap-2 text-orange-600">
+                        <MapPin className="w-4 h-4" />
+                        <p className="text-sm font-bold uppercase tracking-wider">Producción GYE (Fecha Cercana)</p>
+                      </div>
+                      <p className="text-md font-semibold text-gray-700">{formattedToday}</p>
+                    </div>
+                    <div className="bg-orange-50 p-3 rounded-full">
+                      <CalendarIconLucide className="w-6 h-6 text-orange-600" />
+                    </div>
+                  </div>
+                  <div className="mt-4 flex items-baseline gap-2">
+                    <p className="text-3xl font-extrabold text-orange-700 font-mono">
+                      {chnBasesDateTotals.totalToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                    <p className="text-xs text-gray-400 uppercase font-semibold">Unidades</p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-white border-l-4 border-l-blue-600 shadow-md">
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 text-blue-600">
+                        <MapPin className="w-4 h-4" />
+                        <p className="text-sm font-bold uppercase tracking-wider">Producción Quito (Segunda Fecha)</p>
+                      </div>
+                      <p className="text-md font-semibold text-gray-700">{formattedTarget}</p>
                     </div>
                     <div className="bg-blue-50 p-3 rounded-full">
                       <CalendarIconLucide className="w-6 h-6 text-blue-600" />
                     </div>
                   </div>
-                  <div className="mt-4">
-                    <p className="text-3xl font-extrabold text-blue-700 font-mono">
-                      {chnBasesDateTotals.totalToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </p>
-                    <p className="text-xs text-gray-400 mt-1 uppercase font-semibold">Unidades totales (Filtradas)</p>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="bg-white border-l-4 border-l-emerald-500 shadow-sm">
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-1">
-                      <p className="text-sm font-medium text-gray-500 uppercase tracking-wider">Producción para:</p>
-                      <p className="text-lg font-bold text-gray-900">{formattedTarget}</p>
-                    </div>
-                    <div className="bg-emerald-50 p-3 rounded-full">
-                      <CalendarIconLucide className="w-6 h-6 text-emerald-600" />
-                    </div>
-                  </div>
-                  <div className="mt-4">
-                    <p className="text-3xl font-extrabold text-emerald-700 font-mono">
+                  <div className="mt-4 flex items-baseline gap-2">
+                    <p className="text-3xl font-extrabold text-blue-800 font-mono">
                       {chnBasesDateTotals.totalTarget.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </p>
-                    <p className="text-xs text-gray-400 mt-1 uppercase font-semibold">Unidades totales (Filtradas)</p>
+                    <p className="text-xs text-gray-400 uppercase font-semibold">Unidades</p>
                   </div>
                 </CardContent>
               </Card>
             </div>
 
             <Card>
-              <CardHeader><CardTitle>Forros CHN & Bases (Ecuador Continental)</CardTitle></CardHeader>
+              <CardHeader><CardTitle>Forros CHN & Bases (Filtrado por Máquinas HR)</CardTitle></CardHeader>
               <CardContent>
                 <ProvisionalOrdersTabSection 
                   externalFilters={forrosChnBasesFilters} 
@@ -738,7 +743,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
         <TabsContent value="diaria">
           <Card>
-            <CardHeader><CardTitle className="flex items-center gap-2"><CalendarCheck className="w-5 h-5 text-primary" /> Programación Diaria (Ecuador): {formattedToday} y {formattedTarget}</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="flex items-center gap-2"><CalendarCheck className="w-5 h-5 text-primary" /> Programación Diaria (Ecuador): {formattedToday} (GYE) y {formattedTarget} (Quito)</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <div className="rounded-md border bg-white overflow-hidden">
                 <div className="overflow-auto max-h-[60vh]">
