@@ -26,6 +26,9 @@
     - **Tapa Superior (HR-MTBS1):** Requiere vinculación con demanda de acolchado en **HR-ACH11/12**.
     - **Tapa con Cierre (HR-MTBS):** Genera demanda de telas.
 - **Corte de Telas:** Puestos `HR-CTBAN`, `HR-CTBSC`, `HR-CTCHN`, `HR-CTINT`. La capacidad total de estos puestos se limita a **una sola jornada**. Atiende interiores, bases y forros de tela.
+- **Telas y Fundas (TTCF / TTSUP):**
+    - Capacidad ajustada para **una sola persona**.
+    - Flexibilidad: `HR-TTCF` puede ser absorbido por `HR-INTPf` si hay saturación en `HR-TTSUP`.
 - **Cobertura de Inventario:** La producción de componentes de banda debe satisfacer la demanda de forros y reponer el **Stock de Seguridad**.
 - **Punto de Ajuste:** La capacidad se mide y ajusta según las máquinas críticas de acolchado, ya que los procesos de confección suelen tener recursos excedentes.
 

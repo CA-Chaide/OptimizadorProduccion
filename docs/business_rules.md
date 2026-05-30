@@ -77,6 +77,15 @@ Punto de control central para la preparación de materiales textiles:
     *   Forros que utilizan tela directamente (sin tapas acolchadas).
     *   Referencias de forros que incorporan piezas de tela cortada.
 
-### 2.8. Cálculo de Tiempos
+### 2.8. Proceso de Telas y Fundas (Complementos de Forros)
+Puestos especializados para piezas específicas y fundas:
+1.  **Puestos de Trabajo:** `HR-TTCF` y `HR-TTSUP`.
+2.  **Funciones:**
+    *   **HR-TTCF:** Cosido de telas y pegado de falso (parte del forro).
+    *   **HR-TTSUP:** Procesamiento de forros tipo funda (cosido de cortes generados en otras áreas).
+3.  **Restricción de Mano de Obra:** La capacidad de estos puestos se calcula para **una sola persona**.
+4.  **Lógica de Flexibilidad:** Si el tiempo en `HR-TTSUP` es alto y bloquea el procesamiento de `HR-TTCF`, la carga de `HR-TTCF` se puede desplazar automáticamente al puesto de **Interiores (HR-INTPf)**, ya que el proceso técnico es equivalente.
+
+### 2.9. Cálculo de Tiempos
 - El tiempo de fabricación es el **cuello de botella** de la línea o el tiempo asignado al identificador "HR" específico en el maestro.
 - Todos los tiempos deben mostrarse con **dos decimales**.
