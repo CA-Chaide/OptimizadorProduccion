@@ -16,7 +16,8 @@ import {
   CalendarCheck,
   BarChart3,
   Clock,
-  Search
+  Search,
+  Calendar as CalendarIconLucide
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@radix-ui/react-tabs';
@@ -109,8 +110,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
     
     const num = parseFloat(value);
-    if (!isNaN(num) && (upperCol === 'TIEMPO_MIN' || upperCol === 'TIEMPO' || upperCol.includes('TIEMPOS'))) {
-      return num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    if (!isNaN(num)) {
+      if (upperCol === 'TIEMPO_MIN' || upperCol === 'TIEMPO' || upperCol.includes('TIEMPOS') || upperCol === 'CANTIDAD') {
+        return num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      }
     }
 
     return String(value);
@@ -288,15 +291,17 @@ export const TacticalPlanForrosSection: React.FC = () => {
     );
 
     if (matches.length > 0) {
+      // 1. Prioridad: Buscar cualquier campo que inicie con HR
       for (const m of matches) {
         const values = Object.values(m).map(v => String(v || '').trim().toUpperCase());
         const hrValue = values.find(v => v.startsWith('HR'));
         if (hrValue) return hrValue;
       }
-      const first = matches.find(m => Number(m.Tiempo || m.Tiempo_Min) > 0) || matches[0];
-      return String(first.PuestoTrabajo || first.Maquina || first.nombre_estacion || '').trim().toUpperCase();
+      // 2. Fallback: Primer registro con tiempo
+      const best = matches.find(m => Number(m.Tiempo || m.Tiempo_Min) > 0) || matches[0];
+      return String(best.PuestoTrabajo || best.Maquina || best.nombre_estacion || '').trim().toUpperCase();
     }
-    
+
     return '';
   }, [tiemposProduccion, normalizeMaterialCode]);
 
@@ -470,6 +475,26 @@ export const TacticalPlanForrosSection: React.FC = () => {
     
     return Array.from(summaryMap.values()).sort((a, b) => a.machine.localeCompare(b.machine));
   }, [dailyOrders, tiemposProduccion, getResolvedMachine, calculateProductionTime]);
+
+  /**
+   * Totales específicos para la pestaña Forros CHN & Bases
+   */
+  const chnBasesDateTotals = useMemo(() => {
+    const filteredForTab = dailyOrders.filter(order => {
+      const machine = getResolvedMachine(order);
+      return ['HR-FBASE', 'HR-FORRO'].includes(machine);
+    });
+
+    const totalToday = filteredForTab
+      .filter(order => normalizeDateForFilter(order['FECHAINICIO']) === todayDate)
+      .reduce((sum, order) => sum + Number(order['CANTIDAD'] || 0), 0);
+
+    const totalTarget = filteredForTab
+      .filter(order => normalizeDateForFilter(order['FECHAINICIO']) === targetDate)
+      .reduce((sum, order) => sum + Number(order['CANTIDAD'] || 0), 0);
+
+    return { totalToday, totalTarget };
+  }, [dailyOrders, getResolvedMachine, normalizeDateForFilter, todayDate, targetDate]);
 
   if (!isMounted) return null;
 
@@ -653,17 +678,62 @@ export const TacticalPlanForrosSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="forros-chn-bases">
-          <Card>
-            <CardHeader><CardTitle>Forros CHN & Bases (Ecuador Continental)</CardTitle></CardHeader>
-            <CardContent>
-              <ProvisionalOrdersTabSection 
-                externalFilters={forrosChnBasesFilters} 
-                renderCell={renderResolvedProvisionalCell}
-                groupBy="MAQUINA"
-                resolveValue={resolveLogicValue}
-              />
-            </CardContent>
-          </Card>
+          <div className="space-y-6">
+            {/* Cuadros de resumen de producción */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Card className="bg-white border-l-4 border-l-blue-500 shadow-sm">
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium text-gray-500 uppercase tracking-wider">Producción para:</p>
+                      <p className="text-lg font-bold text-gray-900">{formattedToday}</p>
+                    </div>
+                    <div className="bg-blue-50 p-3 rounded-full">
+                      <CalendarIconLucide className="w-6 h-6 text-blue-600" />
+                    </div>
+                  </div>
+                  <div className="mt-4">
+                    <p className="text-3xl font-extrabold text-blue-700 font-mono">
+                      {chnBasesDateTotals.totalToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-1 uppercase font-semibold">Unidades totales (Filtradas)</p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-white border-l-4 border-l-emerald-500 shadow-sm">
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium text-gray-500 uppercase tracking-wider">Producción para:</p>
+                      <p className="text-lg font-bold text-gray-900">{formattedTarget}</p>
+                    </div>
+                    <div className="bg-emerald-50 p-3 rounded-full">
+                      <CalendarIconLucide className="w-6 h-6 text-emerald-600" />
+                    </div>
+                  </div>
+                  <div className="mt-4">
+                    <p className="text-3xl font-extrabold text-emerald-700 font-mono">
+                      {chnBasesDateTotals.totalTarget.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-1 uppercase font-semibold">Unidades totales (Filtradas)</p>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            <Card>
+              <CardHeader><CardTitle>Forros CHN & Bases (Ecuador Continental)</CardTitle></CardHeader>
+              <CardContent>
+                <ProvisionalOrdersTabSection 
+                  externalFilters={forrosChnBasesFilters} 
+                  renderCell={renderResolvedProvisionalCell}
+                  groupBy="MAQUINA"
+                  resolveValue={resolveLogicValue}
+                />
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         <TabsContent value="diaria">
