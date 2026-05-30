@@ -49,8 +49,8 @@ Existe una dependencia técnica estricta entre las máquinas de confección de t
 Las bandas siguen un flujo de producción específico:
 1.  **Inicio (Acolchado de Banda):** Se realiza en `HR-ACH11` o `HR-ACH12`.
 2.  **Referencias Especiales:** Algunos materiales inician en la máquina `HR-BO01`.
-3.  **Rematado:** Proceso subsiguiente en máquinas `HR-RMTXX`.
-4.  **Proceso Adicional:** Referencias específicas requieren el puesto `HR-RMTM` como paso final del componente.
+3.  **Rematado:** Proceso subsiguiente en máquinas **HR-RMTBx**.
+4.  **Proceso Adicional:** Referencias específicas requieren el puesto **HR-RMTBm** como paso final del componente.
 
 ### 2.5. Cálculo de Tiempos
 - El tiempo de fabricación es el **cuello de botella** de la línea o el tiempo asignado al identificador "HR" específico en el maestro.
