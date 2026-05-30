@@ -59,15 +59,24 @@ Las bandas siguen un flujo de producción específico por lotes:
 
 ### 2.5. Proceso de Interiores
 Los interiores siguen un flujo de pegado e integración final:
-1.  **Puestos Iniciales:** Se procesan en `HR-INTPR` o `HR-INTPT` (la diferencia es la referencia, el proceso de pegado de banda en tela no tejida es idéntico).
-2.  **Proceso Final:** El paso siguiente que integra todas las referencias de los puestos iniciales es el puesto **HR-INTPf** (Interior Final).
+1.  **Puestos Iniciales:** Se procesan en `HR-INTPR` o `HR-INTPT` (según referencia). Consiste en pegado de banda en tela no tejida.
+2.  **Proceso Final:** El paso siguiente que integra todas las referencias es el puesto **HR-INTPf** (Interior Final).
 3.  **Dependencia Transversal:** Los procesos iniciales generan automáticamente demanda de bandas acolchadas en las máquinas **HR-ACH11** y **HR-ACH12**.
 
 ### 2.6. Proceso de Bases
 Orientado a cubrir las necesidades de forros de base (**HR-FBASE**):
 1.  **Tapa Superior (HR-MTBS1):** Proceso de cosido de banda a tela no tejida o antideslizante. Genera demanda de bandas acolchadas en **HR-ACH11** y **HR-ACH12**.
-2.  **Tapa con Cierre (HR-MTBS):** Fabricación de tapa con cierre. Genera demanda de telas.
+2.  **Tapa con Cierre (HR-MTBS):** Fabricación de tapa con cierre. Genera demanda de materias primas (telas).
 
-### 2.7. Cálculo de Tiempos
+### 2.7. Proceso de Corte de Telas
+Punto de control central para la preparación de materiales textiles:
+1.  **Puestos de Trabajo:** `HR-CTBAN`, `HR-CTBSC`, `HR-CTCHN` y `HR-CTINT`.
+2.  **Lógica de Capacidad:** Toda la carga de estos puestos debe ajustarse estrictamente al tiempo de **una sola jornada laboral**.
+3.  **Alcance:** Procesa necesidades de:
+    *   Interiores y Bases.
+    *   Forros que utilizan tela directamente (sin tapas acolchadas).
+    *   Referencias de forros que incorporan piezas de tela cortada.
+
+### 2.8. Cálculo de Tiempos
 - El tiempo de fabricación es el **cuello de botella** de la línea o el tiempo asignado al identificador "HR" específico en el maestro.
 - Todos los tiempos deben mostrarse con **dos decimales**.
