@@ -7,8 +7,8 @@
 
 ### 2.1. Planificación Pull y Prioridad de Cumplimiento
 - **Fechas de Forros (Padres):** Son **INAMOVIBLES**. El plan de producto terminado no se posterga para asegurar el nivel de servicio.
-- **Fecha Límite de Componentes:** Los componentes deben estar listos a más tardar el mismo día de la fecha fija del Forro padre. No se permite programar componentes después de la fecha del padre.
-- **Ajuste de Capacidad en Componentes:** La flexibilidad reside en los subprocesos (Tapas, Bandas, Corte). El sistema debe balancear las máquinas o adelantar la producción de hijos para cumplir con la fecha fija del padre.
+- **Fecha Límite de Componentes (JIT):** Los componentes deben estar listos el **mismo día** de la fecha fija del Forro padre o, como máximo, **un día antes**. No se permite programar componentes después de la fecha del padre ni con más de 24 horas de antelación.
+- **Ajuste de Capacidad en Componentes:** La flexibilidad reside en los subprocesos (Tapas, Bandas, Corte). El sistema debe balancear las máquinas o adelantar la producción de hijos (máximo un día) para cumplir con la fecha fija del padre.
 - **Jerarquía de Ajuste de Capacidad:**
     1. **Versión de Fabricación:** Si hay sobrecarga, buscar versiones alternativas (otras máquinas compatibles) para el componente.
     2. **Arrastre Sincronizado:** Cualquier cambio en un "Hijo" (Tapa/Banda) debe validar su disponibilidad para la fecha fija del "Padre" (Forro).
@@ -40,4 +40,4 @@
 ## 4. Estilo de Interacción
 - Validar siempre que el movimiento de un componente no comprometa la fecha fija del Forro.
 - Mantener la integridad de la regla espejo ACH-PEF en cada balanceo por versión.
-- El componente puede estar el mismo día del forro, pero nunca después.
+- El componente puede estar el mismo día del forro, o un día antes, pero nunca después.

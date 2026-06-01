@@ -35,15 +35,15 @@ Esta lógica rige la generación automática de la "Programación Componentes":
     - Las fechas de ensamble de los **Forros** (producto terminado) son **FIJAS**. No se cambian para garantizar el cumplimiento de la entrega.
 3.  **Flexibilidad en Componentes (Hijos):**
     - Solo las fechas y máquinas de los **componentes** (Tapas, Bandas, etc.) se ajustan para balancear la capacidad.
-4.  **Regla de Suministro Crítica:**
-    - El componente debe estar terminado a más tardar el **mismo día** de la fecha fija del forro padre. Nunca se debe programar un componente para una fecha posterior a la de su padre.
+4.  **Regla de Suministro Crítica (JIT):**
+    - El componente debe estar terminado a más tardar el **mismo día** de la fecha fija del forro padre o **máximo un día antes**. Nunca se debe programar un componente para una fecha posterior a la de su padre ni con más de un día de antelación.
 5.  **Explosión de Materiales (BOM)**:
     - La demanda de un Forro genera necesidades automáticas de componentes (Tapas acolchadas, Bandas, Interiores, Bases).
 6.  **Gestión de Capacidad y Balanceo Dinámico**:
     - **Jerarquía de Ajuste:**
         1. **Balanceo por Versión de Fabricación:** Si una máquina se satura, el sistema busca versiones alternas (ej. mover de ACH08 a ACH09) para el componente.
         2. **Arrastre Sincronizado:** Si se cambia la máquina o fecha de un componente, debe mantenerse el vínculo técnico con el padre.
-        3. **Adelanto de Producción:** Si no hay capacidad en la fecha requerida por el Forro, el componente debe programarse en días anteriores (pre-producción).
+        3. **Adelanto de Producción Limitado:** Si no hay capacidad en la fecha requerida por el Forro, el componente solo puede adelantarse a la jornada inmediatamente anterior (**un día antes**).
 
 ### 2.3. Sincronización de Procesos (Tapas y Acolchado)
 Existe una dependencia técnica estricta entre las máquinas de confección de tapas y las de acolchado:
