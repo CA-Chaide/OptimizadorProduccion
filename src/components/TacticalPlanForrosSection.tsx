@@ -1024,13 +1024,14 @@ export const TacticalPlanForrosSection: React.FC = () => {
                           <th className="px-6 py-3 text-right text-xs font-bold text-gray-600 uppercase tracking-wider">Cant. Órdenes</th>
                           <th className="px-6 py-3 text-right text-xs font-bold text-gray-600 uppercase tracking-wider">Total Unidades</th>
                           <th className="px-6 py-3 text-right text-xs font-bold text-emerald-700 uppercase tracking-wider">Tiempo Total (min)</th>
+                          <th className="px-6 py-3 text-right text-xs font-bold text-indigo-600 uppercase tracking-wider">Tiempo Total (h)</th>
                           <th className="px-6 py-3 text-right text-xs font-bold text-blue-700 uppercase tracking-wider">Capacidad (%)</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200 bg-white">
                         {isLoadingDaily ? (
                           <tr>
-                            <td colSpan={5} className="py-12 text-center">
+                            <td colSpan={6} className="py-12 text-center">
                               <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
                             </td>
                           </tr>
@@ -1046,6 +1047,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-bold text-blue-700 font-mono">{item.quantity.toLocaleString()}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-bold text-emerald-700 font-mono">
                                   {item.totalTime.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-bold text-indigo-600 font-mono">
+                                  {(item.totalTime / 60).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
                                   <Badge 
@@ -1064,7 +1068,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                           })
                         ) : (
                           <tr>
-                            <td colSpan={5} className="py-12 text-center text-gray-400 italic">
+                            <td colSpan={6} className="py-12 text-center text-gray-400 italic">
                               No hay datos para resumir.
                             </td>
                           </tr>
