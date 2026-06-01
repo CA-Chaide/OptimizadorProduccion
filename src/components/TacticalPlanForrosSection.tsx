@@ -18,12 +18,14 @@ import {
   Clock,
   Search,
   Calendar as CalendarIconLucide,
-  MapPin
+  MapPin,
+  ListTree
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@radix-ui/react-tabs';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { 
   Select, 
   SelectContent, 
@@ -49,6 +51,15 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingTiempos, setIsLoadingTiempos] = useState(false);
   const [isLoadingDaily, setIsLoadingDaily] = useState(false);
+
+  // Estados para Explosión de Materiales
+  const [explosionData, setExplosionData] = useState<any[]>([]);
+  const [isLoadingExplosion, setIsLoadingExplosion] = useState(false);
+  const [explosionPage, setExplosionPage] = useState(1);
+  const [explosionTotal, setExplosionTotal] = useState(0);
+  const [explosionRowsPerPage] = useState(20);
+  const [centroExplosion, setCentroExplosion] = useState('1000');
+  const [fertExplosion, setFertExplosion] = useState('');
 
   // Horarios de jornada
   const [horarioDiurno, setHorarioDiurno] = useState("8.75");
@@ -112,8 +123,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
     
     const num = parseFloat(value);
     if (!isNaN(num)) {
-      if (upperCol === 'TIEMPO_MIN' || upperCol === 'TIEMPO' || upperCol.includes('TIEMPOS') || upperCol === 'CANTIDAD') {
-        return num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      if (upperCol === 'TIEMPO_MIN' || upperCol === 'TIEMPO' || upperCol.includes('TIEMPOS') || upperCol === 'CANTIDAD' || upperCol.includes('CANTIDAD')) {
+        return num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 });
       }
     }
 
@@ -266,6 +277,31 @@ export const TacticalPlanForrosSection: React.FC = () => {
       setIsLoadingDaily(false);
     }
   }, [externalFilters, targetDate, todayDate, normalizeDateForFilter]);
+
+  const fetchExplosionData = useCallback(async (page: number = 1) => {
+    setIsLoadingExplosion(true);
+    try {
+      const response = await serviciosService.getMaestroMaterialesExplosion(
+        centroExplosion,
+        fertExplosion,
+        page,
+        explosionRowsPerPage
+      );
+      if (response && response.data) {
+        setExplosionData(response.data);
+        setExplosionTotal(response.totalRegistros || 0);
+        setExplosionPage(page);
+      } else {
+        setExplosionData([]);
+        setExplosionTotal(0);
+      }
+    } catch (error) {
+      console.error('Error fetching explosion data:', error);
+      addNotification('error', 'No se pudo cargar la explosión de materiales.');
+    } finally {
+      setIsLoadingExplosion(false);
+    }
+  }, [centroExplosion, fertExplosion, explosionRowsPerPage, addNotification]);
 
   useEffect(() => {
     if (isMounted && forrosGruposList.length > 0) {
@@ -524,6 +560,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
             <TabsTrigger value="grupos" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><Users className="w-4 h-4" /> Grupos</TabsTrigger>
             <TabsTrigger value="restricciones" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><Lock className="w-4 h-4" /> Restricciones</TabsTrigger>
             <TabsTrigger value="tiempos" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><Timer className="w-4 h-4" /> Tiempos de Producción</TabsTrigger>
+            <TabsTrigger value="explosion" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><ListTree className="w-4 h-4" /> Explosión de Materiales</TabsTrigger>
             <TabsTrigger value="ordenes" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><Package className="w-4 h-4" /> Órdenes Previsionales</TabsTrigger>
             <TabsTrigger value="forros-chn-bases" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><Package className="w-4 h-4" /> Forros CHN & Bases</TabsTrigger>
             <TabsTrigger value="diaria" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><CalendarCheck className="w-4 h-4" /> Programación Componentes</TabsTrigger>
@@ -657,6 +694,107 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   <span className="text-[10px] text-gray-400 font-bold uppercase">{filteredTiempos.length} registros filtrados</span>
                   <Button variant="outline" size="sm" onClick={fetchTiemposProduccion} disabled={isLoadingTiempos} className="h-8 px-4 bg-white"><RefreshCw className={cn("h-3 w-3 mr-2", isLoadingTiempos && "animate-spin")} /> Actualizar</Button>
                 </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="explosion">
+          <Card>
+            <CardHeader>
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <CardTitle>Explosión de Materiales (BOM)</CardTitle>
+                  <CardDescription>Consulta de componentes por material (FERT).</CardDescription>
+                </div>
+                <div className="flex flex-wrap items-end gap-3 p-3 bg-gray-50 rounded-lg border">
+                  <div className="w-24">
+                    <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Centro</label>
+                    <Select value={centroExplosion} onValueChange={setCentroExplosion}>
+                      <SelectTrigger className="h-9 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="1000">1000</SelectItem>
+                        <SelectItem value="2000">2000</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="w-48">
+                    <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">FERT Principal (Cód)</label>
+                    <Input 
+                      className="h-9 text-xs" 
+                      placeholder="Ej: 10001433" 
+                      value={fertExplosion}
+                      onChange={(e) => setFertExplosion(e.target.value)}
+                    />
+                  </div>
+                  <Button size="sm" onClick={() => fetchExplosionData(1)} disabled={isLoadingExplosion}>
+                    {isLoadingExplosion ? <Loader2 className="h-3 w-3 animate-spin mr-2" /> : <Search className="h-3 w-3 mr-2" />}
+                    Consultar
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="rounded-md border bg-white overflow-hidden">
+                <div className="overflow-auto max-h-[55vh]">
+                  <table className="min-w-full divide-y divide-gray-200 border-collapse">
+                    <thead className="bg-gray-100 sticky top-0 z-10 shadow-sm">
+                      <tr className="bg-gray-50 border-b">
+                        <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase">Centro</th>
+                        <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase">FERT Principal</th>
+                        <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase">Desc. FERT</th>
+                        <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase">Componente</th>
+                        <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase">Desc. Componente</th>
+                        <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase">Tipo</th>
+                        <th className="px-4 py-3 text-right text-[10px] font-bold text-indigo-600 uppercase">Cant. Unitaria</th>
+                        <th className="px-4 py-3 text-right text-[10px] font-bold text-indigo-600 uppercase">Cant. Acumulada</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200 bg-white">
+                      {isLoadingExplosion ? (
+                        <tr>
+                          <td colSpan={8} className="py-24 text-center">
+                            <Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" />
+                          </td>
+                        </tr>
+                      ) : explosionData.length > 0 ? (
+                        explosionData.map((row, idx) => (
+                          <tr key={`bom-${idx}`} className="hover:bg-blue-50/40 transition-colors">
+                            <td className="px-4 py-2 text-[11px] font-mono">{row.CENTRO}</td>
+                            <td className="px-4 py-2 text-[11px] font-bold">{row.FERT_PRINCIPAL}</td>
+                            <td className="px-4 py-2 text-[11px] text-gray-600 max-w-40 truncate" title={row.DESCRIPCION_FERT}>{row.DESCRIPCION_FERT}</td>
+                            <td className="px-4 py-2 text-[11px] font-bold text-blue-700">{row.COMPONENTE}</td>
+                            <td className="px-4 py-2 text-[11px] text-gray-600 max-w-48 truncate" title={row.DESCRIPCION_COMPONENTE}>{row.DESCRIPCION_COMPONENTE}</td>
+                            <td className="px-4 py-2 text-[11px] text-gray-400">{row.TipoMaterial}</td>
+                            <td className="px-4 py-2 text-[11px] text-right font-mono font-bold text-indigo-700">{formatValueForDisplay('CANTIDAD', row.TOTAL_CANTIDAD_UNITARIA)}</td>
+                            <td className="px-4 py-2 text-[11px] text-right font-mono text-indigo-400">{formatValueForDisplay('CANTIDAD', row.TOTAL_CANTIDAD_ACUMULADA)}</td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={8} className="py-20 text-center text-gray-400 italic bg-gray-50/50">
+                            Ingresa filtros y presiona consultar para ver la explosión de materiales.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-4 py-3 px-4 bg-gray-50 rounded-lg border border-gray-200 shadow-sm mt-4">
+                <div className="flex items-center gap-1">
+                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => fetchExplosionData(1)} disabled={explosionPage === 1 || isLoadingExplosion}><ChevronsLeft className="h-4 w-4" /></Button>
+                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => fetchExplosionData(explosionPage - 1)} disabled={explosionPage === 1 || isLoadingExplosion}><ChevronLeft className="h-4 w-4" /></Button>
+                  <span className="px-3 text-[11px] font-bold min-w-[120px] text-center border-x py-1 bg-white rounded">
+                    Página {explosionPage} de {Math.max(1, Math.ceil(explosionTotal / explosionRowsPerPage))}
+                  </span>
+                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => fetchExplosionData(explosionPage + 1)} disabled={explosionPage >= Math.ceil(explosionTotal / explosionRowsPerPage) || isLoadingExplosion}><ChevronRight className="h-4 w-4" /></Button>
+                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => fetchExplosionData(Math.ceil(explosionTotal / explosionRowsPerPage))} disabled={explosionPage >= Math.ceil(explosionTotal / explosionRowsPerPage) || isLoadingExplosion}><ChevronsRight className="h-4 w-4" /></Button>
+                </div>
+                <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{explosionTotal.toLocaleString()} registros totales</div>
               </div>
             </CardContent>
           </Card>

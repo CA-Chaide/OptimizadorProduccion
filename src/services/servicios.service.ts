@@ -1,7 +1,6 @@
 import type { BodyListResponse } from "@/types/body-list-response";
 import type { BodyResponse } from "@/types/body-response";
 import { environment } from "@/environments/environments.prod";
-import { Line } from "recharts";
 
 const API_URL = `${environment.apiURL}/api/servicios`;
 
@@ -365,25 +364,21 @@ export const serviciosService = {
   },
 
   async getMaestroMaterialesExplosion(centro: string, fert: string, page: number, rowsPerPage: number): Promise<BodyResponse<any>> {
-    try {
-      const response = await fetch(API_URL + "/MaestroMaterialesExplosionPaginado", {
-        method: "POST",
-        headers: getHeaders(),
-        body: JSON.stringify({ 
-          Centro: centro,
-          Fert: fert,
-          page: page, 
-          rowsPerPage: rowsPerPage,
-        }),
-      });
-      if (!response.ok) {
-        const errorBody = await response.json().catch(() => ({ message: "Error de red al consultar el Maestro de Materiales." }));
-        throw new Error(errorBody.message || "Error al consultar el Maestro de Materiales.");
-      }
-      return response.json();
-    } catch (e) {
-      throw e;
+    const response = await fetch(API_URL + "/MaestroMaterialesExplosionPaginado", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ 
+        Centro: centro,
+        Fert: fert,
+        page: page, 
+        rowsPerPage: rowsPerPage,
+      }),
+    });
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({ message: "Error de red al consultar el Maestro de Materiales." }));
+      throw new Error(errorBody.message || "Error al consultar el Maestro de Materiales.");
     }
+    return response.json();
   },
 
   async getTiempoAprovisionamientoMateriasPrimas(page: number, rowsPerPage: number): Promise<BodyResponse<any>> {
