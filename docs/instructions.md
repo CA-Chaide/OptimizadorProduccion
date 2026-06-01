@@ -7,11 +7,12 @@
 
 ### 2.1. Planificación Pull y Prioridad de Cumplimiento
 - **Fechas de Forros (Padres):** Son **INAMOVIBLES**. El plan de producto terminado no se posterga para asegurar el nivel de servicio.
+- **Fecha Límite de Componentes:** Los componentes deben estar listos a más tardar el mismo día de la fecha fija del Forro padre. No se permite programar componentes después de la fecha del padre.
 - **Ajuste de Capacidad en Componentes:** La flexibilidad reside en los subprocesos (Tapas, Bandas, Corte). El sistema debe balancear las máquinas o adelantar la producción de hijos para cumplir con la fecha fija del padre.
 - **Jerarquía de Ajuste de Capacidad:**
     1. **Versión de Fabricación:** Si hay sobrecarga, buscar versiones alternativas (otras máquinas compatibles) para el componente.
     2. **Arrastre Sincronizado:** Cualquier cambio en un "Hijo" (Tapa/Banda) debe validar su disponibilidad para la fecha fija del "Padre" (Forro).
-- **Prioridad de Destino:** GYE (Fecha 1) tiene prioridad absoluta sobre Quito (Fecha 2) en el uso de recursos.
+- **Prioridad de Destino:** GYE (Fecha 1) tiene prioridad absoluta sobre los recursos (tiempos de máquina).
 
 ### 2.2. Vínculo Técnico y Sincronización Estricta
 - **Regla Espejo ACH-PEF:** El número de máquina `XX` de Acolchado (`HR-ACHXX`) y Tapas (`HR-PEFXX`) debe ser el mismo. Si una orden de tapa se mueve a `ACH09` por balanceo, su tapa debe ir a `PEF09`.
@@ -39,3 +40,4 @@
 ## 4. Estilo de Interacción
 - Validar siempre que el movimiento de un componente no comprometa la fecha fija del Forro.
 - Mantener la integridad de la regla espejo ACH-PEF en cada balanceo por versión.
+- El componente puede estar el mismo día del forro, pero nunca después.
