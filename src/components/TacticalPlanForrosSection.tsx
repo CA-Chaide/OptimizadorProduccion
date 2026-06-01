@@ -569,10 +569,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   if (!isMounted) return null;
 
-  const formattedToday = todayDate ? formatValueForDisplay('FECHA', todayDate) : '...';
-  const formattedTarget = targetDate ? formatValueForDisplay('FECHA', targetDate) : '...';
-
-  // Fechas desplazadas para la UI
   const formattedTodayDisp = displayTodayDate ? formatValueForDisplay('FECHA', displayTodayDate) : '...';
   const formattedTargetDisp = displayTargetDate ? formatValueForDisplay('FECHA', displayTargetDate) : '...';
 
@@ -627,7 +623,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
             <TabsTrigger value="restricciones" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><Lock className="w-4 h-4" /> Restricciones</TabsTrigger>
             <TabsTrigger value="tiempos" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><Timer className="w-4 h-4" /> Tiempos de Producción</TabsTrigger>
             <TabsTrigger value="explosion" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><ListTree className="w-4 h-4" /> Explosión de Materiales</TabsTrigger>
-            <TabsTrigger value="ordenes" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><Package className="w-4 h-4" /> Órdenes Previsionales</TabsTrigger>
             <TabsTrigger value="forros-chn-bases" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><Package className="w-4 h-4" /> Forros CHN & Bases</TabsTrigger>
             <TabsTrigger value="diaria" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><CalendarCheck className="w-4 h-4" /> Programación Componentes</TabsTrigger>
             <TabsTrigger value="resumen-diario" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><BarChart3 className="w-4 h-4" /> Resumen de producción diaria</TabsTrigger>
@@ -862,20 +857,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 </div>
                 <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{explosionTotal.toLocaleString()} registros totales</div>
               </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="ordenes">
-          <Card>
-            <CardHeader><CardTitle>Órdenes Previsionales</CardTitle></CardHeader>
-            <CardContent>
-              <ProvisionalOrdersTabSection 
-                externalFilters={externalFilters} 
-                renderCell={renderResolvedProvisionalCell}
-                groupBy="MAQUINA"
-                resolveValue={resolveLogicValue}
-              />
             </CardContent>
           </Card>
         </TabsContent>
