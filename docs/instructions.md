@@ -28,6 +28,7 @@
 
 ### 2.4. Flexibilidad de Personal
 - Se permite planificación de puestos al **50% de capacidad** para compartir un operario entre dos tareas.
+- La capacidad neta planificada utiliza un factor de eficiencia del **84%**.
 
 ## 3. Protocolo de Datos
 - **Códigos de Material:** Normalizar eliminando ceros a la izquierda.

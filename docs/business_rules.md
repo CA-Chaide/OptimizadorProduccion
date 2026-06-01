@@ -78,3 +78,4 @@ Existe una dependencia técnica estricta entre las máquinas de confección de t
 ### 2.10. Cálculo de Tiempos
 - El tiempo de fabricación es el **cuello de botella** de la línea.
 - Todos los tiempos deben mostrarse con **dos decimales**.
+- La eficiencia operativa para el cálculo de capacidad neta es del **84%**.
