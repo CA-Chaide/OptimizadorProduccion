@@ -76,7 +76,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [dailyPage, setDailyPage] = useState(1);
   const [dailyRowsPerPage, setDailyRowsPerPage] = useState(20);
 
-  // Fechas de planificación
+  // Fechas de planificación (Internas para Filtro)
   const [todayDate, setTodayDate] = useState<string>('');
   const [targetDate, setTargetDate] = useState<string>('');
 
@@ -550,10 +550,31 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return { totalToday, totalTarget };
   }, [dailyOrders, getResolvedMachine, normalizeDateForFilter, todayDate, targetDate]);
 
+  // Lógica de Desplazamiento Visual (+1 Día)
+  const displayTodayDate = useMemo(() => {
+    if (!todayDate) return '';
+    const [y, m, d] = todayDate.split('-').map(Number);
+    const date = new Date(y, m - 1, d);
+    date.setDate(date.getDate() + 1);
+    return date.toISOString().split('T')[0];
+  }, [todayDate]);
+
+  const displayTargetDate = useMemo(() => {
+    if (!targetDate) return '';
+    const [y, m, d] = targetDate.split('-').map(Number);
+    const date = new Date(y, m - 1, d);
+    date.setDate(date.getDate() + 1);
+    return date.toISOString().split('T')[0];
+  }, [targetDate]);
+
   if (!isMounted) return null;
 
   const formattedToday = todayDate ? formatValueForDisplay('FECHA', todayDate) : '...';
   const formattedTarget = targetDate ? formatValueForDisplay('FECHA', targetDate) : '...';
+
+  // Fechas desplazadas para la UI
+  const formattedTodayDisp = displayTodayDate ? formatValueForDisplay('FECHA', displayTodayDate) : '...';
+  const formattedTargetDisp = displayTargetDate ? formatValueForDisplay('FECHA', displayTargetDate) : '...';
 
   const diurnoOptions = [
     { value: "8.75", label: "7:00 - 15:45 (8.75h)" },
@@ -870,7 +891,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                         <MapPin className="w-4 h-4" />
                         <p className="text-sm font-bold uppercase tracking-wider">Producción GYE (Fecha Cercana)</p>
                       </div>
-                      <p className="text-md font-semibold text-gray-700">{formattedToday}</p>
+                      <p className="text-md font-semibold text-gray-700">{formattedTodayDisp}</p>
                     </div>
                     <div className="bg-orange-50 p-3 rounded-full">
                       <CalendarIconLucide className="w-6 h-6 text-orange-600" />
@@ -893,7 +914,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                         <MapPin className="w-4 h-4" />
                         <p className="text-sm font-bold uppercase tracking-wider">Producción Quito (Segunda Fecha)</p>
                       </div>
-                      <p className="text-md font-semibold text-gray-700">{formattedTarget}</p>
+                      <p className="text-md font-semibold text-gray-700">{formattedTargetDisp}</p>
                     </div>
                     <div className="bg-blue-50 p-3 rounded-full">
                       <CalendarIconLucide className="w-6 h-6 text-blue-600" />
@@ -925,7 +946,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
         <TabsContent value="diaria">
           <Card>
-            <CardHeader><CardTitle className="flex items-center gap-2"><CalendarCheck className="w-5 h-5 text-primary" /> Programación Componentes (Ecuador): {formattedToday} (GYE) y {formattedTarget} (Quito)</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="flex items-center gap-2"><CalendarCheck className="w-5 h-5 text-primary" /> Programación Componentes (Ecuador): {formattedTodayDisp} (GYE) y {formattedTargetDisp} (Quito)</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <div className="rounded-md border bg-white overflow-hidden">
                 <div className="overflow-auto max-h-[60vh]">
