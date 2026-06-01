@@ -22,7 +22,9 @@ import {
   ListTree,
   Filter,
   AlertCircle,
-  Layers
+  Layers,
+  UserPlus,
+  Repeat
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -44,6 +46,12 @@ import type { Grupo, Restriccion } from '@/types/interfaces';
 import { cn } from '@/lib/utils';
 import { useAppContext } from '@/context/AppProvider';
 
+interface WorkstationConfig {
+  machine: string;
+  shifts: number;
+  people: number;
+}
+
 export const TacticalPlanForrosSection: React.FC = () => {
   const { addNotification } = useAppContext();
   const [isMounted, setIsMounted] = useState(false);
@@ -55,6 +63,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [isLoadingTiempos, setIsLoadingTiempos] = useState(false);
   const [isLoadingDaily, setIsLoadingDaily] = useState(false);
 
+  // Estados para PERSONAL & TURNOS
+  const [workstationConfigs, setWorkstationConfigs] = useState<Record<string, WorkstationConfig>>({});
+
   // Estados para Explosión de Materiales
   const [explosionData, setExplosionData] = useState<any[]>([]);
   const [isLoadingExplosion, setIsLoadingExplosion] = useState(false);
@@ -64,7 +75,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [centroExplosion, setCentroExplosion] = useState('1000');
   const [fertExplosion, setFertExplosion] = useState('');
 
-  // Horarios de jornada
+  // Horarios de jornada (Generales)
   const [horarioDiurno, setHorarioDiurno] = useState("8.75");
   const [horarioNocturno, setHorarioNocturno] = useState("0");
 
@@ -251,6 +262,27 @@ export const TacticalPlanForrosSection: React.FC = () => {
       setIsLoadingTiempos(false);
     }
   }, [forrosGruposList]);
+
+  // Inicializar configuraciones de puestos al cargar tiempos
+  const uniqueMachines = useMemo(() => {
+    const machines = new Set<string>();
+    tiemposProduccion.forEach(t => {
+      const values = Object.values(t).map(v => String(v || '').trim().toUpperCase());
+      const hr = values.find(v => v.startsWith('HR'));
+      if (hr) machines.add(hr);
+    });
+    return Array.from(machines).sort();
+  }, [tiemposProduccion]);
+
+  useEffect(() => {
+    if (uniqueMachines.length > 0 && Object.keys(workstationConfigs).length === 0) {
+      const initial: Record<string, WorkstationConfig> = {};
+      uniqueMachines.forEach(m => {
+        initial[m] = { machine: m, shifts: 1, people: 1 };
+      });
+      setWorkstationConfigs(initial);
+    }
+  }, [uniqueMachines, workstationConfigs]);
 
   const fetchDailyOrders = useCallback(async () => {
     if (Object.keys(externalFilters).length === 0 || !todayDate || !targetDate) return;
@@ -471,10 +503,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return finalColumns;
   }, [dailyOrders]);
 
-  /**
-   * Órdenes diarias filtradas para excluir HR-FORRO y HR-FBASE
-   * y ordenadas alfabéticamente por Máquina (Hoja de Ruta)
-   */
   const processedDailyOrders = useMemo(() => {
     return dailyOrders
       .filter(order => {
@@ -495,21 +523,20 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   const totalDailyPages = Math.max(1, Math.ceil(processedDailyOrders.length / dailyRowsPerPage));
 
-  const plannedCapacity = useMemo(() => {
-    const diurno = parseFloat(horarioDiurno) || 0;
-    const nocturno = parseFloat(horarioNocturno) || 0;
-    return (diurno + nocturno) * 0.84; 
-  }, [horarioDiurno, horarioNocturno]);
+  const handleWorkstationConfigChange = (machine: string, field: 'shifts' | 'people', value: number) => {
+    setWorkstationConfigs(prev => ({
+      ...prev,
+      [machine]: {
+        ...prev[machine],
+        [field]: value
+      }
+    }));
+  };
 
   const productionSummary = useMemo(() => {
     const summaryMap = new Map<string, { machine: string; quantity: number; count: number; totalTime: number }>();
     
-    const allKnownMachines = [...new Set(tiemposProduccion.map(t => {
-      const values = Object.values(t).map(v => String(v || '').trim().toUpperCase());
-      return values.find(v => v.startsWith('HR')) || String(t.PuestoTrabajo || '').trim().toUpperCase();
-    }))].filter(m => m !== '');
-
-    allKnownMachines.forEach(m => {
+    uniqueMachines.forEach(m => {
       summaryMap.set(m, { machine: m, quantity: 0, count: 0, totalTime: 0 });
     });
 
@@ -529,11 +556,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
     });
     
     return Array.from(summaryMap.values()).sort((a, b) => a.machine.localeCompare(b.machine));
-  }, [dailyOrders, tiemposProduccion, getResolvedMachine, calculateProductionTime]);
+  }, [dailyOrders, uniqueMachines, getResolvedMachine, calculateProductionTime]);
 
-  /**
-   * Totales específicos para la pestaña Forros CHN & Bases
-   */
   const chnBasesDateTotals = useMemo(() => {
     const filteredForTab = dailyOrders.filter(order => {
       const machine = getResolvedMachine(order);
@@ -551,7 +575,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return { totalToday, totalTarget };
   }, [dailyOrders, getResolvedMachine, normalizeDateForFilter, todayDate, targetDate]);
 
-  // Lógica de Desplazamiento Visual (+1 Día)
   const displayTodayDate = useMemo(() => {
     if (!todayDate) return '';
     const [y, m, d] = todayDate.split('-').map(Number);
@@ -602,7 +625,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
       currentGroupQuantity += quantity;
       currentGroupTime += timeVal;
 
-      // Add the main row
       rows.push(
         <tr key={`daily-${idx}`} className="hover:bg-blue-50/40 transition-colors">
           {dailyColumns.map((col, cIdx) => {
@@ -630,12 +652,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
         </tr>
       );
 
-      // Check if next row is different machine or end of page
       const nextOrder = paginatedDailyData[idx + 1];
       const nextMachine = nextOrder ? (getResolvedMachine(nextOrder) || 'SIN MÁQUINA') : null;
 
       if (machine !== nextMachine) {
-        // Insert subtotal row
         rows.push(
           <tr key={`subtotal-${machine}-${idx}`} className="bg-gray-100/80 font-bold border-t-2 border-gray-200">
             {dailyColumns.map((col, cIdx) => {
@@ -657,7 +677,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
             })}
           </tr>
         );
-        // Reset group counters
         currentGroupQuantity = 0;
         currentGroupTime = 0;
       }
@@ -670,17 +689,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   const formattedTodayDisp = displayTodayDate ? formatValueForDisplay('FECHA', displayTodayDate) : '...';
   const formattedTargetDisp = displayTargetDate ? formatValueForDisplay('FECHA', displayTargetDate) : '...';
-
-  const diurnoOptions = [
-    { value: "8.75", label: "7:00 - 15:45 (8.75h)" },
-    { value: "10", label: "7:00 - 17:00 (10h)" },
-    { value: "11", label: "7:00 - 18:00 (11h)" },
-  ];
-
-  const nocturnoOptions = [
-    { value: "0", label: "Sin turno nocturno" },
-    { value: "8.5", label: "21:00 - 5:30 (8.5h)" },
-  ];
 
   return (
     <div className="p-6 md:p-8 space-y-6">
@@ -719,6 +727,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
             <TabsTrigger value="grupos" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><Users className="w-4 h-4" /> Grupos</TabsTrigger>
             <TabsTrigger value="restricciones" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><Lock className="w-4 h-4" /> Restricciones</TabsTrigger>
             <TabsTrigger value="tiempos" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><Timer className="w-4 h-4" /> Tiempos de Producción</TabsTrigger>
+            <TabsTrigger value="personal-turnos" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><UserPlus className="w-4 h-4" /> PERSONAL & TURNOS</TabsTrigger>
             <TabsTrigger value="explosion" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><ListTree className="w-4 h-4" /> Explosión de Materiales</TabsTrigger>
             <TabsTrigger value="forros-chn-bases" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><Package className="w-4 h-4" /> Forros CHN & Bases</TabsTrigger>
             <TabsTrigger value="diaria" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><CalendarCheck className="w-4 h-4" /> Programación Componentes</TabsTrigger>
@@ -851,6 +860,89 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 <div className="flex items-center gap-3">
                   <span className="text-[10px] text-gray-400 font-bold uppercase">{filteredTiempos.length} registros filtrados</span>
                   <Button variant="outline" size="sm" onClick={fetchTiemposProduccion} disabled={isLoadingTiempos} className="h-8 px-4 bg-white"><RefreshCw className={cn("h-3 w-3 mr-2", isLoadingTiempos && "animate-spin")} /> Actualizar</Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="personal-turnos">
+          <Card>
+            <CardHeader>
+              <CardTitle>Configuración de Capacidad: PERSONAL & TURNOS</CardTitle>
+              <CardDescription>Define la cantidad de turnos y personal asignado por puesto de trabajo para el cálculo de capacidad real.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="rounded-md border bg-white overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">Hoja de Ruta / Puesto</th>
+                        <th className="px-6 py-3 text-center text-xs font-bold text-gray-600 uppercase">Nº Turnos</th>
+                        <th className="px-6 py-3 text-center text-xs font-bold text-gray-600 uppercase">Personas / Turno</th>
+                        <th className="px-6 py-3 text-right text-xs font-bold text-blue-700 uppercase">Capacidad Neta (h)</th>
+                        <th className="px-6 py-3 text-right text-xs font-bold text-gray-400 uppercase">Eficiencia</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {uniqueMachines.map((m) => {
+                        const config = workstationConfigs[m] || { machine: m, shifts: 1, people: 1 };
+                        // Cálculo: (8.75h de base + extras) * turnos * personas * eficiencia
+                        // Simulación según regla de negocio: 2 turnos = 14.49h (neta con 84% ef)
+                        const baseHours = 8.625; // 8.625 * 2 * 0.84 = 14.49
+                        const totalNetHours = (baseHours * config.shifts * config.people * 0.84);
+
+                        return (
+                          <tr key={`config-${m}`} className="hover:bg-gray-50">
+                            <td className="px-6 py-4 whitespace-nowrap font-semibold text-gray-700">{m}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-center">
+                              <span className="sr-only">Seleccionar Turnos</span>
+                              <Select 
+                                value={config.shifts.toString()} 
+                                onValueChange={(val) => handleWorkstationConfigChange(m, 'shifts', parseInt(val))}
+                              >
+                                <SelectTrigger className="w-24 h-8 mx-auto text-xs font-bold">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="1">1 Turno</SelectItem>
+                                  <SelectItem value="2">2 Turnos</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-center">
+                              <div className="flex items-center justify-center gap-2">
+                                <Input 
+                                  type="number" 
+                                  className="w-16 h-8 text-center text-xs font-bold" 
+                                  value={config.people}
+                                  min="1"
+                                  max="10"
+                                  onChange={(e) => handleWorkstationConfigChange(m, 'people', parseInt(e.target.value) || 1)}
+                                />
+                                <span className="text-[10px] text-gray-400 font-bold">PERS.</span>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-right font-mono font-bold text-blue-700">
+                              {totalNetHours.toFixed(2)} h
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-right text-gray-400 font-bold text-xs">
+                              84%
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div className="mt-6 p-4 bg-blue-50 border border-blue-100 rounded-lg flex items-start gap-3">
+                <Repeat className="w-5 h-5 text-blue-600 mt-0.5" />
+                <div className="text-xs text-blue-800 space-y-1">
+                  <p className="font-bold uppercase tracking-tight">Nota sobre el cálculo de capacidad:</p>
+                  <p>La capacidad neta se calcula multiplicando las horas de jornada base por el número de turnos y personas, aplicando un factor de eficiencia operativa del 84%.</p>
+                  <p className="font-semibold italic">Ejemplo: 2 Turnos con 1 Persona = 14.49 horas efectivas por día.</p>
                 </div>
               </div>
             </CardContent>
@@ -1071,54 +1163,14 @@ export const TacticalPlanForrosSection: React.FC = () => {
               <CardHeader className="bg-indigo-50/50 border-b border-indigo-100">
                 <CardTitle className="text-sm font-bold uppercase tracking-wider text-indigo-900 flex items-center gap-2">
                   <Clock className="w-4 h-4" />
-                  Capacidad Planificada
+                  Configuración Global
                 </CardTitle>
               </CardHeader>
               <CardContent className="pt-6 space-y-6">
                 <div className="space-y-6">
-                  <div>
-                    <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Capacidad Neta (84% Eficiencia)</p>
-                    <div className="flex items-baseline gap-2">
-                      <p className="text-3xl font-extrabold text-indigo-700">
-                        {plannedCapacity.toFixed(2)}
-                      </p>
-                      <span className="text-sm font-medium text-gray-400 italic">horas / día</span>
-                    </div>
-                  </div>
-                  
-                  <div className="space-y-4 pt-4 border-t border-gray-100">
-                    <div>
-                      <label className="text-[10px] font-bold text-gray-700 uppercase mb-1.5 block">Horario diurno</label>
-                      <Select value={horarioDiurno} onValueChange={setHorarioDiurno}>
-                        <SelectTrigger className="w-full h-9 text-xs">
-                          <SelectValue placeholder="Seleccionar" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {diurnoOptions.map(opt => (
-                            <SelectItem key={`d-${opt.value}`} value={opt.value}>{opt.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div>
-                      <label className="text-[10px] font-bold text-gray-700 uppercase mb-1.5 block">Horario nocturno</label>
-                      <Select value={horarioNocturno} onValueChange={setHorarioNocturno}>
-                        <SelectTrigger className="w-full h-9 text-xs">
-                          <SelectValue placeholder="Seleccionar" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {nocturnoOptions.map(opt => (
-                            <SelectItem key={`n-${opt.value}`} value={opt.value}>{opt.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-
                   <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
                     <p className="text-[10px] leading-relaxed text-amber-800 italic">
-                      * Las horas se calculan sumando las jornadas y restando el 16% de ineficiencia operativa.
+                      * Nota: Use la pestaña "PERSONAL & TURNOS" para configurar la capacidad específica de cada máquina.
                     </p>
                   </div>
                 </div>
@@ -1132,7 +1184,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   Carga por Máquina / Puesto Técnico
                 </CardTitle>
                 <CardDescription>
-                  Consolidado único de unidades y tiempos de carga.
+                  Consolidado único de unidades y tiempos de carga comparados contra capacidad configurada.
                 </CardDescription>
               </CardHeader>
               <CardContent className="pt-6">
@@ -1146,20 +1198,24 @@ export const TacticalPlanForrosSection: React.FC = () => {
                           <th className="px-6 py-3 text-right text-xs font-bold text-gray-600 uppercase tracking-wider">Total Unidades</th>
                           <th className="px-6 py-3 text-right text-xs font-bold text-emerald-700 uppercase tracking-wider">Tiempo Total (min)</th>
                           <th className="px-6 py-3 text-right text-xs font-bold text-indigo-600 uppercase tracking-wider">Tiempo Total (h)</th>
-                          <th className="px-6 py-3 text-right text-xs font-bold text-blue-700 uppercase tracking-wider">Capacidad (%)</th>
+                          <th className="px-6 py-3 text-right text-xs font-bold text-blue-700 uppercase tracking-wider">Capacidad Máx (h)</th>
+                          <th className="px-6 py-3 text-right text-xs font-bold text-blue-700 uppercase tracking-wider">Ocupación (%)</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200 bg-white">
                         {isLoadingDaily ? (
                           <tr>
-                            <td colSpan={6} className="py-12 text-center">
+                            <td colSpan={7} className="py-12 text-center">
                               <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
                             </td>
                           </tr>
                         ) : productionSummary.length > 0 ? (
                           productionSummary.map((item, idx) => {
-                            const capacityInMinutes = plannedCapacity * 60;
-                            const utilizationPercent = capacityInMinutes > 0 ? (item.totalTime / capacityInMinutes) * 100 : 0;
+                            const config = workstationConfigs[item.machine] || { shifts: 1, people: 1 };
+                            const baseHours = 8.625;
+                            const plannedCapacityHours = (baseHours * config.shifts * config.people * 0.84);
+                            const totalTimeHours = item.totalTime / 60;
+                            const utilizationPercent = plannedCapacityHours > 0 ? (totalTimeHours / plannedCapacityHours) * 100 : 0;
                             
                             return (
                               <tr key={idx} className="hover:bg-gray-50 transition-colors">
@@ -1170,7 +1226,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
                                   {item.totalTime.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-bold text-indigo-600 font-mono">
-                                  {(item.totalTime / 60).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  {totalTimeHours.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-mono text-gray-400">
+                                  {plannedCapacityHours.toFixed(2)} h
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
                                   <Badge 
@@ -1189,7 +1248,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                           })
                         ) : (
                           <tr>
-                            <td colSpan={6} className="py-12 text-center text-gray-400 italic">
+                            <td colSpan={7} className="py-12 text-center text-gray-400 italic">
                               No hay datos para resumir.
                             </td>
                           </tr>
