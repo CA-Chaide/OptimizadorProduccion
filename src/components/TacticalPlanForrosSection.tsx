@@ -470,12 +470,29 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return finalColumns;
   }, [dailyOrders]);
 
+  /**
+   * Órdenes diarias filtradas para excluir HR-FORRO y HR-FBASE
+   * y ordenadas alfabéticamente por Máquina (Hoja de Ruta)
+   */
+  const processedDailyOrders = useMemo(() => {
+    return dailyOrders
+      .filter(order => {
+        const machine = getResolvedMachine(order);
+        return machine !== 'HR-FORRO' && machine !== 'HR-FBASE';
+      })
+      .sort((a, b) => {
+        const machineA = getResolvedMachine(a);
+        const machineB = getResolvedMachine(b);
+        return machineA.localeCompare(machineB);
+      });
+  }, [dailyOrders, getResolvedMachine]);
+
   const paginatedDailyData = useMemo(() => {
     const start = (dailyPage - 1) * dailyRowsPerPage;
-    return dailyOrders.slice(start, start + dailyRowsPerPage);
-  }, [dailyOrders, dailyPage, dailyRowsPerPage]);
+    return processedDailyOrders.slice(start, start + dailyRowsPerPage);
+  }, [processedDailyOrders, dailyPage, dailyRowsPerPage]);
 
-  const totalDailyPages = Math.max(1, Math.ceil(dailyOrders.length / dailyRowsPerPage));
+  const totalDailyPages = Math.max(1, Math.ceil(processedDailyOrders.length / dailyRowsPerPage));
 
   const plannedCapacity = useMemo(() => {
     const diurno = parseFloat(horarioDiurno) || 0;
@@ -557,7 +574,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
           <h2 className="text-2xl font-semibold text-gray-700">Programación Táctica Forros</h2>
         </div>
         
-        {/* Panel informativo de filtros activos */}
         <div className="hidden lg:flex items-center gap-4 p-2.5 bg-blue-50 border border-blue-100 rounded-lg">
           <div className="flex items-center gap-2 pr-4 border-r border-blue-200">
             <Filter className="w-4 h-4 text-blue-600" />
@@ -927,7 +943,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200 bg-white">
-                      {isLoadingDaily ? (<tr><td colSpan={dailyColumns.length} className="py-24 text-center"><Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" /></td></tr>) : dailyOrders.length > 0 ? paginatedDailyData.map((order, idx) => (
+                      {isLoadingDaily ? (<tr><td colSpan={dailyColumns.length} className="py-24 text-center"><Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" /></td></tr>) : processedDailyOrders.length > 0 ? paginatedDailyData.map((order, idx) => (
                         <tr key={`daily-${idx}`} className="hover:bg-blue-50/40 transition-colors">
                           {dailyColumns.map((col, cIdx) => {
                             const upperCol = col.toUpperCase().trim();
@@ -966,7 +982,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(p => Math.min(totalDailyPages, p + 1))} disabled={dailyPage === totalDailyPages}><ChevronRight className="h-4 w-4" /></Button>
                   <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(totalDailyPages)} disabled={dailyPage === totalDailyPages}><ChevronsRight className="h-4 w-4" /></Button>
                 </div>
-                <Button variant="outline" size="sm" onClick={fetchDailyOrders} disabled={isLoadingDaily} className="h-8 px-4 bg-white"><RefreshCw className={cn("h-3 w-3 mr-2", isLoadingDaily && "animate-spin")} /> Actualizar</Button>
+                <div className="flex items-center gap-3">
+                   <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{processedDailyOrders.length} componentes ordenados por Hoja de Ruta</span>
+                   <Button variant="outline" size="sm" onClick={fetchDailyOrders} disabled={isLoadingDaily} className="h-8 px-4 bg-white"><RefreshCw className={cn("h-3 w-3 mr-2", isLoadingDaily && "animate-spin")} /> Actualizar</Button>
+                </div>
               </div>
             </CardContent>
           </Card>
