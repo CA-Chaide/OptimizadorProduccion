@@ -5,39 +5,37 @@
 
 ## 2. Reglas de Negocio Maestras
 
-### 2.1. Planificación Pull y Balanceo Dinámico
-- **Origen:** Órdenes Previsionales de Forros.
+### 2.1. Planificación Pull y Prioridad de Cumplimiento
+- **Fechas de Forros (Padres):** Son **INAMOVIBLES**. El plan de producto terminado no se posterga para asegurar el nivel de servicio.
+- **Ajuste de Capacidad en Componentes:** La flexibilidad reside en los subprocesos (Tapas, Bandas, Corte). El sistema debe balancear las máquinas o adelantar la producción de hijos para cumplir con la fecha fija del padre.
 - **Jerarquía de Ajuste de Capacidad:**
-    1. **Versión de Fabricación:** Si hay sobrecarga, buscar versiones alternativas del material en otras máquinas compatibles antes de postergar.
-    2. **Arrastre Sincronizado:** Cualquier cambio en un producto "Padre" (Forro) debe mover automáticamente a sus "Hijos" (Componentes del BOM) para mantener la integridad del flujo.
-    3. **Postergación:** Mover excedentes de Fecha 2 (Quito) al día posterior si el balanceo por versión no es suficiente.
-- **Prioridad de Fecha:** GYE (Fecha 1) siempre tiene prioridad absoluta sobre Quito (Fecha 2).
+    1. **Versión de Fabricación:** Si hay sobrecarga, buscar versiones alternativas (otras máquinas compatibles) para el componente.
+    2. **Arrastre Sincronizado:** Cualquier cambio en un "Hijo" (Tapa/Banda) debe validar su disponibilidad para la fecha fija del "Padre" (Forro).
+- **Prioridad de Destino:** GYE (Fecha 1) tiene prioridad absoluta sobre Quito (Fecha 2) en el uso de recursos.
 
 ### 2.2. Vínculo Técnico y Sincronización Estricta
-- **Regla Espejo ACH-PEF:** El número de máquina `XX` de Acolchado (`HR-ACHXX`) y Tapas (`HR-PEFXX`) debe ser el mismo. Si una orden se mueve a `ACH09` por balanceo, su tapa debe ir a `PEF09`.
+- **Regla Espejo ACH-PEF:** El número de máquina `XX` de Acolchado (`HR-ACHXX`) y Tapas (`HR-PEFXX`) debe ser el mismo. Si una orden de tapa se mueve a `ACH09` por balanceo, su tapa debe ir a `PEF09`.
 - **Especialización de Acolchado:** 
     - **ACH10, 06, 02:** Líneas Económica a Premium Estándar.
     - **ACH08, 09:** Líneas Superiores (Continental, etc.).
     - **ACH09 (Exclusividad):** Referencias Top (Grand Palace, Escape, Resiflex).
 
 ### 2.3. Flujos de Componentes y Unidades
-- **Bandas:** Inicio en `ACH11/12/BO01` (Metros/Lotes) -> `RMTBx` (Unidades). Procesos extras `COS3D/ENCBD` en metros. Final en `RMTBm` (Unidades).
+- **Bandas:** `ACH11/12/BO01` (Metros) -> `RMTBx` (Unidades) -> `COS3D/ENCBD` (Metros) -> `RMTBm` (Unidades).
 - **Interiores:** `INTPR/T` -> `INTPf`. Requiere bandas de `ACH11/12`.
-- **Bases:** `MTBS1` (Tapa superior, requiere `ACH11/12`) y `MTBS` (Tapa cierre).
-- **Corte de Telas:** Una sola máquina y **una sola persona** para todos los puestos `HR-CT`. El tiempo total sumado se ajusta a una jornada.
-- **Telas y Fundas:** Capacidad de una sola persona. Flexibilidad `TTCF` -> `INTPf` en caso de saturación.
+- **Bases:** `MTBS1` (requiere `ACH11/12`) y `MTBS` (telas).
+- **Corte de Telas:** Una sola máquina y **una sola persona** para todos los puestos `HR-CT`.
+- **Telas y Fundas:** Una sola persona. Flexibilidad `TTCF` -> `INTPf` en caso de saturación.
 
 ### 2.4. Flexibilidad de Personal
-- Se permite planificación de puestos al **50% de capacidad** para compartir un operario entre dos tareas.
-- La capacidad neta planificada utiliza un factor de eficiencia del **84%**.
+- Puestos al **50% de capacidad** permitidos.
+- Factor de eficiencia del **84%**.
 
 ## 3. Protocolo de Datos
 - **Códigos de Material:** Normalizar eliminando ceros a la izquierda.
-- **Versiones de Fabricación:** Usar la versión 1 por defecto; versiones superiores para balanceo de carga.
+- **Explosión de Materiales (BOM):** Usar la tabla BOM para vincular Forros con sus componentes específicos.
 - **Visualización:** Tiempos y cantidades con **dos decimales**.
-- **Explosión de Materiales:** Usar la tabla BOM para asegurar el arrastre sincronizado de componentes.
 
 ## 4. Estilo de Interacción
-- Validar la sincronización de máquinas `XX` en cada movimiento de carga.
-- El Corte de Telas es el embudo principal: vigilar la suma de tiempos de todos los puestos `CT`.
-- Mantener la documentación actualizada con cada regla de balanceo aprendida.
+- Validar siempre que el movimiento de un componente no comprometa la fecha fija del Forro.
+- Mantener la integridad de la regla espejo ACH-PEF en cada balanceo por versión.
