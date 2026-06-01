@@ -40,6 +40,8 @@ Esta lógica rige la generación automática de la "Programación Componentes":
 5.  **Explosión de Materiales (BOM)**:
     - La demanda de un Forro genera necesidades automáticas de componentes (Tapas acolchadas, Bandas, Interiores, Bases).
 6.  **Gestión de Capacidad y Balanceo Dinámico**:
+    - **Ajuste de Fecha como Palanca:** La ventana de "un día antes" es el tiempo disponible para ajustar la carga de trabajo.
+    - **Configuración de Turnos y Personal:** El sistema debe conocer qué puestos tienen **doble turno** y cuántas **personas** por turno para calcular las horas-máquina reales disponibles.
     - **Jerarquía de Ajuste:**
         1. **Balanceo por Versión de Fabricación:** Si una máquina se satura, el sistema busca versiones alternas (ej. mover de ACH08 a ACH09) para el componente.
         2. **Arrastre Sincronizado:** Si se cambia la máquina o fecha de un componente, debe mantenerse el vínculo técnico con el padre.
@@ -58,7 +60,7 @@ Existe una dependencia técnica estricta entre las máquinas de confección de t
 4.  **Proceso Final:** Puesto **HR-RMTBm**. Medido en **unidades**.
 
 ### 2.5. Proceso de Interiores
-1.  **Puestos Iniciales:** `HR-INTPR` o `HR-INTPT` (pegado de banda). Generan demanda en **HR-ACH11/12**.
+1.  **Puestos Iniciales:** `INTPR` o `INTPT` (pegado de banda). Generan demanda en **HR-ACH11/12**.
 2.  **Proceso Final:** Puesto **HR-INTPf** (Integra todas las referencias).
 
 ### 2.6. Proceso de Bases
@@ -68,11 +70,11 @@ Existe una dependencia técnica estricta entre las máquinas de confección de t
 ### 2.7. Proceso de Corte de Telas (Cuello de Botella Central)
 - **Puestos:** `HR-CTBAN`, `HR-CTBSC`, `HR-CTCHN`, `HR-CTINT`.
 - **Configuración:** Una sola máquina y **una sola persona** para todos los puestos de corte.
-- **Capacidad:** El tiempo total sumado no puede exceder una sola jornada.
+- **Capacidad:** El tiempo total sumado no puede exceder la capacidad de turnos asignada (1 o 2 jornadas).
 
 ### 2.8. Proceso de Telas y Fundas
 - **Puestos:** `HR-TTCF` y `HR-TTSUP`.
-- **Restricción:** Capacidad para **una sola persona**.
+- **Restricción:** Capacidad limitada por personas asignadas.
 - **Flexibilidad:** Carga de `HR-TTCF` puede derivarse a `HR-INTPf` si es necesario.
 
 ### 2.9. Cálculo de Tiempos

@@ -7,8 +7,9 @@
 
 ### 2.1. Planificación Pull y Prioridad de Cumplimiento
 - **Fechas de Forros (Padres):** Son **INAMOVIBLES**. El plan de producto terminado no se posterga para asegurar el nivel de servicio.
-- **Fecha Límite de Componentes (JIT):** Los componentes deben estar listos el **mismo día** de la fecha fija del Forro padre o, como máximo, **un día antes**. No se permite programar componentes después de la fecha del padre ni con más de 24 horas de antelación.
-- **Ajuste de Capacidad en Componentes:** La flexibilidad reside en los subprocesos (Tapas, Bandas, Corte). El sistema debe balancear las máquinas o adelantar la producción de hijos (máximo un día) para cumplir con la fecha fija del padre.
+- **Fecha Límite de Componentes (JIT):** Los componentes deben estar listos el **mismo día** de la fecha fija del Forro padre o, como máximo, **un día antes**.
+- **Ajuste de Capacidad en Componentes:** La ventana de 24 horas antes de la fecha del forro es el espacio para balancear la carga.
+- **Configuración de Turnos y Headcount:** La capacidad por puesto se calcula multiplicando (Horas de Turno) x (Número de Turnos) x (Número de Personas por Turno) x (Eficiencia 84%).
 - **Jerarquía de Ajuste de Capacidad:**
     1. **Versión de Fabricación:** Si hay sobrecarga, buscar versiones alternativas (otras máquinas compatibles) para el componente.
     2. **Arrastre Sincronizado:** Cualquier cambio en un "Hijo" (Tapa/Banda) debe validar su disponibilidad para la fecha fija del "Padre" (Forro).
@@ -26,10 +27,10 @@
 - **Interiores:** `INTPR/T` -> `INTPf`. Requiere bandas de `ACH11/12`.
 - **Bases:** `MTBS1` (requiere `ACH11/12`) y `MTBS` (telas).
 - **Corte de Telas:** Una sola máquina y **una sola persona** para todos los puestos `HR-CT`.
-- **Telas y Fundas:** Una sola persona. Flexibilidad `TTCF` -> `INTPf` en caso de saturación.
+- **Telas y Fundas:** Flexibilidad `TTCF` -> `INTPf` en caso de saturación.
 
 ### 2.4. Flexibilidad de Personal
-- Puestos al **50% de capacidad** permitidos.
+- Puestos al **50% de capacidad** permitidos para optimizar mano de obra.
 - Factor de eficiencia del **84%**.
 
 ## 3. Protocolo de Datos
