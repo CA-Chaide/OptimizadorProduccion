@@ -42,6 +42,7 @@ Esta lógica rige la generación automática de la "Programación Componentes":
 6.  **Gestión de Capacidad y Balanceo Dinámico**:
     - **Ajuste de Fecha como Palanca:** La ventana de "un día antes" es el tiempo disponible para ajustar la carga de trabajo.
     - **Configuración de Turnos y Personal:** El sistema debe conocer qué puestos tienen **doble turno** y cuántas **personas** por turno para calcular las horas-máquina reales disponibles.
+    - **Capacidad Doble Turno (Referencia):** En configuración de 2 turnos con 84% de eficiencia, la capacidad neta es de **14.49 horas** (869.4 min) por puesto/máquina.
     - **Jerarquía de Ajuste:**
         1. **Balanceo por Versión de Fabricación:** Si una máquina se satura, el sistema busca versiones alternas (ej. mover de ACH08 a ACH09) para el componente.
         2. **Arrastre Sincronizado:** Si se cambia la máquina o fecha de un componente, debe mantenerse el vínculo técnico con el padre.

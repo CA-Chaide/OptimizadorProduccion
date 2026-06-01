@@ -10,6 +10,7 @@
 - **Fecha Límite de Componentes (JIT):** Los componentes deben estar listos el **mismo día** de la fecha fija del Forro padre o, como máximo, **un día antes**.
 - **Ajuste de Capacidad en Componentes:** La ventana de 24 horas antes de la fecha del forro es el espacio para balancear la carga.
 - **Configuración de Turnos y Headcount:** La capacidad por puesto se calcula multiplicando (Horas de Turno) x (Número de Turnos) x (Número de Personas por Turno) x (Eficiencia 84%).
+- **Capacidad Máxima de Prueba:** Para un sistema de 2 turnos, la capacidad efectiva es de **14.49 horas/día**.
 - **Jerarquía de Ajuste de Capacidad:**
     1. **Versión de Fabricación:** Si hay sobrecarga, buscar versiones alternativas (otras máquinas compatibles) para el componente.
     2. **Arrastre Sincronizado:** Cualquier cambio en un "Hijo" (Tapa/Banda) debe validar su disponibilidad para la fecha fija del "Padre" (Forro).
