@@ -802,7 +802,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
         <TabsContent value="ordenes">
           <Card>
-            <CardHeader><CardTitle>Órdenes Previsionales Filtradas (Ecuador Continental)</CardTitle></CardHeader>
+            <CardHeader><CardTitle>Órdenes Previsionales</CardTitle></CardHeader>
             <CardContent>
               <ProvisionalOrdersTabSection 
                 externalFilters={externalFilters} 
