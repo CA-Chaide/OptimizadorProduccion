@@ -95,14 +95,37 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
     try {
       setIsLoading(true);
       const response = await serviciosService.OrdenesProvisionalesPaginados(1, 10000);
-      if (response && response.data) {
-        setOrders(response.data);
-        setPagination(prev => ({
-          ...prev,
-          totalRegistros: response.totalRegistros || response.data.length,
-          currentPage: 1
-        }));
+      let fetchedData = response.data || [];
+      
+      // Inyección de dato de prueba solicitado por el usuario
+      const testRecord = {
+        "ORDENPREVISIONAL": "0142465407",
+        "MATERIAL": "000000000020003506",
+        "NOMBRE": "PLANCHA ESPUMA D15 AMAR RR 140X200X1",
+        "CATEGORIA": "CM-PL-15AM-RR",
+        "CANTIDAD": 120,
+        "UNIDAD": "ST",
+        "FECHAINICIO": "2026-05-05",
+        "FECHAFIN": "2026-06-09",
+        "RESPCONTROLPROD": "018",
+        "Centro": "1000",
+        "Almacen": "1001",
+        "Maquina": null,
+        "ClaseOrden": "KD",
+        "CodMaterial": "20003506"
+      };
+
+      // Verificar si ya existe para no duplicar en re-fetch
+      if (!fetchedData.some((o: any) => o.ORDENPREVISIONAL === testRecord.ORDENPREVISIONAL)) {
+        fetchedData = [testRecord, ...fetchedData];
       }
+
+      setOrders(fetchedData);
+      setPagination(prev => ({
+        ...prev,
+        totalRegistros: (response.totalRegistros || response.data.length) + 1,
+        currentPage: 1
+      }));
     } catch (err) {
       addNotification('error', `Error al cargar órdenes: ${(err as Error).message}`);
     } finally {
