@@ -9,7 +9,8 @@
 - **Origen:** Órdenes Previsionales de Forros.
 - **Jerarquía de Ajuste de Capacidad:**
     1. **Versión de Fabricación:** Si hay sobrecarga, buscar versiones alternativas del material en otras máquinas compatibles antes de postergar.
-    2. **Postergación:** Mover excedentes de Fecha 2 (Quito) al día posterior si el balanceo por versión no es suficiente.
+    2. **Arrastre Sincronizado:** Cualquier cambio en un producto "Padre" (Forro) debe mover automáticamente a sus "Hijos" (Componentes del BOM) para mantener la integridad del flujo.
+    3. **Postergación:** Mover excedentes de Fecha 2 (Quito) al día posterior si el balanceo por versión no es suficiente.
 - **Prioridad de Fecha:** GYE (Fecha 1) siempre tiene prioridad absoluta sobre Quito (Fecha 2).
 
 ### 2.2. Vínculo Técnico y Sincronización Estricta
@@ -17,7 +18,7 @@
 - **Especialización de Acolchado:** 
     - **ACH10, 06, 02:** Líneas Económica a Premium Estándar.
     - **ACH08, 09:** Líneas Superiores (Continental, etc.).
-    - **ACH09 (Exclusivo):** Referencias Top (Grand Palace, Escape, Resiflex).
+    - **ACH09 (Exclusividad):** Referencias Top (Grand Palace, Escape, Resiflex).
 
 ### 2.3. Flujos de Componentes y Unidades
 - **Bandas:** Inicio en `ACH11/12/BO01` (Metros/Lotes) -> `RMTBx` (Unidades). Procesos extras `COS3D/ENCBD` en metros. Final en `RMTBm` (Unidades).
@@ -34,6 +35,7 @@
 - **Códigos de Material:** Normalizar eliminando ceros a la izquierda.
 - **Versiones de Fabricación:** Usar la versión 1 por defecto; versiones superiores para balanceo de carga.
 - **Visualización:** Tiempos y cantidades con **dos decimales**.
+- **Explosión de Materiales:** Usar la tabla BOM para asegurar el arrastre sincronizado de componentes.
 
 ## 4. Estilo de Interacción
 - Validar la sincronización de máquinas `XX` en cada movimiento de carga.

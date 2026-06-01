@@ -12,6 +12,10 @@ Este documento detalla la lógica de negocio y las fuentes de datos utilizadas p
 - **Uso:** Maestro técnico de rutas y tiempos.
 - **Regla CRÍTICA:** Identificadores de máquina/puesto inician con **"HR-"**.
 
+### 1.3. Tabla: `Explosión de Materiales (BOM)`
+- **Uso:** Identificar los componentes (Tapas, Bandas, Interiores) que integran un producto terminado (Forro).
+- **Lógica:** Cada orden de un producto padre dispara automáticamente órdenes sincronizadas para sus componentes hijos.
+
 ---
 
 ## 2. Lógica del Motor de Planificación
@@ -30,9 +34,10 @@ Esta lógica rige la generación automática de la "Programación Componentes":
 2.  **Explosión de Materiales (BOM)**:
     - La demanda de un Forro genera necesidades automáticas de componentes (Tapas acolchadas, Bandas, Interiores, Bases).
 3.  **Gestión de Capacidad y Balanceo Dinámico**:
-    - Si una máquina se satura, el sistema aplica la siguiente jerarquía:
-        1. **Balanceo por Versión de Fabricación:** Si el material tiene una versión alterna (ej. V2) habilitada en otra máquina con disponibilidad, se mueve la orden a esa máquina.
-        2. **Postergación:** Si no hay versiones alternas o todas las máquinas compatibles están llenas, el excedente de la Fecha 2 (Quito) se desplaza al día siguiente.
+    - **Jerarquía de Ajuste:**
+        1. **Balanceo por Versión de Fabricación:** Si una máquina se satura, el sistema busca versiones alternas (ej. mover de ACH08 a ACH09).
+        2. **Arrastre Sincronizado:** Si se cambia la máquina o fecha de un Forro, sus componentes (Tapas, Bandas) se mueven AUTOMÁTICAMENTE para mantener la sincronización.
+        3. **Postergación:** Si no hay alternativas, el excedente de Fecha 2 se desplaza al día siguiente.
 
 ### 2.3. Sincronización de Procesos (Tapas y Acolchado)
 Existe una dependencia técnica estricta entre las máquinas de confección de tapas y las de acolchado:
