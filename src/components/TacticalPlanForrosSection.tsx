@@ -262,7 +262,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
   }, [forrosGruposList]);
 
-  // Inicializar configuraciones de puestos al cargar tiempos con nuevo ordenamiento solicitado
+  // Inicializar configuraciones de puestos al cargar tiempos con ordenamiento ESPEJO solicitado
   const uniqueMachines = useMemo(() => {
     const machinesSet = new Set<string>();
     tiemposProduccion.forEach(t => {
@@ -271,21 +271,34 @@ export const TacticalPlanForrosSection: React.FC = () => {
       if (hr) machinesSet.add(hr);
     });
     
-    // Nuevo Ordenamiento: ACH -> PEF -> Otros Alfabéticamente
-    return Array.from(machinesSet).sort((a, b) => {
-      const aACH = a.startsWith('HR-ACH');
-      const bACH = b.startsWith('HR-ACH');
-      const aPEF = a.startsWith('HR-PEF');
-      const bPEF = b.startsWith('HR-PEF');
+    const machinesArray = Array.from(machinesSet);
 
-      if (aACH && !bACH) return -1;
-      if (!aACH && bACH) return 1;
-      if (aACH && bACH) return a.localeCompare(b);
+    // Ordenamiento Espejo: Por sufijo numérico (ACH02, PEF02, ACH06, PEF06, etc.)
+    return machinesArray.sort((a, b) => {
+      const getParts = (name: string) => {
+        const match = name.match(/^HR-(ACH|PEF)(\d+)$/);
+        if (match) return { type: match[1], suffix: match[2], isMain: true };
+        return { type: name, suffix: '', isMain: false };
+      };
 
-      if (aPEF && !bPEF) return -1;
-      if (!aPEF && bPEF) return 1;
-      if (aPEF && bPEF) return a.localeCompare(b);
+      const partA = getParts(a);
+      const partB = getParts(b);
 
+      // Si ambos son del grupo principal (ACH/PEF)
+      if (partA.isMain && partB.isMain) {
+        // Ordenar por sufijo numérico primero (02, 06, etc)
+        if (partA.suffix !== partB.suffix) {
+          return partA.suffix.localeCompare(partB.suffix, undefined, { numeric: true });
+        }
+        // Si tienen el mismo sufijo, ACH va antes que PEF
+        return partA.type.localeCompare(partB.type); 
+      }
+
+      // El grupo ACH/PEF siempre va primero que otros puestos
+      if (partA.isMain && !partB.isMain) return -1;
+      if (!partA.isMain && partB.isMain) return 1;
+
+      // Resto de máquinas en orden alfabético
       return a.localeCompare(b);
     });
   }, [tiemposProduccion]);
