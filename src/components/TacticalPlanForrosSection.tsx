@@ -727,7 +727,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
             <TabsTrigger value="grupos" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><Users className="w-4 h-4" /> Grupos</TabsTrigger>
             <TabsTrigger value="restricciones" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><Lock className="w-4 h-4" /> Restricciones</TabsTrigger>
             <TabsTrigger value="tiempos" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><Timer className="w-4 h-4" /> Tiempos de Producción</TabsTrigger>
-            <TabsTrigger value="personal-turnos" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><UserPlus className="w-4 h-4" /> PERSONAL & TURNOS</TabsTrigger>
+            <TabsTrigger value="personal-turnos" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><UserPlus className="w-4 h-4" /> Distribución del personal</TabsTrigger>
             <TabsTrigger value="explosion" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><ListTree className="w-4 h-4" /> Explosión de Materiales</TabsTrigger>
             <TabsTrigger value="forros-chn-bases" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><Package className="w-4 h-4" /> Forros CHN & Bases</TabsTrigger>
             <TabsTrigger value="diaria" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><CalendarCheck className="w-4 h-4" /> Programación Componentes</TabsTrigger>
@@ -869,7 +869,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
         <TabsContent value="personal-turnos">
           <Card>
             <CardHeader>
-              <CardTitle>Configuración de Capacidad: PERSONAL & TURNOS</CardTitle>
+              <CardTitle>Configuración de Capacidad: Distribución del personal</CardTitle>
               <CardDescription>Define la cantidad de turnos y personal asignado por puesto de trabajo para el cálculo de capacidad real.</CardDescription>
             </CardHeader>
             <CardContent>
@@ -888,9 +888,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     <tbody className="divide-y divide-gray-200">
                       {uniqueMachines.map((m) => {
                         const config = workstationConfigs[m] || { machine: m, shifts: 1, people: 1 };
-                        // Cálculo: (8.75h de base + extras) * turnos * personas * eficiencia
+                        // Cálculo: (8.625h de base + extras) * turnos * personas * eficiencia
                         // Simulación según regla de negocio: 2 turnos = 14.49h (neta con 84% ef)
-                        const baseHours = 8.625; // 8.625 * 2 * 0.84 = 14.49
+                        const baseHours = 8.625;
                         const totalNetHours = (baseHours * config.shifts * config.people * 0.84);
 
                         return (
@@ -1170,7 +1170,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 <div className="space-y-6">
                   <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
                     <p className="text-[10px] leading-relaxed text-amber-800 italic">
-                      * Nota: Use la pestaña "PERSONAL & TURNOS" para configurar la capacidad específica de cada máquina.
+                      * Nota: Use la pestaña "Distribución del personal" para configurar la capacidad específica de cada máquina.
                     </p>
                   </div>
                 </div>
