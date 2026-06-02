@@ -98,9 +98,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
   // Filtros y Paginación
   const [tiemposFilters, setTiemposFilters] = useState<Record<string, string>>({});
   const [tiemposPage, setTiemposPage] = useState(1);
-  const [tiemposRowsPerPage, setTiemposRowsPerPage] = useState(20);
+  const [tiemposRowsPerPage] = useState(20);
   const [dailyPage, setDailyPage] = useState(1);
-  const [dailyRowsPerPage, setDailyRowsPerPage] = useState(20);
+  const [dailyRowsPerPage] = useState(20);
 
   // Fechas
   const [todayDate, setTodayDate] = useState<string>('');
@@ -531,6 +531,13 @@ export const TacticalPlanForrosSection: React.FC = () => {
       });
   }, [dailyOrders, getResolvedMachine]);
 
+  // PAGINACIÓN PARA PROGRAMACIÓN COMPONENTES
+  const totalDailyPages = Math.max(1, Math.ceil(processedDailyOrders.length / dailyRowsPerPage));
+  const paginatedDailyOrders = useMemo(() => {
+    const start = (dailyPage - 1) * dailyRowsPerPage;
+    return processedDailyOrders.slice(start, start + dailyRowsPerPage);
+  }, [processedDailyOrders, dailyPage, dailyRowsPerPage]);
+
   const handleWorkstationConfigChange = (machine: string, field: 'shifts' | 'people', value: number) => {
     setWorkstationConfigs(prev => ({
       ...prev,
@@ -587,13 +594,13 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   const renderDailyTableBody = () => {
     if (isLoadingDaily) return <tr><td colSpan={dailyColumns.length} className="py-24 text-center"><Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" /></td></tr>;
-    if (processedDailyOrders.length === 0) return <tr><td colSpan={dailyColumns.length} className="py-20 text-center text-gray-400 italic bg-gray-50/50">No hay órdenes para hoy o la fecha objetivo seleccionada.</td></tr>;
+    if (paginatedDailyOrders.length === 0) return <tr><td colSpan={dailyColumns.length} className="py-20 text-center text-gray-400 italic bg-gray-50/50">No hay órdenes para hoy o la fecha objetivo seleccionada en esta página.</td></tr>;
 
     const rows: React.ReactNode[] = [];
     let currentGroupQuantity = 0;
     let currentGroupTime = 0;
 
-    processedDailyOrders.forEach((order, idx) => {
+    paginatedDailyOrders.forEach((order, idx) => {
       const machine = getResolvedMachine(order) || 'SIN MÁQUINA';
       const quantity = Number(order['CANTIDAD'] || 0);
       const timeVal = parseFloat(calculateProductionTime(order['MATERIAL'] || order['CodMaterial'] || '', quantity, order)) || 0;
@@ -612,7 +619,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
         </tr>
       );
 
-      const nextOrder = processedDailyOrders[idx + 1];
+      const nextOrder = paginatedDailyOrders[idx + 1];
       const nextMachine = nextOrder ? (getResolvedMachine(nextOrder) || 'SIN MÁQUINA') : null;
 
       if (machine !== nextMachine) {
@@ -974,8 +981,17 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 </div>
               </div>
               <div className="flex items-center justify-between gap-4 py-3 px-4 bg-gray-50 rounded-lg border border-gray-200">
-                <div className="flex items-center gap-1"><Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(1)} disabled={dailyPage === 1}><ChevronsLeft className="h-4 w-4" /></Button><Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(p => Math.max(1, p - 1))} disabled={dailyPage === 1}><ChevronLeft className="h-4 w-4" /></Button><span className="px-3 text-[11px] font-bold min-w-[120px] text-center border-x py-1 bg-white rounded">Página {dailyPage} de {totalDailyPages}</span><Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(p => Math.min(totalDailyPages, p + 1))} disabled={dailyPage === totalDailyPages}><ChevronRight className="h-4 w-4" /></Button><Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(totalDailyPages)} disabled={dailyPage === totalDailyPages}><ChevronsRight className="h-4 w-4" /></Button></div>
-                <div className="flex items-center gap-3"><span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{processedDailyOrders.length} componentes ordenados por Hoja de Ruta</span><Button variant="outline" size="sm" onClick={fetchDailyOrders} disabled={isLoadingDaily} className="h-8 px-4 bg-white"><RefreshCw className={cn("h-3 w-3 mr-2", isLoadingDaily && "animate-spin")} /> Actualizar</Button></div>
+                <div className="flex items-center gap-1">
+                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(1)} disabled={dailyPage === 1}><ChevronsLeft className="h-4 w-4" /></Button>
+                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(p => Math.max(1, p - 1))} disabled={dailyPage === 1}><ChevronLeft className="h-4 w-4" /></Button>
+                  <span className="px-3 text-[11px] font-bold min-w-[120px] text-center border-x py-1 bg-white rounded">Página {dailyPage} de {totalDailyPages}</span>
+                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(p => Math.min(totalDailyPages, p + 1))} disabled={dailyPage === totalDailyPages}><ChevronRight className="h-4 w-4" /></Button>
+                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(totalDailyPages)} disabled={dailyPage === totalDailyPages}><ChevronsRight className="h-4 w-4" /></Button>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{processedDailyOrders.length} componentes ordenados por Hoja de Ruta</span>
+                  <Button variant="outline" size="sm" onClick={fetchDailyOrders} disabled={isLoadingDaily} className="h-8 px-4 bg-white"><RefreshCw className={cn("h-3 w-3 mr-2", isLoadingDaily && "animate-spin")} /> Actualizar</Button>
+                </div>
               </div>
             </CardContent>
           </Card>
