@@ -20,10 +20,10 @@ import {
   Calendar as CalendarIconLucide,
   MapPin,
   ListTree,
-  AlertCircle,
   Layers,
   UserPlus,
-  Repeat
+  Repeat,
+  Calculator
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -74,9 +74,25 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [centroExplosion, setCentroExplosion] = useState('1000');
   const [fertExplosion, setFertExplosion] = useState('');
 
-  // Horarios de jornada (Generales)
+  // Horarios de jornada (Selectores)
   const [horarioDiurno, setHorarioDiurno] = useState("8.625");
   const [horarioNocturno, setHorarioNocturno] = useState("0");
+
+  // Opciones para los selectores de horas (0 a 12 en pasos de 0.25 + 8.625)
+  const hourOptions = useMemo(() => {
+    const options = [];
+    for (let i = 0; i <= 12; i += 0.25) {
+      options.push({ value: i.toString(), label: `${i} h` });
+    }
+    if (!options.find(o => o.value === "8.625")) {
+      options.push({ value: "8.625", label: "8.625 h (8h 37m)" });
+    }
+    return options.sort((a, b) => parseFloat(a.value) - parseFloat(b.value));
+  }, []);
+
+  const totalHorasPorTurno = useMemo(() => {
+    return parseFloat(horarioDiurno) + parseFloat(horarioNocturno);
+  }, [horarioDiurno, horarioNocturno]);
 
   // Filtros y Paginación para Tiempos
   const [tiemposFilters, setTiemposFilters] = useState<Record<string, string>>({});
@@ -91,9 +107,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [todayDate, setTodayDate] = useState<string>('');
   const [targetDate, setTargetDate] = useState<string>('');
 
-  /**
-   * Normaliza códigos de material eliminando todos los ceros a la izquierda
-   */
   const normalizeMaterialCode = useCallback((code: string | number): string => {
     if (!code) return '';
     return String(code).trim().replace(/^0+/, '');
@@ -144,7 +157,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return String(value);
   }, [safeParseDateParts]);
 
-  // Carga inicial de grupos y restricciones
   const fetchData = useCallback(async () => {
     try {
       setIsLoading(true);
@@ -238,13 +250,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return filters;
   }, [forrosRestricciones]);
 
-  const forrosChnBasesFilters = useMemo(() => {
-    return {
-      ...externalFilters,
-      MAQUINA: ['HR-FBASE', 'HR-FORRO']
-    };
-  }, [externalFilters]);
-
   const fetchTiemposProduccion = useCallback(async () => {
     if (forrosGruposList.length === 0) return;
     setIsLoadingTiempos(true);
@@ -262,7 +267,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
   }, [forrosGruposList]);
 
-  // Inicializar configuraciones de puestos al cargar tiempos con ordenamiento ESPEJO solicitado
   const uniqueMachines = useMemo(() => {
     const machinesSet = new Set<string>();
     tiemposProduccion.forEach(t => {
@@ -273,7 +277,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     
     const machinesArray = Array.from(machinesSet);
 
-    // Ordenamiento Espejo: Por sufijo numérico (ACH02, PEF02, ACH06, PEF06, etc.)
     return machinesArray.sort((a, b) => {
       const getParts = (name: string) => {
         const match = name.match(/^HR-(ACH|PEF)(\d+)$/);
@@ -284,21 +287,16 @@ export const TacticalPlanForrosSection: React.FC = () => {
       const partA = getParts(a);
       const partB = getParts(b);
 
-      // Si ambos son del grupo principal (ACH/PEF)
       if (partA.isMain && partB.isMain) {
-        // Ordenar por sufijo numérico primero (02, 06, etc)
         if (partA.suffix !== partB.suffix) {
           return partA.suffix.localeCompare(partB.suffix, undefined, { numeric: true });
         }
-        // Si tienen el mismo sufijo, ACH va antes que PEF
         return partA.type.localeCompare(partB.type); 
       }
 
-      // El grupo ACH/PEF siempre va primero que otros puestos
       if (partA.isMain && !partB.isMain) return -1;
       if (!partA.isMain && partB.isMain) return 1;
 
-      // Resto de máquinas en orden alfabético
       return a.localeCompare(b);
     });
   }, [tiemposProduccion]);
@@ -422,21 +420,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return (unitTime * quantity).toFixed(2);
   }, [tiemposProduccion, normalizeMaterialCode, getResolvedMachine]);
 
-  const renderResolvedProvisionalCell = useCallback((column: string, order: any) => {
-    const upperCol = column.toUpperCase().trim();
-    if (upperCol === 'MAQUINA') {
-      const val = getResolvedMachine(order);
-      return val ? (
-        <span className="font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
-          {val}
-        </span>
-      ) : (
-        <span className="text-gray-400 italic">—</span>
-      );
-    }
-    return undefined;
-  }, [getResolvedMachine]);
-
   const resolveLogicValue = useCallback((column: string, order: any) => {
     const upperCol = column.toUpperCase().trim();
     if (upperCol === 'MAQUINA') {
@@ -446,25 +429,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   }, [getResolvedMachine]);
 
   const tiemposColumns = useMemo(() => {
-    const priority = [
-      'CodMaterial', 
-      'HojaRuta', 
-      'VersionFabricacion_Manual', 
-      'CONTADORHOJARUTA', 
-      'Tiempo_Min', 
-      'Linea', 
-      'PuestoTrabajo', 
-      'PuestoTrabajoLinea', 
-      'centro', 
-      'RespCtrlProd', 
-      'NombRespControlProd', 
-      'TamLoteMin', 
-      'TamLoteMax', 
-      'StockSeguridad', 
-      'StockMaximo', 
-      'ClaseAprovisionam'
-    ];
-
+    const priority = ['CodMaterial', 'HojaRuta', 'VersionFabricacion_Manual', 'CONTADORHOJARUTA', 'Tiempo_Min', 'Linea', 'PuestoTrabajo', 'PuestoTrabajoLinea', 'centro', 'RespCtrlProd', 'NombRespControlProd', 'TamLoteMin', 'TamLoteMax', 'StockSeguridad', 'StockMaximo', 'ClaseAprovisionam'];
     if (tiemposProduccion.length === 0) return priority;
     const allKeys = Object.keys(tiemposProduccion[0]);
     const toExclude = ['STOCKACTUAL', 'GRUPOSCOMPRAS', 'GRUPOCOMPRAS'];
@@ -516,7 +481,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const dailyColumns = useMemo(() => {
     const priority = ['ORDENPREVISIONAL', 'MATERIAL', 'TEXTOMATERIAL', 'FECHAINICIO', 'CANTIDAD', 'TIEMPOS DE PRODUCCIÓN', 'MAQUINA', 'FECHAFIN'];
     if (dailyOrders.length === 0) return priority;
-    
     const allKeys = Object.keys(dailyOrders[0]);
     const usedKeysUpper = new Set(priority.map(p => p.toUpperCase().trim()));
     const finalColumns = [...priority];
@@ -564,20 +528,13 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   const productionSummary = useMemo(() => {
     const summaryMap = new Map<string, { machine: string; quantity: number; count: number; totalTime: number }>();
-    
-    uniqueMachines.forEach(m => {
-      summaryMap.set(m, { machine: m, quantity: 0, count: 0, totalTime: 0 });
-    });
+    uniqueMachines.forEach(m => summaryMap.set(m, { machine: m, quantity: 0, count: 0, totalTime: 0 }));
 
     dailyOrders.forEach(order => {
       const machine = getResolvedMachine(order) || 'SIN MÁQUINA';
       const quantity = Number(order['CANTIDAD'] || 0);
       const timeVal = parseFloat(calculateProductionTime(order['MATERIAL'], quantity, order)) || 0;
-      
-      if (!summaryMap.has(machine)) {
-        summaryMap.set(machine, { machine, quantity: 0, count: 0, totalTime: 0 });
-      }
-      
+      if (!summaryMap.has(machine)) summaryMap.set(machine, { machine, quantity: 0, count: 0, totalTime: 0 });
       const entry = summaryMap.get(machine)!;
       entry.quantity += quantity;
       entry.count += 1;
@@ -592,19 +549,11 @@ export const TacticalPlanForrosSection: React.FC = () => {
       const machine = getResolvedMachine(order);
       return ['HR-FBASE', 'HR-FORRO'].includes(machine);
     });
-
-    const totalToday = filteredForTab
-      .filter(order => normalizeDateForFilter(order['FECHAINICIO']) === todayDate)
-      .reduce((sum, order) => sum + Number(order['CANTIDAD'] || 0), 0);
-
-    const totalTarget = filteredForTab
-      .filter(order => normalizeDateForFilter(order['FECHAINICIO']) === targetDate)
-      .reduce((sum, order) => sum + Number(order['CANTIDAD'] || 0), 0);
-
+    const totalToday = filteredForTab.filter(order => normalizeDateForFilter(order['FECHAINICIO']) === todayDate).reduce((sum, order) => sum + Number(order['CANTIDAD'] || 0), 0);
+    const totalTarget = filteredForTab.filter(order => normalizeDateForFilter(order['FECHAINICIO']) === targetDate).reduce((sum, order) => sum + Number(order['CANTIDAD'] || 0), 0);
     return { totalToday, totalTarget };
   }, [dailyOrders, getResolvedMachine, normalizeDateForFilter, todayDate, targetDate]);
 
-  // Visual Dates (+1 Day)
   const displayTodayDate = useMemo(() => {
     if (!todayDate) return '';
     const [y, m, d] = todayDate.split('-').map(Number);
@@ -622,25 +571,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
   }, [targetDate]);
 
   const renderDailyTableBody = () => {
-    if (isLoadingDaily) {
-      return (
-        <tr>
-          <td colSpan={dailyColumns.length} className="py-24 text-center">
-            <Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" />
-          </td>
-        </tr>
-      );
-    }
-
-    if (processedDailyOrders.length === 0) {
-      return (
-        <tr>
-          <td colSpan={dailyColumns.length} className="py-20 text-center text-gray-400 italic bg-gray-50/50">
-            No hay órdenes para hoy o la fecha objetivo seleccionada.
-          </td>
-        </tr>
-      );
-    }
+    if (isLoadingDaily) return <tr><td colSpan={dailyColumns.length} className="py-24 text-center"><Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" /></td></tr>;
+    if (processedDailyOrders.length === 0) return <tr><td colSpan={dailyColumns.length} className="py-20 text-center text-gray-400 italic bg-gray-50/50">No hay órdenes para hoy o la fecha objetivo seleccionada.</td></tr>;
 
     const rows: React.ReactNode[] = [];
     let currentGroupQuantity = 0;
@@ -649,8 +581,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     paginatedDailyData.forEach((order, idx) => {
       const machine = getResolvedMachine(order) || 'SIN MÁQUINA';
       const quantity = Number(order['CANTIDAD'] || 0);
-      const timeStr = calculateProductionTime(order['MATERIAL'] || order['CodMaterial'] || '', quantity, order);
-      const timeVal = parseFloat(timeStr) || 0;
+      const timeVal = parseFloat(calculateProductionTime(order['MATERIAL'] || order['CodMaterial'] || '', quantity, order)) || 0;
 
       currentGroupQuantity += quantity;
       currentGroupTime += timeVal;
@@ -659,25 +590,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
         <tr key={`daily-${idx}`} className="hover:bg-blue-50/40 transition-colors">
           {dailyColumns.map((col, cIdx) => {
             const upperCol = col.toUpperCase().trim();
-            if (col === 'TIEMPOS DE PRODUCCIÓN') {
-               return (
-                 <td key={`daily-cell-${idx}-${col}-${cIdx}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] font-mono text-gray-600">
-                   <span className="font-bold text-emerald-700">{timeVal.toFixed(2)} min</span>
-                 </td>
-               );
-            }
-            if (upperCol === 'MAQUINA') {
-              return (
-                <td key={`daily-cell-${idx}-${col}-${cIdx}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] font-mono text-gray-600">
-                  <span className="font-semibold text-blue-700">{machine}</span>
-                </td>
-              );
-            }
-            return (
-              <td key={`daily-cell-${idx}-${col}-${cIdx}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] font-mono text-gray-600">
-                {formatValueForDisplay(col, order[col])}
-              </td>
-            );
+            if (col === 'TIEMPOS DE PRODUCCIÓN') return <td key={`daily-cell-${idx}-${col}-${cIdx}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] font-mono text-gray-600"><span className="font-bold text-emerald-700">{timeVal.toFixed(2)} min</span></td>;
+            if (upperCol === 'MAQUINA') return <td key={`daily-cell-${idx}-${col}-${cIdx}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] font-mono text-gray-600"><span className="font-semibold text-blue-700">{machine}</span></td>;
+            return <td key={`daily-cell-${idx}-${col}-${cIdx}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] font-mono text-gray-600">{formatValueForDisplay(col, order[col])}</td>;
           })}
         </tr>
       );
@@ -690,19 +605,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
           <tr key={`subtotal-${machine}-${idx}`} className="bg-gray-100/80 font-bold border-t-2 border-gray-200">
             {dailyColumns.map((col, cIdx) => {
                const upperCol = col.toUpperCase().trim();
-               if (cIdx === 0) {
-                 return (
-                   <td key={`sub-${idx}-${cIdx}`} className="px-4 py-2 text-[10px] text-gray-500 uppercase flex items-center gap-2">
-                     <Layers className="w-3 h-3" /> SUBTOTAL {machine}
-                   </td>
-                 );
-               }
-               if (upperCol === 'CANTIDAD') {
-                 return <td key={`sub-${idx}-${cIdx}`} className="px-4 py-2 text-left font-mono text-blue-800 text-[11px]">{currentGroupQuantity.toLocaleString()}</td>;
-               }
-               if (col === 'TIEMPOS DE PRODUCCIÓN') {
-                 return <td key={`sub-${idx}-${cIdx}`} className="px-4 py-2 text-left font-mono text-emerald-800 text-[11px]">{currentGroupTime.toFixed(2)} min</td>;
-               }
+               if (cIdx === 0) return <td key={`sub-${idx}-${cIdx}`} className="px-4 py-2 text-[10px] text-gray-500 uppercase flex items-center gap-2"><Layers className="w-3 h-3" /> SUBTOTAL {machine}</td>;
+               if (upperCol === 'CANTIDAD') return <td key={`sub-${idx}-${cIdx}`} className="px-4 py-2 text-left font-mono text-blue-800 text-[11px]">{currentGroupQuantity.toLocaleString()}</td>;
+               if (col === 'TIEMPOS DE PRODUCCIÓN') return <td key={`sub-${idx}-${cIdx}`} className="px-4 py-2 text-left font-mono text-emerald-800 text-[11px]">{currentGroupTime.toFixed(2)} min</td>;
                return <td key={`sub-${idx}-${cIdx}`} className="px-4 py-2"></td>;
             })}
           </tr>
@@ -796,9 +701,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
         <TabsContent value="tiempos">
           <Card>
-            <CardHeader className="flex flex-col md:flex-row items-center justify-between gap-4">
-              <div className="flex-1"><CardTitle>Tiempos de Producción (Maestros Técnicos)</CardTitle></div>
-            </CardHeader>
+            <CardHeader><CardTitle>Tiempos de Producción (Maestros Técnicos)</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <div className="rounded-md border bg-white overflow-hidden">
                 <div className="overflow-auto max-h-[60vh]">
@@ -806,9 +709,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     <thead className="bg-gray-100 sticky top-0 z-10 shadow-sm">
                       <tr>
                         {tiemposColumns.map((col, idx) => (
-                          <th key={`head-${col}-${idx}`} className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase whitespace-nowrap bg-gray-50 border-b">
-                            {col}
-                          </th>
+                          <th key={`head-${col}-${idx}`} className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase whitespace-nowrap bg-gray-50 border-b">{col}</th>
                         ))}
                       </tr>
                       <tr className="bg-gray-50/50">
@@ -816,13 +717,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                           <th key={`filter-t-${col}-${idx}`} className="px-2 py-2 bg-gray-50 border-b border-gray-200">
                             <div className="relative">
                               <Search className="absolute left-2 top-1.5 h-3 w-3 text-gray-400" />
-                              <input
-                                type="text"
-                                placeholder="Buscar..."
-                                value={tiemposFilters[col] || ''}
-                                onChange={(e) => handleTiemposFilterChange(col, e.target.value)}
-                                className="w-full text-[10px] pl-7 pr-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-primary outline-none font-normal bg-white"
-                              />
+                              <input type="text" placeholder="Buscar..." value={tiemposFilters[col] || ''} onChange={(e) => handleTiemposFilterChange(col, e.target.value)} className="w-full text-[10px] pl-7 pr-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-primary outline-none font-normal bg-white" />
                             </div>
                           </th>
                         ))}
@@ -830,31 +725,20 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     </thead>
                     <tbody className="divide-y divide-gray-200 bg-white">
                       {isLoadingTiempos && tiemposProduccion.length === 0 ? (
-                        <tr>
-                          <td colSpan={tiemposColumns.length} className="py-24 text-center">
-                            <Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" />
-                          </td>
-                        </tr>
+                        <tr><td colSpan={tiemposColumns.length} className="py-24 text-center"><Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" /></td></tr>
                       ) : paginatedTiemposData.length > 0 ? paginatedTiemposData.map((t, idx) => (
                         <tr key={`tiempo-${idx}`} className="hover:bg-blue-50/40 transition-colors">
                           {tiemposColumns.map((col, cIdx) => (
-                            <td key={`cell-${idx}-${col}-${cIdx}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] text-gray-600 font-mono">
-                              {formatValueForDisplay(col, t[col])}
-                            </td>
+                            <td key={`cell-${idx}-${col}-${cIdx}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] text-gray-600 font-mono">{formatValueForDisplay(col, t[col])}</td>
                           ))}
                         </tr>
                       )) : (
-                        <tr>
-                          <td colSpan={tiemposColumns.length} className="py-20 text-center text-gray-400 italic bg-gray-50/50">
-                            No se encontraron resultados.
-                          </td>
-                        </tr>
+                        <tr><td colSpan={tiemposColumns.length} className="py-20 text-center text-gray-400 italic bg-gray-50/50">No se encontraron resultados.</td></tr>
                       )}
                     </tbody>
                   </table>
                 </div>
               </div>
-              
               <div className="flex items-center justify-between gap-4 py-3 px-4 bg-gray-50 rounded-lg border border-gray-200 shadow-sm">
                 <div className="flex items-center gap-1">
                   <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setTiemposPage(1)} disabled={tiemposPage === 1}><ChevronsLeft className="h-4 w-4" /></Button>
@@ -876,66 +760,79 @@ export const TacticalPlanForrosSection: React.FC = () => {
           <Card>
             <CardHeader>
               <CardTitle>Configuración de Capacidad: Distribución del personal</CardTitle>
-              <CardDescription>Define la cantidad de turnos y personal asignado por puesto de trabajo para el cálculo de capacidad real.</CardDescription>
+              <CardDescription>Define la jornada de trabajo, turnos y personal asignado por puesto.</CardDescription>
             </CardHeader>
             <CardContent>
-              {/* Controles de Horario en la parte superior */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                <div className="p-4 border rounded-lg bg-gray-50 space-y-2 border-indigo-100">
+              {/* Controles de Horario con Selectores */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 items-start">
+                <div className="p-4 border rounded-xl bg-white shadow-sm space-y-3 border-indigo-100">
                   <div className="flex items-center gap-2 mb-1">
-                    <Clock className="w-3.5 h-3.5 text-indigo-600" />
-                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Jornada Diurna (h)</label>
+                    <div className="bg-orange-100 p-1.5 rounded-md"><Clock className="w-4 h-4 text-orange-600" /></div>
+                    <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wider">Jornada Diurna (h)</label>
                   </div>
-                  <Input 
-                    type="number" 
-                    step="0.01" 
-                    value={horarioDiurno} 
-                    onChange={(e) => setHorarioDiurno(e.target.value)}
-                    className="h-9 text-sm font-mono font-bold"
-                  />
+                  <Select value={horarioDiurno} onValueChange={setHorarioDiurno}>
+                    <SelectTrigger className="h-10 text-sm font-mono font-bold bg-gray-50">
+                      <SelectValue placeholder="Seleccione horas" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {hourOptions.map(opt => (
+                        <SelectItem key={`d-${opt.value}`} value={opt.value}>{opt.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-                <div className="p-4 border rounded-lg bg-gray-50 space-y-2 border-indigo-100">
+
+                <div className="p-4 border rounded-xl bg-white shadow-sm space-y-3 border-indigo-100">
                   <div className="flex items-center gap-2 mb-1">
-                    <Clock className="w-3.5 h-3.5 text-indigo-600" />
-                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Jornada Nocturna (h)</label>
+                    <div className="bg-indigo-100 p-1.5 rounded-md"><Clock className="w-4 h-4 text-indigo-600" /></div>
+                    <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wider">Jornada Nocturna (h)</label>
                   </div>
-                  <Input 
-                    type="number" 
-                    step="0.01" 
-                    value={horarioNocturno} 
-                    onChange={(e) => setHorarioNocturno(e.target.value)}
-                    className="h-9 text-sm font-mono font-bold"
-                  />
+                  <Select value={horarioNocturno} onValueChange={setHorarioNocturno}>
+                    <SelectTrigger className="h-10 text-sm font-mono font-bold bg-gray-50">
+                      <SelectValue placeholder="Seleccione horas" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {hourOptions.map(opt => (
+                        <SelectItem key={`n-${opt.value}`} value={opt.value}>{opt.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="p-4 border rounded-xl bg-indigo-600 shadow-md space-y-3 border-indigo-700 text-white">
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="bg-white/20 p-1.5 rounded-md"><Calculator className="w-4 h-4 text-white" /></div>
+                    <label className="text-[11px] font-bold text-indigo-100 uppercase tracking-wider">Total Horas por Turno</label>
+                  </div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-3xl font-black font-mono">{totalHorasPorTurno.toFixed(3)}</span>
+                    <span className="text-xs font-bold text-indigo-200 uppercase">Horas / Turno</span>
+                  </div>
                 </div>
               </div>
 
-              <div className="rounded-md border bg-white overflow-hidden">
+              <div className="rounded-xl border bg-white overflow-hidden shadow-sm">
                 <div className="overflow-x-auto">
                   <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
+                    <thead className="bg-gray-50/80">
                       <tr>
-                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">Hoja de Ruta / Puesto</th>
-                        <th className="px-6 py-3 text-center text-xs font-bold text-gray-600 uppercase">Nº Turnos</th>
-                        <th className="px-6 py-3 text-center text-xs font-bold text-gray-600 uppercase">Personas / Turno</th>
-                        <th className="px-6 py-3 text-right text-xs font-bold text-blue-700 uppercase">Capacidad Neta (h)</th>
+                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Hoja de Ruta / Puesto</th>
+                        <th className="px-6 py-4 text-center text-xs font-bold text-gray-600 uppercase tracking-wider">Nº Turnos</th>
+                        <th className="px-6 py-4 text-center text-xs font-bold text-gray-600 uppercase tracking-wider">Personas / Turno</th>
+                        <th className="px-6 py-4 text-right text-xs font-bold text-blue-700 uppercase tracking-wider">Capacidad Neta (h)</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-200">
+                    <tbody className="divide-y divide-gray-100">
                       {uniqueMachines.map((m) => {
                         const config = workstationConfigs[m] || { machine: m, shifts: 1, people: 1 };
-                        const baseHoursPerShift = parseFloat(horarioDiurno) + parseFloat(horarioNocturno);
-                        const totalNetHours = (baseHoursPerShift * config.shifts * config.people * 0.84);
+                        const totalNetHours = (totalHorasPorTurno * config.shifts * config.people * 0.84);
 
                         return (
-                          <tr key={`config-${m}`} className="hover:bg-gray-50">
-                            <td className="px-6 py-4 whitespace-nowrap font-semibold text-gray-700">{m}</td>
+                          <tr key={`config-${m}`} className="hover:bg-indigo-50/30 transition-colors">
+                            <td className="px-6 py-4 whitespace-nowrap font-semibold text-gray-800">{m}</td>
                             <td className="px-6 py-4 whitespace-nowrap text-center">
-                              <span className="sr-only">Seleccionar Turnos</span>
-                              <Select 
-                                value={config.shifts.toString()} 
-                                onValueChange={(val) => handleWorkstationConfigChange(m, 'shifts', parseInt(val))}
-                              >
-                                <SelectTrigger className="w-24 h-8 mx-auto text-xs font-bold">
+                              <Select value={config.shifts.toString()} onValueChange={(val) => handleWorkstationConfigChange(m, 'shifts', parseInt(val))}>
+                                <SelectTrigger className="w-28 h-9 mx-auto text-xs font-bold shadow-sm">
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -945,19 +842,12 @@ export const TacticalPlanForrosSection: React.FC = () => {
                               </Select>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-center">
-                              <div className="flex items-center justify-center gap-2">
-                                <Input 
-                                  type="number" 
-                                  className="w-16 h-8 text-center text-xs font-bold" 
-                                  value={config.people}
-                                  min="1"
-                                  max="10"
-                                  onChange={(e) => handleWorkstationConfigChange(m, 'people', parseInt(e.target.value) || 1)}
-                                />
-                                <span className="text-[10px] text-gray-400 font-bold">PERS.</span>
+                              <div className="flex items-center justify-center gap-3">
+                                <Input type="number" className="w-16 h-9 text-center text-xs font-bold shadow-sm" value={config.people} min="1" max="10" onChange={(e) => handleWorkstationConfigChange(m, 'people', parseInt(e.target.value) || 1)} />
+                                <span className="text-[10px] text-gray-400 font-black tracking-widest">PERS.</span>
                               </div>
                             </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-right font-mono font-bold text-blue-700">
+                            <td className="px-6 py-4 whitespace-nowrap text-right font-mono font-bold text-blue-700 text-lg">
                               {totalNetHours.toFixed(2)} h
                             </td>
                           </tr>
@@ -967,12 +857,12 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   </table>
                 </div>
               </div>
-              <div className="mt-6 p-4 bg-blue-50 border border-blue-100 rounded-lg flex items-start gap-3">
-                <Repeat className="w-5 h-5 text-blue-600 mt-0.5" />
-                <div className="text-xs text-blue-800 space-y-1">
-                  <p className="font-bold uppercase tracking-tight">Nota sobre el cálculo de capacidad:</p>
-                  <p>La capacidad neta se calcula multiplicando las horas de jornada configuradas arriba por el número de turnos y personas, aplicando un factor de eficiencia operativa del 84%.</p>
-                  <p className="font-semibold italic">Ejemplo: Con jornada de 8.625h, 2 Turnos y 1 Persona = 14.49 horas efectivas por día.</p>
+              <div className="mt-6 p-4 bg-indigo-50 border border-indigo-100 rounded-xl flex items-start gap-3">
+                <Repeat className="w-5 h-5 text-indigo-600 mt-0.5" />
+                <div className="text-[11px] text-indigo-900 leading-relaxed">
+                  <p className="font-black uppercase tracking-tight mb-1">Algoritmo de capacidad:</p>
+                  <p>Capacidad Neta = <span className="font-bold">({totalHorasPorTurno.toFixed(3)}h)</span> × <span className="font-bold">Turnos</span> × <span className="font-bold">Personas</span> × <span className="font-bold">84% (Eficiencia)</span>.</p>
+                  <p className="mt-1 italic opacity-80">Cualquier cambio en la jornada superior recalculará instantáneamente toda la malla operativa.</p>
                 </div>
               </div>
             </CardContent>
@@ -983,36 +873,11 @@ export const TacticalPlanForrosSection: React.FC = () => {
           <Card>
             <CardHeader>
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                  <CardTitle>Explosión de Materiales (BOM)</CardTitle>
-                  <CardDescription>Consulta de componentes por material (FERT).</CardDescription>
-                </div>
+                <div><CardTitle>Explosión de Materiales (BOM)</CardTitle><CardDescription>Consulta de componentes por material (FERT).</CardDescription></div>
                 <div className="flex flex-wrap items-end gap-3 p-3 bg-gray-50 rounded-lg border">
-                  <div className="w-24">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Centro</label>
-                    <Select value={centroExplosion} onValueChange={setCentroExplosion}>
-                      <SelectTrigger className="h-9 text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="1000">1000</SelectItem>
-                        <SelectItem value="2000">2000</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="w-48">
-                    <label className="text-[10px] font-bold text-gray-700 uppercase block mb-1.5">FERT Principal (Cód)</label>
-                    <Input 
-                      className="h-9 text-xs" 
-                      placeholder="Ej: 10001433" 
-                      value={fertExplosion}
-                      onChange={(e) => setFertExplosion(e.target.value)}
-                    />
-                  </div>
-                  <Button size="sm" onClick={() => fetchExplosionData(1)} disabled={isLoadingExplosion}>
-                    {isLoadingExplosion ? <Loader2 className="h-3 w-3 animate-spin mr-2" /> : <Search className="h-3 w-3 mr-2" />}
-                    Consultar
-                  </Button>
+                  <div className="w-24"><label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Centro</label><Select value={centroExplosion} onValueChange={setCentroExplosion}><SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="1000">1000</SelectItem><SelectItem value="2000">2000</SelectItem></SelectContent></Select></div>
+                  <div className="w-48"><label className="text-[10px] font-bold text-gray-700 uppercase block mb-1.5">FERT Principal (Cód)</label><Input className="h-9 text-xs" placeholder="Ej: 10001433" value={fertExplosion} onChange={(e) => setFertExplosion(e.target.value)} /></div>
+                  <Button size="sm" onClick={() => fetchExplosionData(1)} disabled={isLoadingExplosion}>{isLoadingExplosion ? <Loader2 className="h-3 w-3 animate-spin mr-2" /> : <Search className="h-3 w-3 mr-2" />} Consultar</Button>
                 </div>
               </div>
             </CardHeader>
@@ -1021,59 +886,16 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 <div className="overflow-auto max-h-[55vh]">
                   <table className="min-w-full divide-y divide-gray-200 border-collapse">
                     <thead className="bg-gray-100 sticky top-0 z-10 shadow-sm">
-                      <tr className="bg-gray-50 border-b">
-                        <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase">Centro</th>
-                        <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase">FERT Principal</th>
-                        <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase">Desc. FERT</th>
-                        <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase">Componente</th>
-                        <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase">Desc. Componente</th>
-                        <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase">Tipo</th>
-                        <th className="px-4 py-3 text-right text-[10px] font-bold text-indigo-600 uppercase">Cant. Unitaria</th>
-                        <th className="px-4 py-3 text-right text-[10px] font-bold text-indigo-600 uppercase">Cant. Acumulada</th>
-                      </tr>
+                      <tr className="bg-gray-50 border-b"><th className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase">Centro</th><th className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase">FERT Principal</th><th className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase">Desc. FERT</th><th className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase">Componente</th><th className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase">Desc. Componente</th><th className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase">Tipo</th><th className="px-4 py-3 text-right text-[10px] font-bold text-indigo-600 uppercase">Cant. Unitaria</th><th className="px-4 py-3 text-right text-[10px] font-bold text-indigo-600 uppercase">Cant. Acumulada</th></tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200 bg-white">
-                      {isLoadingExplosion ? (
-                        <tr>
-                          <td colSpan={8} className="py-24 text-center">
-                            <Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" />
-                          </td>
-                        </tr>
-                      ) : explosionData.length > 0 ? (
-                        explosionData.map((row, idx) => (
-                          <tr key={`bom-${idx}`} className="hover:bg-blue-50/40 transition-colors">
-                            <td className="px-4 py-2 text-[11px] font-mono">{row.CENTRO}</td>
-                            <td className="px-4 py-2 text-[11px] font-bold">{row.FERT_PRINCIPAL}</td>
-                            <td className="px-4 py-2 text-[11px] text-gray-600 max-w-40 truncate" title={row.DESCRIPCION_FERT}>{row.DESCRIPCION_FERT}</td>
-                            <td className="px-4 py-2 text-[11px] font-bold text-blue-700">{row.COMPONENTE}</td>
-                            <td className="px-4 py-2 text-[11px] text-gray-600 max-w-48 truncate" title={row.DESCRIPCION_COMPONENTE}>{row.DESCRIPCION_COMPONENTE}</td>
-                            <td className="px-4 py-2 text-[11px] text-gray-400">{row.TipoMaterial}</td>
-                            <td className="px-4 py-2 text-[11px] text-right font-mono font-bold text-indigo-700">{formatValueForDisplay('CANTIDAD', row.TOTAL_CANTIDAD_UNITARIA)}</td>
-                            <td className="px-4 py-2 text-[11px] text-right font-mono text-indigo-400">{formatValueForDisplay('CANTIDAD', row.TOTAL_CANTIDAD_ACUMULADA)}</td>
-                          </tr>
-                        ))
-                      ) : (
-                        <tr>
-                          <td colSpan={8} className="py-20 text-center text-gray-400 italic bg-gray-50/50">
-                            Ingresa filtros y presiona consultar para ver la explosión de materiales.
-                          </td>
-                        </tr>
-                      )}
+                      {isLoadingExplosion ? <tr><td colSpan={8} className="py-24 text-center"><Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" /></td></tr> : explosionData.length > 0 ? explosionData.map((row, idx) => (<tr key={`bom-${idx}`} className="hover:bg-blue-50/40 transition-colors"><td className="px-4 py-2 text-[11px] font-mono">{row.CENTRO}</td><td className="px-4 py-2 text-[11px] font-bold">{row.FERT_PRINCIPAL}</td><td className="px-4 py-2 text-[11px] text-gray-600 max-w-40 truncate" title={row.DESCRIPCION_FERT}>{row.DESCRIPCION_FERT}</td><td className="px-4 py-2 text-[11px] font-bold text-blue-700">{row.COMPONENTE}</td><td className="px-4 py-2 text-[11px] text-gray-600 max-w-48 truncate" title={row.DESCRIPCION_COMPONENTE}>{row.DESCRIPCION_COMPONENTE}</td><td className="px-4 py-2 text-[11px] text-gray-400">{row.TipoMaterial}</td><td className="px-4 py-2 text-[11px] text-right font-mono font-bold text-indigo-700">{formatValueForDisplay('CANTIDAD', row.TOTAL_CANTIDAD_UNITARIA)}</td><td className="px-4 py-2 text-[11px] text-right font-mono text-indigo-400">{formatValueForDisplay('CANTIDAD', row.TOTAL_CANTIDAD_ACUMULADA)}</td></tr>)) : (<tr><td colSpan={8} className="py-20 text-center text-gray-400 italic bg-gray-50/50">Ingresa filtros y presiona consultar para ver la explosión de materiales.</td></tr>)}
                     </tbody>
                   </table>
                 </div>
               </div>
-
               <div className="flex items-center justify-between gap-4 py-3 px-4 bg-gray-50 rounded-lg border border-gray-200 shadow-sm mt-4">
-                <div className="flex items-center gap-1">
-                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => fetchExplosionData(1)} disabled={explosionPage === 1 || isLoadingExplosion}><ChevronsLeft className="h-4 w-4" /></Button>
-                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => fetchExplosionData(explosionPage - 1)} disabled={explosionPage === 1 || isLoadingExplosion}><ChevronLeft className="h-4 w-4" /></Button>
-                  <span className="px-3 text-[11px] font-bold min-w-[120px] text-center border-x py-1 bg-white rounded">
-                    Página {explosionPage} de {Math.max(1, Math.ceil(explosionTotal / explosionRowsPerPage))}
-                  </span>
-                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => fetchExplosionData(explosionPage + 1)} disabled={explosionPage >= Math.ceil(explosionTotal / explosionRowsPerPage) || isLoadingExplosion}><ChevronRight className="h-4 w-4" /></Button>
-                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => fetchExplosionData(Math.ceil(explosionTotal / explosionRowsPerPage))} disabled={explosionPage >= Math.ceil(explosionTotal / explosionRowsPerPage) || isLoadingExplosion}><ChevronsRight className="h-4 w-4" /></Button>
-                </div>
+                <div className="flex items-center gap-1"><Button variant="outline" size="icon" className="h-8 w-8" onClick={() => fetchExplosionData(1)} disabled={explosionPage === 1 || isLoadingExplosion}><ChevronsLeft className="h-4 w-4" /></Button><Button variant="outline" size="icon" className="h-8 w-8" onClick={() => fetchExplosionData(explosionPage - 1)} disabled={explosionPage === 1 || isLoadingExplosion}><ChevronLeft className="h-4 w-4" /></Button><span className="px-3 text-[11px] font-bold min-w-[120px] text-center border-x py-1 bg-white rounded">Página {explosionPage} de {Math.max(1, Math.ceil(explosionTotal / explosionRowsPerPage))}</span><Button variant="outline" size="icon" className="h-8 w-8" onClick={() => fetchExplosionData(explosionPage + 1)} disabled={explosionPage >= Math.ceil(explosionTotal / explosionRowsPerPage) || isLoadingExplosion}><ChevronRight className="h-4 w-4" /></Button><Button variant="outline" size="icon" className="h-8 w-8" onClick={() => fetchExplosionData(Math.ceil(explosionTotal / explosionRowsPerPage))} disabled={explosionPage >= Math.ceil(explosionTotal / explosionRowsPerPage) || isLoadingExplosion}><ChevronsRight className="h-4 w-4" /></Button></div>
                 <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{explosionTotal.toLocaleString()} registros totales</div>
               </div>
             </CardContent>
@@ -1087,60 +909,28 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
                     <div className="space-y-1">
-                      <div className="flex items-center gap-2 text-orange-600">
-                        <MapPin className="w-4 h-4" />
-                        <p className="text-sm font-bold uppercase tracking-wider">Producción GYE (Fecha Cercana)</p>
-                      </div>
+                      <div className="flex items-center gap-2 text-orange-600"><MapPin className="w-4 h-4" /><p className="text-sm font-bold uppercase tracking-wider">Producción GYE (Fecha Cercana)</p></div>
                       <p className="text-md font-semibold text-gray-700">{formattedTodayDisp}</p>
                     </div>
-                    <div className="bg-orange-50 p-3 rounded-full">
-                      <CalendarIconLucide className="w-6 h-6 text-orange-600" />
-                    </div>
+                    <div className="bg-orange-50 p-3 rounded-full"><CalendarIconLucide className="w-6 h-6 text-orange-600" /></div>
                   </div>
-                  <div className="mt-4 flex items-baseline gap-2">
-                    <p className="text-3xl font-extrabold text-orange-700 font-mono">
-                      {chnBasesDateTotals.totalToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </p>
-                    <p className="text-xs text-gray-400 uppercase font-semibold">Unidades</p>
-                  </div>
+                  <div className="mt-4 flex items-baseline gap-2"><p className="text-3xl font-extrabold text-orange-700 font-mono">{chnBasesDateTotals.totalToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p><p className="text-xs text-gray-400 uppercase font-semibold">Unidades</p></div>
                 </CardContent>
               </Card>
-
               <Card className="bg-white border-l-4 border-l-blue-600 shadow-md">
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
                     <div className="space-y-1">
-                      <div className="flex items-center gap-2 text-blue-600">
-                        <MapPin className="w-4 h-4" />
-                        <p className="text-sm font-bold uppercase tracking-wider">Producción Quito (Segunda Fecha)</p>
-                      </div>
+                      <div className="flex items-center gap-2 text-blue-600"><MapPin className="w-4 h-4" /><p className="text-sm font-bold uppercase tracking-wider">Producción Quito (Segunda Fecha)</p></div>
                       <p className="text-md font-semibold text-gray-700">{formattedTargetDisp}</p>
                     </div>
-                    <div className="bg-blue-50 p-3 rounded-full">
-                      <CalendarIconLucide className="w-6 h-6 text-blue-600" />
-                    </div>
+                    <div className="bg-blue-50 p-3 rounded-full"><CalendarIconLucide className="w-6 h-6 text-blue-600" /></div>
                   </div>
-                  <div className="mt-4 flex items-baseline gap-2">
-                    <p className="text-3xl font-extrabold text-blue-800 font-mono">
-                      {chnBasesDateTotals.totalTarget.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </p>
-                    <p className="text-xs text-gray-400 uppercase font-semibold">Unidades</p>
-                  </div>
+                  <div className="mt-4 flex items-baseline gap-2"><p className="text-3xl font-extrabold text-blue-800 font-mono">{chnBasesDateTotals.totalTarget.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p><p className="text-xs text-gray-400 uppercase font-semibold">Unidades</p></div>
                 </CardContent>
               </Card>
             </div>
-
-            <Card>
-              <CardHeader><CardTitle>Forros CHN & Bases</CardTitle></CardHeader>
-              <CardContent>
-                <ProvisionalOrdersTabSection 
-                  externalFilters={forrosChnBasesFilters} 
-                  renderCell={renderResolvedProvisionalCell}
-                  groupBy="MAQUINA"
-                  resolveValue={resolveLogicValue}
-                />
-              </CardContent>
-            </Card>
+            <Card><CardHeader><CardTitle>Forros CHN & Bases</CardTitle></CardHeader><CardContent><ProvisionalOrdersTabSection externalFilters={{...externalFilters, MAQUINA: ['HR-FBASE', 'HR-FORRO']}} renderCell={renderResolvedProvisionalCell} groupBy="MAQUINA" resolveValue={resolveLogicValue} /></CardContent></Card>
           </div>
         </TabsContent>
 
@@ -1152,36 +942,15 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 <div className="overflow-auto max-h-[65vh]">
                   <table className="min-w-full divide-y divide-gray-200 border-collapse">
                     <thead className="bg-gray-100 sticky top-0 z-10 shadow-sm">
-                      <tr>
-                        {dailyColumns.map((col, idx) => (
-                          <th 
-                            key={`daily-head-${col}-${idx}`} 
-                            className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider whitespace-nowrap bg-gray-50 border-b text-gray-600"
-                          >
-                            {col}
-                          </th>
-                        ))}
-                      </tr>
+                      <tr>{dailyColumns.map((col, idx) => (<th key={`daily-head-${col}-${idx}`} className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider whitespace-nowrap bg-gray-50 border-b text-gray-600">{col}</th>))}</tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-200 bg-white">
-                      {renderDailyTableBody()}
-                    </tbody>
+                    <tbody className="divide-y divide-gray-200 bg-white">{renderDailyTableBody()}</tbody>
                   </table>
                 </div>
               </div>
-              
               <div className="flex items-center justify-between gap-4 py-3 px-4 bg-gray-50 rounded-lg border border-gray-200">
-                <div className="flex items-center gap-1">
-                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(1)} disabled={dailyPage === 1}><ChevronsLeft className="h-4 w-4" /></Button>
-                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(p => Math.max(1, p - 1))} disabled={dailyPage === 1}><ChevronLeft className="h-4 w-4" /></Button>
-                  <span className="px-3 text-[11px] font-bold min-w-[120px] text-center border-x py-1 bg-white rounded">Página {dailyPage} de {totalDailyPages}</span>
-                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(p => Math.min(totalDailyPages, p + 1))} disabled={dailyPage === totalDailyPages}><ChevronRight className="h-4 w-4" /></Button>
-                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(totalDailyPages)} disabled={dailyPage === totalDailyPages}><ChevronsRight className="h-4 w-4" /></Button>
-                </div>
-                <div className="flex items-center gap-3">
-                   <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{processedDailyOrders.length} componentes ordenados por Hoja de Ruta</span>
-                   <Button variant="outline" size="sm" onClick={fetchDailyOrders} disabled={isLoadingDaily} className="h-8 px-4 bg-white"><RefreshCw className={cn("h-3 w-3 mr-2", isLoadingDaily && "animate-spin")} /> Actualizar</Button>
-                </div>
+                <div className="flex items-center gap-1"><Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(1)} disabled={dailyPage === 1}><ChevronsLeft className="h-4 w-4" /></Button><Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(p => Math.max(1, p - 1))} disabled={dailyPage === 1}><ChevronLeft className="h-4 w-4" /></Button><span className="px-3 text-[11px] font-bold min-w-[120px] text-center border-x py-1 bg-white rounded">Página {dailyPage} de {totalDailyPages}</span><Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(p => Math.min(totalDailyPages, p + 1))} disabled={dailyPage === totalDailyPages}><ChevronRight className="h-4 w-4" /></Button><Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(totalDailyPages)} disabled={dailyPage === totalDailyPages}><ChevronsRight className="h-4 w-4" /></Button></div>
+                <div className="flex items-center gap-3"><span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{processedDailyOrders.length} componentes ordenados por Hoja de Ruta</span><Button variant="outline" size="sm" onClick={fetchDailyOrders} disabled={isLoadingDaily} className="h-8 px-4 bg-white"><RefreshCw className={cn("h-3 w-3 mr-2", isLoadingDaily && "animate-spin")} /> Actualizar</Button></div>
               </div>
             </CardContent>
           </Card>
@@ -1190,99 +959,26 @@ export const TacticalPlanForrosSection: React.FC = () => {
         <TabsContent value="resumen-diario">
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
             <Card className="lg:col-span-1 border-indigo-100 shadow-md">
-              <CardHeader className="bg-indigo-50/50 border-b border-indigo-100">
-                <CardTitle className="text-sm font-bold uppercase tracking-wider text-indigo-900 flex items-center gap-2">
-                  <Clock className="w-4 h-4" />
-                  Configuración Global
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="pt-6 space-y-6">
-                <div className="space-y-6">
-                  <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
-                    <p className="text-[10px] leading-relaxed text-amber-800 italic">
-                      * Nota: Use la pestaña "Distribución del personal" para configurar la capacidad específica de cada máquina.
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
+              <CardHeader className="bg-indigo-50/50 border-b border-indigo-100"><CardTitle className="text-sm font-bold uppercase tracking-wider text-indigo-900 flex items-center gap-2"><Clock className="w-4 h-4" /> Configuración Global</CardTitle></CardHeader>
+              <CardContent className="pt-6 space-y-6"><div className="space-y-6"><div className="p-3 bg-amber-50 rounded-lg border border-amber-200"><p className="text-[10px] leading-relaxed text-amber-800 italic">* Nota: Use la pestaña "Distribución del personal" para configurar la capacidad específica de cada máquina.</p></div></div></CardContent>
             </Card>
-
             <Card className="lg:col-span-3 shadow-md">
-              <CardHeader className="border-b">
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <BarChart3 className="w-5 h-5 text-primary" />
-                  Carga por Máquina / Puesto Técnico
-                </CardTitle>
-                <CardDescription>
-                  Consolidado único de unidades y tiempos de carga comparados contra capacidad configurada.
-                </CardDescription>
-              </CardHeader>
+              <CardHeader className="border-b"><CardTitle className="flex items-center gap-2 text-lg"><BarChart3 className="w-5 h-5 text-primary" /> Carga por Máquina / Puesto Técnico</CardTitle><CardDescription>Consolidado único de unidades y tiempos de carga comparados contra capacidad configurada.</CardDescription></CardHeader>
               <CardContent className="pt-6">
                 <div className="rounded-md border overflow-hidden">
                   <div className="overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-200">
                       <thead className="bg-gray-50">
-                        <tr>
-                          <th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Máquina / Puesto</th>
-                          <th className="px-6 py-3 text-right text-xs font-bold text-gray-600 uppercase tracking-wider">Cant. Órdenes</th>
-                          <th className="px-6 py-3 text-right text-xs font-bold text-gray-600 uppercase tracking-wider">Total Unidades</th>
-                          <th className="px-6 py-3 text-right text-xs font-bold text-emerald-700 uppercase tracking-wider">Tiempo Total (min)</th>
-                          <th className="px-6 py-3 text-right text-xs font-bold text-indigo-600 uppercase tracking-wider">Tiempo Total (h)</th>
-                          <th className="px-6 py-3 text-right text-xs font-bold text-blue-700 uppercase tracking-wider">Capacidad Máx (h)</th>
-                          <th className="px-6 py-3 text-right text-xs font-bold text-blue-700 uppercase tracking-wider">Ocupación (%)</th>
-                        </tr>
+                        <tr><th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Máquina / Puesto</th><th className="px-6 py-3 text-right text-xs font-bold text-gray-600 uppercase tracking-wider">Cant. Órdenes</th><th className="px-6 py-3 text-right text-xs font-bold text-gray-600 uppercase tracking-wider">Total Unidades</th><th className="px-6 py-3 text-right text-xs font-bold text-emerald-700 uppercase tracking-wider">Tiempo Total (min)</th><th className="px-6 py-3 text-right text-xs font-bold text-indigo-600 uppercase tracking-wider">Tiempo Total (h)</th><th className="px-6 py-3 text-right text-xs font-bold text-blue-700 uppercase tracking-wider">Capacidad Máx (h)</th><th className="px-6 py-3 text-right text-xs font-bold text-blue-700 uppercase tracking-wider">Ocupación (%)</th></tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200 bg-white">
-                        {isLoadingDaily ? (
-                          <tr>
-                            <td colSpan={7} className="py-12 text-center">
-                              <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
-                            </td>
-                          </tr>
-                        ) : productionSummary.length > 0 ? (
-                          productionSummary.map((item, idx) => {
+                        {isLoadingDaily ? <tr><td colSpan={7} className="py-12 text-center"><Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" /></td></tr> : productionSummary.length > 0 ? productionSummary.map((item, idx) => {
                             const config = workstationConfigs[item.machine] || { shifts: 1, people: 1 };
-                            const baseHoursPerShift = parseFloat(horarioDiurno) + parseFloat(horarioNocturno);
-                            const plannedCapacityHours = (baseHoursPerShift * config.shifts * config.people * 0.84);
+                            const plannedCapacityHours = (totalHorasPorTurno * config.shifts * config.people * 0.84);
                             const totalTimeHours = item.totalTime / 60;
                             const utilizationPercent = plannedCapacityHours > 0 ? (totalTimeHours / plannedCapacityHours) * 100 : 0;
-                            
-                            return (
-                              <tr key={idx} className="hover:bg-gray-50 transition-colors">
-                                <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-700">{item.machine}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-mono">{item.count}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-bold text-blue-700 font-mono">{item.quantity.toLocaleString()}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-bold text-emerald-700 font-mono">
-                                  {item.totalTime.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-bold text-indigo-600 font-mono">
-                                  {totalTimeHours.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-mono text-gray-400">
-                                  {plannedCapacityHours.toFixed(2)} h
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
-                                  <Badge 
-                                    className={cn(
-                                      "font-mono font-bold",
-                                      utilizationPercent > 100 ? "bg-red-100 text-red-700 hover:bg-red-200" : 
-                                      utilizationPercent > 80 ? "bg-amber-100 text-amber-700 hover:bg-amber-200" :
-                                      "bg-green-100 text-green-700 hover:bg-green-200"
-                                    )}
-                                  >
-                                    {utilizationPercent.toFixed(1)}%
-                                  </Badge>
-                                </td>
-                              </tr>
-                            );
-                          })
-                        ) : (
-                          <tr>
-                            <td colSpan={7} className="py-12 text-center text-gray-400 italic">
-                              No hay datos para resumir.
-                            </td>
-                          </tr>
-                        )}
+                            return (<tr key={idx} className="hover:bg-gray-50 transition-colors"><td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-700">{item.machine}</td><td className="px-6 py-4 whitespace-nowrap text-sm text-right font-mono">{item.count}</td><td className="px-6 py-4 whitespace-nowrap text-sm text-right font-bold text-blue-700 font-mono">{item.quantity.toLocaleString()}</td><td className="px-6 py-4 whitespace-nowrap text-sm text-right font-bold text-emerald-700 font-mono">{item.totalTime.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td><td className="px-6 py-4 whitespace-nowrap text-sm text-right font-bold text-indigo-600 font-mono">{totalTimeHours.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td><td className="px-6 py-4 whitespace-nowrap text-sm text-right font-mono text-gray-400">{plannedCapacityHours.toFixed(2)} h</td><td className="px-6 py-4 whitespace-nowrap text-sm text-right"><Badge className={cn("font-mono font-bold", utilizationPercent > 100 ? "bg-red-100 text-red-700 hover:bg-red-200" : utilizationPercent > 80 ? "bg-amber-100 text-amber-700 hover:bg-amber-200" : "bg-green-100 text-green-700 hover:bg-green-200")}>{utilizationPercent.toFixed(1)}%</Badge></td></tr>);
+                          }) : <tr><td colSpan={7} className="py-12 text-center text-gray-400 italic">No hay datos para resumir.</td></tr>}
                       </tbody>
                     </table>
                   </div>
