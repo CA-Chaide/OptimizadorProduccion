@@ -263,15 +263,32 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
   }, [forrosGruposList]);
 
-  // Inicializar configuraciones de puestos al cargar tiempos
+  // Inicializar configuraciones de puestos al cargar tiempos con nuevo ordenamiento solicitado
   const uniqueMachines = useMemo(() => {
-    const machines = new Set<string>();
+    const machinesSet = new Set<string>();
     tiemposProduccion.forEach(t => {
       const values = Object.values(t).map(v => String(v || '').trim().toUpperCase());
       const hr = values.find(v => v.startsWith('HR'));
-      if (hr) machines.add(hr);
+      if (hr) machinesSet.add(hr);
     });
-    return Array.from(machines).sort();
+    
+    // Nuevo Ordenamiento: ACH -> PEF -> Otros Alfabéticamente
+    return Array.from(machinesSet).sort((a, b) => {
+      const aACH = a.startsWith('HR-ACH');
+      const bACH = b.startsWith('HR-ACH');
+      const aPEF = a.startsWith('HR-PEF');
+      const bPEF = b.startsWith('HR-PEF');
+
+      if (aACH && !bACH) return -1;
+      if (!aACH && bACH) return 1;
+      if (aACH && bACH) return a.localeCompare(b);
+
+      if (aPEF && !bPEF) return -1;
+      if (!aPEF && bPEF) return 1;
+      if (aPEF && bPEF) return a.localeCompare(b);
+
+      return a.localeCompare(b);
+    });
   }, [tiemposProduccion]);
 
   useEffect(() => {
@@ -575,6 +592,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return { totalToday, totalTarget };
   }, [dailyOrders, getResolvedMachine, normalizeDateForFilter, todayDate, targetDate]);
 
+  // Visual Dates (+1 Day)
   const displayTodayDate = useMemo(() => {
     if (!todayDate) return '';
     const [y, m, d] = todayDate.split('-').map(Number);
@@ -882,14 +900,11 @@ export const TacticalPlanForrosSection: React.FC = () => {
                         <th className="px-6 py-3 text-center text-xs font-bold text-gray-600 uppercase">Nº Turnos</th>
                         <th className="px-6 py-3 text-center text-xs font-bold text-gray-600 uppercase">Personas / Turno</th>
                         <th className="px-6 py-3 text-right text-xs font-bold text-blue-700 uppercase">Capacidad Neta (h)</th>
-                        <th className="px-6 py-3 text-right text-xs font-bold text-gray-400 uppercase">Eficiencia</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">
                       {uniqueMachines.map((m) => {
                         const config = workstationConfigs[m] || { machine: m, shifts: 1, people: 1 };
-                        // Cálculo: (8.625h de base + extras) * turnos * personas * eficiencia
-                        // Simulación según regla de negocio: 2 turnos = 14.49h (neta con 84% ef)
                         const baseHours = 8.625;
                         const totalNetHours = (baseHours * config.shifts * config.people * 0.84);
 
@@ -926,9 +941,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-right font-mono font-bold text-blue-700">
                               {totalNetHours.toFixed(2)} h
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-right text-gray-400 font-bold text-xs">
-                              84%
                             </td>
                           </tr>
                         );
