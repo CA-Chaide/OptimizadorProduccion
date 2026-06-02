@@ -24,7 +24,8 @@ import {
   UserPlus,
   Repeat,
   Calculator,
-  TestTube
+  TestTube,
+  FileSpreadsheet
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -272,6 +273,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
   }, [forrosGruposList]);
 
+  // Sincronización de Turnos/Personal según las máquinas disponibles
   const uniqueMachines = useMemo(() => {
     const machinesSet = new Set<string>();
     tiemposProduccion.forEach(t => {
@@ -529,13 +531,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
       });
   }, [dailyOrders, getResolvedMachine]);
 
-  const paginatedDailyData = useMemo(() => {
-    const start = (dailyPage - 1) * dailyRowsPerPage;
-    return processedDailyOrders.slice(start, start + dailyRowsPerPage);
-  }, [processedDailyOrders, dailyPage, dailyRowsPerPage]);
-
-  const totalDailyPages = Math.max(1, Math.ceil(processedDailyOrders.length / dailyRowsPerPage));
-
   const handleWorkstationConfigChange = (machine: string, field: 'shifts' | 'people', value: number) => {
     setWorkstationConfigs(prev => ({
       ...prev,
@@ -553,7 +548,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     dailyOrders.forEach(order => {
       const machine = getResolvedMachine(order) || 'SIN MÁQUINA';
       const quantity = Number(order['CANTIDAD'] || 0);
-      const timeVal = parseFloat(calculateProductionTime(order['MATERIAL'], quantity, order)) || 0;
+      const timeVal = parseFloat(calculateProductionTime(order['MATERIAL'] || order['CodMaterial'] || '', quantity, order)) || 0;
       if (!summaryMap.has(machine)) summaryMap.set(machine, { machine, quantity: 0, count: 0, totalTime: 0 });
       const entry = summaryMap.get(machine)!;
       entry.quantity += quantity;
@@ -642,6 +637,18 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   const formattedTodayDisp = displayTodayDate ? formatValueForDisplay('FECHA', displayTodayDate) : '...';
   const formattedTargetDisp = displayTargetDate ? formatValueForDisplay('FECHA', displayTargetDate) : '...';
+
+  // --- Lógica para pestaña PRUEBAS ---
+  const pruebasOrders = useMemo(() => {
+    return dailyOrders.filter(order => {
+      const machine = getResolvedMachine(order);
+      return ['HR-ACH02', 'HR-PEF02'].includes(machine);
+    }).sort((a, b) => {
+      const machineA = getResolvedMachine(a);
+      const machineB = getResolvedMachine(b);
+      return machineA.localeCompare(machineB);
+    });
+  }, [dailyOrders, getResolvedMachine]);
 
   if (!isMounted) return null;
 
@@ -1001,26 +1008,99 @@ export const TacticalPlanForrosSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="pruebas">
-          <Card>
-            <CardHeader>
-              <CardTitle>Entorno de Pruebas y Simulación</CardTitle>
-              <CardDescription>Espacio para validación de lógica de balanceo y escenarios hipotéticos.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="p-12 border-2 border-dashed rounded-xl flex flex-col items-center justify-center text-center space-y-4 bg-gray-50/50">
-                <div className="bg-primary/10 p-4 rounded-full text-primary">
-                  <TestTube className="w-12 h-12" />
+          <div className="space-y-6">
+            <Card className="border-indigo-200 shadow-lg">
+              <CardHeader className="bg-indigo-50/50 border-b">
+                <div className="flex items-center gap-3">
+                  <div className="bg-indigo-600 p-2 rounded-lg text-white">
+                    <TestTube className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <CardTitle>Validación Técnica: HR-ACH02 y HR-PEF02</CardTitle>
+                    <CardDescription>Visualización específica de órdenes para el par de máquinas ACH02-PEF02.</CardDescription>
+                  </div>
                 </div>
-                <div className="max-w-md">
-                  <h4 className="text-xl font-bold text-gray-900">Módulo de Pruebas Iniciado</h4>
-                  <p className="text-gray-500 mt-2">Este espacio está listo para configurar la simulación del 01 de Junio de 2026. Aquí podrás disparar la validación de carga contra la capacidad de 14.49h configurada.</p>
+              </CardHeader>
+              <CardContent className="pt-6">
+                <div className="rounded-xl border bg-white overflow-hidden shadow-sm">
+                  <div className="overflow-x-auto max-h-[60vh]">
+                    <table className="min-w-full divide-y divide-gray-200 border-collapse">
+                      <thead className="bg-gray-100/80 sticky top-0 z-10">
+                        <tr>
+                          {dailyColumns.map((col, idx) => (
+                            <th key={`pruebas-head-${col}-${idx}`} className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider whitespace-nowrap text-gray-600 border-b">
+                              {col}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {isLoadingDaily ? (
+                          <tr><td colSpan={dailyColumns.length} className="py-12 text-center"><Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" /></td></tr>
+                        ) : pruebasOrders.length > 0 ? (
+                          pruebasOrders.map((order, idx) => {
+                            const machine = getResolvedMachine(order);
+                            const quantity = Number(order['CANTIDAD'] || 0);
+                            const timeVal = parseFloat(calculateProductionTime(order['MATERIAL'] || order['CodMaterial'] || '', quantity, order)) || 0;
+                            
+                            return (
+                              <tr key={`pruebas-row-${idx}`} className="hover:bg-indigo-50/20 transition-colors">
+                                {dailyColumns.map((col, cIdx) => {
+                                  const upperCol = col.toUpperCase().trim();
+                                  if (col === 'TIEMPOS DE PRODUCCIÓN') return <td key={`pruebas-cell-${idx}-${col}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] font-mono font-bold text-emerald-700">{timeVal.toFixed(2)} min</td>;
+                                  if (upperCol === 'MAQUINA') return <td key={`pruebas-cell-${idx}-${col}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] font-mono font-bold text-indigo-700">{machine}</td>;
+                                  return <td key={`pruebas-cell-${idx}-${col}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] font-mono text-gray-600">{formatValueForDisplay(col, order[col])}</td>;
+                                })}
+                              </tr>
+                            );
+                          })
+                        ) : (
+                          <tr>
+                            <td colSpan={dailyColumns.length} className="py-20 text-center text-gray-400 italic">
+                              No se encontraron órdenes para HR-ACH02 o HR-PEF02 en el periodo seleccionado.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                      {pruebasOrders.length > 0 && (
+                        <tfoot className="bg-gray-50 border-t-2 border-gray-200">
+                          <tr>
+                            <td colSpan={4} className="px-4 py-3 text-[11px] font-bold text-gray-700">RESUMEN PRUEBA</td>
+                            <td className="px-4 py-3 text-left font-mono font-bold text-blue-800 text-[11px]">
+                              {pruebasOrders.reduce((sum, o) => sum + Number(o['CANTIDAD'] || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                            <td className="px-4 py-3 text-left font-mono font-bold text-emerald-800 text-[11px]">
+                              {pruebasOrders.reduce((sum, o) => sum + parseFloat(calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || 0), o)), 0).toFixed(2)} min
+                            </td>
+                            <td colSpan={2}></td>
+                          </tr>
+                        </tfoot>
+                      )}
+                    </table>
+                  </div>
                 </div>
-                <Button className="mt-4" onClick={() => addNotification('info', 'Simulación técnica activada en consola.')}>
-                  Ejecutar Validación de Prueba
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+                
+                <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl space-y-2">
+                    <h5 className="text-xs font-bold text-blue-900 uppercase flex items-center gap-2">
+                      <FileSpreadsheet className="w-4 h-4" /> Notas de Simulación
+                    </h5>
+                    <p className="text-[11px] text-blue-800 leading-relaxed">
+                      Este par de máquinas tiene una <strong>regla espejo mandatoria</strong>. Si se realiza un balanceo por versión en ACH02, el proceso de tapas DEBE moverse automáticamente a PEF02 para mantener la sincronización JIT.
+                    </p>
+                  </div>
+                  <div className="p-4 bg-indigo-50 border border-indigo-100 rounded-xl space-y-2">
+                    <h5 className="text-xs font-bold text-indigo-900 uppercase flex items-center gap-2">
+                      <Users className="w-4 h-4" /> Capacidad de Prueba
+                    </h5>
+                    <p className="text-[11px] text-indigo-800 leading-relaxed">
+                      Con la configuración de <strong>2 turnos y 1 persona</strong>, la capacidad neta es de 14.49h. Utiliza esta tabla para verificar si la suma de los tiempos (columna verde) excede este límite.
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
       </Tabs>
     </div>
