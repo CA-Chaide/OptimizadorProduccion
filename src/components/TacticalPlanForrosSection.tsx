@@ -75,7 +75,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [fertExplosion, setFertExplosion] = useState('');
 
   // Horarios de jornada (Generales)
-  const [horarioDiurno, setHorarioDiurno] = useState("8.75");
+  const [horarioDiurno, setHorarioDiurno] = useState("8.625");
   const [horarioNocturno, setHorarioNocturno] = useState("0");
 
   // Filtros y Paginación para Tiempos
@@ -879,6 +879,36 @@ export const TacticalPlanForrosSection: React.FC = () => {
               <CardDescription>Define la cantidad de turnos y personal asignado por puesto de trabajo para el cálculo de capacidad real.</CardDescription>
             </CardHeader>
             <CardContent>
+              {/* Controles de Horario en la parte superior */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                <div className="p-4 border rounded-lg bg-gray-50 space-y-2 border-indigo-100">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Clock className="w-3.5 h-3.5 text-indigo-600" />
+                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Jornada Diurna (h)</label>
+                  </div>
+                  <Input 
+                    type="number" 
+                    step="0.01" 
+                    value={horarioDiurno} 
+                    onChange={(e) => setHorarioDiurno(e.target.value)}
+                    className="h-9 text-sm font-mono font-bold"
+                  />
+                </div>
+                <div className="p-4 border rounded-lg bg-gray-50 space-y-2 border-indigo-100">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Clock className="w-3.5 h-3.5 text-indigo-600" />
+                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Jornada Nocturna (h)</label>
+                  </div>
+                  <Input 
+                    type="number" 
+                    step="0.01" 
+                    value={horarioNocturno} 
+                    onChange={(e) => setHorarioNocturno(e.target.value)}
+                    className="h-9 text-sm font-mono font-bold"
+                  />
+                </div>
+              </div>
+
               <div className="rounded-md border bg-white overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="min-w-full divide-y divide-gray-200">
@@ -893,8 +923,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     <tbody className="divide-y divide-gray-200">
                       {uniqueMachines.map((m) => {
                         const config = workstationConfigs[m] || { machine: m, shifts: 1, people: 1 };
-                        const baseHours = 8.625;
-                        const totalNetHours = (baseHours * config.shifts * config.people * 0.84);
+                        const baseHoursPerShift = parseFloat(horarioDiurno) + parseFloat(horarioNocturno);
+                        const totalNetHours = (baseHoursPerShift * config.shifts * config.people * 0.84);
 
                         return (
                           <tr key={`config-${m}`} className="hover:bg-gray-50">
@@ -941,8 +971,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 <Repeat className="w-5 h-5 text-blue-600 mt-0.5" />
                 <div className="text-xs text-blue-800 space-y-1">
                   <p className="font-bold uppercase tracking-tight">Nota sobre el cálculo de capacidad:</p>
-                  <p>La capacidad neta se calcula multiplicando las horas de jornada base por el número de turnos y personas, aplicando un factor de eficiencia operativa del 84%.</p>
-                  <p className="font-semibold italic">Ejemplo: 2 Turnos con 1 Persona = 14.49 horas efectivas por día.</p>
+                  <p>La capacidad neta se calcula multiplicando las horas de jornada configuradas arriba por el número de turnos y personas, aplicando un factor de eficiencia operativa del 84%.</p>
+                  <p className="font-semibold italic">Ejemplo: Con jornada de 8.625h, 2 Turnos y 1 Persona = 14.49 horas efectivas por día.</p>
                 </div>
               </div>
             </CardContent>
@@ -1212,8 +1242,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
                         ) : productionSummary.length > 0 ? (
                           productionSummary.map((item, idx) => {
                             const config = workstationConfigs[item.machine] || { shifts: 1, people: 1 };
-                            const baseHours = 8.625;
-                            const plannedCapacityHours = (baseHours * config.shifts * config.people * 0.84);
+                            const baseHoursPerShift = parseFloat(horarioDiurno) + parseFloat(horarioNocturno);
+                            const plannedCapacityHours = (baseHoursPerShift * config.shifts * config.people * 0.84);
                             const totalTimeHours = item.totalTime / 60;
                             const utilizationPercent = plannedCapacityHours > 0 ? (totalTimeHours / plannedCapacityHours) * 100 : 0;
                             
