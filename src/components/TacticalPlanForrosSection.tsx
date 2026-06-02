@@ -20,7 +20,6 @@ import {
   Calendar as CalendarIconLucide,
   MapPin,
   ListTree,
-  Filter,
   AlertCircle,
   Layers,
   UserPlus,
@@ -713,30 +712,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
       <div className="flex items-center space-x-3">
         <CalendarClock className="w-6 h-6 text-gray-700" />
         <h2 className="text-2xl font-semibold text-gray-700">Programación Táctica Forros</h2>
-      </div>
-      
-      <div className="hidden lg:flex items-center gap-4 p-2.5 bg-blue-50 border border-blue-100 rounded-lg">
-        <div className="flex items-center gap-2 pr-4 border-r border-blue-200">
-          <Filter className="w-4 h-4 text-blue-600" />
-          <span className="text-xs font-bold text-blue-800 uppercase tracking-tight">Filtros Activos:</span>
-        </div>
-        <div className="flex items-center gap-3">
-          {Object.keys(externalFilters).length > 0 ? (
-            Object.entries(externalFilters).map(([key, vals]) => (
-              <div key={key} className="flex items-center gap-1.5">
-                <span className="text-[10px] font-bold text-blue-400 uppercase">{key}:</span>
-                <Badge variant="secondary" className="bg-white text-blue-700 text-[10px] py-0 border-blue-100">
-                  {vals.join(', ')}
-                </Badge>
-              </div>
-            ))
-          ) : (
-            <div className="flex items-center gap-2 text-amber-600">
-              <AlertCircle className="w-3.5 h-3.5" />
-              <span className="text-[10px] font-bold uppercase">Sin restricciones configuradas (mostrando todo)</span>
-            </div>
-          )}
-        </div>
       </div>
 
       <Tabs defaultValue="grupos" className="w-full">
