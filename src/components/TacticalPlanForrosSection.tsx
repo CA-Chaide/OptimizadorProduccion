@@ -402,6 +402,21 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return '';
   }, [tiemposProduccion, normalizeMaterialCode]);
 
+  const renderResolvedProvisionalCell = useCallback((column: string, order: any) => {
+    const upperCol = column.toUpperCase().trim();
+    if (upperCol === 'MAQUINA') {
+      const val = getResolvedMachine(order);
+      return val ? (
+        <span className="font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
+          {val}
+        </span>
+      ) : (
+        <span className="text-gray-400 italic">—</span>
+      );
+    }
+    return undefined;
+  }, [getResolvedMachine]);
+
   const calculateProductionTime = useCallback((material: string, quantity: number, order: any) => {
     if (!material) return '0.00';
     const normMaterial = normalizeMaterialCode(material);
