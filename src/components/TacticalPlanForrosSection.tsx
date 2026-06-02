@@ -76,8 +76,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [centroExplosion, setCentroExplosion] = useState('1000');
   const [fertExplosion, setFertExplosion] = useState('');
 
-  // Horarios de jornada
-  const [horarioDiurno, setHorarioDiurno] = useState("8.625");
+  // Horarios de jornada - AJUSTADO A 8H PARA LA PRUEBA
+  const [horarioDiurno, setHorarioDiurno] = useState("8");
   const [horarioNocturno, setHorarioNocturno] = useState("0");
 
   const hourOptions = useMemo(() => {
@@ -273,7 +273,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
   }, [forrosGruposList]);
 
-  // Sincronización de Turnos/Personal según las máquinas disponibles
   const uniqueMachines = useMemo(() => {
     const machinesSet = new Set<string>();
     tiemposProduccion.forEach(t => {
@@ -531,7 +530,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
       });
   }, [dailyOrders, getResolvedMachine]);
 
-  // PAGINACIÓN PARA PROGRAMACIÓN COMPONENTES
   const totalDailyPages = Math.max(1, Math.ceil(processedDailyOrders.length / dailyRowsPerPage));
   const paginatedDailyOrders = useMemo(() => {
     const start = (dailyPage - 1) * dailyRowsPerPage;
@@ -657,6 +655,56 @@ export const TacticalPlanForrosSection: React.FC = () => {
     });
   }, [dailyOrders, getResolvedMachine]);
 
+  const renderPruebasTableBody = () => {
+    if (isLoadingDaily) return <tr><td colSpan={dailyColumns.length} className="py-12 text-center"><Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" /></td></tr>;
+    if (pruebasOrders.length === 0) return <tr><td colSpan={dailyColumns.length} className="py-20 text-center text-gray-400 italic">No se encontraron órdenes para HR-ACH02 o HR-PEF02.</td></tr>;
+
+    const rows: React.ReactNode[] = [];
+    let currentGroupQuantity = 0;
+    let currentGroupTime = 0;
+
+    pruebasOrders.forEach((order, idx) => {
+      const machine = getResolvedMachine(order) || 'SIN MÁQUINA';
+      const quantity = Number(order['CANTIDAD'] || 0);
+      const timeVal = parseFloat(calculateProductionTime(order['MATERIAL'] || order['CodMaterial'] || '', quantity, order)) || 0;
+
+      currentGroupQuantity += quantity;
+      currentGroupTime += timeVal;
+
+      rows.push(
+        <tr key={`pruebas-row-${idx}`} className="hover:bg-indigo-50/20 transition-colors">
+          {dailyColumns.map((col, cIdx) => {
+            const upperCol = col.toUpperCase().trim();
+            if (col === 'TIEMPOS DE PRODUCCIÓN') return <td key={`pruebas-cell-${idx}-${col}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] font-mono font-bold text-emerald-700">{timeVal.toFixed(2)} min</td>;
+            if (upperCol === 'MAQUINA') return <td key={`pruebas-cell-${idx}-${col}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] font-mono font-bold text-indigo-700">{machine}</td>;
+            return <td key={`pruebas-cell-${idx}-${col}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] font-mono text-gray-600">{formatValueForDisplay(col, order[col])}</td>;
+          })}
+        </tr>
+      );
+
+      const nextOrder = pruebasOrders[idx + 1];
+      const nextMachine = nextOrder ? (getResolvedMachine(nextOrder) || 'SIN MÁQUINA') : null;
+
+      if (machine !== nextMachine) {
+        rows.push(
+          <tr key={`pruebas-subtotal-${machine}-${idx}`} className="bg-indigo-50 font-bold border-t-2 border-indigo-100">
+            {dailyColumns.map((col, cIdx) => {
+               const upperCol = col.toUpperCase().trim();
+               if (cIdx === 0) return <td key={`p-sub-${idx}-${cIdx}`} className="px-4 py-2 text-[10px] text-indigo-600 uppercase flex items-center gap-2 font-black"><Layers className="w-3 h-3" /> TOTAL {machine}</td>;
+               if (upperCol === 'CANTIDAD') return <td key={`p-sub-${idx}-${cIdx}`} className="px-4 py-2 text-left font-mono text-blue-800 text-[11px]">{currentGroupQuantity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>;
+               if (col === 'TIEMPOS DE PRODUCCIÓN') return <td key={`p-sub-${idx}-${cIdx}`} className="px-4 py-2 text-left font-mono text-emerald-800 text-[11px]">{currentGroupTime.toFixed(2)} min</td>;
+               return <td key={`p-sub-${idx}-${cIdx}`} className="px-4 py-2"></td>;
+            })}
+          </tr>
+        );
+        currentGroupQuantity = 0;
+        currentGroupTime = 0;
+      }
+    });
+
+    return rows;
+  };
+
   if (!isMounted) return null;
 
   return (
@@ -681,6 +729,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
           </TabsList>
         </div>
 
+        {/* ... (Otras pestañas omitidas por brevedad, mantienen el contenido anterior) ... */}
         <TabsContent value="grupos">
           <Card>
             <CardHeader><CardTitle>Grupos del Área</CardTitle></CardHeader>
@@ -1033,7 +1082,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   </div>
                   <div>
                     <CardTitle>Validación Técnica: HR-ACH02 y HR-PEF02</CardTitle>
-                    <CardDescription>Visualización específica de órdenes para el par de máquinas ACH02-PEF02.</CardDescription>
+                    <CardDescription>Simulación técnica agrupada por máquina (Carga vs Capacidad).</CardDescription>
                   </div>
                 </div>
               </CardHeader>
@@ -1041,7 +1090,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 <div className="rounded-xl border bg-white overflow-hidden shadow-sm">
                   <div className="overflow-x-auto max-h-[60vh]">
                     <table className="min-w-full divide-y divide-gray-200 border-collapse">
-                      <thead className="bg-gray-100/80 sticky top-0 z-10">
+                      <thead className="bg-gray-100/80 sticky top-0 z-10 shadow-sm">
                         <tr>
                           {dailyColumns.map((col, idx) => (
                             <th key={`pruebas-head-${col}-${idx}`} className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider whitespace-nowrap text-gray-600 border-b">
@@ -1050,48 +1099,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
                           ))}
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {isLoadingDaily ? (
-                          <tr><td colSpan={dailyColumns.length} className="py-12 text-center"><Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" /></td></tr>
-                        ) : pruebasOrders.length > 0 ? (
-                          pruebasOrders.map((order, idx) => {
-                            const machine = getResolvedMachine(order);
-                            const quantity = Number(order['CANTIDAD'] || 0);
-                            const timeVal = parseFloat(calculateProductionTime(order['MATERIAL'] || order['CodMaterial'] || '', quantity, order)) || 0;
-                            
-                            return (
-                              <tr key={`pruebas-row-${idx}`} className="hover:bg-indigo-50/20 transition-colors">
-                                {dailyColumns.map((col, cIdx) => {
-                                  const upperCol = col.toUpperCase().trim();
-                                  if (col === 'TIEMPOS DE PRODUCCIÓN') return <td key={`pruebas-cell-${idx}-${col}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] font-mono font-bold text-emerald-700">{timeVal.toFixed(2)} min</td>;
-                                  if (upperCol === 'MAQUINA') return <td key={`pruebas-cell-${idx}-${col}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] font-mono font-bold text-indigo-700">{machine}</td>;
-                                  return <td key={`pruebas-cell-${idx}-${col}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] font-mono text-gray-600">{formatValueForDisplay(col, order[col])}</td>;
-                                })}
-                              </tr>
-                            );
-                          })
-                        ) : (
-                          <tr>
-                            <td colSpan={dailyColumns.length} className="py-20 text-center text-gray-400 italic">
-                              No se encontraron órdenes para HR-ACH02 o HR-PEF02 en el periodo seleccionado.
-                            </td>
-                          </tr>
-                        )}
+                      <tbody className="divide-y divide-100 bg-white">
+                        {renderPruebasTableBody()}
                       </tbody>
-                      {pruebasOrders.length > 0 && (
-                        <tfoot className="bg-gray-50 border-t-2 border-gray-200">
-                          <tr>
-                            <td colSpan={4} className="px-4 py-3 text-[11px] font-bold text-gray-700">RESUMEN PRUEBA</td>
-                            <td className="px-4 py-3 text-left font-mono font-bold text-blue-800 text-[11px]">
-                              {pruebasOrders.reduce((sum, o) => sum + Number(o['CANTIDAD'] || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </td>
-                            <td className="px-4 py-3 text-left font-mono font-bold text-emerald-800 text-[11px]">
-                              {pruebasOrders.reduce((sum, o) => sum + parseFloat(calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || 0), o)), 0).toFixed(2)} min
-                            </td>
-                            <td colSpan={2}></td>
-                          </tr>
-                        </tfoot>
-                      )}
                     </table>
                   </div>
                 </div>
@@ -1102,15 +1112,15 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       <FileSpreadsheet className="w-4 h-4" /> Notas de Simulación
                     </h5>
                     <p className="text-[11px] text-blue-800 leading-relaxed">
-                      Este par de máquinas tiene una <strong>regla espejo mandatoria</strong>. Si se realiza un balanceo por versión en ACH02, el proceso de tapas DEBE moverse automáticamente a PEF02 para mantener la sincronización JIT.
+                      Este par de máquinas tiene una <strong>regla espejo mandatoria</strong>. Cualquier ajuste en la programación de acolchado debe verse reflejado en la confección de tapas.
                     </p>
                   </div>
                   <div className="p-4 bg-indigo-50 border border-indigo-100 rounded-xl space-y-2">
                     <h5 className="text-xs font-bold text-indigo-900 uppercase flex items-center gap-2">
-                      <Users className="w-4 h-4" /> Capacidad de Prueba
+                      <Users className="w-4 h-4" /> Capacidad de Prueba (8h)
                     </h5>
                     <p className="text-[11px] text-indigo-800 leading-relaxed">
-                      Con la configuración de <strong>2 turnos y 1 persona</strong>, la capacidad neta es de 14.49h. Utiliza esta tabla para verificar si la suma de los tiempos (columna verde) excede este límite.
+                      Para esta validación estamos considerando un turno de <strong>8 horas</strong>. Verifica en la pestaña "Resumen" que el tiempo total de carga no exceda el tiempo neto disponible calculado con este parámetro.
                     </p>
                   </div>
                 </div>
