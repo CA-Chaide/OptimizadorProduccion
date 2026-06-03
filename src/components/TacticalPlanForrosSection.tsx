@@ -306,21 +306,40 @@ export const TacticalPlanForrosSection: React.FC = () => {
     });
   }, [tiemposProduccion]);
 
+  // EFFECT: Empatar Personas / Turno con las restricciones configuradas
   useEffect(() => {
-    if (uniqueMachines.length > 0 && Object.keys(workstationConfigs).length === 0) {
+    if (uniqueMachines.length > 0 && Object.keys(workstationConfigs).length === 0 && forrosRestricciones.length > 0) {
       const initial: Record<string, WorkstationConfig> = {};
       uniqueMachines.forEach(m => {
-        initial[m] = { machine: m, shifts: 1, people: 1 };
+        // Normalizar nombre de máquina para búsqueda (HR-ACH02 -> HR_ACH02)
+        const mNorm = m.replace(/-/g, '_').toUpperCase();
+        
+        // Buscar restricción de personas: PERSONAS_HR_ACH02 o similar
+        const peopleRes = forrosRestricciones.find(r => {
+          const rName = r.nombre_restriccion.toUpperCase();
+          return rName.includes('PERSONAS') && rName.includes(mNorm);
+        });
+
+        // Buscar restricción de turnos: TURNOS_HR_ACH02 o similar
+        const shiftsRes = forrosRestricciones.find(r => {
+          const rName = r.nombre_restriccion.toUpperCase();
+          return rName.includes('TURNOS') && rName.includes(mNorm);
+        });
+
+        initial[m] = { 
+          machine: m, 
+          shifts: shiftsRes ? parseInt(shiftsRes.valor_restriccion) || 1 : 1, 
+          people: peopleRes ? parseInt(peopleRes.valor_restriccion) || 1 : 1 
+        };
       });
       setWorkstationConfigs(initial);
     }
-  }, [uniqueMachines, workstationConfigs]);
+  }, [uniqueMachines, forrosRestricciones, workstationConfigs]);
 
   const fetchDailyOrders = useCallback(async () => {
     if (Object.keys(externalFilters).length === 0 || !todayDate || !targetDate) return;
     setIsLoadingDaily(true);
     try {
-      // Corrected call to OrdenesProvisionalesPaginados
       const response = await serviciosService.OrdenesProvisionalesPaginados(1, 10000);
       if (response && response.data) {
         const filtered = response.data.filter((order: any) => {
@@ -846,7 +865,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
               <CardDescription>Define los rangos horarios de las jornadas y el personal asignado por puesto.</CardDescription>
             </CardHeader>
             <CardContent>
+              {/* PANEL DE HORARIOS DE PRUEBA */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 items-start">
+                {/* JORNADA DIURNA SELECTOR */}
                 <div className="p-4 border rounded-xl bg-white shadow-sm space-y-3 border-indigo-100">
                   <div className="flex items-center gap-2 mb-1">
                     <div className="bg-orange-100 p-1.5 rounded-md"><Clock className="w-4 h-4 text-orange-600" /></div>
@@ -864,6 +885,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   </Select>
                 </div>
 
+                {/* JORNADA NOCTURNA SELECTOR */}
                 <div className="p-4 border rounded-xl bg-white shadow-sm space-y-3 border-indigo-100">
                   <div className="flex items-center gap-2 mb-1">
                     <div className="bg-indigo-100 p-1.5 rounded-md"><Clock className="w-4 h-4 text-indigo-600" /></div>
@@ -881,6 +903,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   </Select>
                 </div>
 
+                {/* RECUADRO MORADO REDISEÑADO */}
                 <div className="p-5 border rounded-xl bg-indigo-600 shadow-md border-indigo-700 text-white flex flex-col justify-between min-h-[140px]">
                   <div className="flex items-center gap-2 pb-2 border-b border-white/10">
                     <div className="bg-white/20 p-1.5 rounded-md"><Calculator className="w-4 h-4 text-white" /></div>
@@ -911,6 +934,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 </div>
               </div>
 
+              {/* TABLA DE CONFIGURACIÓN POR PUESTO */}
               <div className="rounded-xl border bg-white overflow-hidden shadow-sm">
                 <div className="overflow-x-auto">
                   <table className="min-w-full divide-y divide-gray-200">
