@@ -47,6 +47,10 @@ const SECONDS_CART_SWAP = 60;
 
 const MATERIALES_EXCLUIDOS = ["30009844", "30007116"];
 
+// Reglas de Responsables por Centro (Solicitadas)
+const RESPONSABLES_QUITO = ["013", "036", "038", "039", "044"];
+const RESPONSABLES_GYE = ["002", "038", "039"];
+
 // Recursos Operativos por Planta (Configuración Maestra)
 const OPERATIVE_RESOURCES = {
   '1000': [
@@ -56,9 +60,9 @@ const OPERATIVE_RESOURCES = {
     { code: 'CNC01', name: 'CNC Giotto', t1: 10, t2: 8.5, p: 2.04, rend: 0.90 },
   ],
   '2000': [
-    { code: 'CR02', name: 'Fema', t1: 10, t2: 8.5, p: 1.27 + 0.77, rend: 0.70 },
-    { code: 'CR01', name: 'Carrusel 1 SCHMUZIGER', t1: 10, t2: 8.5, p: 1.27 + 0.77, rend: 0.70 },
-    { code: 'LA02', name: 'Repotenciado', t1: 10, t2: 8.5, p: 1.27 + 0.77, rend: 0.70 },
+    { code: 'CR02', name: 'Fema', t1: 10, t2: 8.5, p: 2.04, rend: 0.70 },
+    { code: 'CR01', name: 'Carrusel 1 SCHMUZIGER', t1: 10, t2: 8.5, p: 2.04, rend: 0.70 },
+    { code: 'LA02', name: 'Repotenciado', t1: 10, t2: 8.5, p: 2.04, rend: 0.70 },
   ]
 };
 
@@ -91,7 +95,11 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
   useEffect(() => { 
     setMounted(true); 
-    setViewDate(new Date());
+    const now = new Date();
+    setViewDate(now);
+    // Seleccionar por defecto la fecha de hoy en formato string YYYY-MM-DD
+    const todayStr = now.toISOString().split('T')[0];
+    setSelectedDate(todayStr);
     
     const initData = async () => {
       setIsLoading(true);
@@ -106,7 +114,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
         const [restrsRes, provsRes, timesRes] = await Promise.all([
           restriccionService.getAll(),
-          serviciosService.OrdenesProvisionalesPaginados(1, 20000),
+          serviciosService.OrdenesProvisionalesPaginados(1, 25000),
           serviciosService.getTiemposEnsamblado(1, 15000)
         ]);
 
@@ -173,27 +181,21 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   };
 
   const filterData = (data: any[], centro: string) => {
-    const relevantGroups = grupos.filter(g => String(g.centro).trim() === centro);
-    if (relevantGroups.length === 0) return [];
-
     return data.filter(o => {
-      const matStr = String(o.MATERIAL || o.CodMaterial || '').trim();
-      if (MATERIALES_EXCLUIDOS.some(ex => matStr.includes(ex))) return false;
-
       const itemCentro = String(o.Centro || o.CENTRO || o.centro || '').trim();
       if (itemCentro !== centro) return false;
+
+      const matStr = String(o.MATERIAL || o.CodMaterial || '').trim();
+      if (MATERIALES_EXCLUIDOS.some(ex => matStr.includes(ex))) return false;
 
       const itemAlmValue = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
       if (centro === '1000' && itemAlmValue !== '1006') return false;
       if (centro === '2000' && itemAlmValue !== '2006') return false;
 
+      // Filtro de Responsables según Centro (Solicitado)
       const itemResp = String(o.RESPCTRLPROD || o.RESPCONTROLPROD || o.RespCtrlProd || o.RespControlProd || '').trim();
-      const matchResp = relevantGroups.some(g => {
-        const respCodes = restricciones.filter(r => r.codigo_grupo === g.codigo_grupo && r.nombre_restriccion === 'RESPCTRLPROD')
-          .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim())).filter(v => v !== '');
-        return respCodes.length === 0 || respCodes.includes(itemResp);
-      });
-      if (!matchResp) return false;
+      const validResps = centro === '1000' ? RESPONSABLES_QUITO : RESPONSABLES_GYE;
+      if (!validResps.includes(itemResp)) return false;
 
       const itemDateFull = String(o.FECHAINICIO || o.FECHA || '').trim();
       const itemDate = itemDateFull.includes('T') ? itemDateFull.split('T')[0] : itemDateFull;
@@ -281,7 +283,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       
       // Carga por recurso: Filtrar órdenes cuya máquina de SAP coincida con el recurso técnico
       const plannedHrs = centerOrders.reduce((sum, o) => {
-        const maquina = String(o.MAQUINA || o.RECURSO || '').trim().toUpperCase();
+        const maquina = String(o.MAQUINA || o.RECURSO || o.Maquina || '').trim().toUpperCase();
         if (maquina === r.code.toUpperCase() || maquina.includes(r.code.toUpperCase())) {
           return sum + calculateOperativeHours(o);
         }
@@ -309,7 +311,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const isQuito = centerId === '1000';
     return (
       <div className="space-y-3">
-        {/* KPIs de Planta Consolidados - EVALUACIÓN DE OCUPACIÓN GLOBAL */}
+        {/* KPIs de Planta Consolidados */}
         <div className={cn("grid grid-cols-3 gap-2 p-2 rounded-xl border shadow-sm", isQuito ? "bg-green-50/20 border-green-100" : "bg-blue-50/20 border-blue-100")}>
            <div className="text-center px-1">
              <p className="text-[7px] font-black uppercase text-slate-400 tracking-widest mb-0.5">Capacidad (H)</p>
@@ -327,7 +329,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
            </div>
         </div>
 
-        {/* Detalle por Recurso Operativo - Vista Compacta */}
+        {/* Detalle por Recurso Operativo */}
         <div className="overflow-hidden border border-gray-100 rounded-xl bg-white shadow-sm">
           <div className={cn("text-[8px] font-black uppercase text-white py-0.5 text-center tracking-widest", isQuito ? "bg-[#059669]" : "bg-[#2563eb]")}>
             Recursos Planta {centerId}
@@ -399,7 +401,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         </TabsList>
 
         <TabsContent value="resumen" className="space-y-8 animate-in fade-in duration-300">
-          {/* Header de Fecha Sutil */}
           <div className="flex justify-between items-center bg-gray-50/50 p-2.5 rounded-2xl border border-gray-100">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-primary/10 rounded-xl text-primary"><CalendarIcon className="w-3.5 h-3.5" /></div>
@@ -449,13 +450,11 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             </Popover>
           </div>
 
-          {/* Monitores de Capacidad por Planta - Diseño Unificado y No Invasivo */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             <CapacityTab centerId="1000" metrics={planta1000Metrics} />
             <CapacityTab centerId="2000" metrics={planta2000Metrics} />
           </div>
 
-          {/* Resumen Técnico Consolidado - Vista Compacta */}
           <div className="space-y-3">
             <h3 className="text-[9px] font-bold uppercase flex items-center gap-2 px-1 tracking-widest text-left text-slate-500">
               <div className="w-1.5 h-1.5 rounded-full bg-slate-300" /> Auditoría Técnica - Carga Detallada (H)
@@ -562,12 +561,12 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <th className="px-3 py-4">ALM.</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-50 text-[10px] font-bold">
+                    <tbody className="divide-y divide-gray-100 text-[10px] font-bold">
                       {center.d.map((o, i) => {
                         const info = extractMaterialInfo(o);
                         const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
                         const tOperativo = calculateOperativeHours(o);
-                        const maquina = String(o.MAQUINA || o.RECURSO || '—').trim();
+                        const maquina = String(o.MAQUINA || o.RECURSO || o.Maquina || '—').trim();
 
                         return (
                           <tr key={i} className="hover:bg-gray-50/50 transition-colors">
