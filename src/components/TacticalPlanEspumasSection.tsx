@@ -48,18 +48,18 @@ const SECONDS_CART_SWAP = 60;
 
 const MATERIALES_EXCLUIDOS = ["30009844", "30007116"];
 
-// Recursos Operativos por Planta
+// Recursos Operativos por Planta (Configuración Maestra)
 const OPERATIVE_RESOURCES = {
   '1000': [
-    { code: 'CR04', name: 'Carrusel 4 FECKEN', t1: 10, t2: 8.5, p1: 1.27, p2: 0.77, mtto: 0, rendimiento: 0.90 },
-    { code: 'CR03', name: 'Carrusel 3 SCHMUZIGER C-700', t1: 10, t2: 8.5, p1: 1.27, p2: 0.77, mtto: 0, rendimiento: 0.90 },
-    { code: 'CR01', name: 'Carrusel 1 SCHMUZIGER', t1: 4, t2: 8.5, p1: 1.27, p2: 0.77, mtto: 0, rendimiento: 0.90 },
-    { code: 'CNC01', name: 'Cortadora CNC GIOTTO X #1', t1: 10, t2: 8.5, p1: 1.27, p2: 0.77, mtto: 0, rendimiento: 0.90 },
+    { code: 'CR04', name: 'Carrusel 4', t1: 10, t2: 8.5, p: 2.04, rend: 0.90 },
+    { code: 'CR03', name: 'Carrusel 3', t1: 10, t2: 8.5, p: 2.04, rend: 0.90 },
+    { code: 'CR01', name: 'Carrusel 1', t1: 4, t2: 8.5, p: 2.04, rend: 0.90 },
+    { code: 'CNC01', name: 'CNC Giotto', t1: 10, t2: 8.5, p: 2.04, rend: 0.90 },
   ],
   '2000': [
-    { code: 'CR02', name: 'Fema', t1: 10, t2: 8.5, p1: 1.27, p2: 0.77, mtto: 0, rendimiento: 0.70 },
-    { code: 'CR01', name: 'Carrusel 1 SCHMUZIGER', t1: 10, t2: 8.5, p1: 1.27, p2: 0.77, mtto: 0, rendimiento: 0.70 },
-    { code: 'LA02', name: 'Repotenciado', t1: 10, t2: 8.5, p1: 1.27, p2: 0.77, mtto: 0, rendimiento: 0.70 },
+    { code: 'CR02', name: 'Fema', t1: 10, t2: 8.5, p: 2.04, rend: 0.70 },
+    { code: 'CR01', name: 'Schmuziger', t1: 10, t2: 8.5, p: 2.04, rend: 0.70 },
+    { code: 'LA02', name: 'Repotenciado', t1: 10, t2: 8.5, p: 2.04, rend: 0.70 },
   ]
 };
 
@@ -267,60 +267,79 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   };
 
   const summaryData1000 = useMemo(() => calculateSummary(provC1000), [provC1000]);
-  const summaryData2000 = useMemo(() => calculateSummary(provC2000), [provC2000]);
 
-  // Monitor de Capacidad Dinámico
-  const CapacityMonitor = ({ centerId }: { centerId: '1000' | '2000' }) => {
+  // Auditoría unificada de planta (KPIs + Tablas)
+  const getPlantaMetrics = (centerId: '1000' | '2000') => {
     const resources = OPERATIVE_RESOURCES[centerId];
     const centerOrders = centerId === '1000' ? provC1000 : provC2000;
-    const rend = centerId === '1000' ? 0.90 : 0.70;
-
-    const plannedByResource = new Map<string, number>();
-    centerOrders.forEach(o => {
-      const machine = String(o.MAQUINA || o.RECURSO || 'SIN MÁQUINA').trim().toUpperCase();
-      const hours = calculateOperativeHours(o);
-      plannedByResource.set(machine, (plannedByResource.get(machine) || 0) + hours);
+    
+    // Calcular métricas por recurso individualmente
+    const resourceDetails = resources.map(r => {
+      const dispNeto = ((r.t1 + r.t2) - r.p) * r.rend;
+      
+      // Vínculo con órdenes: Sumar tiempo operativo filtrando por recurso
+      const plannedHrs = centerOrders.reduce((sum, o) => {
+        const maquina = String(o.MAQUINA || o.RECURSO || '').trim().toUpperCase();
+        // Búsqueda inteligente: ¿La máquina de SAP incluye el código técnico? (ej. "CR04")
+        if (maquina === r.code.toUpperCase() || maquina.includes(r.code.toUpperCase())) {
+          return sum + calculateOperativeHours(o);
+        }
+        return sum;
+      }, 0);
+      
+      return {
+        ...r,
+        dispNeto,
+        plannedHrs,
+        occupancy: dispNeto > 0 ? (plannedHrs / dispNeto) * 100 : 0
+      };
     });
 
-    const totalAvailableHours = resources.reduce((sum, r) => {
-      return sum + (((r.t1 + r.t2) - (r.p1 + r.p2)) * rend);
-    }, 0);
+    // Consolidar métricas globales (Suma exacta de la tabla)
+    const globalCap = resourceDetails.reduce((s, r) => s + r.dispNeto, 0);
+    const globalPlanned = resourceDetails.reduce((s, r) => s + r.plannedHrs, 0);
+    const globalOccupancy = globalCap > 0 ? (globalPlanned / globalCap) * 100 : 0;
 
-    const totalPlannedHours = Array.from(plannedByResource.values()).reduce((s, v) => s + v, 0);
-    const totalOccupancy = totalAvailableHours > 0 ? (totalPlannedHours / totalAvailableHours) * 100 : 0;
+    return { resourceDetails, globalCap, globalPlanned, globalOccupancy };
+  };
 
+  const planta1000Metrics = useMemo(() => getPlantaMetrics('1000'), [provC1000]);
+  const planta2000Metrics = useMemo(() => getPlantaMetrics('2000'), [provC2000]);
+
+  const CapacityTab = ({ centerId, metrics }: { centerId: string, metrics: any }) => {
+    const isQuito = centerId === '1000';
     return (
       <div className="space-y-4">
-        {/* Dashboard Consolidado de Planta */}
-        <div className={cn("grid grid-cols-3 gap-3 p-4 rounded-2xl border shadow-sm", centerId === '1000' ? "bg-green-50/50 border-green-100" : "bg-blue-50/50 border-blue-100")}>
-           <div className="text-center">
+        {/* KPIs de Planta Consolidados */}
+        <div className={cn("grid grid-cols-3 gap-3 p-3 rounded-2xl border shadow-sm", isQuito ? "bg-green-50/30 border-green-100" : "bg-blue-50/30 border-blue-100")}>
+           <div className="text-center px-2">
              <p className="text-[8px] font-black uppercase text-slate-400 tracking-widest mb-1">Capacidad Instalada (H)</p>
-             <p className="text-lg font-black text-slate-700 font-mono">{totalAvailableHours.toFixed(1)}</p>
+             <p className="text-lg font-black text-slate-700 font-mono">{metrics.globalCap.toFixed(1)}</p>
            </div>
-           <div className="text-center border-x border-gray-200">
+           <div className="text-center px-2 border-x border-slate-200">
              <p className="text-[8px] font-black uppercase text-slate-400 tracking-widest mb-1">Carga Planificada (H)</p>
-             <p className="text-lg font-black text-indigo-600 font-mono">{totalPlannedHours.toFixed(1)}</p>
+             <p className="text-lg font-black text-indigo-600 font-mono">{metrics.globalPlanned.toFixed(1)}</p>
            </div>
-           <div className="text-center">
+           <div className="text-center px-2">
              <p className="text-[8px] font-black uppercase text-slate-400 tracking-widest mb-1">Ocupación Global (%)</p>
-             <p className={cn("text-lg font-black font-mono", totalOccupancy > 100 ? "text-red-600" : "text-green-600")}>
-               {totalOccupancy.toFixed(1)}%
+             <p className={cn("text-lg font-black font-mono", metrics.globalOccupancy > 100 ? "text-red-600" : "text-green-600")}>
+               {metrics.globalOccupancy.toFixed(1)}%
              </p>
            </div>
         </div>
 
-        {/* Tabla de Detalle por Recurso */}
-        <div className="space-y-2">
-          <div className={cn("text-[9px] font-black uppercase text-white py-1 text-center tracking-widest rounded-t-xl", centerId === '1000' ? "bg-green-600" : "bg-blue-600")}>
+        {/* Detalle por Recurso Operativo */}
+        <div className="space-y-1">
+          <div className={cn("text-[9px] font-black uppercase text-white py-1 text-center tracking-widest rounded-t-xl", isQuito ? "bg-[#059669]" : "bg-[#2563eb]")}>
             Detalle de Recursos - Planta {centerId}
           </div>
           <Card className="rounded-none rounded-b-xl border border-gray-100 shadow-sm overflow-hidden bg-white">
             <div className="overflow-x-auto">
-              <table className="w-full border-collapse text-[10px] font-sans">
+              <table className="w-full border-collapse text-center font-sans text-[10px]">
                 <thead className="bg-gray-50 text-slate-400 border-b border-gray-100">
                   <tr className="uppercase font-black">
                     <th className="px-3 py-2 text-left border-r border-gray-100 w-24">Recurso</th>
-                    {resources.map(r => (
+                    {metrics.resourceDetails.map((r: any) => (
                       <th key={r.code} className="px-2 py-2 text-center border-r border-gray-100 min-w-[70px]">
                         <span className="text-slate-700">{r.code}</span>
                       </th>
@@ -329,31 +348,20 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-50 font-bold">
                   <tr className="hover:bg-gray-50/50">
-                    <td className="px-3 py-1.5 text-slate-500 border-r border-gray-100 uppercase text-[8px]">Disp. Neto [H]</td>
-                    {resources.map(r => {
-                      const avail = ((r.t1 + r.t2) - (r.p1 + r.p2)) * rend;
-                      return <td key={r.code} className="px-2 py-1.5 text-center border-r border-gray-100 font-mono text-slate-400">{avail.toFixed(2)}</td>
-                    })}
+                    <td className="px-3 py-1.5 text-slate-500 border-r border-gray-100 uppercase text-[8px] text-left">Disp. Neto [H]</td>
+                    {metrics.resourceDetails.map((r: any) => <td key={r.code} className="px-2 py-1.5 text-center border-r border-gray-100 font-mono text-slate-400">{r.dispNeto.toFixed(2)}</td>)}
                   </tr>
                   <tr className="bg-indigo-50/10">
-                    <td className="px-3 py-1.5 text-indigo-900 border-r border-gray-100 uppercase text-[8px]">Planificado [H]</td>
-                    {resources.map(r => {
-                      const planned = plannedByResource.get(r.code.toUpperCase()) || 0;
-                      return <td key={r.code} className="px-2 py-1.5 text-center border-r border-gray-100 font-mono font-black text-indigo-600">{planned.toFixed(2)}</td>
-                    })}
+                    <td className="px-3 py-1.5 text-indigo-900 border-r border-gray-100 uppercase text-[8px] text-left font-black">Planificado [H]</td>
+                    {metrics.resourceDetails.map((r: any) => <td key={r.code} className="px-2 py-1.5 text-center border-r border-gray-100 font-mono font-black text-indigo-600">{r.plannedHrs.toFixed(2)}</td>)}
                   </tr>
                   <tr className="bg-slate-900 text-white">
-                    <td className="px-3 py-1.5 text-white border-r border-white/5 uppercase text-[8px]">Ocupación %</td>
-                    {resources.map(r => {
-                      const avail = ((r.t1 + r.t2) - (r.p1 + r.p2)) * rend;
-                      const planned = plannedByResource.get(r.code.toUpperCase()) || 0;
-                      const pct = avail > 0 ? (planned / avail) * 100 : 0;
-                      return (
-                        <td key={r.code} className={cn("px-2 py-1.5 text-center border-r border-white/5 font-mono font-black", pct > 100 ? "text-red-400" : "text-green-400")}>
-                          {pct.toFixed(0)}%
-                        </td>
-                      );
-                    })}
+                    <td className="px-3 py-1.5 text-white border-r border-white/5 uppercase text-[8px] text-left">Ocupación %</td>
+                    {metrics.resourceDetails.map((r: any) => (
+                      <td key={r.code} className={cn("px-2 py-1.5 text-center border-r border-white/5 font-mono font-black", r.occupancy > 100 ? "text-red-400" : "text-green-400")}>
+                        {r.occupancy.toFixed(0)}%
+                      </td>
+                    ))}
                   </tr>
                 </tbody>
               </table>
@@ -373,7 +381,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <div className="p-2 bg-primary/10 rounded-xl"><Wind className="w-6 h-6 text-primary" /></div>
           <div>
             <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Plan Táctico Corte Espuma</h2>
-            <p className="text-xs text-gray-500 font-medium">Análisis de Capacidad Consolidada y Carga Diaria</p>
+            <p className="text-xs text-gray-500 font-medium">Análisis de Capacidad Unificada por Planta</p>
           </div>
         </div>
       </div>
@@ -383,7 +391,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           {[ 
             { v: 'resumen', l: 'Capacidad', i: LayoutDashboard }, 
             { v: 'grupos', l: 'Grupos', i: Users }, 
-            { v: 'restricciones', l: 'Reglas', i: Lock }, 
+            { v: 'restricciones', l: 'Parámetros', i: Lock }, 
             { v: 'ordenes', l: 'Provisionales', i: Package }, 
             { v: 'tiempos', l: 'Catálogo', i: Clock }
           ].map(tab => (
@@ -443,10 +451,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             </Popover>
           </div>
 
-          {/* Monitores de Capacidad Consolidados */}
+          {/* Monitores de Capacidad por Planta */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <CapacityMonitor centerId="1000" />
-            <CapacityMonitor centerId="2000" />
+            <CapacityTab centerId="1000" metrics={planta1000Metrics} />
+            <CapacityTab centerId="2000" metrics={planta2000Metrics} />
           </div>
 
           {/* Resumen Técnico Consolidado */}
