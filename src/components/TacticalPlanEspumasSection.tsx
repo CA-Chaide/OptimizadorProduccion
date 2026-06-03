@@ -132,7 +132,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const code = match ? match[1].slice(-8) : matStr.slice(-8);
     const desc = nameStr || matStr.replace(/^\d+\s*/, '') || '—';
 
-    const dimensions: any = { dens: '—', ancho: '—', largo: '—', esp: '—', apertura: '—', tipo: '—' };
+    const dimensions: any = { dens: '—', ancho: '—', largo: '—', esp: '—', tipo: '—' };
     const techPattern = catStr.match(/D(\d+)([a-zA-Z]+)/i);
     if (techPattern) {
       dimensions.dens = techPattern[1]; 
@@ -282,65 +282,84 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       plannedByResource.set(machine, (plannedByResource.get(machine) || 0) + hours);
     });
 
+    const totalAvailableHours = resources.reduce((sum, r) => {
+      return sum + (((r.t1 + r.t2) - (r.p1 + r.p2)) * rend);
+    }, 0);
+
+    const totalPlannedHours = Array.from(plannedByResource.values()).reduce((s, v) => s + v, 0);
+    const totalOccupancy = totalAvailableHours > 0 ? (totalPlannedHours / totalAvailableHours) * 100 : 0;
+
     return (
-      <div className="space-y-3">
-        <div className={cn("text-[10px] font-black uppercase text-white py-1.5 text-center tracking-widest rounded-t-xl shadow-sm", centerId === '1000' ? "bg-green-600" : "bg-blue-600")}>
-          Monitor de Capacidad - {centerId === '1000' ? 'QUITO' : 'GUAYAQUIL'}
+      <div className="space-y-4">
+        {/* Dashboard Consolidado de Planta */}
+        <div className={cn("grid grid-cols-3 gap-3 p-4 rounded-2xl border shadow-sm", centerId === '1000' ? "bg-green-50/50 border-green-100" : "bg-blue-50/50 border-blue-100")}>
+           <div className="text-center">
+             <p className="text-[8px] font-black uppercase text-slate-400 tracking-widest mb-1">Capacidad Instalada (H)</p>
+             <p className="text-lg font-black text-slate-700 font-mono">{totalAvailableHours.toFixed(1)}</p>
+           </div>
+           <div className="text-center border-x border-gray-200">
+             <p className="text-[8px] font-black uppercase text-slate-400 tracking-widest mb-1">Carga Planificada (H)</p>
+             <p className="text-lg font-black text-indigo-600 font-mono">{totalPlannedHours.toFixed(1)}</p>
+           </div>
+           <div className="text-center">
+             <p className="text-[8px] font-black uppercase text-slate-400 tracking-widest mb-1">Ocupación Global (%)</p>
+             <p className={cn("text-lg font-black font-mono", totalOccupancy > 100 ? "text-red-600" : "text-green-600")}>
+               {totalOccupancy.toFixed(1)}%
+             </p>
+           </div>
         </div>
-        <Card className="rounded-none rounded-b-xl border border-gray-100 shadow-sm overflow-hidden bg-white">
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-[10px] font-sans">
-              <thead className="bg-gray-50 text-slate-400 border-b border-gray-100">
-                <tr className="uppercase font-black">
-                  <th className="px-3 py-3 text-left border-r border-gray-100 w-32">Recurso</th>
-                  {resources.map(r => (
-                    <th key={r.code} className="px-2 py-3 text-center border-r border-gray-100 min-w-[80px]">
-                      <span className="text-slate-700">{r.code}</span>
-                      <div className="text-[8px] font-bold text-slate-300 mt-0.5">{r.name}</div>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50 font-bold">
-                <tr className="hover:bg-gray-50/50 transition-colors">
-                  <td className="px-3 py-2 text-slate-500 border-r border-gray-100 uppercase">T.1 / T.2 [H]</td>
-                  {resources.map(r => <td key={r.code} className="px-2 py-2 text-center border-r border-gray-100 font-mono text-slate-400">{r.t1} / {r.t2}</td>)}
-                </tr>
-                <tr className="hover:bg-gray-50/50">
-                  <td className="px-3 py-2 text-slate-500 border-r border-gray-100 uppercase">Paros [H]</td>
-                  {resources.map(r => <td key={r.code} className="px-2 py-2 text-center border-r border-gray-100 font-mono text-slate-300">{(r.p1 + r.p2).toFixed(2)}</td>)}
-                </tr>
-                <tr className="bg-blue-50/30 border-y border-blue-100">
-                  <td className="px-3 py-2 text-blue-900 border-r border-gray-100 uppercase font-black">Disponible Neto</td>
-                  {resources.map(r => {
-                    const avail = ((r.t1 + r.t2) - (r.p1 + r.p2)) * rend;
-                    return <td key={r.code} className="px-2 py-2 text-center border-r border-gray-100 font-mono text-blue-700 font-black">{avail.toFixed(2)}h</td>
-                  })}
-                </tr>
-                <tr className="bg-orange-50/20">
-                  <td className="px-3 py-3 text-orange-900 border-r border-gray-100 uppercase font-black">Planificado</td>
-                  {resources.map(r => {
-                    const planned = plannedByResource.get(r.code.toUpperCase()) || 0;
-                    return <td key={r.code} className="px-2 py-3 text-center border-r border-gray-100 font-mono font-black text-xs text-orange-700">{planned.toFixed(2)}h</td>
-                  })}
-                </tr>
-                <tr className="bg-slate-900 text-white">
-                  <td className="px-3 py-3 text-white border-r border-white/5 uppercase font-black">% Ocupación</td>
-                  {resources.map(r => {
-                    const avail = ((r.t1 + r.t2) - (r.p1 + r.p2)) * rend;
-                    const planned = plannedByResource.get(r.code.toUpperCase()) || 0;
-                    const pct = avail > 0 ? (planned / avail) * 100 : 0;
-                    return (
-                      <td key={r.code} className={cn("px-2 py-3 text-center border-r border-white/5 font-mono font-black text-xs", pct > 100 ? "text-red-400 animate-pulse" : "text-green-400")}>
-                        {pct.toFixed(1)}%
-                      </td>
-                    );
-                  })}
-                </tr>
-              </tbody>
-            </table>
+
+        {/* Tabla de Detalle por Recurso */}
+        <div className="space-y-2">
+          <div className={cn("text-[9px] font-black uppercase text-white py-1 text-center tracking-widest rounded-t-xl", centerId === '1000' ? "bg-green-600" : "bg-blue-600")}>
+            Detalle de Recursos - Planta {centerId}
           </div>
-        </Card>
+          <Card className="rounded-none rounded-b-xl border border-gray-100 shadow-sm overflow-hidden bg-white">
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-[10px] font-sans">
+                <thead className="bg-gray-50 text-slate-400 border-b border-gray-100">
+                  <tr className="uppercase font-black">
+                    <th className="px-3 py-2 text-left border-r border-gray-100 w-24">Recurso</th>
+                    {resources.map(r => (
+                      <th key={r.code} className="px-2 py-2 text-center border-r border-gray-100 min-w-[70px]">
+                        <span className="text-slate-700">{r.code}</span>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50 font-bold">
+                  <tr className="hover:bg-gray-50/50">
+                    <td className="px-3 py-1.5 text-slate-500 border-r border-gray-100 uppercase text-[8px]">Disp. Neto [H]</td>
+                    {resources.map(r => {
+                      const avail = ((r.t1 + r.t2) - (r.p1 + r.p2)) * rend;
+                      return <td key={r.code} className="px-2 py-1.5 text-center border-r border-gray-100 font-mono text-slate-400">{avail.toFixed(2)}</td>
+                    })}
+                  </tr>
+                  <tr className="bg-indigo-50/10">
+                    <td className="px-3 py-1.5 text-indigo-900 border-r border-gray-100 uppercase text-[8px]">Planificado [H]</td>
+                    {resources.map(r => {
+                      const planned = plannedByResource.get(r.code.toUpperCase()) || 0;
+                      return <td key={r.code} className="px-2 py-1.5 text-center border-r border-gray-100 font-mono font-black text-indigo-600">{planned.toFixed(2)}</td>
+                    })}
+                  </tr>
+                  <tr className="bg-slate-900 text-white">
+                    <td className="px-3 py-1.5 text-white border-r border-white/5 uppercase text-[8px]">Ocupación %</td>
+                    {resources.map(r => {
+                      const avail = ((r.t1 + r.t2) - (r.p1 + r.p2)) * rend;
+                      const planned = plannedByResource.get(r.code.toUpperCase()) || 0;
+                      const pct = avail > 0 ? (planned / avail) * 100 : 0;
+                      return (
+                        <td key={r.code} className={cn("px-2 py-1.5 text-center border-r border-white/5 font-mono font-black", pct > 100 ? "text-red-400" : "text-green-400")}>
+                          {pct.toFixed(0)}%
+                        </td>
+                      );
+                    })}
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </div>
       </div>
     );
   };
@@ -354,7 +373,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <div className="p-2 bg-primary/10 rounded-xl"><Wind className="w-6 h-6 text-primary" /></div>
           <div>
             <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Plan Táctico Corte Espuma</h2>
-            <p className="text-xs text-gray-500 font-medium">Análisis de Capacidad por Recurso y Programación Diaria</p>
+            <p className="text-xs text-gray-500 font-medium">Análisis de Capacidad Consolidada y Carga Diaria</p>
           </div>
         </div>
       </div>
@@ -424,7 +443,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             </Popover>
           </div>
 
-          {/* Monitores de Capacidad */}
+          {/* Monitores de Capacidad Consolidados */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             <CapacityMonitor centerId="1000" />
             <CapacityMonitor centerId="2000" />
@@ -433,7 +452,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           {/* Resumen Técnico Consolidado */}
           <div className="space-y-4">
             <h3 className="text-[11px] font-bold uppercase flex items-center gap-2 px-1 tracking-wider text-left text-slate-500">
-              <div className="w-2 h-2 rounded-full bg-slate-300" /> Auditoría Técnica - Detalle de Carga Planta 1000
+              <div className="w-2 h-2 rounded-full bg-slate-300" /> Auditoría Técnica - Carga Detallada (H)
             </h3>
             <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
               <div className="overflow-x-auto max-h-[400px]">
@@ -514,7 +533,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             { t: 'Planta 2000 - Guayaquil', d: provC2000, id: '2000' } 
           ].map((center, idx) => (
             <div key={idx} className="space-y-4">
-              <h3 className={cn("text-[11px] font-bold uppercase flex items-center gap-2 px-1 tracking-widest text-left", center.id === '1000' ? 'text-green-700' : 'text-indigo-700')}>
+              <h3 className={cn("text-[11px] font-bold uppercase flex items-center gap-2 px-1 text-left", center.id === '1000' ? 'text-green-700' : 'text-indigo-700')}>
                 <div className={cn("w-2 h-2 rounded-full", center.id === '1000' ? 'bg-green-600' : 'bg-indigo-600')} /> {center.t} ({center.d.length} registros)
               </h3>
               <Card className="rounded-2xl border border-gray-100 shadow-md overflow-hidden bg-white">
