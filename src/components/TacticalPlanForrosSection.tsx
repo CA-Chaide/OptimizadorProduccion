@@ -311,16 +311,13 @@ export const TacticalPlanForrosSection: React.FC = () => {
     if (uniqueMachines.length > 0 && Object.keys(workstationConfigs).length === 0 && forrosRestricciones.length > 0) {
       const initial: Record<string, WorkstationConfig> = {};
       uniqueMachines.forEach(m => {
-        // Normalizar nombre de máquina para búsqueda (HR-ACH02 -> HR_ACH02)
         const mNorm = m.replace(/-/g, '_').toUpperCase();
         
-        // Buscar restricción de personas: PERSONAS_HR_ACH02 o similar
         const peopleRes = forrosRestricciones.find(r => {
           const rName = r.nombre_restriccion.toUpperCase();
           return rName.includes('PERSONAS') && rName.includes(mNorm);
         });
 
-        // Buscar restricción de turnos: TURNOS_HR_ACH02 o similar
         const shiftsRes = forrosRestricciones.find(r => {
           const rName = r.nombre_restriccion.toUpperCase();
           return rName.includes('TURNOS') && rName.includes(mNorm);
@@ -867,7 +864,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
             <CardContent>
               {/* PANEL DE HORARIOS DE PRUEBA */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 items-start">
-                {/* JORNADA DIURNA SELECTOR */}
                 <div className="p-4 border rounded-xl bg-white shadow-sm space-y-3 border-indigo-100">
                   <div className="flex items-center gap-2 mb-1">
                     <div className="bg-orange-100 p-1.5 rounded-md"><Clock className="w-4 h-4 text-orange-600" /></div>
@@ -885,7 +881,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   </Select>
                 </div>
 
-                {/* JORNADA NOCTURNA SELECTOR */}
                 <div className="p-4 border rounded-xl bg-white shadow-sm space-y-3 border-indigo-100">
                   <div className="flex items-center gap-2 mb-1">
                     <div className="bg-indigo-100 p-1.5 rounded-md"><Clock className="w-4 h-4 text-indigo-600" /></div>
@@ -903,7 +898,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   </Select>
                 </div>
 
-                {/* RECUADRO MORADO REDISEÑADO */}
                 <div className="p-5 border rounded-xl bg-indigo-600 shadow-md border-indigo-700 text-white flex flex-col justify-between min-h-[140px]">
                   <div className="flex items-center gap-2 pb-2 border-b border-white/10">
                     <div className="bg-white/20 p-1.5 rounded-md"><Calculator className="w-4 h-4 text-white" /></div>
@@ -940,7 +934,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50/80">
                       <tr>
-                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Hoja de Ruta / Puesto</th>
+                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">HOJA DE RUTA</th>
+                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">PUESTO DE TRABAJO</th>
                         <th className="px-6 py-4 text-center text-xs font-bold text-gray-600 uppercase tracking-wider">Nº Turnos</th>
                         <th className="px-6 py-4 text-center text-xs font-bold text-gray-600 uppercase tracking-wider">Personas / Turno</th>
                         <th className="px-6 py-4 text-right text-xs font-bold text-blue-700 uppercase tracking-wider">Capacidad Neta (h)</th>
@@ -950,10 +945,17 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       {uniqueMachines.map((m) => {
                         const config = workstationConfigs[m] || { machine: m, shifts: 1, people: 1 };
                         const totalNetHours = totalHorasNetas * config.shifts * config.people;
+                        
+                        // Lookup descriptive name for PUESTO DE TRABAJO
+                        const workstationName = tiemposProduccion.find(t => {
+                          const values = Object.values(t).map(v => String(v || '').trim().toUpperCase());
+                          return values.includes(m.toUpperCase());
+                        })?.PuestoTrabajo || '—';
 
                         return (
                           <tr key={`config-${m}`} className="hover:bg-indigo-50/30 transition-colors">
                             <td className="px-6 py-4 whitespace-nowrap font-semibold text-gray-800">{m}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{workstationName}</td>
                             <td className="px-6 py-4 whitespace-nowrap text-center">
                               <Select value={config.shifts.toString()} onValueChange={(val) => handleWorkstationConfigChange(m, 'shifts', parseInt(val))}>
                                 <SelectTrigger className="w-28 h-9 mx-auto text-xs font-bold shadow-sm">
@@ -1010,7 +1012,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 <div className="overflow-auto max-h-[55vh]">
                   <table className="min-w-full divide-y divide-gray-200 border-collapse">
                     <thead className="bg-gray-50 border-b"><th className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase">Centro</th><th className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase">FERT Principal</th><th className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase">Desc. FERT</th><th className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase">Componente</th><th className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase">Desc. Componente</th><th className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase">Tipo</th><th className="px-4 py-3 text-right text-[10px] font-bold text-indigo-600 uppercase">Cant. Unitaria</th><th className="px-4 py-3 text-right text-[10px] font-bold text-indigo-600 uppercase">Cant. Acumulada</th></thead>
-                    <tbody className="divide-y divide-gray-200 bg-white">
+                    <tbody className="divide-y divide-200 bg-white">
                       {isLoadingExplosion ? <tr><td colSpan={8} className="py-24 text-center"><Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" /></td></tr> : explosionData.length > 0 ? explosionData.map((row, idx) => (<tr key={`bom-${idx}`} className="hover:bg-blue-50/40 transition-colors"><td className="px-4 py-2 text-[11px] font-mono">{row.CENTRO}</td><td className="px-4 py-2 text-[11px] font-bold">{row.FERT_PRINCIPAL}</td><td className="px-4 py-2 text-[11px] text-gray-600 max-w-40 truncate" title={row.DESCRIPCION_FERT}>{row.DESCRIPCION_FERT}</td><td className="px-4 py-2 text-[11px] font-bold text-blue-700">{row.COMPONENTE}</td><td className="px-4 py-2 text-[11px] text-gray-600 max-w-48 truncate" title={row.DESCRIPCION_COMPONENTE}>{row.DESCRIPCION_COMPONENTE}</td><td className="px-4 py-2 text-[11px] text-gray-400">{row.TipoMaterial}</td><td className="px-4 py-2 text-[11px] text-right font-mono font-bold text-indigo-700">{formatValueForDisplay('CANTIDAD', row.TOTAL_CANTIDAD_UNITARIA)}</td><td className="px-4 py-2 text-[11px] text-right font-mono font-bold text-indigo-400">{formatValueForDisplay('CANTIDAD', row.TOTAL_CANTIDAD_ACUMULADA)}</td></tr>)) : (<tr><td colSpan={8} className="py-20 text-center text-gray-400 italic bg-gray-50/50">Ingresa filtros y presiona consultar para ver la explosión de materiales.</td></tr>)}
                     </tbody>
                   </table>
@@ -1070,7 +1072,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   </table>
                 </div>
               </div>
-              <div className="flex items-center justify-between gap-4 py-3 px-4 bg-gray-50 rounded-lg border border-gray-200">
+              <div className="flex items-center justify-between gap-4 py-3 px-4 bg-gray-50 rounded-lg border border-gray-200 shadow-sm">
                 <div className="flex items-center gap-1">
                   <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(1)} disabled={dailyPage === 1}><ChevronsLeft className="h-4 w-4" /></Button>
                   <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(p => Math.max(1, p - 1))} disabled={dailyPage === 1}><ChevronLeft className="h-4 w-4" /></Button>
@@ -1160,7 +1162,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     <h5 className="text-xs font-bold text-indigo-900 uppercase flex items-center gap-2">
                       <Users className="w-4 h-4" /> Capacidad de Prueba
                     </h5>
-                    <p className="text-[11px] text-indigo-800 leading-relaxed">
+                    <p className="text-[11px] text-blue-800 leading-relaxed">
                       La capacidad neta actual configurada es de <strong>{totalHorasNetas.toFixed(3)}h</strong> por turno (eficiencia 84%). Verifica en la pestaña "Resumen" que el tiempo total de carga no exceda el tiempo neto disponible.
                     </p>
                   </div>
