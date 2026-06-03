@@ -77,8 +77,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
     { label: "19:00 - 05:30", value: "10.5" }
   ].sort((a, b) => parseFloat(a.value) - parseFloat(b.value));
 
-  const [jornadaDiurnaSel, setJornadaDiurnaSel] = useState("8.75");
-  const [jornadaNocturnaSel, setJornadaNocturnaSel] = useState("0");
+  const [jornadaDiurnaSel, setJornadaDiurnaSel] = useState("10.0");
+  const [jornadaNocturnaSel, setJornadaNocturnaSel] = useState("8.5");
 
   const horasNetasDiurnas = useMemo(() => parseFloat(jornadaDiurnaSel) * 0.84, [jornadaDiurnaSel]);
   const horasNetasNocturnas = useMemo(() => parseFloat(jornadaNocturnaSel) * 0.84, [jornadaNocturnaSel]);
@@ -270,7 +270,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     } catch (error) {
       console.error('Error al cargar tiempos de producción:', error);
     } finally {
-      setIsLoadingTiempos(false);
+      setIsLoading(false);
     }
   }, [forrosGruposList]);
 
@@ -448,33 +448,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return String(order[column] ?? '');
   }, [getResolvedMachine]);
 
-  const tiemposColumns = useMemo(() => {
-    const priority = ['CodMaterial', 'HojaRuta', 'VersionFabricacion_Manual', 'CONTADORHOJARUTA', 'Tiempo_Min', 'Linea', 'PuestoTrabajo', 'PuestoTrabajoLinea', 'centro', 'RespCtrlProd', 'NombRespControlProd', 'TamLoteMin', 'TamLoteMax', 'StockSeguridad', 'StockMaximo', 'ClaseAprovisionam'];
-    if (tiemposProduccion.length === 0) return priority;
-    const allKeys = Object.keys(tiemposProduccion[0]);
-    const toExclude = ['STOCKACTUAL', 'GRUPOSCOMPRAS', 'GRUPOCOMPRAS'];
-    const usedKeysUpper = new Set<string>();
-    const finalColumns: string[] = [];
-
-    priority.forEach(pCol => {
-      const pColUpper = pCol.toUpperCase().trim();
-      const match = allKeys.find(k => k.toUpperCase().trim() === pColUpper);
-      if (match && !usedKeysUpper.has(pColUpper)) {
-        finalColumns.push(match);
-        usedKeysUpper.add(pColUpper);
-      }
-    });
-
-    allKeys.forEach(k => {
-      const kUpper = k.toUpperCase().trim();
-      if (!usedKeysUpper.has(kUpper) && !toExclude.includes(kUpper)) {
-        finalColumns.push(k);
-        usedKeysUpper.add(kUpper);
-      }
-    });
-    
-    return finalColumns;
-  }, [tiemposProduccion]);
+  const totalTiemposPages = Math.max(1, Math.ceil(tiemposProduccion.length / tiemposRowsPerPage));
 
   const filteredTiempos = useMemo(() => {
     return tiemposProduccion.filter(item => {
@@ -490,8 +464,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     const start = (tiemposPage - 1) * tiemposRowsPerPage;
     return filteredTiempos.slice(start, start + tiemposRowsPerPage);
   }, [filteredTiempos, tiemposPage, tiemposRowsPerPage]);
-
-  const totalTiemposPages = Math.max(1, Math.ceil(filteredTiempos.length / tiemposRowsPerPage));
 
   const handleTiemposFilterChange = (column: string, value: string) => {
     setTiemposFilters(prev => ({ ...prev, [column]: value }));
@@ -704,6 +676,34 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return rows;
   };
 
+  const tiemposColumns = useMemo(() => {
+    const priority = ['CodMaterial', 'HojaRuta', 'VersionFabricacion_Manual', 'CONTADORHOJARUTA', 'Tiempo_Min', 'Linea', 'PuestoTrabajo', 'PuestoTrabajoLinea', 'centro', 'RespCtrlProd', 'NombRespControlProd', 'TamLoteMin', 'TamLoteMax', 'StockSeguridad', 'StockMaximo', 'ClaseAprovisionam'];
+    if (tiemposProduccion.length === 0) return priority;
+    const allKeys = Object.keys(tiemposProduccion[0]);
+    const toExclude = ['STOCKACTUAL', 'GRUPOSCOMPRAS', 'GRUPOCOMPRAS'];
+    const usedKeysUpper = new Set<string>();
+    const finalColumns: string[] = [];
+
+    priority.forEach(pCol => {
+      const pColUpper = pCol.toUpperCase().trim();
+      const match = allKeys.find(k => k.toUpperCase().trim() === pColUpper);
+      if (match && !usedKeysUpper.has(pColUpper)) {
+        finalColumns.push(match);
+        usedKeysUpper.add(pColUpper);
+      }
+    });
+
+    allKeys.forEach(k => {
+      const kUpper = k.toUpperCase().trim();
+      if (!usedKeysUpper.has(kUpper) && !toExclude.includes(kUpper)) {
+        finalColumns.push(k);
+        usedKeysUpper.add(kUpper);
+      }
+    });
+    
+    return finalColumns;
+  }, [tiemposProduccion]);
+
   if (!isMounted) return null;
 
   return (
@@ -849,7 +849,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 <div className="p-4 border rounded-xl bg-white shadow-sm space-y-3 border-indigo-100">
                   <div className="flex items-center gap-2 mb-1">
                     <div className="bg-orange-100 p-1.5 rounded-md"><Clock className="w-4 h-4 text-orange-600" /></div>
-                    <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wider">Jornada Diurna</label>
+                    <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wider">JORNADA DIURNA</label>
                   </div>
                   <Select value={jornadaDiurnaSel} onValueChange={setJornadaDiurnaSel}>
                     <SelectTrigger className="h-10 text-sm font-mono font-bold bg-gray-50">
@@ -866,7 +866,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 <div className="p-4 border rounded-xl bg-white shadow-sm space-y-3 border-indigo-100">
                   <div className="flex items-center gap-2 mb-1">
                     <div className="bg-indigo-100 p-1.5 rounded-md"><Clock className="w-4 h-4 text-indigo-600" /></div>
-                    <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wider">Jornada Nocturna</label>
+                    <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wider">JORNADA NOCTURNA</label>
                   </div>
                   <Select value={jornadaNocturnaSel} onValueChange={setJornadaNocturnaSel}>
                     <SelectTrigger className="h-10 text-sm font-mono font-bold bg-gray-50">
@@ -880,23 +880,31 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   </Select>
                 </div>
 
-                <div className="p-4 border rounded-xl bg-indigo-600 shadow-md space-y-3 border-indigo-700 text-white">
-                  <div className="flex items-center gap-2 mb-1">
+                <div className="p-5 border rounded-xl bg-indigo-600 shadow-md border-indigo-700 text-white flex flex-col justify-between min-h-[140px]">
+                  <div className="flex items-center gap-2 pb-2 border-b border-white/10">
                     <div className="bg-white/20 p-1.5 rounded-md"><Calculator className="w-4 h-4 text-white" /></div>
-                    <label className="text-[11px] font-bold text-indigo-100 uppercase tracking-wider">Horas Netas por Turno (84%)</label>
+                    <label className="text-[11px] font-bold text-indigo-100 uppercase tracking-wider">HORAS NETAS POR TURNO (84%)</label>
                   </div>
-                  <div className="space-y-1">
-                    <div className="flex justify-between items-center text-xs opacity-80">
-                      <span>Diurna ({parseFloat(jornadaDiurnaSel)}h):</span>
-                      <span className="font-mono">{horasNetasDiurnas.toFixed(3)}h</span>
+                  
+                  <div className="py-2 space-y-1">
+                    <div className="flex justify-between items-center text-[11px] text-indigo-100/70">
+                      <span>DIURNA ({parseFloat(jornadaDiurnaSel)}h):</span>
+                      <span className="font-mono font-bold">{horasNetasDiurnas.toFixed(3)}h</span>
                     </div>
-                    <div className="flex justify-between items-center text-xs opacity-80">
-                      <span>Nocturna ({parseFloat(jornadaNocturnaSel)}h):</span>
-                      <span className="font-mono">{horasNetasNocturnas.toFixed(3)}h</span>
+                    <div className="flex justify-between items-center text-[11px] text-indigo-100/70">
+                      <span>NOCTURNA ({parseFloat(jornadaNocturnaSel)}h):</span>
+                      <span className="font-mono font-bold">{horasNetasNocturnas.toFixed(3)}h</span>
                     </div>
-                    <div className="pt-1 border-t border-white/20 flex justify-between items-baseline mt-1">
-                      <span className="text-[10px] font-black uppercase tracking-tighter">Total Disponible:</span>
-                      <span className="text-2xl font-black font-mono">{totalHorasNetas.toFixed(3)} h</span>
+                  </div>
+
+                  <div className="pt-2 border-t border-white/20 flex items-center justify-between">
+                    <div className="flex flex-col">
+                      <span className="text-[9px] font-black uppercase tracking-tighter text-indigo-200">TOTAL DISPONIBLE:</span>
+                      <span className="text-[10px] text-white/50 italic leading-none">(NETO X TURNO)</span>
+                    </div>
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-3xl font-black font-mono tracking-tighter tabular-nums drop-shadow-sm">{totalHorasNetas.toFixed(3)}</span>
+                      <span className="text-sm font-bold opacity-60">h</span>
                     </div>
                   </div>
                 </div>
