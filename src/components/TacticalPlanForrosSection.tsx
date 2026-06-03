@@ -64,6 +64,26 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [isLoadingTiempos, setIsLoadingTiempos] = useState(false);
   const [isLoadingDaily, setIsLoadingDaily] = useState(false);
 
+  // CONFIGURACIÓN DE JORNADAS
+  const DIURNA_OPTIONS = [
+    { label: "07:00 - 15:45", value: "8.75" },
+    { label: "07:00 - 17:00", value: "10.0" },
+    { label: "07:00 - 18:00", value: "11.0" }
+  ].sort((a, b) => parseFloat(a.value) - parseFloat(b.value));
+
+  const NOCTURNA_OPTIONS = [
+    { label: "Sin Jornada Nocturna", value: "0" },
+    { label: "21:00 - 05:30", value: "8.5" },
+    { label: "19:00 - 05:30", value: "10.5" }
+  ].sort((a, b) => parseFloat(a.value) - parseFloat(b.value));
+
+  const [jornadaDiurnaSel, setJornadaDiurnaSel] = useState("8.75");
+  const [jornadaNocturnaSel, setJornadaNocturnaSel] = useState("0");
+
+  const horasNetasDiurnas = useMemo(() => parseFloat(jornadaDiurnaSel) * 0.84, [jornadaDiurnaSel]);
+  const horasNetasNocturnas = useMemo(() => parseFloat(jornadaNocturnaSel) * 0.84, [jornadaNocturnaSel]);
+  const totalHorasNetas = useMemo(() => horasNetasDiurnas + horasNetasNocturnas, [horasNetasDiurnas, horasNetasNocturnas]);
+
   // PERSONAL & TURNOS
   const [workstationConfigs, setWorkstationConfigs] = useState<Record<string, WorkstationConfig>>({});
 
@@ -75,25 +95,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [explosionRowsPerPage] = useState(20);
   const [centroExplosion, setCentroExplosion] = useState('1000');
   const [fertExplosion, setFertExplosion] = useState('');
-
-  // Horarios de jornada - AJUSTADO A 8H PARA LA PRUEBA
-  const [horarioDiurno, setHorarioDiurno] = useState("8");
-  const [horarioNocturno, setHorarioNocturno] = useState("0");
-
-  const hourOptions = useMemo(() => {
-    const options = [];
-    for (let i = 0; i <= 12; i += 0.25) {
-      options.push({ value: i.toString(), label: `${i} h` });
-    }
-    if (!options.find(o => o.value === "8.625")) {
-      options.push({ value: "8.625", label: "8.625 h (8h 37m)" });
-    }
-    return options.sort((a, b) => parseFloat(a.value) - parseFloat(b.value));
-  }, []);
-
-  const totalHorasPorTurno = useMemo(() => {
-    return parseFloat(horarioDiurno) + parseFloat(horarioNocturno);
-  }, [horarioDiurno, horarioNocturno]);
 
   // Filtros y Paginación
   const [tiemposFilters, setTiemposFilters] = useState<Record<string, string>>({});
@@ -286,17 +287,15 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return machinesArray.sort((a, b) => {
       const getParts = (name: string) => {
         const match = name.match(/^HR-(ACH|PEF)(\d+)$/);
-        if (match) return { type: match[1], suffix: match[2], isMain: true };
-        return { type: name, suffix: '', isMain: false };
+        if (match) return { type: match[1], suffix: parseInt(match[2]), isMain: true };
+        return { type: name, suffix: 0, isMain: false };
       };
 
       const partA = getParts(a);
       const partB = getParts(b);
 
       if (partA.isMain && partB.isMain) {
-        if (partA.suffix !== partB.suffix) {
-          return partA.suffix.localeCompare(partB.suffix, undefined, { numeric: true });
-        }
+        if (partA.suffix !== partB.suffix) return partA.suffix - partB.suffix;
         return partA.type.localeCompare(partB.type); 
       }
 
@@ -321,7 +320,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     if (Object.keys(externalFilters).length === 0 || !todayDate || !targetDate) return;
     setIsLoadingDaily(true);
     try {
-      const response = await serviciosService.OrdenesProvisionalesPaginados(1, 10000);
+      const response = await serviciosService.OrdenesProvisionalesPaginadas(1, 10000);
       if (response && response.data) {
         const filtered = response.data.filter((order: any) => {
           const matchesExternal = Object.entries(externalFilters).every(([key, allowed]) => {
@@ -729,7 +728,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
           </TabsList>
         </div>
 
-        {/* ... (Otras pestañas omitidas por brevedad, mantienen el contenido anterior) ... */}
         <TabsContent value="grupos">
           <Card>
             <CardHeader><CardTitle>Grupos del Área</CardTitle></CardHeader>
@@ -844,21 +842,21 @@ export const TacticalPlanForrosSection: React.FC = () => {
           <Card>
             <CardHeader>
               <CardTitle>Configuración de Capacidad: Distribución del personal</CardTitle>
-              <CardDescription>Define la jornada de trabajo, turnos y personal asignado por puesto.</CardDescription>
+              <CardDescription>Define los rangos horarios de las jornadas y el personal asignado por puesto.</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 items-start">
                 <div className="p-4 border rounded-xl bg-white shadow-sm space-y-3 border-indigo-100">
                   <div className="flex items-center gap-2 mb-1">
                     <div className="bg-orange-100 p-1.5 rounded-md"><Clock className="w-4 h-4 text-orange-600" /></div>
-                    <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wider">Jornada Diurna (h)</label>
+                    <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wider">Jornada Diurna</label>
                   </div>
-                  <Select value={horarioDiurno} onValueChange={setHorarioDiurno}>
+                  <Select value={jornadaDiurnaSel} onValueChange={setJornadaDiurnaSel}>
                     <SelectTrigger className="h-10 text-sm font-mono font-bold bg-gray-50">
-                      <SelectValue placeholder="Seleccione horas" />
+                      <SelectValue placeholder="Seleccione horario" />
                     </SelectTrigger>
                     <SelectContent>
-                      {hourOptions.map(opt => (
+                      {DIURNA_OPTIONS.map(opt => (
                         <SelectItem key={`d-${opt.value}`} value={opt.value}>{opt.label}</SelectItem>
                       ))}
                     </SelectContent>
@@ -868,14 +866,14 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 <div className="p-4 border rounded-xl bg-white shadow-sm space-y-3 border-indigo-100">
                   <div className="flex items-center gap-2 mb-1">
                     <div className="bg-indigo-100 p-1.5 rounded-md"><Clock className="w-4 h-4 text-indigo-600" /></div>
-                    <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wider">Jornada Nocturna (h)</label>
+                    <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wider">Jornada Nocturna</label>
                   </div>
-                  <Select value={horarioNocturno} onValueChange={setHorarioNocturno}>
+                  <Select value={jornadaNocturnaSel} onValueChange={setJornadaNocturnaSel}>
                     <SelectTrigger className="h-10 text-sm font-mono font-bold bg-gray-50">
-                      <SelectValue placeholder="Seleccione horas" />
+                      <SelectValue placeholder="Seleccione horario" />
                     </SelectTrigger>
                     <SelectContent>
-                      {hourOptions.map(opt => (
+                      {NOCTURNA_OPTIONS.map(opt => (
                         <SelectItem key={`n-${opt.value}`} value={opt.value}>{opt.label}</SelectItem>
                       ))}
                     </SelectContent>
@@ -885,11 +883,21 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 <div className="p-4 border rounded-xl bg-indigo-600 shadow-md space-y-3 border-indigo-700 text-white">
                   <div className="flex items-center gap-2 mb-1">
                     <div className="bg-white/20 p-1.5 rounded-md"><Calculator className="w-4 h-4 text-white" /></div>
-                    <label className="text-[11px] font-bold text-indigo-100 uppercase tracking-wider">Total Horas por Turno</label>
+                    <label className="text-[11px] font-bold text-indigo-100 uppercase tracking-wider">Horas Netas por Turno (84%)</label>
                   </div>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-3xl font-black font-mono">{totalHorasPorTurno.toFixed(3)}</span>
-                    <span className="text-xs font-bold text-indigo-200 uppercase">Horas / Turno</span>
+                  <div className="space-y-1">
+                    <div className="flex justify-between items-center text-xs opacity-80">
+                      <span>Diurna ({parseFloat(jornadaDiurnaSel)}h):</span>
+                      <span className="font-mono">{horasNetasDiurnas.toFixed(3)}h</span>
+                    </div>
+                    <div className="flex justify-between items-center text-xs opacity-80">
+                      <span>Nocturna ({parseFloat(jornadaNocturnaSel)}h):</span>
+                      <span className="font-mono">{horasNetasNocturnas.toFixed(3)}h</span>
+                    </div>
+                    <div className="pt-1 border-t border-white/20 flex justify-between items-baseline mt-1">
+                      <span className="text-[10px] font-black uppercase tracking-tighter">Total Disponible:</span>
+                      <span className="text-2xl font-black font-mono">{totalHorasNetas.toFixed(3)} h</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -908,7 +916,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     <tbody className="divide-y divide-100">
                       {uniqueMachines.map((m) => {
                         const config = workstationConfigs[m] || { machine: m, shifts: 1, people: 1 };
-                        const totalNetHours = (totalHorasPorTurno * config.shifts * config.people * 0.84);
+                        const totalNetHours = totalHorasNetas * config.shifts * config.people;
 
                         return (
                           <tr key={`config-${m}`} className="hover:bg-indigo-50/30 transition-colors">
@@ -944,8 +952,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 <Repeat className="w-5 h-5 text-indigo-600 mt-0.5" />
                 <div className="text-[11px] text-indigo-900 leading-relaxed">
                   <p className="font-black uppercase tracking-tight mb-1">Algoritmo de capacidad:</p>
-                  <p>Capacidad Neta = <span className="font-bold">({totalHorasPorTurno.toFixed(3)}h)</span> × <span className="font-bold">Turnos</span> × <span className="font-bold">Personas</span> × <span className="font-bold">84% (Eficiencia)</span>.</p>
-                  <p className="mt-1 italic opacity-80">Cualquier cambio en la jornada superior recalculará instantáneamente toda la malla operativa.</p>
+                  <p>Capacidad Neta = <span className="font-bold">(Σ Horas Raw × 84%)</span> × <span className="font-bold">Turnos</span> × <span className="font-bold">Personas</span>.</p>
+                  <p className="mt-1 italic opacity-80">El factor de eficiencia del 84% ya está aplicado en el recuadro superior morado y en la tabla de resultados.</p>
                 </div>
               </div>
             </CardContent>
@@ -1059,7 +1067,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     <tbody className="divide-y divide-gray-200 bg-white">
                       {isLoadingDaily ? <tr><td colSpan={7} className="py-12 text-center"><Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" /></td></tr> : productionSummary.length > 0 ? productionSummary.map((item, idx) => {
                           const config = workstationConfigs[item.machine] || { machine: item.machine, shifts: 1, people: 1 };
-                          const plannedCapacityHours = (totalHorasPorTurno * config.shifts * config.people * 0.84);
+                          const plannedCapacityHours = (totalHorasNetas * config.shifts * config.people);
                           const totalTimeHours = item.totalTime / 60;
                           const utilizationPercent = plannedCapacityHours > 0 ? (totalTimeHours / plannedCapacityHours) * 100 : 0;
                           return (<tr key={idx} className="hover:bg-gray-50 transition-colors"><td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-700">{item.machine}</td><td className="px-6 py-4 whitespace-nowrap text-sm text-right font-mono">{item.count}</td><td className="px-6 py-4 whitespace-nowrap text-sm text-right font-bold text-blue-700 font-mono">{item.quantity.toLocaleString()}</td><td className="px-6 py-4 whitespace-nowrap text-sm text-right font-bold text-emerald-700 font-mono">{item.totalTime.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td><td className="px-6 py-4 whitespace-nowrap text-sm text-right font-bold text-indigo-600 font-mono">{totalTimeHours.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td><td className="px-6 py-4 whitespace-nowrap text-sm text-right font-mono text-gray-400">{plannedCapacityHours.toFixed(2)} h</td><td className="px-6 py-4 whitespace-nowrap text-sm text-right"><Badge className={cn("font-mono font-bold", utilizationPercent > 100 ? "bg-red-100 text-red-700 hover:bg-red-200" : utilizationPercent > 80 ? "bg-amber-100 text-amber-700 hover:bg-amber-200" : "bg-green-100 text-green-700 hover:bg-green-200")}>{utilizationPercent.toFixed(1)}%</Badge></td></tr>);
@@ -1117,10 +1125,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   </div>
                   <div className="p-4 bg-indigo-50 border border-indigo-100 rounded-xl space-y-2">
                     <h5 className="text-xs font-bold text-indigo-900 uppercase flex items-center gap-2">
-                      <Users className="w-4 h-4" /> Capacidad de Prueba (8h)
+                      <Users className="w-4 h-4" /> Capacidad de Prueba
                     </h5>
                     <p className="text-[11px] text-indigo-800 leading-relaxed">
-                      Para esta validación estamos considerando un turno de <strong>8 horas</strong>. Verifica en la pestaña "Resumen" que el tiempo total de carga no exceda el tiempo neto disponible calculado con este parámetro.
+                      La capacidad neta actual configurada es de <strong>{totalHorasNetas.toFixed(3)}h</strong> por turno (eficiencia 84%). Verifica en la pestaña "Resumen" que el tiempo total de carga no exceda el tiempo neto disponible.
                     </p>
                   </div>
                 </div>
