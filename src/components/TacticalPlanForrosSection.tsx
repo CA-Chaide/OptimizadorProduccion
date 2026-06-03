@@ -66,15 +66,15 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   // CONFIGURACIÓN DE JORNADAS
   const DIURNA_OPTIONS = [
-    { label: "07:00 - 15:45", value: "8.75" },
-    { label: "07:00 - 17:00", value: "10.0" },
-    { label: "07:00 - 18:00", value: "11.0" }
+    { label: "07:00 - 15:45 (8.75h)", value: "8.75" },
+    { label: "07:00 - 17:00 (10.0h)", value: "10.0" },
+    { label: "07:00 - 18:00 (11.0h)", value: "11.0" }
   ].sort((a, b) => parseFloat(a.value) - parseFloat(b.value));
 
   const NOCTURNA_OPTIONS = [
     { label: "Sin Jornada Nocturna", value: "0" },
-    { label: "21:00 - 05:30", value: "8.5" },
-    { label: "19:00 - 05:30", value: "10.5" }
+    { label: "21:00 - 05:30 (8.5h)", value: "8.5" },
+    { label: "19:00 - 05:30 (10.5h)", value: "10.5" }
   ].sort((a, b) => parseFloat(a.value) - parseFloat(b.value));
 
   const [jornadaDiurnaSel, setJornadaDiurnaSel] = useState("10.0");
@@ -270,7 +270,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     } catch (error) {
       console.error('Error al cargar tiempos de producción:', error);
     } finally {
-      setIsLoading(false);
+      setIsLoadingTiempos(false);
     }
   }, [forrosGruposList]);
 
@@ -320,7 +320,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
     if (Object.keys(externalFilters).length === 0 || !todayDate || !targetDate) return;
     setIsLoadingDaily(true);
     try {
-      const response = await serviciosService.OrdenesProvisionalesPaginadas(1, 10000);
+      // Corrected call to OrdenesProvisionalesPaginados
+      const response = await serviciosService.OrdenesProvisionalesPaginados(1, 10000);
       if (response && response.data) {
         const filtered = response.data.filter((order: any) => {
           const matchesExternal = Object.entries(externalFilters).every(([key, allowed]) => {
