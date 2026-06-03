@@ -56,9 +56,9 @@ const OPERATIVE_RESOURCES = {
     { code: 'CNC01', name: 'CNC Giotto', t1: 10, t2: 8.5, p: 2.04, rend: 0.90 },
   ],
   '2000': [
-    { code: 'CR02', name: 'Fema', t1: 10, t2: 8.5, p: 2.04, rend: 0.70 },
-    { code: 'CR01', name: 'Carrusel 1 SCHMUZIGER', t1: 10, t2: 8.5, p: 2.04, rend: 0.70 },
-    { code: 'LA02', name: 'Repotenciado', t1: 10, t2: 8.5, p: 2.04, rend: 0.70 },
+    { code: 'CR02', name: 'Fema', t1: 10, t2: 8.5, p: 1.27 + 0.77, rend: 0.70 },
+    { code: 'CR01', name: 'Carrusel 1 SCHMUZIGER', t1: 10, t2: 8.5, p: 1.27 + 0.77, rend: 0.70 },
+    { code: 'LA02', name: 'Repotenciado', t1: 10, t2: 8.5, p: 1.27 + 0.77, rend: 0.70 },
   ]
 };
 
@@ -272,11 +272,14 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const resources = OPERATIVE_RESOURCES[centerId];
     const centerOrders = centerId === '1000' ? provC1000 : provC2000;
     
-    // Calcular métricas por recurso individualmente
+    // TIEMPO PLANIFICADO TOTAL: Sumatoria de TODAS las órdenes de este centro en la fecha escogida
+    const globalPlanned = centerOrders.reduce((sum, o) => sum + calculateOperativeHours(o), 0);
+
+    // Detalle por Recurso Operativo
     const resourceDetails = resources.map(r => {
       const dispNeto = ((r.t1 + r.t2) - r.p) * r.rend;
       
-      // Vínculo con órdenes: Sumar tiempo operativo filtrando por recurso
+      // Carga por recurso: Filtrar órdenes cuya máquina de SAP coincida con el recurso técnico
       const plannedHrs = centerOrders.reduce((sum, o) => {
         const maquina = String(o.MAQUINA || o.RECURSO || '').trim().toUpperCase();
         if (maquina === r.code.toUpperCase() || maquina.includes(r.code.toUpperCase())) {
@@ -294,7 +297,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     });
 
     const globalCap = resourceDetails.reduce((s, r) => s + r.dispNeto, 0);
-    const globalPlanned = resourceDetails.reduce((s, r) => s + r.plannedHrs, 0);
     const globalOccupancy = globalCap > 0 ? (globalPlanned / globalCap) * 100 : 0;
 
     return { resourceDetails, globalCap, globalPlanned, globalOccupancy };
@@ -307,7 +309,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const isQuito = centerId === '1000';
     return (
       <div className="space-y-3">
-        {/* KPIs de Planta Consolidados */}
+        {/* KPIs de Planta Consolidados - EVALUACIÓN DE OCUPACIÓN GLOBAL */}
         <div className={cn("grid grid-cols-3 gap-2 p-2 rounded-xl border shadow-sm", isQuito ? "bg-green-50/20 border-green-100" : "bg-blue-50/20 border-blue-100")}>
            <div className="text-center px-1">
              <p className="text-[7px] font-black uppercase text-slate-400 tracking-widest mb-0.5">Capacidad (H)</p>
@@ -610,7 +612,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                           <th className="px-4 py-4">Inventario / Seguridad</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-gray-50 text-[11px] font-bold">
+                      <tbody className="divide-y divide-gray-100 text-[11px] font-bold">
                         {center.d.length === 0 ? (
                           <tr><td colSpan={5} className="py-12 text-center text-gray-300 font-bold uppercase tracking-widest opacity-30">No hay registros cargados</td></tr>
                         ) : (
