@@ -53,6 +53,14 @@ interface WorkstationConfig {
   people: number;
 }
 
+const PUESTO_TRABAJO_OVERRIDES: Record<string, string> = {
+  'HR-ACH09': 'COSEDORA-ACH13',
+  'HR-ACH12': 'ACOLCHADORA11',
+  'HR-BO01': 'ACOLCHADORA11',
+  'HR-INTE2': 'COSEDORA-INTPR',
+  'HR-INTPT': 'COSEDORA-INTPR',
+};
+
 export const TacticalPlanForrosSection: React.FC = () => {
   const { addNotification } = useAppContext();
   const [isMounted, setIsMounted] = useState(false);
@@ -99,9 +107,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
   // Filtros y Paginación
   const [tiemposFilters, setTiemposFilters] = useState<Record<string, string>>({});
   const [tiemposPage, setTiemposPage] = useState(1);
-  const [tiemposRowsPerPage] = useState(20);
+  const [tiemposRowsPerPage, setTiemposRowsPerPage] = useState(20);
   const [dailyPage, setDailyPage] = useState(1);
-  const [dailyRowsPerPage] = useState(20);
+  const [dailyRowsPerPage, setDailyRowsPerPage] = useState(20);
 
   // Fechas
   const [todayDate, setTodayDate] = useState<string>('');
@@ -306,7 +314,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     });
   }, [tiemposProduccion]);
 
-  // EFFECT: Empatar Personas / Turno con las restricciones configuradas
   useEffect(() => {
     if (uniqueMachines.length > 0 && Object.keys(workstationConfigs).length === 0 && forrosRestricciones.length > 0) {
       const initial: Record<string, WorkstationConfig> = {};
@@ -946,8 +953,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
                         const config = workstationConfigs[m] || { machine: m, shifts: 1, people: 1 };
                         const totalNetHours = totalHorasNetas * config.shifts * config.people;
                         
-                        // Lookup descriptive name for PUESTO DE TRABAJO
-                        const workstationName = tiemposProduccion.find(t => {
+                        // Lookup descriptive name for PUESTO DE TRABAJO with overrides
+                        const workstationName = PUESTO_TRABAJO_OVERRIDES[m.toUpperCase()] || tiemposProduccion.find(t => {
                           const values = Object.values(t).map(v => String(v || '').trim().toUpperCase());
                           return values.includes(m.toUpperCase());
                         })?.PuestoTrabajo || '—';
@@ -1131,7 +1138,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
               </CardHeader>
               <CardContent className="pt-6">
                 <div className="rounded-xl border bg-white overflow-hidden shadow-sm">
-                  <div className="overflow-x-auto max-h-[60vh]">
+                  <div className="overflow-auto max-h-[60vh]">
                     <table className="min-w-full divide-y divide-gray-200 border-collapse">
                       <thead className="bg-gray-100/80 sticky top-0 z-10 shadow-sm">
                         <tr>
