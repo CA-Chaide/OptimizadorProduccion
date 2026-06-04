@@ -1,5 +1,4 @@
 
-
 import type { ApiQuery, PresupuestoItem, TiempoEnsambleItem } from '@/types/types';
 
 // --- Configuración Central de API ---
@@ -29,13 +28,17 @@ const fetcher = async (url: string, method: 'GET' | 'POST', body?: any) => {
 
         if (!res.ok) {
             const errorText = await res.text();
-            const error: any = new Error('Ocurrió un error al cargar los datos desde la API.');
+            let serverMessage = 'Error desconocido en el servidor.';
             try {
-                error.info = JSON.parse(errorText);
+                const parsed = JSON.parse(errorText);
+                serverMessage = parsed.message || parsed.error || errorText;
             } catch (e) {
-                error.info = { message: `No se pudo leer el cuerpo del error. Estado: ${res.status}`, statusText: res.statusText, body: errorText };
+                serverMessage = errorText;
             }
+            
+            const error: any = new Error(`Error API (${res.status}): ${serverMessage}`);
             error.status = res.status;
+            error.info = serverMessage;
             throw error;
         }
 
@@ -63,9 +66,10 @@ export const queryApi = async (query: ApiQuery): Promise<any> => {
     let body: any = query;
 
     if (query.operation === 'get_documentation') {
-        endpoint = '/Aplicativos/ApiOptimizadorProduccion/documentation/';
+        // Redirigir a la fuente oficial de documentación en serviciosService si es posible
+        endpoint = '/Aplicativos/ApiOptimizadorProduccion/api/servicios/diccionarioDeDatos';
         method = 'GET';
-        body = undefined; // No body for documentation GET request
+        body = undefined;
     } else {
         endpoint = '/Aplicativos/ApiOptimizadorProduccion/query/';
     }
@@ -74,7 +78,6 @@ export const queryApi = async (query: ApiQuery): Promise<any> => {
     console.log(`[useApiData] Querying API: ${method} ${fullUrl}`, body ? JSON.stringify(body) : 'No Body');
     try {
         const response = await fetcher(fullUrl, method, body);
-        // console.log(`[useApiData] API Response:`, response); // This can be too verbose
         return response;
     } catch(e) {
         console.error('[useApiData] API Fetch failed:', e);

@@ -4,7 +4,7 @@
 import React, { useEffect, useState } from 'react';
 import { logger } from '@/services/LogService';
 import { RealDataIcon } from '@/constants/constants';
-import { queryApi } from '@/hooks/useApiData';
+import { serviciosService } from '@/services/servicios.service';
 
 interface ColumnInfo {
     column_name: string;
@@ -28,7 +28,6 @@ interface DataDictionaryProps {
     sourceInfo: SourceInfo | undefined;
     isLoading: boolean;
 }
-// ...existing code...
 
 const DataDictionary: React.FC<DataDictionaryProps> = ({ title, sourceInfo, isLoading }) => {
     if (isLoading) {
@@ -81,22 +80,23 @@ const DataDictionary: React.FC<DataDictionaryProps> = ({ title, sourceInfo, isLo
 
 
 export const RealDataSection: React.FC = () => {
-        useEffect(() => {
-            logger.log(`\n--------------------------------------------------\n##################################\n--------------------------------------------------\n[RealDataSection] Montado.`);
-        }, []);
+    useEffect(() => {
+        logger.log(`\n--------------------------------------------------\n[RealDataSection] Montado.`);
+    }, []);
+    
     const [documentation, setDocumentation] = useState<Documentation | null>(null);
     const [isLoading, setIsLoading] = useState<boolean>(true);
-    const [error, setError] = useState<Error | null>(null);
+    const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
         const fetchDocumentation = async () => {
             setIsLoading(true);
             setError(null);
             try {
-                const docData = await queryApi({ operation: 'get_documentation' });
-                setDocumentation(docData);
+                const response = await serviciosService.getDiccionarioDeDatos();
+                setDocumentation(response.data || response || null);
             } catch (err) {
-                setError(err as Error);
+                setError((err as Error).message);
             } finally {
                 setIsLoading(false);
             }
@@ -116,22 +116,29 @@ export const RealDataSection: React.FC = () => {
             
             <p className="text-gray-600 text-sm">
                 Esta sección muestra los esquemas de las fuentes de datos disponibles directamente desde la API. Cada tabla lista las columnas que se pueden consultar, su descripción y su nombre técnico.
-                Utiliza esta información para entender la estructura de datos al solicitar cambios en la aplicación.
             </p>
 
-            {isLoading && <p className="text-gray-500 animate-pulse text-center">Cargando documentación de la API...</p>}
-            {error && <p className="text-red-500 text-center">Error al cargar la documentación: {error.message}</p>}
+            {isLoading && <p className="text-gray-500 animate-pulse text-center py-20">Consultando Diccionario de Fuentes...</p>}
+            {error && (
+              <div className="bg-red-50 border border-red-200 p-6 rounded-xl text-center">
+                <p className="text-red-600 font-semibold">Error al cargar la documentación</p>
+                <p className="text-red-500 text-sm mt-2">{error}</p>
+                <Button onClick={() => window.location.reload()} className="mt-4" variant="outline">Reintentar</Button>
+              </div>
+            )}
             
-            <div className="space-y-8">
-                {dataSources.map(sourceName => (
-                    <DataDictionary
-                        key={sourceName}
-                        title={`Tabla: ${sourceName}`}
-                        sourceInfo={documentation?.[sourceName]}
-                        isLoading={false}
-                    />
-                ))}
-            </div>
+            {!isLoading && !error && (
+              <div className="space-y-8">
+                  {dataSources.map(sourceName => (
+                      <DataDictionary
+                          key={sourceName}
+                          title={`Tabla: ${sourceName}`}
+                          sourceInfo={documentation?.[sourceName]}
+                          isLoading={false}
+                      />
+                  ))}
+              </div>
+            )}
         </div>
     );
 };

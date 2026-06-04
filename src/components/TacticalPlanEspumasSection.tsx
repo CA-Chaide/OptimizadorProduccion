@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -270,22 +271,28 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const getPlantaMetrics = (centerId: '1000' | '2000') => {
     const resources = OPERATIVE_RESOURCES[centerId];
     const centerOrders = centerId === '1000' ? provC1000 : provC2000;
+    
+    // Totales globales para KPIs
     const globalPlanned = centerOrders.reduce((sum, o) => sum + calculateOperativeHours(o), 0);
+    const globalUnits = centerOrders.reduce((sum, o) => sum + safeNum(o.CANTPROGRAMADA || o.CANTIDAD || 0), 0);
 
     const resourceDetails = resources.map(r => {
       const dispNeto = ((r.t1 + r.t2) - r.p) * r.rend;
-      const plannedHrs = centerOrders.reduce((sum, o) => {
+      
+      // Filtrar órdenes que correspondan a esta máquina específica
+      const resourceOrders = centerOrders.filter(o => {
         const maquina = String(o.MAQUINA || o.RECURSO || o.Maquina || '').trim().toUpperCase();
-        if (maquina === r.code.toUpperCase() || maquina.includes(r.code.toUpperCase())) {
-          return sum + calculateOperativeHours(o);
-        }
-        return sum;
-      }, 0);
+        return maquina === r.code.toUpperCase() || maquina.includes(r.code.toUpperCase());
+      });
+
+      const plannedHrs = resourceOrders.reduce((sum, o) => sum + calculateOperativeHours(o), 0);
+      const plannedUnits = resourceOrders.reduce((sum, o) => sum + safeNum(o.CANTPROGRAMADA || o.CANTIDAD || 0), 0);
       
       return {
         ...r,
         dispNeto,
         plannedHrs,
+        plannedUnits,
         occupancy: dispNeto > 0 ? (plannedHrs / dispNeto) * 100 : 0
       };
     });
@@ -293,7 +300,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const globalCap = resourceDetails.reduce((s, r) => s + r.dispNeto, 0);
     const globalOccupancy = globalCap > 0 ? (globalPlanned / globalCap) * 100 : 0;
 
-    return { resourceDetails, globalCap, globalPlanned, globalOccupancy };
+    return { resourceDetails, globalCap, globalPlanned, globalUnits, globalOccupancy };
   };
 
   const planta1000Metrics = useMemo(() => getPlantaMetrics('1000'), [provC1000]);
@@ -303,34 +310,40 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const isQuito = centerId === '1000';
     return (
       <div className="space-y-3">
-        <div className={cn("grid grid-cols-3 gap-2 p-2 rounded-xl border shadow-sm", isQuito ? "bg-green-50/20 border-green-100" : "bg-blue-50/20 border-blue-100")}>
+        {/* KPI Panel Superior */}
+        <div className={cn("grid grid-cols-4 gap-2 p-3 rounded-2xl border shadow-sm", isQuito ? "bg-green-50/20 border-green-100" : "bg-blue-50/20 border-blue-100")}>
            <div className="text-center px-1">
-             <p className="text-[7px] font-black uppercase text-slate-400 tracking-widest mb-0.5">Capacidad (H)</p>
+             <p className="text-[7px] font-black uppercase text-slate-400 tracking-widest mb-1">Capacidad (H)</p>
              <p className="text-sm font-black text-slate-700 font-mono">{metrics.globalCap.toFixed(1)}</p>
            </div>
            <div className="text-center px-1 border-x border-slate-200">
-             <p className="text-[7px] font-black uppercase text-slate-400 tracking-widest mb-0.5">Carga (H)</p>
+             <p className="text-[7px] font-black uppercase text-slate-400 tracking-widest mb-1">Carga (H)</p>
              <p className="text-sm font-black text-indigo-600 font-mono">{metrics.globalPlanned.toFixed(1)}</p>
            </div>
+           <div className="text-center px-1 border-r border-slate-200">
+             <p className="text-[7px] font-black uppercase text-slate-400 tracking-widest mb-1">Unidades (UN)</p>
+             <p className="text-sm font-black text-gray-800 font-mono">{metrics.globalUnits.toLocaleString()}</p>
+           </div>
            <div className="text-center px-1">
-             <p className="text-[7px] font-black uppercase text-slate-400 tracking-widest mb-0.5">Ocupación</p>
+             <p className="text-[7px] font-black uppercase text-slate-400 tracking-widest mb-1">Ocupación</p>
              <p className={cn("text-sm font-black font-mono", metrics.globalOccupancy > 100 ? "text-red-600" : "text-green-600")}>
                {metrics.globalOccupancy.toFixed(0)}%
              </p>
            </div>
         </div>
 
+        {/* Tabla de Recursos Detallada */}
         <div className="overflow-hidden border border-gray-100 rounded-xl bg-white shadow-sm">
-          <div className={cn("text-[8px] font-black uppercase text-white py-0.5 text-center tracking-widest", isQuito ? "bg-[#059669]" : "bg-[#2563eb]")}>
-            Recursos Planta {centerId}
+          <div className={cn("text-[8px] font-black uppercase text-white py-1 text-center tracking-widest", isQuito ? "bg-[#059669]" : "bg-[#2563eb]")}>
+            Monitor de Recursos Planta {centerId}
           </div>
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-center font-sans text-[9px]">
               <thead className="bg-gray-50 text-slate-400 border-b border-gray-100">
                 <tr className="uppercase font-black">
-                  <th className="px-2 py-1 text-left border-r border-gray-100 w-16">Recurso</th>
+                  <th className="px-2 py-2 text-left border-r border-gray-100 w-24">Parámetro</th>
                   {metrics.resourceDetails.map((r: any) => (
-                    <th key={r.code} className="px-1 py-1 text-center border-r border-gray-100">
+                    <th key={r.code} className="px-1 py-2 text-center border-r border-gray-100 min-w-[70px]">
                       <span className="text-slate-700">{r.code}</span>
                     </th>
                   ))}
@@ -338,17 +351,33 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-gray-50 font-bold">
                 <tr>
-                  <td className="px-2 py-1 text-slate-400 border-r border-gray-100 text-left uppercase text-[7px]">Disp [H]</td>
-                  {metrics.resourceDetails.map((r: any) => <td key={r.code} className="px-1 py-1 border-r border-gray-100 font-mono text-slate-400">{r.dispNeto.toFixed(1)}</td>)}
+                  <td className="px-2 py-1.5 text-slate-400 border-r border-gray-100 text-left uppercase text-[7px]">Turno 1 (H)</td>
+                  {metrics.resourceDetails.map((r: any) => <td key={r.code} className="px-1 py-1.5 border-r border-gray-100 font-mono text-gray-500">{r.t1.toFixed(1)}</td>)}
                 </tr>
-                <tr className="bg-indigo-50/20">
-                  <td className="px-2 py-1 text-indigo-900 border-r border-gray-100 text-left uppercase text-[7px] font-black">Plan [H]</td>
-                  {metrics.resourceDetails.map((r: any) => <td key={r.code} className="px-1 py-1 border-r border-gray-100 font-mono font-black text-indigo-600">{r.plannedHrs.toFixed(1)}</td>)}
+                <tr>
+                  <td className="px-2 py-1.5 text-slate-400 border-r border-gray-100 text-left uppercase text-[7px]">Turno 2 (H)</td>
+                  {metrics.resourceDetails.map((r: any) => <td key={r.code} className="px-1 py-1.5 border-r border-gray-100 font-mono text-gray-500">{r.t2.toFixed(1)}</td>)}
+                </tr>
+                <tr className="bg-red-50/30">
+                  <td className="px-2 py-1.5 text-red-400 border-r border-gray-100 text-left uppercase text-[7px]">Paros (H)</td>
+                  {metrics.resourceDetails.map((r: any) => <td key={r.code} className="px-1 py-1.5 border-r border-gray-100 font-mono text-red-500/60">-{r.p.toFixed(2)}</td>)}
+                </tr>
+                <tr className="bg-gray-100/50">
+                  <td className="px-2 py-1.5 text-slate-600 border-r border-gray-100 text-left uppercase text-[7px] font-black">Disponible [H]</td>
+                  {metrics.resourceDetails.map((r: any) => <td key={r.code} className="px-1 py-1.5 border-r border-gray-100 font-mono font-black text-slate-700">{r.dispNeto.toFixed(1)}</td>)}
+                </tr>
+                <tr className="bg-blue-50/50">
+                  <td className="px-2 py-1.5 text-blue-900 border-r border-gray-100 text-left uppercase text-[7px] font-black">Plan [H]</td>
+                  {metrics.resourceDetails.map((r: any) => <td key={r.code} className="px-1 py-1.5 border-r border-gray-100 font-mono font-black text-blue-600">{r.plannedHrs.toFixed(2)}</td>)}
+                </tr>
+                <tr className="bg-indigo-50/30">
+                  <td className="px-2 py-1.5 text-indigo-900 border-r border-gray-100 text-left uppercase text-[7px] font-black">Plan [UN]</td>
+                  {metrics.resourceDetails.map((r: any) => <td key={r.code} className="px-1 py-1.5 border-r border-gray-100 font-mono font-black text-indigo-500">{r.plannedUnits.toLocaleString()}</td>)}
                 </tr>
                 <tr className="bg-slate-900 text-white">
-                  <td className="px-2 py-1 text-white border-r border-white/5 text-left uppercase text-[7px]">Ocup %</td>
+                  <td className="px-2 py-1.5 text-white border-r border-white/5 text-left uppercase text-[7px]">Ocupación %</td>
                   {metrics.resourceDetails.map((r: any) => (
-                    <td key={r.code} className={cn("px-1 py-1 border-r border-white/5 font-mono font-black", r.occupancy > 100 ? "text-red-400" : "text-green-400")}>
+                    <td key={r.code} className={cn("px-1 py-1.5 border-r border-white/5 font-mono font-black", r.occupancy > 100 ? "text-red-400" : "text-green-400")}>
                       {r.occupancy.toFixed(0)}%
                     </td>
                   ))}
@@ -428,7 +457,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-5 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
+        <TabsList className="grid grid-cols-5 h-10 bg-gray-100/50 p-1 rounded-xl border border-gray-100 mb-6">
           {[ 
             { v: 'resumen', l: 'Capacidad', i: LayoutDashboard }, 
             { v: 'grupos', l: 'Grupos', i: Users }, 
@@ -456,7 +485,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             <Popover>
               <PopoverTrigger asChild>
                 <Button variant="outline" size="sm" className="h-7 px-3 rounded-lg border-gray-200 gap-1.5 font-bold text-[9px] uppercase transition-all shadow-sm">
-                  <Filter className="w-3 h-3 text-primary" /> Cambiar Fecha
+                  <Filter className="w-3 h-3 text-primary" /> Fecha
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-60 p-0 border-none shadow-2xl rounded-2xl overflow-hidden mt-2" align="end">
