@@ -20,7 +20,8 @@ import {
   Lock,
   Wrench,
   AlertTriangle,
-  History
+  History,
+  GraduationCap
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -93,6 +94,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const [ordenes, setOrders] = useState<any[]>([]);
   const [tiemposEnsamblado, setTiemposEnsamblado] = useState<any[]>([]);
   const [mantenimientos, setMantenimientos] = useState<any[]>([]);
+  const [habilidades, setHabilidades] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<string>('all');
   const [viewDate, setViewDate] = useState<Date | null>(null);
@@ -114,19 +116,22 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         setGrupos(filteredGroups);
         const groupsIds = filteredGroups.map(g => g.codigo_grupo);
 
-        const [restrsRes, provsRes, timesRes, maintRes] = await Promise.all([
+        const [restrsRes, provsRes, timesRes, maintRes, habRes] = await Promise.all([
           restriccionService.getAll(),
           serviciosService.OrdenesProvisionalesPaginados(1, 25000),
           serviciosService.getTiemposEnsamblado(1, 15000),
-          serviciosService.ListarMantenimientoPreventivosProgramados().catch(() => ({ data: [] }))
+          serviciosService.ListarMantenimientoPreventivosProgramados().catch(() => ({ data: [] })),
+          serviciosService.getCuboHabilidadesOP().catch(() => ({ data: [] }))
         ]);
 
         setRestricciones((restrsRes.data || []).filter((r: any) => groupsIds.includes(r.codigo_grupo)));
         setOrders(provsRes.data?.data || provsRes.data || []);
         setTiemposEnsamblado(timesRes.data?.data || timesRes.data || []);
         setMantenimientos(maintRes.data || []);
+        setHabilidades(habRes.data || []);
 
         inspector.captureVariable('mantenimientosCargados', maintRes.data?.length || 0);
+        inspector.captureVariable('habilidadesCargadas', habRes.data?.length || 0);
 
       } catch (error) {
         console.error('Error init TacticalPlanEspumas:', error);
@@ -216,6 +221,16 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const tiemposC1000 = useMemo(() => tiemposEnsamblado.filter(t => String(t.Centro || t.centro || '').trim() === '1000'), [tiemposEnsamblado]);
   const tiemposC2000 = useMemo(() => tiemposEnsamblado.filter(t => String(t.Centro || t.centro || '').trim() === '2000'), [tiemposEnsamblado]);
 
+  // Filtrado de habilidades para Corte y Laminado
+  const filteredHabilidades = useMemo(() => {
+    return habilidades.filter(h => {
+      const depto = String(h.DEPARTAMENTO || '').toUpperCase();
+      const puesto = String(h.PUESTO_TRABAJO || '').toUpperCase();
+      return depto.includes('CORTE') || depto.includes('LAMINADO') || 
+             puesto.includes('CORTE') || puesto.includes('LAMINADO');
+    });
+  }, [habilidades]);
+
   const calculateCargasLogic = (totalSubblocks: number, ancho: number, largo: number) => {
     if (ancho <= 0 || largo <= 0 || totalSubblocks <= 0) return { subbloquesPorCarga: 0, totalCargas: 0 };
     const innerRadius = MACHINE_RADIO_CM - largo;
@@ -300,7 +315,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return [...Array(padding).fill(null), ...days];
   }, [viewDate, mounted]);
 
-  // --- Sub-componentes para el Resumen ---
   const CapacityTab = ({ centerId, metrics }: { centerId: string, metrics: any }) => {
     const isQuito = centerId === '1000';
     return (
@@ -440,9 +454,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-6 h-10 bg-gray-100/50 p-1 rounded-xl border border-gray-100 mb-6">
+        <TabsList className="grid grid-cols-7 h-10 bg-gray-100/50 p-1 rounded-xl border border-gray-100 mb-6">
           {[ 
             { v: 'resumen', l: 'Capacidad', i: LayoutDashboard }, 
+            { v: 'habilidades', l: 'Habilidades', i: GraduationCap },
             { v: 'mantenimiento', l: 'Mantenimiento', i: Wrench }, 
             { v: 'grupos', l: 'Grupos', i: Users }, 
             { v: 'restricciones', l: 'Parámetros', i: Lock }, 
@@ -514,6 +529,65 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             <AuditTable data={summaryData1000} title="Auditoría Técnica - Carga Detallada Quito" centerId="1000" />
             <AuditTable data={summaryData2000} title="Auditoría Técnica - Carga Detallada Guayaquil" centerId="2000" />
           </div>
+        </TabsContent>
+
+        <TabsContent value="habilidades" className="space-y-4 animate-in fade-in duration-300">
+          <div className="flex items-center justify-between bg-indigo-50 p-4 rounded-2xl border border-indigo-100">
+            <div className="flex items-center gap-4 text-left">
+              <div className="p-3 bg-indigo-500/10 rounded-2xl text-indigo-600">
+                <GraduationCap className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">Cubo de Habilidades Operativas</h3>
+                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">Filtro Dinámico: Corte y Laminado</p>
+              </div>
+            </div>
+            <Badge variant="outline" className="bg-white border-indigo-200 text-indigo-700 font-black text-[10px]">
+              {filteredHabilidades.length} Operadores Calificados
+            </Badge>
+          </div>
+
+          <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
+            <div className="overflow-x-auto max-h-[600px]">
+              <table className="w-full border-collapse text-left font-sans text-[9px]">
+                <thead className="bg-[#e0e7ff] sticky top-0 z-10 text-indigo-900 uppercase font-black tracking-widest border-b border-indigo-200">
+                  <tr>
+                    <th className="px-4 py-4 border-r border-indigo-100">Identificador</th>
+                    <th className="px-4 py-4 border-r border-indigo-100">Nombre del Operador</th>
+                    <th className="px-4 py-4 border-r border-indigo-100">Departamento</th>
+                    <th className="px-4 py-4 border-r border-indigo-100">Puesto de Trabajo</th>
+                    <th className="px-4 py-4 text-center">Calificación (%)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50 font-bold">
+                  {filteredHabilidades.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="py-20 text-center text-gray-300 uppercase tracking-widest opacity-30">
+                        No se detectan habilidades calificadas para Corte y Laminado
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredHabilidades.map((h, i) => (
+                      <tr key={i} className="hover:bg-indigo-50/30 transition-colors">
+                        <td className="px-4 py-3 border-r border-gray-100 text-slate-400 font-mono">{String(h.IDENTIFICADOR || '—')}</td>
+                        <td className="px-4 py-3 border-r border-gray-100 text-slate-800 uppercase">{String(h.NOMBRE || '—')}</td>
+                        <td className="px-4 py-3 border-r border-gray-100 text-slate-500 uppercase">{String(h.DEPARTAMENTO || '—')}</td>
+                        <td className="px-4 py-3 border-r border-gray-100 text-indigo-700 font-black">{String(h.PUESTO_TRABAJO || '—')}</td>
+                        <td className="px-4 py-3 text-center">
+                          <Badge className={cn(
+                            "font-black font-mono",
+                            safeNum(h.CALIFICACION) >= 100 ? "bg-green-500" : "bg-indigo-500"
+                          )}>
+                            {formatNum(h.CALIFICACION)}%
+                          </Badge>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
         </TabsContent>
 
         <TabsContent value="mantenimiento" className="space-y-4 animate-in fade-in duration-300">
