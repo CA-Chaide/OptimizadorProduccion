@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   Scissors, 
   Package, 
@@ -124,6 +124,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [unifiedNeeds, setUnifiedNeeds] = useState<UnifiedNeedRow[]>([]);
   const [isProcessingResumen, setIsProcessingResumen] = useState(false);
   const [resumenProgress, setResumenProgress] = useState({ current: 0, total: 0 });
+  const [processedSignature, setProcessedSignature] = useState('');
 
   useEffect(() => {
     setMounted(true);
@@ -171,6 +172,76 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       return true;
     });
   }, [ordenes, selectedDate]);
+
+  // CÁLCULO AUTOMÁTICO DE RESUMEN
+  const handleProcessResumen = useCallback(async (ordersToProcess: any[]) => {
+    if (ordersToProcess.length === 0) {
+      setUnifiedNeeds([]);
+      return;
+    }
+    
+    setIsProcessingResumen(true);
+    setResumenProgress({ current: 0, total: ordersToProcess.length });
+    const consolidatedMap = new Map<string, UnifiedNeedRow>();
+
+    try {
+      for (let i = 0; i < ordersToProcess.length; i++) {
+        const order = ordersToProcess[i];
+        const matCode = String(order.MATERIAL || order.CodMaterial || '').match(/^(\d+)/)?.[1] || '';
+        const fullCode = matCode.padStart(18, '0');
+        const orderQty = safeNum(order.CANTPROGRAMADA || order.CANTIDAD || 0);
+
+        try {
+          const response = await serviciosService.getMaestroMaterialesExplosion("1000", fullCode, 1, 500);
+          const rawData = response?.data?.data || response?.data || [];
+          if (Array.isArray(rawData)) {
+            rawData.filter(row => getProp(row, 'CENTRO') !== '2000' && getProp(row, 'DESCRIPCION_COMPONENTE').toUpperCase().includes('LAMINA CILINDRICA')).forEach(comp => {
+              const code = getProp(comp, 'COMPONENTE').slice(-8);
+              const desc = getProp(comp, 'DESCRIPCION_COMPONENTE').toUpperCase();
+              const cantAcum = getNumProp(comp, 'CANTIDAD_ACUMULADA');
+              const kgTotal = orderQty * cantAcum;
+              
+              if (consolidatedMap.has(code)) {
+                const ex = consolidatedMap.get(code)!;
+                ex.consumoKg += kgTotal;
+              } else {
+                const pRollo = getPesoPorRollo(code, desc);
+                consolidatedMap.set(code, {
+                  material: code,
+                  descripcion: desc,
+                  consumoKg: kgTotal,
+                  consumoUn: 0,
+                  pesoRollo: pRollo
+                });
+              }
+            });
+          }
+        } catch (e) {}
+        setResumenProgress(prev => ({ ...prev, current: i + 1 }));
+      }
+      
+      const finalArray = Array.from(consolidatedMap.values()).map(row => ({
+        ...row,
+        consumoUn: row.pesoRollo > 0 ? row.consumoKg / row.pesoRollo : 0
+      })).sort((a, b) => b.consumoKg - a.consumoKg);
+      
+      setUnifiedNeeds(finalArray);
+      inspector.captureVariable('unifiedNeedsConsolidated', finalArray);
+    } finally { 
+      setIsProcessingResumen(false); 
+    }
+  }, [inspector]);
+
+  // Efecto para disparar el cálculo automático al cambiar de tab o de filtros
+  useEffect(() => {
+    if (activeTab === 'resumen' && filteredOrders.length > 0 && !isProcessingResumen) {
+      const signature = `${selectedDate}|${filteredOrders.length}|${filteredOrders[0]?.ORDENPREVISIONAL || ''}`;
+      if (signature !== processedSignature) {
+        handleProcessResumen(filteredOrders);
+        setProcessedSignature(signature);
+      }
+    }
+  }, [activeTab, filteredOrders, selectedDate, isProcessingResumen, processedSignature, handleProcessResumen]);
 
   const datesWithOrders = useMemo(() => {
     if (!mounted) return new Set<string>();
@@ -224,58 +295,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     } finally { 
       setIsSearchingBOM(false); 
     }
-  };
-
-  const handleProcessResumen = async () => {
-    if (filteredOrders.length === 0) return;
-    setIsProcessingResumen(true);
-    setUnifiedNeeds([]);
-    setResumenProgress({ current: 0, total: filteredOrders.length });
-    const consolidatedMap = new Map<string, UnifiedNeedRow>();
-
-    try {
-      for (let i = 0; i < filteredOrders.length; i++) {
-        const order = filteredOrders[i];
-        const matCode = String(order.MATERIAL || order.CodMaterial || '').match(/^(\d+)/)?.[1] || '';
-        const fullCode = matCode.padStart(18, '0');
-        const orderQty = safeNum(order.CANTPROGRAMADA || order.CANTIDAD || 0);
-
-        try {
-          const response = await serviciosService.getMaestroMaterialesExplosion("1000", fullCode, 1, 500);
-          const rawData = response?.data?.data || response?.data || [];
-          if (Array.isArray(rawData)) {
-            rawData.filter(row => getProp(row, 'CENTRO') !== '2000' && getProp(row, 'DESCRIPCION_COMPONENTE').toUpperCase().includes('LAMINA CILINDRICA')).forEach(comp => {
-              const code = getProp(comp, 'COMPONENTE').slice(-8);
-              const desc = getProp(comp, 'DESCRIPCION_COMPONENTE').toUpperCase();
-              const cantAcum = getNumProp(comp, 'CANTIDAD_ACUMULADA');
-              const kgTotal = orderQty * cantAcum;
-              
-              if (consolidatedMap.has(code)) {
-                const ex = consolidatedMap.get(code)!;
-                ex.consumoKg += kgTotal;
-              } else {
-                const pRollo = getPesoPorRollo(code, desc);
-                consolidatedMap.set(code, {
-                  material: code,
-                  descripcion: desc,
-                  consumoKg: kgTotal,
-                  consumoUn: 0,
-                  pesoRollo: pRollo
-                });
-              }
-            });
-          }
-        } catch (e) {}
-        setResumenProgress(prev => ({ ...prev, current: i + 1 }));
-      }
-      
-      const finalArray = Array.from(consolidatedMap.values()).map(row => ({
-        ...row,
-        consumoUn: row.pesoRollo > 0 ? row.consumoKg / row.pesoRollo : 0
-      })).sort((a, b) => b.consumoKg - a.consumoKg);
-      
-      setUnifiedNeeds(finalArray);
-    } finally { setIsProcessingResumen(false); }
   };
 
   const totalsUnified = useMemo(() => {
@@ -429,10 +448,18 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     <p className="text-xl font-black font-mono">{totalsUnified.un.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
                 </div>
              </div>
-             <Button onClick={handleProcessResumen} disabled={isProcessingResumen || filteredOrders.length === 0} className="bg-slate-900 hover:bg-black text-white rounded-xl h-11 px-8 text-[10px] font-black uppercase tracking-widest shadow-xl">
-               {isProcessingResumen ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <PlayCircle className="w-4 h-4 mr-2" />}
-               Calcular Resumen de Necesidades
-             </Button>
+             <div className="flex gap-2">
+               {isProcessingResumen ? (
+                 <div className="flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-xl text-[10px] font-black uppercase text-gray-400">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Procesando Auditoría Técnica...
+                 </div>
+               ) : (
+                 <Button onClick={() => handleProcessResumen(filteredOrders)} className="bg-slate-900 hover:bg-black text-white rounded-xl h-11 px-8 text-[10px] font-black uppercase tracking-widest shadow-xl transition-all">
+                   <Activity className="w-4 h-4 mr-2" />
+                   Recalcular Necesidades
+                 </Button>
+               )}
+             </div>
           </div>
 
           {isProcessingResumen && (
@@ -488,7 +515,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           ) : !isProcessingResumen && (
             <div className="py-24 text-center bg-gray-50/50 rounded-3xl border-2 border-dashed border-gray-100">
               <Database className="w-16 h-16 text-indigo-100 mx-auto" />
-              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-4">Calcule las necesidades para visualizar el consolidado estructural</p>
+              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-4">Calculando necesidades técnicas automáticas...</p>
             </div>
           )}
         </TabsContent>
