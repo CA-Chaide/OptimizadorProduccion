@@ -19,7 +19,8 @@ import {
   Users,
   Lock,
   Wrench,
-  AlertTriangle
+  AlertTriangle,
+  History
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -215,26 +216,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const tiemposC1000 = useMemo(() => tiemposEnsamblado.filter(t => String(t.Centro || t.centro || '').trim() === '1000'), [tiemposEnsamblado]);
   const tiemposC2000 = useMemo(() => tiemposEnsamblado.filter(t => String(t.Centro || t.centro || '').trim() === '2000'), [tiemposEnsamblado]);
 
-  const datesWithOrders = useMemo(() => {
-    if (!mounted) return new Set<string>();
-    const dates = new Set<string>();
-    ordenes.forEach(o => {
-      const d = String(o.FECHAINICIO || o.FECHA || '').trim();
-      if (d && d !== 'null') dates.add(d.includes('T') ? d.split('T')[0] : d);
-    });
-    return dates;
-  }, [ordenes, mounted]);
-
-  const calendarDays = useMemo(() => {
-    if (!mounted || !viewDate) return [];
-    const start = startOfMonth(viewDate);
-    const end = endOfMonth(viewDate);
-    const days = eachDayOfInterval({ start, end });
-    const startDay = getDay(start);
-    const padding = startDay === 0 ? 6 : startDay - 1;
-    return [...Array(padding).fill(null), ...days];
-  }, [viewDate, mounted]);
-
   const calculateCargasLogic = (totalSubblocks: number, ancho: number, largo: number) => {
     if (ancho <= 0 || largo <= 0 || totalSubblocks <= 0) return { subbloquesPorCarga: 0, totalCargas: 0 };
     const innerRadius = MACHINE_RADIO_CM - largo;
@@ -278,45 +259,52 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const resources = OPERATIVE_RESOURCES[centerId];
     const centerOrders = centerId === '1000' ? provC1000 : provC2000;
     
-    // Totales globales para KPIs
     const globalPlanned = centerOrders.reduce((sum, o) => sum + calculateOperativeHours(o), 0);
     const globalUnits = centerOrders.reduce((sum, o) => sum + safeNum(o.CANTPROGRAMADA || o.CANTIDAD || 0), 0);
 
     const resourceDetails = resources.map(r => {
       const dispNeto = ((r.t1 + r.t2) - r.p) * r.rend;
-      
-      // Filtrar órdenes que correspondan a esta máquina específica
       const resourceOrders = centerOrders.filter(o => {
         const maquina = String(o.MAQUINA || o.RECURSO || o.Maquina || '').trim().toUpperCase();
         return maquina === r.code.toUpperCase() || maquina.includes(r.code.toUpperCase());
       });
-
       const plannedHrs = resourceOrders.reduce((sum, o) => sum + calculateOperativeHours(o), 0);
       const plannedUnits = resourceOrders.reduce((sum, o) => sum + safeNum(o.CANTPROGRAMADA || o.CANTIDAD || 0), 0);
-      
-      return {
-        ...r,
-        dispNeto,
-        plannedHrs,
-        plannedUnits,
-        occupancy: dispNeto > 0 ? (plannedHrs / dispNeto) * 100 : 0
-      };
+      return { ...r, dispNeto, plannedHrs, plannedUnits, occupancy: dispNeto > 0 ? (plannedHrs / dispNeto) * 100 : 0 };
     });
 
     const globalCap = resourceDetails.reduce((s, r) => s + r.dispNeto, 0);
     const globalOccupancy = globalCap > 0 ? (globalPlanned / globalCap) * 100 : 0;
-
     return { resourceDetails, globalCap, globalPlanned, globalUnits, globalOccupancy };
   };
 
-  const planta1000Metrics = useMemo(() => getPlantaMetrics('1000'), [provC1000]);
-  const planta2000Metrics = useMemo(() => getPlantaMetrics('2000'), [provC2000]);
+  const metrics1000 = useMemo(() => getPlantaMetrics('1000'), [provC1000]);
+  const metrics2000 = useMemo(() => getPlantaMetrics('2000'), [provC2000]);
 
+  const datesWithOrders = useMemo(() => {
+    const dates = new Set<string>();
+    ordenes.forEach(o => {
+      const d = String(o.FECHAINICIO || o.FECHA || '').trim();
+      if (d && d !== 'null') dates.add(d.includes('T') ? d.split('T')[0] : d);
+    });
+    return dates;
+  }, [ordenes]);
+
+  const calendarDays = useMemo(() => {
+    if (!mounted || !viewDate) return [];
+    const start = startOfMonth(viewDate);
+    const end = endOfMonth(viewDate);
+    const days = eachDayOfInterval({ start, end });
+    const startDay = getDay(start);
+    const padding = startDay === 0 ? 6 : startDay - 1;
+    return [...Array(padding).fill(null), ...days];
+  }, [viewDate, mounted]);
+
+  // --- Sub-componentes para el Resumen ---
   const CapacityTab = ({ centerId, metrics }: { centerId: string, metrics: any }) => {
     const isQuito = centerId === '1000';
     return (
       <div className="space-y-3">
-        {/* KPI Panel Superior */}
         <div className={cn("grid grid-cols-4 gap-2 p-3 rounded-2xl border shadow-sm", isQuito ? "bg-green-50/20 border-green-100" : "bg-blue-50/20 border-blue-100")}>
            <div className="text-center px-1">
              <p className="text-[7px] font-black uppercase text-slate-400 tracking-widest mb-1">Capacidad (H)</p>
@@ -337,8 +325,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
              </p>
            </div>
         </div>
-
-        {/* Tabla de Recursos Detallada */}
         <div className="overflow-hidden border border-gray-100 rounded-xl bg-white shadow-sm">
           <div className={cn("text-[8px] font-black uppercase text-white py-1 text-center tracking-widest", isQuito ? "bg-[#059669]" : "bg-[#2563eb]")}>
             Monitor de Recursos Planta {centerId}
@@ -348,11 +334,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               <thead className="bg-gray-50 text-slate-400 border-b border-gray-100">
                 <tr className="uppercase font-black">
                   <th className="px-2 py-2 text-left border-r border-gray-100 w-24">Parámetro</th>
-                  {metrics.resourceDetails.map((r: any) => (
-                    <th key={r.code} className="px-1 py-2 text-center border-r border-gray-100 min-w-[70px]">
-                      <span className="text-slate-700">{r.code}</span>
-                    </th>
-                  ))}
+                  {metrics.resourceDetails.map((r: any) => <th key={r.code} className="px-1 py-2 text-center border-r border-gray-100 min-w-[70px]"><span className="text-slate-700">{r.code}</span></th>)}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50 font-bold">
@@ -382,11 +364,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                 </tr>
                 <tr className="bg-slate-900 text-white">
                   <td className="px-2 py-1.5 text-white border-r border-white/5 text-left uppercase text-[7px]">Ocupación %</td>
-                  {metrics.resourceDetails.map((r: any) => (
-                    <td key={r.code} className={cn("px-1 py-1.5 border-r border-white/5 font-mono font-black", r.occupancy > 100 ? "text-red-400" : "text-green-400")}>
-                      {r.occupancy.toFixed(0)}%
-                    </td>
-                  ))}
+                  {metrics.resourceDetails.map((r: any) => <td key={r.code} className={cn("px-1 py-1.5 border-r border-white/5 font-mono font-black", r.occupancy > 100 ? "text-red-400" : "text-green-400")}>{r.occupancy.toFixed(0)}%</td>)}
                 </tr>
               </tbody>
             </table>
@@ -399,8 +377,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const AuditTable = ({ data, title, centerId }: { data: any[], title: string, centerId: string }) => (
     <div className="space-y-3">
       <h3 className="text-[9px] font-bold uppercase flex items-center gap-2 px-1 tracking-widest text-left text-slate-500">
-        <div className={cn("w-2 h-2 rounded-full", centerId === '1000' ? "bg-green-500" : "bg-blue-500")} /> 
-        {title}
+        <div className={cn("w-2 h-2 rounded-full", centerId === '1000' ? "bg-green-500" : "bg-blue-500")} /> {title}
       </h3>
       <Card className="rounded-xl border border-gray-100 shadow-sm overflow-hidden bg-white">
         <div className="overflow-x-auto max-h-[350px]">
@@ -481,7 +458,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         <TabsContent value="resumen" className="space-y-8 animate-in fade-in duration-300">
           <div className="flex justify-between items-center bg-gray-50/50 p-2.5 rounded-2xl border border-gray-100">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-primary/10 rounded-xl text-primary"><CalendarIcon className="w-3.5 h-3.5" /></div>
+              <div className="p-2 bg-primary/10 rounded-xl"><CalendarIcon className="w-3.5 h-3.5" /></div>
               <div>
                 <p className="text-[8px] font-black uppercase text-gray-400 tracking-widest text-left">Horizonte Operativo</p>
                 <h3 className="text-[10px] font-black text-gray-700 uppercase">
@@ -529,8 +506,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <CapacityTab centerId="1000" metrics={planta1000Metrics} />
-            <CapacityTab centerId="2000" metrics={planta2000Metrics} />
+            <CapacityTab centerId="1000" metrics={metrics1000} />
+            <CapacityTab centerId="2000" metrics={metrics2000} />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -547,64 +524,46 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               </div>
               <div>
                 <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">Mantenimiento Preventivo Programado</h3>
-                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">Sincronización de Paros Técnicos SAP</p>
+                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">Auditoría de Paros Técnicos SAP</p>
               </div>
             </div>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={async () => {
-                setIsLoading(true);
-                const maintRes = await serviciosService.ListarMantenimientoPreventivosProgramados().catch(() => ({ data: [] }));
-                setMantenimientos(maintRes.data || []);
-                setIsLoading(false);
-                addNotification('success', 'Calendario de mantenimiento actualizado.');
-              }}
-              className="h-9 px-4 rounded-xl border-amber-200 bg-white hover:bg-amber-50 gap-2 font-bold text-[10px] uppercase shadow-sm"
-            >
-              <Activity className="w-3.5 h-3.5" /> Actualizar
-            </Button>
           </div>
 
           <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
             <div className="overflow-x-auto max-h-[600px]">
-              <table className="w-full border-collapse text-left font-sans text-[10px]">
+              <table className="w-full border-collapse text-left font-sans text-[9px]">
                 <thead className="bg-[#fef3c7] sticky top-0 z-10 text-amber-900 uppercase font-black tracking-widest border-b border-amber-200">
                   <tr>
-                    <th className="px-6 py-4 border-r border-amber-100">Código Máquina</th>
-                    <th className="px-6 py-4 border-r border-amber-100">Descripción Actividad</th>
-                    <th className="px-6 py-4 border-r border-amber-100">Tipo Mantenimiento</th>
-                    <th className="px-6 py-4 border-r border-amber-100 text-center">Frecuencia</th>
-                    <th className="px-6 py-4 border-r border-amber-100 text-center">Duración Est.</th>
-                    <th className="px-6 py-4 text-center">Estado</th>
+                    <th className="px-4 py-4 border-r border-amber-100">ID PLANTA</th>
+                    <th className="px-4 py-4 border-r border-amber-100">PLANTA</th>
+                    <th className="px-4 py-4 border-r border-amber-100">AREA</th>
+                    <th className="px-4 py-4 border-r border-amber-100">ID MAQUINA</th>
+                    <th className="px-4 py-4 border-r border-amber-100">MAQUINA</th>
+                    <th className="px-4 py-4 border-r border-amber-100 text-center">TIEMPO (H)</th>
+                    <th className="px-4 py-4 border-r border-amber-100 text-center">FECHA PROG.</th>
+                    <th className="px-4 py-4 border-r border-amber-100 text-center">OT ID</th>
+                    <th className="px-4 py-4 text-center">RANGO OT (INI - FIN)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50 font-bold">
                   {mantenimientos.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="py-20 text-center">
-                        <div className="flex flex-col items-center gap-2">
-                          <AlertTriangle className="w-10 h-10 text-amber-200" />
-                          <p className="text-gray-300 uppercase tracking-widest">No se detectan paros programados</p>
-                        </div>
-                      </td>
-                    </tr>
+                    <tr><td colSpan={9} className="py-20 text-center text-gray-300 uppercase tracking-widest opacity-30">No se detectan paros programados</td></tr>
                   ) : (
                     mantenimientos.map((m, i) => (
                       <tr key={i} className="hover:bg-amber-50/30 transition-colors">
-                        <td className="px-6 py-3 border-r border-gray-100 font-black text-amber-800 uppercase">{String(m.EQUIPO || m.CodigoEquipo || '—')}</td>
-                        <td className="px-6 py-3 border-r border-gray-100 text-slate-600 uppercase max-w-xs truncate" title={m.DESCRIPCION || m.Actividad}>{String(m.DESCRIPCION || m.Actividad || '—')}</td>
-                        <td className="px-6 py-3 border-r border-gray-100">
-                          <Badge variant="outline" className="bg-white border-amber-200 text-amber-700 text-[8px] font-black uppercase">
-                            {String(m.TIPO || m.TipoMantenimiento || 'Preventivo')}
-                          </Badge>
-                        </td>
-                        <td className="px-6 py-3 border-r border-gray-100 text-center font-mono text-slate-400">{String(m.FRECUENCIA || 'MENSUAL')}</td>
-                        <td className="px-6 py-3 border-r border-gray-100 text-center font-black text-amber-600 bg-amber-50/20">{String(m.DURACION || m.HorasEstimadas || '2.0')} H</td>
-                        <td className="px-6 py-3 text-center">
-                          <div className="flex items-center justify-center gap-1.5">
-                            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                            <span className="text-green-700 uppercase tracking-tighter">Programado</span>
+                        <td className="px-4 py-3 border-r border-gray-100 text-slate-400 font-mono">{String(m.ID_PLANTA || '—')}</td>
+                        <td className="px-4 py-3 border-r border-gray-100 text-slate-600 uppercase">{String(m.PLANTA || '—')}</td>
+                        <td className="px-4 py-3 border-r border-gray-100 text-slate-500 uppercase">{String(m.AREA || '—')}</td>
+                        <td className="px-4 py-3 border-r border-gray-100 text-amber-700 font-black">{String(m.ID_MAQUINA || '—')}</td>
+                        <td className="px-4 py-3 border-r border-gray-100 text-slate-800 uppercase">{String(m.MAQUINA || '—')}</td>
+                        <td className="px-4 py-3 border-r border-gray-100 text-center font-black text-red-600 bg-red-50/10">{String(m.TIEMPO || '—')}</td>
+                        <td className="px-4 py-3 border-r border-gray-100 text-center font-mono text-slate-400">{String(m.FECHA_PRO || '—')}</td>
+                        <td className="px-4 py-3 border-r border-gray-100 text-center font-black text-indigo-700">{String(m.OT_PRG_ID || '—')}</td>
+                        <td className="px-4 py-3 text-center text-[8px] text-slate-400">
+                          <div className="flex flex-col gap-0.5">
+                            <span>{String(m.FECHA_OT_PRG_INI || '—')}</span>
+                            <span className="opacity-50">↓</span>
+                            <span>{String(m.FECHA_OT_PRG_FIN || '—')}</span>
                           </div>
                         </td>
                       </tr>
@@ -689,7 +648,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
                         const tOperativo = calculateOperativeHours(o);
                         const maquina = String(o.MAQUINA || o.RECURSO || o.Maquina || '—').trim();
-
                         return (
                           <tr key={i} className="hover:bg-gray-50/50 transition-colors">
                             <td className="px-3 py-2 text-gray-500 border-r border-gray-100">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
