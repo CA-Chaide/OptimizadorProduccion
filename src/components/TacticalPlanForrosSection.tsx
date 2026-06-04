@@ -54,7 +54,7 @@ interface WorkstationConfig {
 }
 
 const PUESTO_TRABAJO_OVERRIDES: Record<string, string> = {
-  'HR-ACH09': 'COSEDORA-ACH13',
+  'HR-ACH09': 'ACOLCHADORA09',
   'HR-ACH12': 'ACOLCHADORA11',
   'HR-BO01': 'ACOLCHADORA11',
   'HR-INTE2': 'COSEDORA-INTPR',
@@ -1075,7 +1075,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     <thead className="bg-gray-100 sticky top-0 z-10 shadow-sm">
                       <tr>{dailyColumns.map((col, idx) => (<th key={`daily-head-${col}-${idx}`} className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider whitespace-nowrap bg-gray-50 border-b text-gray-600">{col}</th>))}</tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-200 bg-white">{renderDailyTableBody()}</tbody>
+                    <tbody className="divide-y divide-200 bg-white">{renderDailyTableBody()}</tbody>
                   </table>
                 </div>
               </div>
@@ -1106,7 +1106,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     <thead className="bg-gray-50">
                       <tr><th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Máquina / Puesto</th><th className="px-6 py-3 text-right text-xs font-bold text-gray-600 uppercase tracking-wider">Cant. Órdenes</th><th className="px-6 py-3 text-right text-xs font-bold text-gray-600 uppercase tracking-wider">Total Unidades</th><th className="px-6 py-3 text-right text-xs font-bold text-emerald-700 uppercase tracking-wider">Tiempo Total (min)</th><th className="px-6 py-3 text-right text-xs font-bold text-indigo-600 uppercase tracking-wider">Tiempo Total (h)</th><th className="px-6 py-3 text-right text-xs font-bold text-blue-700 uppercase tracking-wider">Capacidad Máx (h)</th><th className="px-6 py-3 text-right text-xs font-bold text-blue-700 uppercase tracking-wider">Ocupación (%)</th></tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-200 bg-white">
+                    <tbody className="divide-y divide-200 bg-white">
                       {isLoadingDaily ? <tr><td colSpan={7} className="py-12 text-center"><Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" /></td></tr> : productionSummary.length > 0 ? productionSummary.map((item, idx) => {
                           const config = workstationConfigs[item.machine] || { machine: item.machine, shifts: 1, people: 1 };
                           const plannedCapacityHours = (totalHorasNetas * config.shifts * config.people);
