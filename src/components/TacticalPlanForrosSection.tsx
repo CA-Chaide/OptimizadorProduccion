@@ -55,7 +55,7 @@ interface WorkstationConfig {
 
 const PUESTO_TRABAJO_OVERRIDES: Record<string, string> = {
   'HR-ACH09': 'ACOLCHADORA09',
-  'HR-ACH12': 'ACOLCHADORA11',
+  'HR-ACH12': 'ACOLCHADORA12',
   'HR-BO01': 'ACOLCHADORA11',
   'HR-INTE2': 'COSEDORA-INTPR',
   'HR-INTPT': 'COSEDORA-INTPR',
