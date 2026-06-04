@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -18,7 +17,9 @@ import {
   TrendingUp,
   Box,
   Users,
-  Lock
+  Lock,
+  Wrench,
+  AlertTriangle
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -90,6 +91,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const [restricciones, setRestricciones] = useState<Restriccion[]>([]);
   const [ordenes, setOrders] = useState<any[]>([]);
   const [tiemposEnsamblado, setTiemposEnsamblado] = useState<any[]>([]);
+  const [mantenimientos, setMantenimientos] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<string>('all');
   const [viewDate, setViewDate] = useState<Date | null>(null);
@@ -111,15 +113,19 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         setGrupos(filteredGroups);
         const groupsIds = filteredGroups.map(g => g.codigo_grupo);
 
-        const [restrsRes, provsRes, timesRes] = await Promise.all([
+        const [restrsRes, provsRes, timesRes, maintRes] = await Promise.all([
           restriccionService.getAll(),
           serviciosService.OrdenesProvisionalesPaginados(1, 25000),
-          serviciosService.getTiemposEnsamblado(1, 15000)
+          serviciosService.getTiemposEnsamblado(1, 15000),
+          serviciosService.ListarMantenimientoPreventivosProgramados().catch(() => ({ data: [] }))
         ]);
 
         setRestricciones((restrsRes.data || []).filter((r: any) => groupsIds.includes(r.codigo_grupo)));
         setOrders(provsRes.data?.data || provsRes.data || []);
         setTiemposEnsamblado(timesRes.data?.data || timesRes.data || []);
+        setMantenimientos(maintRes.data || []);
+
+        inspector.captureVariable('mantenimientosCargados', maintRes.data?.length || 0);
 
       } catch (error) {
         console.error('Error init TacticalPlanEspumas:', error);
@@ -457,9 +463,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-5 h-10 bg-gray-100/50 p-1 rounded-xl border border-gray-100 mb-6">
+        <TabsList className="grid grid-cols-6 h-10 bg-gray-100/50 p-1 rounded-xl border border-gray-100 mb-6">
           {[ 
             { v: 'resumen', l: 'Capacidad', i: LayoutDashboard }, 
+            { v: 'mantenimiento', l: 'Mantenimiento', i: Wrench }, 
             { v: 'grupos', l: 'Grupos', i: Users }, 
             { v: 'restricciones', l: 'Parámetros', i: Lock }, 
             { v: 'ordenes', l: 'Provisionales', i: Package }, 
@@ -530,6 +537,83 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             <AuditTable data={summaryData1000} title="Auditoría Técnica - Carga Detallada Quito" centerId="1000" />
             <AuditTable data={summaryData2000} title="Auditoría Técnica - Carga Detallada Guayaquil" centerId="2000" />
           </div>
+        </TabsContent>
+
+        <TabsContent value="mantenimiento" className="space-y-4 animate-in fade-in duration-300">
+          <div className="flex items-center justify-between bg-amber-50 p-4 rounded-2xl border border-amber-100">
+            <div className="flex items-center gap-4 text-left">
+              <div className="p-3 bg-amber-500/10 rounded-2xl text-amber-600">
+                <Wrench className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">Mantenimiento Preventivo Programado</h3>
+                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">Sincronización de Paros Técnicos SAP</p>
+              </div>
+            </div>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={async () => {
+                setIsLoading(true);
+                const maintRes = await serviciosService.ListarMantenimientoPreventivosProgramados().catch(() => ({ data: [] }));
+                setMantenimientos(maintRes.data || []);
+                setIsLoading(false);
+                addNotification('success', 'Calendario de mantenimiento actualizado.');
+              }}
+              className="h-9 px-4 rounded-xl border-amber-200 bg-white hover:bg-amber-50 gap-2 font-bold text-[10px] uppercase shadow-sm"
+            >
+              <Activity className="w-3.5 h-3.5" /> Actualizar
+            </Button>
+          </div>
+
+          <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
+            <div className="overflow-x-auto max-h-[600px]">
+              <table className="w-full border-collapse text-left font-sans text-[10px]">
+                <thead className="bg-[#fef3c7] sticky top-0 z-10 text-amber-900 uppercase font-black tracking-widest border-b border-amber-200">
+                  <tr>
+                    <th className="px-6 py-4 border-r border-amber-100">Código Máquina</th>
+                    <th className="px-6 py-4 border-r border-amber-100">Descripción Actividad</th>
+                    <th className="px-6 py-4 border-r border-amber-100">Tipo Mantenimiento</th>
+                    <th className="px-6 py-4 border-r border-amber-100 text-center">Frecuencia</th>
+                    <th className="px-6 py-4 border-r border-amber-100 text-center">Duración Est.</th>
+                    <th className="px-6 py-4 text-center">Estado</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50 font-bold">
+                  {mantenimientos.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="py-20 text-center">
+                        <div className="flex flex-col items-center gap-2">
+                          <AlertTriangle className="w-10 h-10 text-amber-200" />
+                          <p className="text-gray-300 uppercase tracking-widest">No se detectan paros programados</p>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    mantenimientos.map((m, i) => (
+                      <tr key={i} className="hover:bg-amber-50/30 transition-colors">
+                        <td className="px-6 py-3 border-r border-gray-100 font-black text-amber-800 uppercase">{String(m.EQUIPO || m.CodigoEquipo || '—')}</td>
+                        <td className="px-6 py-3 border-r border-gray-100 text-slate-600 uppercase max-w-xs truncate" title={m.DESCRIPCION || m.Actividad}>{String(m.DESCRIPCION || m.Actividad || '—')}</td>
+                        <td className="px-6 py-3 border-r border-gray-100">
+                          <Badge variant="outline" className="bg-white border-amber-200 text-amber-700 text-[8px] font-black uppercase">
+                            {String(m.TIPO || m.TipoMantenimiento || 'Preventivo')}
+                          </Badge>
+                        </td>
+                        <td className="px-6 py-3 border-r border-gray-100 text-center font-mono text-slate-400">{String(m.FRECUENCIA || 'MENSUAL')}</td>
+                        <td className="px-6 py-3 border-r border-gray-100 text-center font-black text-amber-600 bg-amber-50/20">{String(m.DURACION || m.HorasEstimadas || '2.0')} H</td>
+                        <td className="px-6 py-3 text-center">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                            <span className="text-green-700 uppercase tracking-tighter">Programado</span>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
         </TabsContent>
 
         <TabsContent value="grupos">
