@@ -863,143 +863,163 @@ export const TacticalPlanForrosSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="personal-turnos">
-          <Card>
-            <CardHeader>
-              <CardTitle>Configuración de Capacidad: Distribución del personal</CardTitle>
-              <CardDescription>Define los rangos horarios de las jornadas y el personal asignado por puesto.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {/* PANEL DE HORARIOS DE PRUEBA */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 items-start">
-                <div className="p-4 border rounded-xl bg-white shadow-sm space-y-3 border-indigo-100">
-                  <div className="flex items-center gap-2 mb-1">
-                    <div className="bg-orange-100 p-1.5 rounded-md"><Clock className="w-4 h-4 text-orange-600" /></div>
-                    <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wider">JORNADA DIURNA</label>
+          <div className="space-y-8">
+            <div>
+              <h3 className="text-xl font-bold text-gray-900">Configuración de Capacidad: Distribución del personal</h3>
+              <p className="text-sm text-gray-500 mt-1">Define los rangos horarios de las jornadas y el personal asignado por puesto.</p>
+            </div>
+
+            {/* PANEL DE HORARIOS SUPERIOR ESTÉTICO */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
+              {/* Card Diurna */}
+              <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5 hover:shadow-md transition-all">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="bg-orange-50 p-2.5 rounded-xl border border-orange-100">
+                    <Clock className="w-5 h-5 text-orange-600" />
                   </div>
-                  <Select value={jornadaDiurnaSel} onValueChange={setJornadaDiurnaSel}>
-                    <SelectTrigger className="h-10 text-sm font-mono font-bold bg-gray-50">
-                      <SelectValue placeholder="Seleccione horario" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {DIURNA_OPTIONS.map(opt => (
-                        <SelectItem key={`d-${opt.value}`} value={opt.value}>{opt.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div>
+                    <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none">Turno Principal</h4>
+                    <p className="text-sm font-bold text-gray-700">JORNADA DIURNA</p>
+                  </div>
+                </div>
+                <Select value={jornadaDiurnaSel} onValueChange={setJornadaDiurnaSel}>
+                  <SelectTrigger className="w-full h-11 border-gray-200 bg-gray-50/50 font-semibold text-gray-700">
+                    <SelectValue placeholder="Seleccione horario" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {DIURNA_OPTIONS.map(opt => (
+                      <SelectItem key={`d-${opt.value}`} value={opt.value} className="text-xs">{opt.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Card Nocturna */}
+              <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5 hover:shadow-md transition-all">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="bg-indigo-50 p-2.5 rounded-xl border border-indigo-100">
+                    <Clock className="w-5 h-5 text-indigo-600" />
+                  </div>
+                  <div>
+                    <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none">Turno Secundario</h4>
+                    <p className="text-sm font-bold text-gray-700">JORNADA NOCTURNA</p>
+                  </div>
+                </div>
+                <Select value={jornadaNocturnaSel} onValueChange={setJornadaNocturnaSel}>
+                  <SelectTrigger className="w-full h-11 border-gray-200 bg-gray-50/50 font-semibold text-gray-700">
+                    <SelectValue placeholder="Seleccione horario" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {NOCTURNA_OPTIONS.map(opt => (
+                      <SelectItem key={`n-${opt.value}`} value={opt.value} className="text-xs">{opt.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Card Totales (Prominente) */}
+              <div className="bg-gradient-to-br from-indigo-600 to-violet-700 rounded-2xl shadow-lg p-5 text-white flex flex-col justify-between overflow-hidden relative group">
+                <div className="absolute top-0 right-0 p-4 opacity-10 transform translate-x-4 -translate-y-4 group-hover:translate-x-2 group-hover:-translate-y-2 transition-transform duration-500">
+                  <Calculator size={100} />
+                </div>
+                
+                <div className="flex items-center gap-3 mb-4 relative z-10">
+                  <div className="bg-white/20 p-2 rounded-xl backdrop-blur-sm">
+                    <Calculator className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <h4 className="text-[10px] font-black text-indigo-100 uppercase tracking-widest leading-none">Capacidad Calculada</h4>
+                    <p className="text-sm font-bold">HORAS NETAS POR TURNO (84%)</p>
+                  </div>
                 </div>
 
-                <div className="p-4 border rounded-xl bg-white shadow-sm space-y-3 border-indigo-100">
-                  <div className="flex items-center gap-2 mb-1">
-                    <div className="bg-indigo-100 p-1.5 rounded-md"><Clock className="w-4 h-4 text-indigo-600" /></div>
-                    <label className="text-[11px] font-bold text-gray-600 uppercase tracking-wider">JORNADA NOCTURNA</label>
+                <div className="flex-1 flex flex-col justify-center space-y-1.5 mb-4 relative z-10">
+                  <div className="flex justify-between items-center text-[11px] text-indigo-50/80">
+                    <span className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-orange-400"></div> DIURNA ({parseFloat(jornadaDiurnaSel)}h):</span>
+                    <span className="font-mono font-bold text-white bg-white/10 px-2 py-0.5 rounded-md">{horasNetasDiurnas.toFixed(3)}h</span>
                   </div>
-                  <Select value={jornadaNocturnaSel} onValueChange={setJornadaNocturnaSel}>
-                    <SelectTrigger className="h-10 text-sm font-mono font-bold bg-gray-50">
-                      <SelectValue placeholder="Seleccione horario" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {NOCTURNA_OPTIONS.map(opt => (
-                        <SelectItem key={`n-${opt.value}`} value={opt.value}>{opt.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="flex justify-between items-center text-[11px] text-indigo-50/80">
+                    <span className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-indigo-300"></div> NOCTURNA ({parseFloat(jornadaNocturnaSel)}h):</span>
+                    <span className="font-mono font-bold text-white bg-white/10 px-2 py-0.5 rounded-md">{horasNetasNocturnas.toFixed(3)}h</span>
+                  </div>
                 </div>
 
-                <div className="p-5 border rounded-xl bg-indigo-600 shadow-md border-indigo-700 text-white flex flex-col justify-between min-h-[140px]">
-                  <div className="flex items-center gap-2 pb-2 border-b border-white/10">
-                    <div className="bg-white/20 p-1.5 rounded-md"><Calculator className="w-4 h-4 text-white" /></div>
-                    <label className="text-[11px] font-bold text-indigo-100 uppercase tracking-wider">HORAS NETAS POR TURNO (84%)</label>
+                <div className="pt-4 border-t border-white/20 flex items-end justify-between relative z-10">
+                  <div className="flex flex-col">
+                    <span className="text-[9px] font-black uppercase tracking-tighter text-indigo-200">TOTAL DISPONIBLE:</span>
+                    <span className="text-[10px] text-white/50 italic leading-none">(NETO X TURNO)</span>
                   </div>
-                  
-                  <div className="py-2 space-y-1">
-                    <div className="flex justify-between items-center text-[11px] text-indigo-100/70">
-                      <span>DIURNA ({parseFloat(jornadaDiurnaSel)}h):</span>
-                      <span className="font-mono font-bold">{horasNetasDiurnas.toFixed(3)}h</span>
-                    </div>
-                    <div className="flex justify-between items-center text-[11px] text-indigo-100/70">
-                      <span>NOCTURNA ({parseFloat(jornadaNocturnaSel)}h):</span>
-                      <span className="font-mono font-bold">{horasNetasNocturnas.toFixed(3)}h</span>
-                    </div>
-                  </div>
-
-                  <div className="pt-2 border-t border-white/20 flex items-center justify-between">
-                    <div className="flex flex-col">
-                      <span className="text-[9px] font-black uppercase tracking-tighter text-indigo-200">TOTAL DISPONIBLE:</span>
-                      <span className="text-[10px] text-white/50 italic leading-none">(NETO X TURNO)</span>
-                    </div>
-                    <div className="flex items-baseline gap-1">
-                      <span className="text-3xl font-black font-mono tracking-tighter tabular-nums drop-shadow-sm">{totalHorasNetas.toFixed(3)}</span>
-                      <span className="text-sm font-bold opacity-60">h</span>
-                    </div>
+                  <div className="flex items-baseline gap-1 bg-white/10 px-3 py-1 rounded-xl backdrop-blur-md">
+                    <span className="text-4xl font-black font-mono tracking-tighter tabular-nums drop-shadow-md">{totalHorasNetas.toFixed(3)}</span>
+                    <span className="text-xs font-bold opacity-60 ml-0.5">h</span>
                   </div>
                 </div>
               </div>
+            </div>
 
-              {/* TABLA DE CONFIGURACIÓN POR PUESTO */}
-              <div className="rounded-xl border bg-white overflow-hidden shadow-sm">
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50/80">
-                      <tr>
-                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">HOJA DE RUTA</th>
-                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">PUESTO DE TRABAJO</th>
-                        <th className="px-6 py-4 text-center text-xs font-bold text-gray-600 uppercase tracking-wider">Nº Turnos</th>
-                        <th className="px-6 py-4 text-center text-xs font-bold text-gray-600 uppercase tracking-wider">Personas / Turno</th>
-                        <th className="px-6 py-4 text-right text-xs font-bold text-blue-700 uppercase tracking-wider">Capacidad Neta (h)</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-100">
-                      {uniqueMachines.map((m) => {
-                        const config = workstationConfigs[m] || { machine: m, shifts: 1, people: 1 };
-                        const totalNetHours = totalHorasNetas * config.shifts * config.people;
-                        
-                        // Lookup descriptive name for PUESTO DE TRABAJO with overrides
-                        const workstationName = PUESTO_TRABAJO_OVERRIDES[m.toUpperCase()] || tiemposProduccion.find(t => {
-                          const values = Object.values(t).map(v => String(v || '').trim().toUpperCase());
-                          return values.includes(m.toUpperCase());
-                        })?.PuestoTrabajo || '—';
+            {/* TABLA DE CONFIGURACIÓN POR PUESTO */}
+            <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden shadow-sm">
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50/50">
+                    <tr>
+                      <th className="px-6 py-4 text-left text-xs font-black text-gray-500 uppercase tracking-widest">HOJA DE RUTA</th>
+                      <th className="px-6 py-4 text-left text-xs font-black text-gray-500 uppercase tracking-widest">PUESTO DE TRABAJO</th>
+                      <th className="px-6 py-4 text-center text-xs font-black text-gray-500 uppercase tracking-widest">Nº Turnos</th>
+                      <th className="px-6 py-4 text-center text-xs font-black text-gray-500 uppercase tracking-widest">Personas / Turno</th>
+                      <th className="px-6 py-4 text-right text-xs font-black text-indigo-600 uppercase tracking-widest">Capacidad Neta (h)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {uniqueMachines.map((m) => {
+                      const config = workstationConfigs[m] || { machine: m, shifts: 1, people: 1 };
+                      const totalNetHours = totalHorasNetas * config.shifts * config.people;
+                      
+                      const workstationName = PUESTO_TRABAJO_OVERRIDES[m.toUpperCase()] || tiemposProduccion.find(t => {
+                        const values = Object.values(t).map(v => String(v || '').trim().toUpperCase());
+                        return values.includes(m.toUpperCase());
+                      })?.PuestoTrabajo || '—';
 
-                        return (
-                          <tr key={`config-${m}`} className="hover:bg-indigo-50/30 transition-colors">
-                            <td className="px-6 py-4 whitespace-nowrap font-semibold text-gray-800">{m}</td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{workstationName}</td>
-                            <td className="px-6 py-4 whitespace-nowrap text-center">
-                              <Select value={config.shifts.toString()} onValueChange={(val) => handleWorkstationConfigChange(m, 'shifts', parseInt(val))}>
-                                <SelectTrigger className="w-28 h-9 mx-auto text-xs font-bold shadow-sm">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="1">1 Turno</SelectItem>
-                                  <SelectItem value="2">2 Turnos</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-center">
-                              <div className="flex items-center justify-center gap-3">
-                                <Input type="number" className="w-16 h-9 text-center text-xs font-bold shadow-sm" value={config.people} min="1" max="10" onChange={(e) => handleWorkstationConfigChange(m, 'people', parseInt(e.target.value) || 1)} />
-                                <span className="text-[10px] text-gray-400 font-black tracking-widest">PERS.</span>
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-right font-mono font-bold text-blue-700 text-lg">
-                              {totalNetHours.toFixed(2)} h
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                      return (
+                        <tr key={`config-${m}`} className="hover:bg-indigo-50/30 transition-colors group">
+                          <td className="px-6 py-4 whitespace-nowrap font-bold text-gray-800">{m}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 group-hover:text-indigo-700 transition-colors">{workstationName}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-center">
+                            <Select value={config.shifts.toString()} onValueChange={(val) => handleWorkstationConfigChange(m, 'shifts', parseInt(val))}>
+                              <SelectTrigger className="w-32 h-10 mx-auto text-xs font-bold border-gray-200 hover:border-indigo-300 transition-all bg-gray-50/30">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="1">1 Turno</SelectItem>
+                                <SelectItem value="2">2 Turnos</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-center">
+                            <div className="flex items-center justify-center gap-3">
+                              <Input type="number" className="w-20 h-10 text-center text-xs font-bold border-gray-200 hover:border-indigo-300 bg-gray-50/30" value={config.people} min="1" max="10" onChange={(e) => handleWorkstationConfigChange(m, 'people', parseInt(e.target.value) || 1)} />
+                              <span className="text-[9px] text-gray-400 font-black tracking-widest opacity-60">PERS.</span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-right font-mono font-bold text-indigo-700 text-lg tabular-nums">
+                            {totalNetHours.toFixed(2)} <span className="text-[10px] font-bold opacity-40 ml-0.5">h</span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
-              <div className="mt-6 p-4 bg-indigo-50 border border-indigo-100 rounded-xl flex items-start gap-3">
-                <Repeat className="w-5 h-5 text-indigo-600 mt-0.5" />
-                <div className="text-[11px] text-indigo-900 leading-relaxed">
-                  <p className="font-black uppercase tracking-tight mb-1">Algoritmo de capacidad:</p>
-                  <p>Capacidad Neta = <span className="font-bold">(Σ Horas Raw × 84%)</span> × <span className="font-bold">Turnos</span> × <span className="font-bold">Personas</span>.</p>
-                  <p className="mt-1 italic opacity-80">El factor de eficiencia del 84% ya está aplicado en el recuadro superior morado y en la tabla de resultados.</p>
-                </div>
+            </div>
+
+            <div className="p-5 bg-indigo-50/80 border border-indigo-100 rounded-2xl flex items-start gap-4">
+              <div className="bg-indigo-600 p-1.5 rounded-lg shadow-sm"><Repeat className="w-4 h-4 text-white" /></div>
+              <div className="text-xs text-indigo-950 leading-relaxed">
+                <p className="font-black uppercase tracking-widest mb-1.5 text-indigo-600">Lógica de Ingeniería de Planta:</p>
+                <p>El sistema aplica un factor de utilización del <span className="font-bold bg-indigo-100 px-1.5 py-0.5 rounded text-indigo-800">84%</span> sobre la jornada bruta seleccionada para descontar paros programados, cambios de turno y mantenimiento autónomo. El valor final mostrado es la <strong>Capacidad Neta de Producción</strong> disponible por estación.</p>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </TabsContent>
 
         <TabsContent value="explosion">
