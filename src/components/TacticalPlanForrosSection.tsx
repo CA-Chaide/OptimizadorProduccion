@@ -51,6 +51,10 @@ interface WorkstationConfig {
   machine: string;
   shifts: number;
   people: number;
+  dayCode?: string;
+  dayName?: string;
+  nightCode?: string;
+  nightName?: string;
 }
 
 const PUESTO_TRABAJO_OVERRIDES: Record<string, string> = {
@@ -320,14 +324,12 @@ export const TacticalPlanForrosSection: React.FC = () => {
       uniqueMachines.forEach(m => {
         const mNorm = m.replace(/-/g, '_').toUpperCase();
         
-        // Búsqueda robusta de PERSONAS en las restricciones para la máquina actual
         const peopleRes = forrosRestricciones.find(r => {
           const rName = r.nombre_restriccion.toUpperCase();
           return (rName.includes('PERSONAS') || rName.includes('CANTIDAD_PERSONAS')) && 
                  (rName.includes(mNorm) || rName.includes(m.toUpperCase()));
         });
 
-        // Búsqueda robusta de TURNOS en las restricciones para la máquina actual
         const shiftsRes = forrosRestricciones.find(r => {
           const rName = r.nombre_restriccion.toUpperCase();
           return (rName.includes('TURNOS') || rName.includes('CANTIDAD_TURNOS')) && 
@@ -337,7 +339,11 @@ export const TacticalPlanForrosSection: React.FC = () => {
         initial[m] = { 
           machine: m, 
           shifts: shiftsRes ? parseInt(shiftsRes.valor_restriccion) || 1 : 1, 
-          people: peopleRes ? parseInt(peopleRes.valor_restriccion) || 1 : 1 
+          people: peopleRes ? parseInt(peopleRes.valor_restriccion) || 1 : 1,
+          dayCode: '',
+          dayName: '',
+          nightCode: '',
+          nightName: ''
         };
       });
       setWorkstationConfigs(initial);
@@ -535,7 +541,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return processedDailyOrders.slice(start, start + dailyRowsPerPage);
   }, [processedDailyOrders, dailyPage, dailyRowsPerPage]);
 
-  const handleWorkstationConfigChange = (machine: string, field: 'shifts' | 'people', value: number) => {
+  const handleWorkstationConfigChange = (machine: string, field: keyof WorkstationConfig, value: any) => {
     setWorkstationConfigs(prev => ({
       ...prev,
       [machine]: {
@@ -873,9 +879,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
               <p className="text-sm text-gray-500 mt-1">Define los rangos horarios de las jornadas y el personal asignado por puesto.</p>
             </div>
 
-            {/* PANEL DE HORARIOS SUPERIOR ESTÉTICO */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
-              {/* Card Diurna */}
               <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5 hover:shadow-md transition-all">
                 <div className="flex items-center gap-3 mb-4">
                   <div className="bg-orange-50 p-2.5 rounded-xl border border-orange-100">
@@ -898,7 +902,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 </Select>
               </div>
 
-              {/* Card Nocturna */}
               <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5 hover:shadow-md transition-all">
                 <div className="flex items-center gap-3 mb-4">
                   <div className="bg-indigo-50 p-2.5 rounded-xl border border-indigo-100">
@@ -921,12 +924,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 </Select>
               </div>
 
-              {/* Card Totales (Prominente) */}
               <div className="bg-gradient-to-br from-indigo-600 to-violet-700 rounded-2xl shadow-lg p-5 text-white flex flex-col justify-between overflow-hidden relative group">
                 <div className="absolute top-0 right-0 p-4 opacity-10 transform translate-x-4 -translate-y-4 group-hover:translate-x-2 group-hover:-translate-y-2 transition-transform duration-500">
                   <Calculator size={100} />
                 </div>
-                
                 <div className="flex items-center gap-3 mb-4 relative z-10">
                   <div className="bg-white/20 p-2 rounded-xl backdrop-blur-sm">
                     <Calculator className="w-5 h-5 text-white" />
@@ -936,7 +937,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     <p className="text-sm font-bold">HORAS NETAS POR TURNO (84%)</p>
                   </div>
                 </div>
-
                 <div className="flex-1 flex flex-col justify-center space-y-1.5 mb-4 relative z-10">
                   <div className="flex justify-between items-center text-[11px] text-indigo-50/80">
                     <span className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-orange-400"></div> DIURNA ({parseFloat(jornadaDiurnaSel)}h):</span>
@@ -947,7 +947,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     <span className="font-mono font-bold text-white bg-white/10 px-2 py-0.5 rounded-md">{horasNetasNocturnas.toFixed(3)}h</span>
                   </div>
                 </div>
-
                 <div className="pt-4 border-t border-white/20 flex items-end justify-between relative z-10">
                   <div className="flex flex-col">
                     <span className="text-[9px] font-black uppercase tracking-tighter text-indigo-200">TOTAL DISPONIBLE:</span>
@@ -961,16 +960,26 @@ export const TacticalPlanForrosSection: React.FC = () => {
               </div>
             </div>
 
-            {/* TABLA DE CONFIGURACIÓN POR PUESTO */}
             <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden shadow-sm">
               <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
+                <table className="min-w-full divide-y divide-gray-200 border-collapse">
                   <thead className="bg-gray-50/50">
+                    <tr className="border-b border-gray-200">
+                      <th colSpan={2} className="px-4 py-2"></th>
+                      <th colSpan={2} className="px-4 py-2 text-center text-[10px] font-black text-gray-400 uppercase tracking-widest border-l border-gray-100">Configuración</th>
+                      <th colSpan={2} className="px-4 py-2 text-center text-[10px] font-black text-orange-600 uppercase tracking-widest border-l border-orange-100 bg-orange-50/30">Turno Día</th>
+                      <th colSpan={2} className="px-4 py-2 text-center text-[10px] font-black text-indigo-600 uppercase tracking-widest border-l border-indigo-100 bg-indigo-50/30">Turno Noche</th>
+                      <th className="px-4 py-2"></th>
+                    </tr>
                     <tr>
                       <th className="px-6 py-4 text-left text-xs font-black text-gray-500 uppercase tracking-widest">HOJA DE RUTA</th>
                       <th className="px-6 py-4 text-left text-xs font-black text-gray-500 uppercase tracking-widest">PUESTO DE TRABAJO</th>
-                      <th className="px-6 py-4 text-center text-xs font-black text-gray-500 uppercase tracking-widest">Nº Turnos</th>
-                      <th className="px-6 py-4 text-center text-xs font-black text-gray-500 uppercase tracking-widest">Personas / Turno</th>
+                      <th className="px-4 py-4 text-center text-xs font-black text-gray-500 uppercase tracking-widest border-l border-gray-100">Nº Turnos</th>
+                      <th className="px-4 py-4 text-center text-xs font-black text-gray-500 uppercase tracking-widest">Pers / Turno</th>
+                      <th className="px-4 py-4 text-left text-[10px] font-black text-orange-700 uppercase tracking-widest border-l border-orange-100 bg-orange-50/30">Código</th>
+                      <th className="px-4 py-4 text-left text-[10px] font-black text-orange-700 uppercase tracking-widest bg-orange-50/30">Nombre</th>
+                      <th className="px-4 py-4 text-left text-[10px] font-black text-indigo-700 uppercase tracking-widest border-l border-indigo-100 bg-indigo-50/30">Código</th>
+                      <th className="px-4 py-4 text-left text-[10px] font-black text-indigo-700 uppercase tracking-widest bg-indigo-50/30">Nombre</th>
                       <th className="px-6 py-4 text-right text-xs font-black text-indigo-600 uppercase tracking-widest">Capacidad Neta (h)</th>
                     </tr>
                   </thead>
@@ -978,35 +987,35 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     {uniqueMachines.map((m) => {
                       const config = workstationConfigs[m] || { machine: m, shifts: 1, people: 1 };
                       const totalNetHours = totalHorasNetas * config.shifts * config.people;
-                      
-                      const workstationName = PUESTO_TRABAJO_OVERRIDES[m.toUpperCase()] || tiemposProduccion.find(t => {
-                        const values = Object.values(t).map(v => String(v || '').trim().toUpperCase());
-                        return values.includes(m.toUpperCase());
-                      })?.PuestoTrabajo || '—';
+                      const workstationName = PUESTO_TRABAJO_OVERRIDES[m.toUpperCase()] || tiemposProduccion.find(t => Object.values(t).map(v => String(v || '').trim().toUpperCase()).includes(m.toUpperCase()))?.PuestoTrabajo || '—';
 
                       return (
                         <tr key={`config-${m}`} className="hover:bg-indigo-50/30 transition-colors group">
                           <td className="px-6 py-4 whitespace-nowrap font-bold text-gray-800">{m}</td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 group-hover:text-indigo-700 transition-colors">{workstationName}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-center">
+                          <td className="px-4 py-4 whitespace-nowrap text-center border-l border-gray-50">
                             <Select value={config.shifts.toString()} onValueChange={(val) => handleWorkstationConfigChange(m, 'shifts', parseInt(val))}>
-                              <SelectTrigger className="w-32 h-10 mx-auto text-xs font-bold border-gray-200 hover:border-indigo-300 transition-all bg-gray-50/30">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="1">1 Turno</SelectItem>
-                                <SelectItem value="2">2 Turnos</SelectItem>
-                              </SelectContent>
+                              <SelectTrigger className="w-24 h-9 mx-auto text-[10px] font-bold border-gray-200 bg-gray-50/30"><SelectValue /></SelectTrigger>
+                              <SelectContent><SelectItem value="1">1 Turno</SelectItem><SelectItem value="2">2 Turnos</SelectItem></SelectContent>
                             </Select>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-center">
-                            <div className="flex items-center justify-center gap-3">
-                              <Input type="number" className="w-20 h-10 text-center text-xs font-bold border-gray-200 hover:border-indigo-300 bg-gray-50/30" value={config.people} min="1" max="10" onChange={(e) => handleWorkstationConfigChange(m, 'people', parseInt(e.target.value) || 1)} />
-                              <span className="text-[9px] text-gray-400 font-black tracking-widest opacity-60">PERS.</span>
-                            </div>
+                          <td className="px-4 py-4 whitespace-nowrap text-center">
+                            <Input type="number" className="w-16 h-9 text-center text-xs font-bold border-gray-200 bg-gray-50/30 mx-auto" value={config.people} min="1" max="10" onChange={(e) => handleWorkstationConfigChange(m, 'people', parseInt(e.target.value) || 1)} />
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-right font-mono font-bold text-indigo-700 text-lg tabular-nums">
-                            {totalNetHours.toFixed(2)} <span className="text-[10px] font-bold opacity-40 ml-0.5">h</span>
+                          <td className="px-2 py-4 whitespace-nowrap border-l border-orange-100 bg-orange-50/20">
+                            <Input className="h-8 text-[10px] font-mono border-orange-200 focus:ring-orange-500" placeholder="Cód. Día" value={config.dayCode || ''} onChange={(e) => handleWorkstationConfigChange(m, 'dayCode', e.target.value)} />
+                          </td>
+                          <td className="px-2 py-4 whitespace-nowrap bg-orange-50/20">
+                            <Input className="h-8 text-[10px] border-orange-200 focus:ring-orange-500" placeholder="Nombre Operador" value={config.dayName || ''} onChange={(e) => handleWorkstationConfigChange(m, 'dayName', e.target.value)} />
+                          </td>
+                          <td className="px-2 py-4 whitespace-nowrap border-l border-indigo-100 bg-indigo-50/20">
+                            <Input className="h-8 text-[10px] font-mono border-indigo-200 focus:ring-indigo-500" placeholder="Cód. Noche" disabled={config.shifts < 2} value={config.nightCode || ''} onChange={(e) => handleWorkstationConfigChange(m, 'nightCode', e.target.value)} />
+                          </td>
+                          <td className="px-2 py-4 whitespace-nowrap bg-indigo-50/20">
+                            <Input className="h-8 text-[10px] border-indigo-200 focus:ring-indigo-500" placeholder="Nombre Operador" disabled={config.shifts < 2} value={config.nightName || ''} onChange={(e) => handleWorkstationConfigChange(m, 'nightName', e.target.value)} />
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-right font-mono font-bold text-indigo-700 text-md tabular-nums">
+                            {totalNetHours.toFixed(2)} <span className="text-[10px] font-bold opacity-40">h</span>
                           </td>
                         </tr>
                       );
@@ -1020,7 +1029,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
               <div className="bg-indigo-600 p-1.5 rounded-lg shadow-sm"><Repeat className="w-4 h-4 text-white" /></div>
               <div className="text-xs text-indigo-950 leading-relaxed">
                 <p className="font-black uppercase tracking-widest mb-1.5 text-indigo-600">Lógica de Ingeniería de Planta:</p>
-                <p>El sistema aplica un factor de utilización del <span className="font-bold bg-indigo-100 px-1.5 py-0.5 rounded text-indigo-800">84%</span> sobre la jornada bruta seleccionada para descontar paros programados, cambios de turno y mantenimiento autónomo. El valor final mostrado es la <strong>Capacidad Neta de Producción</strong> disponible por estación.</p>
+                <p>El sistema aplica un factor de utilización del <span className="font-bold bg-indigo-100 px-1.5 py-0.5 rounded text-indigo-800">84%</span> sobre la jornada bruta seleccionada para descontar paros programados. El valor mostrado es la <strong>Capacidad Neta</strong> disponible por estación considerando la dotación de personal por turno.</p>
               </div>
             </div>
           </div>
