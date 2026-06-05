@@ -819,7 +819,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
           <Card>
             <CardHeader><CardTitle>Tiempos de Producción (Maestros Técnicos)</CardTitle></CardHeader>
             <CardContent className="space-y-4">
-              <div className="rounded-md border bg-white overflow-hidden">
+              <div className="rounded-md border border-gray-200 bg-white overflow-hidden">
                 <div className="overflow-auto max-h-[60vh]">
                   <table className="min-w-full divide-y divide-gray-200 border-collapse">
                     <thead className="bg-gray-100 sticky top-0 z-10 shadow-sm">
@@ -966,7 +966,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   <thead className="bg-gray-50/50">
                     <tr className="border-b border-gray-200">
                       <th colSpan={2} className="px-4 py-2"></th>
-                      <th colSpan={2} className="px-4 py-2 text-center text-[10px] font-black text-gray-400 uppercase tracking-widest border-l border-gray-100">Configuración</th>
+                      <th colSpan={1} className="px-4 py-2 text-center text-[10px] font-black text-gray-400 uppercase tracking-widest border-l border-gray-100">Configuración</th>
                       <th colSpan={2} className="px-4 py-2 text-center text-[10px] font-black text-orange-600 uppercase tracking-widest border-l border-orange-100 bg-orange-50/30">Turno Día</th>
                       <th colSpan={2} className="px-4 py-2 text-center text-[10px] font-black text-indigo-600 uppercase tracking-widest border-l border-indigo-100 bg-indigo-50/30">Turno Noche</th>
                       <th className="px-4 py-2"></th>
@@ -974,8 +974,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     <tr>
                       <th className="px-6 py-4 text-left text-xs font-black text-gray-500 uppercase tracking-widest">HOJA DE RUTA</th>
                       <th className="px-6 py-4 text-left text-xs font-black text-gray-500 uppercase tracking-widest">PUESTO DE TRABAJO</th>
-                      <th className="px-4 py-4 text-center text-xs font-black text-gray-500 uppercase tracking-widest border-l border-gray-100">Nº Turnos</th>
-                      <th className="px-4 py-4 text-center text-xs font-black text-gray-500 uppercase tracking-widest">Pers / Turno</th>
+                      <th className="px-4 py-4 text-center text-xs font-black text-gray-500 uppercase tracking-widest border-l border-gray-100">Pers / Turno</th>
                       <th className="px-4 py-4 text-left text-[10px] font-black text-orange-700 uppercase tracking-widest border-l border-orange-100 bg-orange-50/30">Código</th>
                       <th className="px-4 py-4 text-left text-[10px] font-black text-orange-700 uppercase tracking-widest bg-orange-50/30">Nombre</th>
                       <th className="px-4 py-4 text-left text-[10px] font-black text-indigo-700 uppercase tracking-widest border-l border-indigo-100 bg-indigo-50/30">Código</th>
@@ -986,7 +985,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   <tbody className="divide-y divide-gray-100">
                     {uniqueMachines.map((m) => {
                       const config = workstationConfigs[m] || { machine: m, shifts: 1, people: 1 };
-                      const totalNetHours = totalHorasNetas * config.shifts * config.people;
+                      const totalNetHours = totalHorasNetas * config.people;
                       const workstationName = PUESTO_TRABAJO_OVERRIDES[m.toUpperCase()] || tiemposProduccion.find(t => Object.values(t).map(v => String(v || '').trim().toUpperCase()).includes(m.toUpperCase()))?.PuestoTrabajo || '—';
 
                       return (
@@ -994,12 +993,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
                           <td className="px-6 py-4 whitespace-nowrap font-bold text-gray-800">{m}</td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 group-hover:text-indigo-700 transition-colors">{workstationName}</td>
                           <td className="px-4 py-4 whitespace-nowrap text-center border-l border-gray-50">
-                            <Select value={config.shifts.toString()} onValueChange={(val) => handleWorkstationConfigChange(m, 'shifts', parseInt(val))}>
-                              <SelectTrigger className="w-24 h-9 mx-auto text-[10px] font-bold border-gray-200 bg-gray-50/30"><SelectValue /></SelectTrigger>
-                              <SelectContent><SelectItem value="1">1 Turno</SelectItem><SelectItem value="2">2 Turnos</SelectItem></SelectContent>
-                            </Select>
-                          </td>
-                          <td className="px-4 py-4 whitespace-nowrap text-center">
                             <Input type="number" className="w-16 h-9 text-center text-xs font-bold border-gray-200 bg-gray-50/30 mx-auto" value={config.people} min="1" max="10" onChange={(e) => handleWorkstationConfigChange(m, 'people', parseInt(e.target.value) || 1)} />
                           </td>
                           <td className="px-2 py-4 whitespace-nowrap border-l border-orange-100 bg-orange-50/20">
@@ -1009,10 +1002,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
                             <Input className="h-8 text-[10px] border-orange-200 focus:ring-orange-500" placeholder="Nombre Operador" value={config.dayName || ''} onChange={(e) => handleWorkstationConfigChange(m, 'dayName', e.target.value)} />
                           </td>
                           <td className="px-2 py-4 whitespace-nowrap border-l border-indigo-100 bg-indigo-50/20">
-                            <Input className="h-8 text-[10px] font-mono border-indigo-200 focus:ring-indigo-500" placeholder="Cód. Noche" disabled={config.shifts < 2} value={config.nightCode || ''} onChange={(e) => handleWorkstationConfigChange(m, 'nightCode', e.target.value)} />
+                            <Input className="h-8 text-[10px] font-mono border-indigo-200 focus:ring-indigo-500" placeholder="Cód. Noche" disabled={parseFloat(jornadaNocturnaSel) === 0} value={config.nightCode || ''} onChange={(e) => handleWorkstationConfigChange(m, 'nightCode', e.target.value)} />
                           </td>
                           <td className="px-2 py-4 whitespace-nowrap bg-indigo-50/20">
-                            <Input className="h-8 text-[10px] border-indigo-200 focus:ring-indigo-500" placeholder="Nombre Operador" disabled={config.shifts < 2} value={config.nightName || ''} onChange={(e) => handleWorkstationConfigChange(m, 'nightName', e.target.value)} />
+                            <Input className="h-8 text-[10px] border-indigo-200 focus:ring-indigo-500" placeholder="Nombre Operador" disabled={parseFloat(jornadaNocturnaSel) === 0} value={config.nightName || ''} onChange={(e) => handleWorkstationConfigChange(m, 'nightName', e.target.value)} />
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-right font-mono font-bold text-indigo-700 text-md tabular-nums">
                             {totalNetHours.toFixed(2)} <span className="text-[10px] font-bold opacity-40">h</span>
@@ -1102,7 +1095,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
           <Card>
             <CardHeader><CardTitle className="flex items-center gap-2"><CalendarCheck className="w-5 h-5 text-primary" /> Programación Componentes (Ecuador): {formattedTodayDisp} (GYE) y {formattedTargetDisp} (Quito)</CardTitle></CardHeader>
             <CardContent className="space-y-4">
-              <div className="rounded-md border bg-white overflow-hidden">
+              <div className="rounded-md border border-gray-200 bg-white overflow-hidden">
                 <div className="overflow-auto max-h-[65vh]">
                   <table className="min-w-full divide-y divide-gray-200 border-collapse">
                     <thead className="bg-gray-100 sticky top-0 z-10 shadow-sm">
@@ -1133,7 +1126,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
           <Card className="shadow-md">
             <CardHeader className="border-b"><CardTitle className="flex items-center gap-2 text-lg"><BarChart3 className="w-5 h-5 text-primary" /> Carga por Máquina / Puesto Técnico</CardTitle><CardDescription>Consolidado único de unidades y tiempos de carga comparados contra capacidad configurada.</CardDescription></CardHeader>
             <CardContent className="pt-6">
-              <div className="rounded-md border overflow-hidden">
+              <div className="rounded-md border border-gray-200 overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
@@ -1142,7 +1135,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     <tbody className="divide-y divide-200 bg-white">
                       {isLoadingDaily ? <tr><td colSpan={7} className="py-12 text-center"><Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" /></td></tr> : productionSummary.length > 0 ? productionSummary.map((item, idx) => {
                           const config = workstationConfigs[item.machine] || { machine: item.machine, shifts: 1, people: 1 };
-                          const plannedCapacityHours = (totalHorasNetas * config.shifts * config.people);
+                          const plannedCapacityHours = totalHorasNetas * config.people;
                           const totalTimeHours = item.totalTime / 60;
                           const utilizationPercent = plannedCapacityHours > 0 ? (totalTimeHours / plannedCapacityHours) * 100 : 0;
                           return (<tr key={idx} className="hover:bg-gray-50 transition-colors"><td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-700">{item.machine}</td><td className="px-6 py-4 whitespace-nowrap text-sm text-right font-mono">{item.count}</td><td className="px-6 py-4 whitespace-nowrap text-sm text-right font-bold text-blue-700 font-mono">{item.quantity.toLocaleString()}</td><td className="px-6 py-4 whitespace-nowrap text-sm text-right font-bold text-emerald-700 font-mono">{item.totalTime.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td><td className="px-6 py-4 whitespace-nowrap text-sm text-right font-bold text-indigo-600 font-mono">{totalTimeHours.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td><td className="px-6 py-4 whitespace-nowrap text-sm text-right font-mono text-gray-400">{plannedCapacityHours.toFixed(2)} h</td><td className="px-6 py-4 whitespace-nowrap text-sm text-right"><Badge className={cn("font-mono font-bold", utilizationPercent > 100 ? "bg-red-100 text-red-700 hover:bg-red-200" : utilizationPercent > 80 ? "bg-amber-100 text-amber-700 hover:bg-amber-200" : "bg-green-100 text-green-700 hover:bg-green-200")}>{utilizationPercent.toFixed(1)}%</Badge></td></tr>);
@@ -1170,7 +1163,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 </div>
               </CardHeader>
               <CardContent className="pt-6">
-                <div className="rounded-xl border bg-white overflow-hidden shadow-sm">
+                <div className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm">
                   <div className="overflow-auto max-h-[60vh]">
                     <table className="min-w-full divide-y divide-gray-200 border-collapse">
                       <thead className="bg-gray-100/80 sticky top-0 z-10 shadow-sm">

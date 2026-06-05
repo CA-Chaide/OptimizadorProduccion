@@ -396,6 +396,24 @@ export const serviciosService = {
     return response.json();
   },
 
-
+  async getPendientesTotales(page: number, rowsPerPage: number): Promise<BodyResponse<any>> {
+    try {
+      const response = await fetch(API_URL + "/CuboPendientesTotales", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          page:page,
+          rowsPerPage: rowsPerPage
+        }),
+      });
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({ message: "Error de red al consultar la producción estimada." }));
+        throw new Error(errorBody.message || "Error al consultar la producción estimada.");
+      }
+      return response.json();
+    } catch (e) {
+      throw e;
+    }
+  },
 
 };
