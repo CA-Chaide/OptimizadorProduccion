@@ -27,7 +27,8 @@ import {
   TestTube,
   FileSpreadsheet,
   GraduationCap,
-  Wrench
+  Wrench,
+  AlertCircle
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -88,9 +89,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
   // MANTENIMIENTOS
   const [mantenimientosData, setMantenimientosData] = useState<any[]>([]);
   const [isLoadingMantenimientos, setIsLoadingMantenimientos] = useState(false);
-  const [mantenimientosPage, setMantenimientosPage] = useState(1);
-  const [mantenimientosRowsPerPage] = useState(20);
-  const [mantenimientosFilters, setMantenimientosFilters] = useState<Record<string, string>>({});
+  const [mantenimientosMonth, setMantenimientosMonth] = useState(new Date().getMonth());
+  const [mantenimientosYear, setMantenimientosYear] = useState(new Date().getFullYear());
+  const [mantenimientosFilters, setHabilidadesFiltersMaint] = useState<Record<string, string>>({});
 
   // CONFIGURACIÓN DE JORNADAS
   const DIURNA_OPTIONS = [
@@ -321,7 +322,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     try {
       const res = await serviciosService.ListarMantenimientoPreventivosProgramados();
       setMantenimientosData(res.data || []);
-      setMantenimientosPage(1);
     } catch (error) {
       console.error('Error fetching Mantenimientos:', error);
       addNotification('error', 'No se pudieron cargar los Mantenimientos Preventivos.');
@@ -630,24 +630,16 @@ export const TacticalPlanForrosSection: React.FC = () => {
   };
 
   const filteredMantenimientos = useMemo(() => {
+    const allowedResp = externalFilters['RESPCONTROLPROD'] || [];
     return mantenimientosData.filter(item => {
-      return Object.entries(mantenimientosFilters).every(([col, val]) => {
-        if (!val) return true;
-        return String(item[col] ?? '').toLowerCase().includes(val.toLowerCase());
-      });
+      // Filtrado por RespCtrlProd del área de forros
+      if (allowedResp.length > 0) {
+        const itemResp = String(item['RESP_CONTROL_PROD'] || item['RespCtrlProd'] || item['Responsable'] || '').trim();
+        if (itemResp && !allowedResp.includes(itemResp)) return false;
+      }
+      return true;
     });
-  }, [mantenimientosData, mantenimientosFilters]);
-
-  const totalMantenimientosPages = Math.max(1, Math.ceil(filteredMantenimientos.length / mantenimientosRowsPerPage));
-  const paginatedMantenimientosData = useMemo(() => {
-    const start = (mantenimientosPage - 1) * mantenimientosRowsPerPage;
-    return filteredMantenimientos.slice(start, start + mantenimientosRowsPerPage);
-  }, [filteredMantenimientos, mantenimientosPage, mantenimientosRowsPerPage]);
-
-  const handleMantenimientosFilterChange = (column: string, value: string) => {
-    setMantenimientosFilters(prev => ({ ...prev, [column]: value }));
-    setMantenimientosPage(1);
-  };
+  }, [mantenimientosData, externalFilters]);
 
   const chnBasesDateTotals = useMemo(() => {
     const filteredForTab = dailyOrders.filter(order => {
@@ -817,6 +809,106 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return finalColumns;
   }, [tiemposProduccion]);
 
+  // CALENDARIO DE MANTENIMIENTO
+  const renderMantenimientosCalendar = () => {
+    const monthStart = new Date(mantenimientosYear, mantenimientosMonth, 1);
+    const firstDay = monthStart.getDay();
+    const daysInMonth = new Date(mantenimientosYear, mantenimientosMonth + 1, 0).getDate();
+    
+    const calendarDays = [];
+    for (let i = 0; i < firstDay; i++) calendarDays.push(null);
+    for (let i = 1; i <= daysInMonth; i++) calendarDays.push(i);
+
+    const maintByDateMap = new Map<string, any[]>();
+    filteredMantenimientos.forEach(m => {
+      const dateKey = normalizeDateForFilter(m.FECHA_INICIO || m.FECHA || m.FechaProgramada);
+      if (dateKey) {
+        if (!maintByDateMap.has(dateKey)) maintByDateMap.set(dateKey, []);
+        maintByDateMap.get(dateKey)!.push(m);
+      }
+    });
+
+    const monthName = new Intl.DateTimeFormat('es-ES', { month: 'long' }).format(monthStart);
+
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
+          <div className="flex items-center gap-4">
+            <h3 className="text-xl font-bold text-gray-800 capitalize">{monthName} {mantenimientosYear}</h3>
+            <div className="flex items-center gap-1 border rounded-lg overflow-hidden">
+              <Button variant="ghost" size="sm" className="h-8 rounded-none border-r" onClick={() => {
+                const prev = new Date(mantenimientosYear, mantenimientosMonth - 1);
+                setMantenimientosMonth(prev.getMonth());
+                setMantenimientosYear(prev.getFullYear());
+              }}>
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="sm" className="h-8 rounded-none" onClick={() => {
+                const now = new Date();
+                setMantenimientosMonth(now.getMonth());
+                setMantenimientosYear(now.getFullYear());
+              }}>Hoy</Button>
+              <Button variant="ghost" size="sm" className="h-8 rounded-none border-l" onClick={() => {
+                const next = new Date(mantenimientosYear, mantenimientosMonth + 1);
+                setMantenimientosMonth(next.getMonth());
+                setMantenimientosYear(next.getFullYear());
+              }}>
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+          <Button variant="outline" size="sm" onClick={fetchMantenimientos} disabled={isLoadingMantenimientos}>
+            <RefreshCw className={cn("h-4 w-4 mr-2", isLoadingMantenimientos && "animate-spin")} /> Actualizar
+          </Button>
+        </div>
+
+        <div className="bg-white border rounded-2xl overflow-hidden shadow-md">
+          <div className="grid grid-cols-7 bg-gray-50 border-b">
+            {['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'].map(d => (
+              <div key={d} className="py-3 text-center text-[10px] font-black text-gray-400 uppercase tracking-widest">{d}</div>
+            ))}
+          </div>
+          <div className="grid grid-cols-7 auto-rows-fr min-h-[500px]">
+            {calendarDays.map((day, idx) => {
+              if (day === null) return <div key={`empty-${idx}`} className="bg-gray-50/30 border-b border-r last:border-r-0" />;
+              
+              const dateStr = `${mantenimientosYear}-${String(mantenimientosMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+              const events = maintByDateMap.get(dateStr) || [];
+              const isToday = new Date().toISOString().split('T')[0] === dateStr;
+
+              return (
+                <div key={`day-${day}`} className={cn(
+                  "p-2 border-b border-r last:border-r-0 min-h-[100px] hover:bg-gray-50/50 transition-colors relative",
+                  isToday && "bg-blue-50/20"
+                )}>
+                  <span className={cn(
+                    "text-xs font-bold",
+                    isToday ? "bg-blue-600 text-white w-6 h-6 rounded-full flex items-center justify-center -ml-1 -mt-1" : "text-gray-400"
+                  )}>{day}</span>
+                  <div className="mt-1 space-y-1">
+                    {events.map((e, eIdx) => (
+                      <div key={eIdx} className="p-1.5 bg-amber-100 border-l-4 border-amber-500 rounded text-[9px] leading-tight shadow-sm">
+                        <p className="font-black text-amber-900 truncate uppercase">{e.EQUIPO || 'Equipo'}</p>
+                        <p className="text-amber-700 truncate">{e.ACTIVIDAD || e.DESCRIPCION || 'Mantenimiento'}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        
+        <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0" />
+          <p className="text-xs text-blue-800 leading-relaxed">
+            <strong>Filtro de Responsable:</strong> Esta vista está filtrada para mostrar únicamente los mantenimientos preventivos correspondientes a los centros de control de producción del área de Forros (<strong>{externalFilters['RESPCONTROLPROD']?.join(', ') || 'N/A'}</strong>).
+          </p>
+        </div>
+      </div>
+    );
+  };
+
   if (!isMounted) return null;
 
   return (
@@ -914,7 +1006,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                           <th key={`filter-t-${col}-${idx}`} className="px-2 py-2 bg-gray-50 border-b border-gray-200">
                             <div className="relative">
                               <Search className="absolute left-2 top-1.5 h-3 w-3 text-gray-400" />
-                              <input type="text" placeholder="Buscar..." value={tiemposFilters[col] || ''} onChange={(e) => handleTiemposFilterChange(col, e.target.value)} className="w-full text-[10px] pl-7 pr-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-primary outline-none font-normal bg-white" />
+                              <input type="text" placeholder="Buscar..." value={tiemposFilters[col] || ''} onChange={(e) => setTiemposFilters(prev => ({ ...prev, [col]: e.target.value }))} className="w-full text-[10px] pl-7 pr-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-primary outline-none font-normal bg-white" />
                             </div>
                           </th>
                         ))}
@@ -1202,74 +1294,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="mantenimiento">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>Mantenimientos Preventivos Programados</CardTitle>
-                  <CardDescription>Visualización de equipos que entrarán en mantenimiento programado.</CardDescription>
-                </div>
-                <Button variant="outline" size="sm" onClick={fetchMantenimientos} disabled={isLoadingMantenimientos}>
-                  <RefreshCw className={cn("h-4 w-4 mr-2", isLoadingMantenimientos && "animate-spin")} />
-                  Actualizar
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="relative">
-                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
-                    <Input 
-                      placeholder="Filtrar por Equipo/Máquina..." 
-                      className="pl-9 h-10 text-sm" 
-                      onChange={(e) => handleMantenimientosFilterChange('EQUIPO', e.target.value)}
-                    />
-                  </div>
-                </div>
-
-                <div className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm">
-                  <div className="overflow-x-auto max-h-[60vh]">
-                    <table className="min-w-full divide-y divide-gray-200 border-collapse">
-                      <thead className="bg-gray-50 sticky top-0 z-10 shadow-sm">
-                        <tr>
-                          {mantenimientosData.length > 0 && Object.keys(mantenimientosData[0]).map((col) => (
-                            <th key={`maint-head-${col}`} className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase whitespace-nowrap">{col}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-100">
-                        {isLoadingMantenimientos ? (
-                          <tr><td colSpan={12} className="py-24 text-center"><Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" /></td></tr>
-                        ) : paginatedMantenimientosData.length > 0 ? paginatedMantenimientosData.map((row, idx) => (
-                          <tr key={`maint-row-${idx}`} className="hover:bg-amber-50/20 transition-colors">
-                            {Object.keys(row).map((col, cIdx) => (
-                              <td key={`maint-cell-${idx}-${cIdx}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] font-mono text-gray-600">
-                                {formatValueForDisplay(col, row[col])}
-                              </td>
-                            ))}
-                          </tr>
-                        )) : (
-                          <tr><td colSpan={12} className="py-20 text-center text-gray-400 italic">No se encontraron mantenimientos programados.</td></tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between gap-4 py-3 px-4 bg-gray-50 rounded-lg border border-gray-200 shadow-sm">
-                  <div className="flex items-center gap-1">
-                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setMantenimientosPage(1)} disabled={mantenimientosPage === 1}><ChevronsLeft className="h-4 w-4" /></Button>
-                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setMantenimientosPage(p => Math.max(1, p - 1))} disabled={mantenimientosPage === 1}><ChevronLeft className="h-4 w-4" /></Button>
-                    <span className="px-3 text-[11px] font-bold min-w-[120px] text-center border-x py-1 bg-white rounded">Página {mantenimientosPage} de {totalMantenimientosPages}</span>
-                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setMantenimientosPage(p => Math.min(totalMantenimientosPages, p + 1))} disabled={mantenimientosPage === totalMantenimientosPages}><ChevronRight className="h-4 w-4" /></Button>
-                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setMantenimientosPage(totalMantenimientosPages)} disabled={mantenimientosPage === totalMantenimientosPages}><ChevronsRight className="h-4 w-4" /></Button>
-                  </div>
-                  <span className="text-[10px] text-gray-400 font-bold uppercase">{filteredMantenimientos.length} registros programados</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          {renderMantenimientosCalendar()}
         </TabsContent>
 
         <TabsContent value="explosion">
