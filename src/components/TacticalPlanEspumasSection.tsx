@@ -322,52 +322,34 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     });
   }, [habilidades, habilidadesSearch]);
 
-  // --- RESUMEN OPERATIVO CRUZA ---
   const operationalSummaryData = useMemo(() => {
     if (selectedDate === 'all') return [];
-
     const results: any[] = [];
     const allResources = [...OPERATIVE_RESOURCES['1000'], ...OPERATIVE_RESOURCES['2000']];
-
     allResources.forEach(res => {
-      // Find operators for this machine in habilidades
       const assignedOperators = habilidades.filter(h => {
         const maquinaSismacVal = getCellValue(h, ['MaquinaSismac', 'ID_MAQUINA', 'MAQUINA']);
         return maquinaSismacVal.toUpperCase() === res.code.toUpperCase();
       });
-
-      // Find maintenance for this machine on selected date
       const machineMaint = mantenimientos.filter(m => {
         const mDateRaw = String(m.FECHA_PRO || '').trim();
         const mDate = mDateRaw.includes('T') ? mDateRaw.split('T')[0] : mDateRaw;
         const idMaquina = String(m.ID_MAQUINA || '').trim().toUpperCase();
         return mDate === selectedDate && idMaquina === res.code.toUpperCase();
       });
-
       const totalMaintHours = machineMaint.reduce((sum, m) => sum + safeNum(m.TIEMPO), 0);
-
-      // Create a row for each assigned operator
       if (assignedOperators.length > 0) {
         assignedOperators.forEach(op => {
           const operatorCode = getCellValue(op, ['IDENTIFICADOR', 'CODIGO', 'IDENTIFICADOR_OPERADOR', 'Id']);
           const operatorName = getCellValue(op, ['NOMBRE', 'Nom_Empleado', 'Nombre']);
           const skillLevel = getCellValue(op, ['CALIFICACION', 'NIVEL', 'PORCENTAJE', 'Calificacion']);
-
-          // Find absenteeism for this operator on selected date
           const operatorAbsences = (absenteeismEvents || []).filter(event => {
             const isDateInRange = selectedDate >= event.startDate && selectedDate <= event.endDate;
             return isDateInRange && (event.employeeIds || []).includes(operatorCode);
           });
-
-          const totalAbsenceHours = operatorAbsences.reduce((sum, event) => {
-             // In AbsenteeismSection, diffHours was used, but type has no direct field, we assume some logic or use default
-             // For this summary, we try to use a field if exists or default to 8h if vacations etc.
-             return sum + 8; // Simplified for MVP if no specific hours found
-          }, 0);
-
+          const totalAbsenceHours = operatorAbsences.length > 0 ? 8 : 0;
           const baseHours = res.t1 + res.t2;
           const effectiveHours = Math.max(0, baseHours - totalMaintHours - totalAbsenceHours);
-
           results.push({
             turno: `${res.t1}h / ${res.t2}h`,
             maquina: `${res.code} - ${res.name}`,
@@ -380,7 +362,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           });
         });
       } else {
-        // Show machine even if no operator is assigned if there's maintenance or just to show gap
         results.push({
           turno: `${res.t1}h / ${res.t2}h`,
           maquina: `${res.code} - ${res.name}`,
@@ -393,7 +374,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         });
       }
     });
-
     return results;
   }, [selectedDate, habilidades, mantenimientos, absenteeismEvents]);
 
@@ -737,7 +717,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-50 font-bold">
                   {filteredMantenimientos.length === 0 ? (
-                    <tr><td colSpan={10} className="py-20 text-center text-gray-300 uppercase tracking-widest opacity-30">No se detectan paros programados para el criterio de filtro</td></tr>
+                    <tr><td colSpan={10} className="py-20 text-center text-gray-300 uppercase font-black tracking-widest opacity-30">No se detectan paros programados para el criterio de filtro</td></tr>
                   ) : (
                     filteredMantenimientos.map((m, i) => (
                       <tr key={i} className="hover:bg-amber-50/30 transition-colors">
@@ -814,19 +794,23 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 text-[10px] font-bold">
-                      {center.d.map((o, i) => {
-                        const info = extractMaterialInfo(o);
-                        return (
-                          <tr key={i} className="hover:bg-gray-50/50 transition-colors">
-                            <td className="px-3 py-2 text-gray-500 border-r border-gray-100">{o.ORDENPREVISIONAL || '—'}</td>
-                            <td className="px-3 py-2 border-r border-gray-100 font-mono text-[9px] text-gray-400">{o.FECHAINICIO || '—'}</td>
-                            <td className="px-3 py-2 font-mono text-primary border-r border-gray-100 tracking-tighter">{info.code}</td>
-                            <td className="px-3 py-2 text-left border-r border-gray-100 truncate max-w-[200px] text-gray-500 uppercase">{info.desc}</td>
-                            <td className="px-3 py-2 text-gray-900 border-r border-gray-100 font-mono">{String(o.CANTPROGRAMADA || 0)}</td>
-                            <td className="px-3 py-2 font-bold text-gray-200">{o.Almacen || '—'}</td>
-                          </tr>
-                        );
-                      })}
+                      {center.d.length === 0 ? (
+                        <tr><td colSpan={6} className="py-12 text-center text-gray-300 font-bold uppercase tracking-widest opacity-20">Sin registros</td></tr>
+                      ) : (
+                        center.d.map((o, i) => {
+                          const info = extractMaterialInfo(o);
+                          return (
+                            <tr key={i} className="hover:bg-gray-50/50 transition-colors">
+                              <td className="px-3 py-2 text-gray-500 border-r border-gray-100">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
+                              <td className="px-3 py-2 border-r border-gray-100 font-mono text-[9px] text-gray-400">{o.FECHAINICIO || o.FECHA || '—'}</td>
+                              <td className="px-3 py-2 font-mono text-primary border-r border-gray-100 tracking-tighter">{info.code}</td>
+                              <td className="px-3 py-2 text-left border-r border-gray-100 truncate max-w-[200px] text-gray-500 uppercase">{info.desc}</td>
+                              <td className="px-3 py-2 text-gray-900 border-r border-gray-100 font-mono">{String(o.CANTPROGRAMADA || o.CANTIDAD || 0)}</td>
+                              <td className="px-3 py-2 font-bold text-gray-200">{o.Almacen || o.ALMACEN || '—'}</td>
+                            </tr>
+                          );
+                        })
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -856,7 +840,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                               <tr key={i} className="hover:bg-gray-50/50 transition-colors">
                                 <td className="px-4 py-3 font-mono text-primary border-r border-gray-50 text-left">{info.code}</td>
                                 <td className="px-4 py-3 text-left border-r border-gray-50 text-gray-500 uppercase truncate max-w-[280px]">{info.desc}</td>
-                                <td className="px-4 py-3 font-mono text-teal-600 bg-teal-50/5">{formatNum(t.Tiempo || 0, 4)}</td>
+                                <td className="px-4 py-3 font-mono text-teal-600 bg-teal-50/5">{formatNum(t.Tiempo || t.Tiempo_Min || 0, 4)}</td>
                               </tr>
                             );
                           })
