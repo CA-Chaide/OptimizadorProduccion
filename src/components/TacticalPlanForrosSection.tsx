@@ -25,7 +25,8 @@ import {
   Repeat,
   Calculator,
   TestTube,
-  FileSpreadsheet
+  FileSpreadsheet,
+  GraduationCap
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -75,6 +76,13 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingTiempos, setIsLoadingTiempos] = useState(false);
   const [isLoadingDaily, setIsLoadingDaily] = useState(false);
+
+  // HABILIDADES OP
+  const [habilidadesOpData, setHabilidadesOpData] = useState<any[]>([]);
+  const [isLoadingHabilidades, setIsLoadingHabilidades] = useState(false);
+  const [habilidadesPage, setHabilidadesPage] = useState(1);
+  const [habilidadesRowsPerPage] = useState(20);
+  const [habilidadesFilters, setHabilidadesFilters] = useState<Record<string, string>>({});
 
   // CONFIGURACIÓN DE JORNADAS
   const DIURNA_OPTIONS = [
@@ -286,6 +294,20 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
   }, [forrosGruposList]);
 
+  const fetchHabilidadesOp = useCallback(async () => {
+    setIsLoadingHabilidades(true);
+    try {
+      const res = await serviciosService.getCuboHabilidadesOP();
+      setHabilidadesOpData(res.data || []);
+      setHabilidadesPage(1);
+    } catch (error) {
+      console.error('Error fetching Habilidades OP:', error);
+      addNotification('error', 'No se pudieron cargar las Habilidades OP.');
+    } finally {
+      setIsLoadingHabilidades(false);
+    }
+  }, [addNotification]);
+
   const uniqueMachines = useMemo(() => {
     const machinesSet = new Set<string>();
     tiemposProduccion.forEach(t => {
@@ -408,8 +430,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
     if (isMounted && forrosGruposList.length > 0) {
       fetchTiemposProduccion();
       fetchDailyOrders();
+      fetchHabilidadesOp();
     }
-  }, [isMounted, forrosGruposList, fetchTiemposProduccion, fetchDailyOrders]);
+  }, [isMounted, forrosGruposList, fetchTiemposProduccion, fetchDailyOrders, fetchHabilidadesOp]);
 
   const getResolvedMachine = useCallback((order: any) => {
     const orderFields = ['MAQUINA', 'Maquina', 'maquina', 'PUESTOTRABAJO', 'PuestoTrabajo', 'puestotrabajo'];
@@ -568,6 +591,26 @@ export const TacticalPlanForrosSection: React.FC = () => {
     
     return Array.from(summaryMap.values()).sort((a, b) => a.machine.localeCompare(b.machine));
   }, [dailyOrders, uniqueMachines, getResolvedMachine, calculateProductionTime]);
+
+  const filteredHabilidades = useMemo(() => {
+    return habilidadesOpData.filter(item => {
+      return Object.entries(habilidadesFilters).every(([col, val]) => {
+        if (!val) return true;
+        return String(item[col] ?? '').toLowerCase().includes(val.toLowerCase());
+      });
+    });
+  }, [habilidadesOpData, habilidadesFilters]);
+
+  const totalHabilidadesPages = Math.max(1, Math.ceil(filteredHabilidades.length / habilidadesRowsPerPage));
+  const paginatedHabilidadesData = useMemo(() => {
+    const start = (habilidadesPage - 1) * habilidadesRowsPerPage;
+    return filteredHabilidades.slice(start, start + habilidadesRowsPerPage);
+  }, [filteredHabilidades, habilidadesPage, habilidadesRowsPerPage]);
+
+  const handleHabilidadesFilterChange = (column: string, value: string) => {
+    setHabilidadesFilters(prev => ({ ...prev, [column]: value }));
+    setHabilidadesPage(1);
+  };
 
   const chnBasesDateTotals = useMemo(() => {
     const filteredForTab = dailyOrders.filter(order => {
@@ -754,6 +797,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
             <TabsTrigger value="restricciones" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><Lock className="w-4 h-4" /> Restricciones</TabsTrigger>
             <TabsTrigger value="tiempos" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><Timer className="w-4 h-4" /> Tiempos de Producción</TabsTrigger>
             <TabsTrigger value="personal-turnos" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><UserPlus className="w-4 h-4" /> Distribución del personal</TabsTrigger>
+            <TabsTrigger value="habilidades-op" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><GraduationCap className="w-4 h-4" /> Habilidades OP</TabsTrigger>
             <TabsTrigger value="explosion" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><ListTree className="w-4 h-4" /> Explosión de Materiales</TabsTrigger>
             <TabsTrigger value="forros-chn-bases" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><Package className="w-4 h-4" /> Forros CHN & Bases</TabsTrigger>
             <TabsTrigger value="diaria" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><CalendarCheck className="w-4 h-4" /> Programación Componentes</TabsTrigger>
@@ -1026,6 +1070,98 @@ export const TacticalPlanForrosSection: React.FC = () => {
               </div>
             </div>
           </div>
+        </TabsContent>
+
+        <TabsContent value="habilidades-op">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Habilidades del Personal (OP)</CardTitle>
+                  <CardDescription>Calificación técnica y polivalencia de los operadores por estación.</CardDescription>
+                </div>
+                <Button variant="outline" size="sm" onClick={fetchHabilidadesOp} disabled={isLoadingHabilidades}>
+                  <RefreshCw className={cn("h-4 w-4 mr-2", isLoadingHabilidades && "animate-spin")} />
+                  Actualizar
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
+                    <Input 
+                      placeholder="Filtrar por Operador..." 
+                      className="pl-9 h-10 text-sm" 
+                      onChange={(e) => handleHabilidadesFilterChange('OPERADOR', e.target.value)}
+                    />
+                  </div>
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
+                    <Input 
+                      placeholder="Filtrar por Estación..." 
+                      className="pl-9 h-10 text-sm" 
+                      onChange={(e) => handleHabilidadesFilterChange('ESTACION', e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm">
+                  <div className="overflow-x-auto max-h-[60vh]">
+                    <table className="min-w-full divide-y divide-gray-200 border-collapse">
+                      <thead className="bg-gray-50 sticky top-0 z-10 shadow-sm">
+                        <tr>
+                          {habilidadesOpData.length > 0 && Object.keys(habilidadesOpData[0]).map((col) => (
+                            <th key={`hab-head-${col}`} className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase whitespace-nowrap">{col}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {isLoadingHabilidades ? (
+                          <tr><td colSpan={10} className="py-24 text-center"><Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" /></td></tr>
+                        ) : paginatedHabilidadesData.length > 0 ? paginatedHabilidadesData.map((row, idx) => (
+                          <tr key={`hab-row-${idx}`} className="hover:bg-blue-50/20 transition-colors">
+                            {Object.keys(row).map((col, cIdx) => {
+                              const val = row[col];
+                              const isCalificacion = col.toUpperCase().includes('CALIF') || col.toUpperCase().includes('PUNTAJE');
+                              return (
+                                <td key={`hab-cell-${idx}-${cIdx}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] font-mono text-gray-600">
+                                  {isCalificacion ? (
+                                    <Badge variant="outline" className={cn(
+                                      "font-bold font-mono",
+                                      Number(val) >= 90 ? "bg-green-50 text-green-700 border-green-200" :
+                                      Number(val) >= 70 ? "bg-amber-50 text-amber-700 border-amber-200" :
+                                      "bg-red-50 text-red-700 border-red-200"
+                                    )}>
+                                      {val}%
+                                    </Badge>
+                                  ) : String(val ?? '—')}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        )) : (
+                          <tr><td colSpan={10} className="py-20 text-center text-gray-400 italic">No se encontraron datos de habilidades.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between gap-4 py-3 px-4 bg-gray-50 rounded-lg border border-gray-200 shadow-sm">
+                  <div className="flex items-center gap-1">
+                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setHabilidadesPage(1)} disabled={habilidadesPage === 1}><ChevronsLeft className="h-4 w-4" /></Button>
+                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setHabilidadesPage(p => Math.max(1, p - 1))} disabled={habilidadesPage === 1}><ChevronLeft className="h-4 w-4" /></Button>
+                    <span className="px-3 text-[11px] font-bold min-w-[120px] text-center border-x py-1 bg-white rounded">Página {habilidadesPage} de {totalHabilidadesPages}</span>
+                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setHabilidadesPage(p => Math.min(totalHabilidadesPages, p + 1))} disabled={habilidadesPage === totalHabilidadesPages}><ChevronRight className="h-4 w-4" /></Button>
+                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setHabilidadesPage(totalHabilidadesPages)} disabled={habilidadesPage === totalHabilidadesPages}><ChevronsRight className="h-4 w-4" /></Button>
+                  </div>
+                  <span className="text-[10px] text-gray-400 font-bold uppercase">{filteredHabilidades.length} habilidades registradas</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="explosion">
