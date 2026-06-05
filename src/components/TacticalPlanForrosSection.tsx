@@ -637,8 +637,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
       if (mantenimientoSearch) {
         const search = mantenimientoSearch.toLowerCase();
         return (
-          String(item.EQUIPO || '').toLowerCase().includes(search) ||
-          String(item.ACTIVIDAD || '').toLowerCase().includes(search)
+          String(item.EQUIPO || item.MAQUINA || '').toLowerCase().includes(search) ||
+          String(item.ACTIVIDAD || item.DESCRIPCION || '').toLowerCase().includes(search)
         );
       }
       return true;
@@ -1249,13 +1249,18 @@ export const TacticalPlanForrosSection: React.FC = () => {
                         <tr><td colSpan={6} className="py-24 text-center"><Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" /></td></tr>
                       ) : filteredMantenimientos.length > 0 ? filteredMantenimientos.map((m, idx) => (
                         <tr key={`maint-row-${idx}`} className="hover:bg-amber-50/30 transition-colors">
-                          <td className="px-4 py-3 whitespace-nowrap text-[11px] font-bold text-gray-900 uppercase">{m.EQUIPO || '—'}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-[11px] font-bold text-gray-900 uppercase">{m.EQUIPO || m.MAQUINA || m.MAQUINA_NOMBRE || '—'}</td>
                           <td className="px-4 py-3 text-[11px] text-gray-600 min-w-[200px]">{m.ACTIVIDAD || m.DESCRIPCION || '—'}</td>
                           <td className="px-4 py-3 whitespace-nowrap text-[11px] font-mono text-gray-600">{formatValueForDisplay('FECHA', m.FECHA_INICIO || m.FECHA)}</td>
                           <td className="px-4 py-3 whitespace-nowrap text-[11px] font-mono text-gray-600">{formatValueForDisplay('FECHA', m.FECHA_FIN)}</td>
-                          <td className="px-4 py-3 whitespace-nowrap text-[11px] text-gray-500">{m.RESP_CONTROL_PROD || m.RespCtrlProd || '—'}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-[11px] text-gray-500">{m.RESP_CONTROL_PROD || m.RespCtrlProd || m.Responsable || '—'}</td>
                           <td className="px-4 py-3 whitespace-nowrap text-[11px]">
-                            <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 font-bold uppercase text-[9px]">Programado</Badge>
+                            <Badge variant="outline" className={cn(
+                              "font-bold uppercase text-[9px]",
+                              m.ESTADO === 'EJECUTADO' ? "bg-green-50 text-green-700 border-green-200" : "bg-amber-50 text-amber-700 border-amber-200"
+                            )}>
+                              {m.ESTADO || 'Programado'}
+                            </Badge>
                           </td>
                         </tr>
                       )) : (
