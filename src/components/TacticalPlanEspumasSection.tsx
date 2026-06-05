@@ -19,8 +19,6 @@ import {
   Users,
   Lock,
   Wrench,
-  AlertTriangle,
-  History,
   GraduationCap,
   Search
 } from 'lucide-react';
@@ -251,6 +249,32 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     });
   }, [habilidades, habilidadesSearch, selectedDept]);
 
+  const datesWithOrders = useMemo(() => {
+    const dates = new Set<string>();
+    ordenes.forEach(o => {
+      const itemCentro = String(o.Centro || o.CENTRO || o.centro || '').trim();
+      if (itemCentro !== '1000' && itemCentro !== '2000') return;
+      
+      const itemResp = String(o.RESPCTRLPROD || o.RESPCONTROLPROD || o.RespCtrlProd || o.RespControlProd || '').trim();
+      const validResps = itemCentro === '1000' ? RESPONSABLES_QUITO : RESPONSABLES_GYE;
+      if (!validResps.includes(itemResp)) return;
+
+      const d = String(o.FECHAINICIO || o.FECHA || '').trim();
+      if (d && d !== 'null') dates.add(d.includes('T') ? d.split('T')[0] : d);
+    });
+    return dates;
+  }, [ordenes]);
+
+  const calendarDays = useMemo(() => {
+    if (!mounted || !viewDate) return [];
+    const start = startOfMonth(viewDate);
+    const end = endOfMonth(viewDate);
+    const days = eachDayOfInterval({ start, end });
+    const startDay = getDay(start);
+    const padding = startDay === 0 ? 6 : startDay - 1;
+    return [...Array(padding).fill(null), ...days];
+  }, [viewDate, mounted]);
+
   const calculateCargasLogic = (totalSubblocks: number, ancho: number, largo: number) => {
     if (ancho <= 0 || largo <= 0 || totalSubblocks <= 0) return { subbloquesPorCarga: 0, totalCargas: 0 };
     const innerRadius = MACHINE_RADIO_CM - largo;
@@ -315,16 +339,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
   const metrics1000 = useMemo(() => getPlantaMetrics('1000'), [provC1000]);
   const metrics2000 = useMemo(() => getPlantaMetrics('2000'), [provC2000]);
-
-  const calendarDays = useMemo(() => {
-    if (!mounted || !viewDate) return [];
-    const start = startOfMonth(viewDate);
-    const end = endOfMonth(viewDate);
-    const days = eachDayOfInterval({ start, end });
-    const startDay = getDay(start);
-    const padding = startDay === 0 ? 6 : startDay - 1;
-    return [...Array(padding).fill(null), ...days];
-  }, [viewDate, mounted]);
 
   const CapacityTab = ({ centerId, metrics }: { centerId: string, metrics: any }) => {
     const isQuito = centerId === '1000';
@@ -543,14 +557,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="habilidades" className="space-y-4 animate-in fade-in duration-300">
-          {/* Explorador de Departamentos */}
           <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-indigo-600/10 rounded-xl text-indigo-600"><Database className="w-5 h-5" /></div>
                 <div>
-                  <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">Explorador de Departamentos</h3>
-                  <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">Total: {uniqueDepartments.length} departamentos encontrados</p>
+                  <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter text-left">Explorador de Departamentos</h3>
+                  <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-0.5 text-left">Total: {uniqueDepartments.length} departamentos encontrados</p>
                 </div>
               </div>
               <div className="relative">
