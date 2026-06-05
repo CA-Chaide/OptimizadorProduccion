@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Wind, 
   Package, 
@@ -21,7 +21,8 @@ import {
   Wrench,
   GraduationCap,
   Search,
-  History
+  History,
+  AlertTriangle
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -85,7 +86,7 @@ const formatNum = (val: any, decimals: number = 0): string => {
 
 export const TacticalPlanEspumasSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanEspumas');
-  const { addNotification } = useAppContext();
+  const { addNotification, absenteeismEvents } = useAppContext();
 
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState('resumen');
@@ -99,6 +100,17 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState<string>('all');
   const [viewDate, setViewDate] = useState<Date | null>(null);
   const [habilidadesSearch, setHabilidadesSearch] = useState('');
+
+  // Auxiliares para evitar errores de renderizado
+  const getCellValue = (row: any, keys: string[]): string => {
+    if (!row) return '';
+    for (const key of keys) {
+      const normalizedSearch = key.toLowerCase().replace(/_/g, '');
+      const actualKey = Object.keys(row).find(k => k.toLowerCase().replace(/_/g, '') === normalizedSearch);
+      if (actualKey) return String(row[actualKey]).trim();
+    }
+    return '';
+  };
 
   useEffect(() => { 
     setMounted(true); 
@@ -244,16 +256,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const key = `${fecha}|${info.dens}|${info.tipo}`;
       const qty = safeNum(o.CANTPROGRAMADA || o.CANTIDAD || 0);
       const ancho = parseFloat(info.ancho) || 0;
-      const largo = parseFloat(info.largo) || 0;
       const esp = parseFloat(info.esp) || 0;
       const densValue = parseFloat(info.dens) || 0;
       const usefulHeight = (densValue < 30) ? 103 : 85;
       const itemSubbloques = (qty * esp) / usefulHeight;
       const itemBloques20m = (ancho * itemSubbloques) / 2000;
-      const innerRadius = MACHINE_RADIO_CM - largo;
-      const innerCircumference = 2 * Math.PI * (innerRadius > 0 ? innerRadius : 1);
-      const subbloquesPorCarga = Math.max(1, Math.floor(innerCircumference / (ancho || 1)));
-      const totalCargas = Math.ceil(itemSubbloques / subbloquesPorCarga);
+      const physicalBlocksCount = Math.ceil(itemBloques20m);
+      const totalCargas = physicalBlocksCount;
       const itemTimeLog = calculateOperativeHours(o);
       if (!groupsMap.has(key)) groupsMap.set(key, { fecha, dens: info.dens, tipo: info.tipo, units: 0, subbloques: 0, bloques20m: 0, cargas: 0, timeLog: 0 });
       const entry = groupsMap.get(key)!;
@@ -287,7 +296,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const metrics1000 = useMemo(() => getPlantaMetrics('1000'), [provC1000]);
   const metrics2000 = useMemo(() => getPlantaMetrics('2000'), [provC2000]);
 
-  // --- FILTRADO AUTOMÁTICO DE MANTENIMIENTO ---
   const filteredMantenimientos = useMemo(() => {
     if (selectedDate === 'all') return mantenimientos;
     return mantenimientos.filter(m => {
@@ -296,17 +304,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       return mDate === selectedDate;
     });
   }, [mantenimientos, selectedDate]);
-
-  // --- CRUCE HABILIDADES <-> MANTENIMIENTO ---
-  const getCellValue = (row: any, keys: string[]): string => {
-    if (!row) return '';
-    for (const key of keys) {
-      const normalizedSearch = key.toLowerCase().replace(/_/g, '');
-      const actualKey = Object.keys(row).find(k => k.toLowerCase().replace(/_/g, '') === normalizedSearch);
-      if (actualKey) return String(row[actualKey]).trim();
-    }
-    return '';
-  };
 
   const getPuestoDesdeHabilidades = (idMaquina: string) => {
     if (!idMaquina || !habilidades.length) return '—';
@@ -324,6 +321,81 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       return Object.values(h).some(val => String(val || '').toUpperCase().includes(q));
     });
   }, [habilidades, habilidadesSearch]);
+
+  // --- RESUMEN OPERATIVO CRUZA ---
+  const operationalSummaryData = useMemo(() => {
+    if (selectedDate === 'all') return [];
+
+    const results: any[] = [];
+    const allResources = [...OPERATIVE_RESOURCES['1000'], ...OPERATIVE_RESOURCES['2000']];
+
+    allResources.forEach(res => {
+      // Find operators for this machine in habilidades
+      const assignedOperators = habilidades.filter(h => {
+        const maquinaSismacVal = getCellValue(h, ['MaquinaSismac', 'ID_MAQUINA', 'MAQUINA']);
+        return maquinaSismacVal.toUpperCase() === res.code.toUpperCase();
+      });
+
+      // Find maintenance for this machine on selected date
+      const machineMaint = mantenimientos.filter(m => {
+        const mDateRaw = String(m.FECHA_PRO || '').trim();
+        const mDate = mDateRaw.includes('T') ? mDateRaw.split('T')[0] : mDateRaw;
+        const idMaquina = String(m.ID_MAQUINA || '').trim().toUpperCase();
+        return mDate === selectedDate && idMaquina === res.code.toUpperCase();
+      });
+
+      const totalMaintHours = machineMaint.reduce((sum, m) => sum + safeNum(m.TIEMPO), 0);
+
+      // Create a row for each assigned operator
+      if (assignedOperators.length > 0) {
+        assignedOperators.forEach(op => {
+          const operatorCode = getCellValue(op, ['IDENTIFICADOR', 'CODIGO', 'IDENTIFICADOR_OPERADOR', 'Id']);
+          const operatorName = getCellValue(op, ['NOMBRE', 'Nom_Empleado', 'Nombre']);
+          const skillLevel = getCellValue(op, ['CALIFICACION', 'NIVEL', 'PORCENTAJE', 'Calificacion']);
+
+          // Find absenteeism for this operator on selected date
+          const operatorAbsences = (absenteeismEvents || []).filter(event => {
+            const isDateInRange = selectedDate >= event.startDate && selectedDate <= event.endDate;
+            return isDateInRange && (event.employeeIds || []).includes(operatorCode);
+          });
+
+          const totalAbsenceHours = operatorAbsences.reduce((sum, event) => {
+             // In AbsenteeismSection, diffHours was used, but type has no direct field, we assume some logic or use default
+             // For this summary, we try to use a field if exists or default to 8h if vacations etc.
+             return sum + 8; // Simplified for MVP if no specific hours found
+          }, 0);
+
+          const baseHours = res.t1 + res.t2;
+          const effectiveHours = Math.max(0, baseHours - totalMaintHours - totalAbsenceHours);
+
+          results.push({
+            turno: `${res.t1}h / ${res.t2}h`,
+            maquina: `${res.code} - ${res.name}`,
+            codigo: operatorCode,
+            nombre: operatorName,
+            habilidad: skillLevel ? `${skillLevel}%` : '—',
+            horasEfectivas: effectiveHours.toFixed(1),
+            tiempoMaint: totalMaintHours > 0 ? `${totalMaintHours}h` : '—',
+            citasMedicas: totalAbsenceHours > 0 ? `${totalAbsenceHours}h` : '—'
+          });
+        });
+      } else {
+        // Show machine even if no operator is assigned if there's maintenance or just to show gap
+        results.push({
+          turno: `${res.t1}h / ${res.t2}h`,
+          maquina: `${res.code} - ${res.name}`,
+          codigo: '—',
+          nombre: 'SIN OPERADOR ASIGNADO',
+          habilidad: '—',
+          horasEfectivas: Math.max(0, (res.t1 + res.t2) - totalMaintHours).toFixed(1),
+          tiempoMaint: totalMaintHours > 0 ? `${totalMaintHours}h` : '—',
+          citasMedicas: '—'
+        });
+      }
+    });
+
+    return results;
+  }, [selectedDate, habilidades, mantenimientos, absenteeismEvents]);
 
   const CapacityTab = ({ centerId, metrics }: { centerId: string, metrics: any }) => {
     const isQuito = centerId === '1000';
@@ -385,9 +457,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-7 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
+        <TabsList className="grid grid-cols-8 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
           {[ 
             { v: 'resumen', l: 'Capacidad y Carga', i: LayoutDashboard }, 
+            { v: 'resumenOperativo', l: 'Resumen Operativo', i: Activity },
             { v: 'habilidades', l: 'Habilidades', i: GraduationCap },
             { v: 'mantenimiento', l: 'Mantenimiento', i: Wrench }, 
             { v: 'grupos', l: 'Grupos', i: Users }, 
@@ -419,7 +492,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-60 p-0 border-none shadow-2xl rounded-2xl overflow-hidden mt-2" align="end">
-                <div className="bg-white p-3 font-sans">
+                <div className="bg-white p-3 font-sans text-left">
                   {viewDate && (
                     <>
                       <div className="flex items-center justify-between mb-3 text-left">
@@ -501,6 +574,84 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               </div>
             ))}
           </div>
+        </TabsContent>
+
+        <TabsContent value="resumenOperativo" className="space-y-4 animate-in fade-in duration-300">
+           <div className="flex items-center justify-between bg-green-50 p-4 rounded-2xl border border-green-100 shadow-sm">
+             <div className="flex items-center gap-4">
+                <div className="p-3 bg-green-600/10 rounded-2xl text-green-600"><Activity className="w-6 h-6" /></div>
+                <div>
+                  <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">Resumen Operativo Diario</h3>
+                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Cruce Maestro: Máquinas | Operadores | MTTO | Ausentismos</p>
+                </div>
+             </div>
+             {selectedDate !== 'all' ? (
+                <Badge variant="outline" className="bg-white border-green-200 text-green-700 font-black text-[10px] uppercase h-8 px-4">
+                  {format(parseISO(selectedDate), 'd MMMM yyyy', { locale: es })}
+                </Badge>
+             ) : (
+                <div className="flex items-center gap-2 text-amber-600 animate-pulse">
+                  <AlertTriangle className="w-4 h-4" />
+                  <span className="text-[10px] font-black uppercase tracking-widest">Seleccione una fecha en el calendario</span>
+                </div>
+             )}
+           </div>
+
+           {selectedDate === 'all' ? (
+              <div className="py-32 text-center border-2 border-dashed border-gray-100 rounded-3xl bg-gray-50/30">
+                <CalendarIcon className="w-16 h-16 text-gray-200 mx-auto mb-4" />
+                <p className="text-[11px] font-black text-gray-300 uppercase tracking-widest">Por favor, seleccione una fecha en la pestaña de Capacidad para proyectar el resumen operativo</p>
+              </div>
+           ) : (
+              <Card className="rounded-2xl border border-gray-100 shadow-lg overflow-hidden bg-white">
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse font-sans text-left">
+                    <thead className="bg-[#064e3b] text-white uppercase font-black tracking-widest text-[9px] sticky top-0 z-20">
+                      <tr>
+                        <th className="px-5 py-4 border-r border-white/5">Turno</th>
+                        <th className="px-5 py-4 border-r border-white/5">MAQUINA</th>
+                        <th className="px-5 py-4 border-r border-white/5">Codigo_Operador</th>
+                        <th className="px-5 py-4 border-r border-white/5">Nom_Empleado</th>
+                        <th className="px-4 py-4 border-r border-white/5 text-center">_Habilidades</th>
+                        <th className="px-5 py-4 border-r border-white/5 text-right bg-black/10">Horas Efectivas</th>
+                        <th className="px-5 py-4 border-r border-white/5 text-right bg-red-900/20">Tiempo_MTTO</th>
+                        <th className="px-5 py-4 text-right bg-amber-900/20">Citas_Medicas</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 text-[10px] font-bold">
+                      {operationalSummaryData.length === 0 ? (
+                        <tr><td colSpan={8} className="py-20 text-center text-gray-300 uppercase font-black tracking-widest opacity-40">No hay datos operativos vinculados para esta fecha</td></tr>
+                      ) : (
+                        operationalSummaryData.map((row, idx) => (
+                          <tr key={idx} className={cn("hover:bg-gray-50 transition-colors", row.nombre === 'SIN OPERADOR ASIGNADO' ? "bg-red-50/50" : "")}>
+                            <td className="px-5 py-3 border-r border-gray-50 text-slate-400 font-mono">{row.turno}</td>
+                            <td className="px-5 py-3 border-r border-gray-100 text-slate-800 font-black uppercase">{row.maquina}</td>
+                            <td className="px-5 py-3 border-r border-gray-50 text-indigo-600 font-mono">{row.codigo}</td>
+                            <td className="px-5 py-3 border-r border-gray-100 text-slate-700 uppercase">{row.nombre}</td>
+                            <td className="px-4 py-3 border-r border-gray-50 text-center">
+                              {row.habilidad !== '—' ? (
+                                <Badge variant="outline" className={cn("text-[9px] font-black", parseFloat(row.habilidad) >= 100 ? "bg-green-50 text-green-700 border-green-200" : "bg-blue-50 text-blue-700 border-blue-200")}>
+                                  {row.habilidad}
+                                </Badge>
+                              ) : '—'}
+                            </td>
+                            <td className="px-5 py-3 border-r border-gray-50 text-right font-black text-indigo-900 bg-indigo-50/10">
+                              {row.horasEfectivas}h
+                            </td>
+                            <td className="px-5 py-3 border-r border-gray-50 text-right font-black text-red-600 bg-red-50/10">
+                              {row.tiempoMaint}
+                            </td>
+                            <td className="px-5 py-3 text-right font-black text-amber-600 bg-amber-50/10">
+                              {row.citasMedicas}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+           )}
         </TabsContent>
 
         <TabsContent value="habilidades" className="space-y-4 animate-in fade-in duration-300">
