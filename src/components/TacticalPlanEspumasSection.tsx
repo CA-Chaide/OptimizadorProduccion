@@ -21,7 +21,8 @@ import {
   Wrench,
   AlertTriangle,
   History,
-  GraduationCap
+  GraduationCap,
+  Search
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -98,6 +99,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<string>('all');
   const [viewDate, setViewDate] = useState<Date | null>(null);
+
+  // Filtros para Habilidades
+  const [habilidadesSearch, setHabilidadesSearch] = useState('');
+  const [selectedDept, setSelectedDept] = useState<string>('all');
 
   useEffect(() => { 
     setMounted(true); 
@@ -215,21 +220,36 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     });
   };
 
-  const provC1000 = useMemo(() => filterData(ordenes, '1000'), [ordenes, grupos, restricciones, selectedDate]);
-  const provC2000 = useMemo(() => filterData(ordenes, '2000'), [ordenes, grupos, restricciones, selectedDate]);
+  const provC1000 = useMemo(() => filterData(ordenes, '1000'), [ordenes, selectedDate]);
+  const provC2000 = useMemo(() => filterData(ordenes, '2000'), [ordenes, selectedDate]);
   
   const tiemposC1000 = useMemo(() => tiemposEnsamblado.filter(t => String(t.Centro || t.centro || '').trim() === '1000'), [tiemposEnsamblado]);
   const tiemposC2000 = useMemo(() => tiemposEnsamblado.filter(t => String(t.Centro || t.centro || '').trim() === '2000'), [tiemposEnsamblado]);
 
-  // Filtrado de habilidades para Corte y Laminado
-  const filteredHabilidades = useMemo(() => {
+  // Explorador de Departamentos Únicos
+  const uniqueDepartments = useMemo(() => {
+    const depts = new Map<string, number>();
+    habilidades.forEach(h => {
+      const d = String(h.DEPARTAMENTO || 'SIN DEPARTAMENTO').toUpperCase().trim();
+      if (d) depts.set(d, (depts.get(d) || 0) + 1);
+    });
+    return Array.from(depts.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  }, [habilidades]);
+
+  // Filtrado Procesado de Habilidades
+  const processedHabilidades = useMemo(() => {
     return habilidades.filter(h => {
       const depto = String(h.DEPARTAMENTO || '').toUpperCase();
       const puesto = String(h.PUESTO_TRABAJO || '').toUpperCase();
-      return depto.includes('CORTE') || depto.includes('LAMINADO') || 
-             puesto.includes('CORTE') || puesto.includes('LAMINADO');
+      const nombre = String(h.NOMBRE || '').toUpperCase();
+      const search = habilidadesSearch.toUpperCase();
+      
+      const matchesSearch = !search || depto.includes(search) || puesto.includes(search) || nombre.includes(search);
+      const matchesDept = selectedDept === 'all' || depto === selectedDept.toUpperCase();
+      
+      return matchesSearch && matchesDept;
     });
-  }, [habilidades]);
+  }, [habilidades, habilidadesSearch, selectedDept]);
 
   const calculateCargasLogic = (totalSubblocks: number, ancho: number, largo: number) => {
     if (ancho <= 0 || largo <= 0 || totalSubblocks <= 0) return { subbloquesPorCarga: 0, totalCargas: 0 };
@@ -295,15 +315,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
   const metrics1000 = useMemo(() => getPlantaMetrics('1000'), [provC1000]);
   const metrics2000 = useMemo(() => getPlantaMetrics('2000'), [provC2000]);
-
-  const datesWithOrders = useMemo(() => {
-    const dates = new Set<string>();
-    ordenes.forEach(o => {
-      const d = String(o.FECHAINICIO || o.FECHA || '').trim();
-      if (d && d !== 'null') dates.add(d.includes('T') ? d.split('T')[0] : d);
-    });
-    return dates;
-  }, [ordenes]);
 
   const calendarDays = useMemo(() => {
     if (!mounted || !viewDate) return [];
@@ -532,6 +543,62 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="habilidades" className="space-y-4 animate-in fade-in duration-300">
+          {/* Explorador de Departamentos */}
+          <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-indigo-600/10 rounded-xl text-indigo-600"><Database className="w-5 h-5" /></div>
+                <div>
+                  <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">Explorador de Departamentos</h3>
+                  <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">Total: {uniqueDepartments.length} departamentos encontrados</p>
+                </div>
+              </div>
+              <div className="relative">
+                 <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-gray-400" />
+                 <input 
+                   type="text" 
+                   placeholder="Buscar por nombre, código o puesto..." 
+                   value={habilidadesSearch}
+                   onChange={e => setHabilidadesSearch(e.target.value)}
+                   className="pl-9 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-xs font-bold w-64 focus:ring-2 focus:ring-indigo-500/20"
+                 />
+              </div>
+            </div>
+            
+            <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto p-1">
+              <button
+                onClick={() => setSelectedDept('all')}
+                className={cn(
+                  "px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border",
+                  selectedDept === 'all' 
+                    ? "bg-indigo-600 text-white border-indigo-700 shadow-md" 
+                    : "bg-white text-gray-400 border-gray-100 hover:bg-gray-50"
+                )}
+              >
+                TODOS LOS DEPARTAMENTOS ({habilidades.length})
+              </button>
+              {uniqueDepartments.map(([dept, count]) => {
+                const isLaminadoOrEspuma = dept.includes('LAMINADO') || dept.includes('ESPUMA') || dept.includes('CORTE');
+                return (
+                  <button
+                    key={dept}
+                    onClick={() => setSelectedDept(dept)}
+                    className={cn(
+                      "px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border",
+                      selectedDept === dept
+                        ? "bg-indigo-600 text-white border-indigo-700 shadow-md"
+                        : isLaminadoOrEspuma
+                        ? "bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
+                        : "bg-white text-gray-400 border-gray-100 hover:bg-gray-50"
+                    )}
+                  >
+                    {dept} ({count})
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           <div className="flex items-center justify-between bg-indigo-50 p-4 rounded-2xl border border-indigo-100">
             <div className="flex items-center gap-4 text-left">
               <div className="p-3 bg-indigo-500/10 rounded-2xl text-indigo-600">
@@ -539,11 +606,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               </div>
               <div>
                 <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">Cubo de Habilidades Operativas</h3>
-                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">Filtro Dinámico: Corte y Laminado</p>
+                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">
+                  {selectedDept === 'all' ? 'Mostrando todo el personal' : `Filtrado por: ${selectedDept}`}
+                </p>
               </div>
             </div>
             <Badge variant="outline" className="bg-white border-indigo-200 text-indigo-700 font-black text-[10px]">
-              {filteredHabilidades.length} Operadores Calificados
+              {processedHabilidades.length} Registros Encontrados
             </Badge>
           </div>
 
@@ -560,16 +629,16 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50 font-bold">
-                  {filteredHabilidades.length === 0 ? (
+                  {processedHabilidades.length === 0 ? (
                     <tr>
                       <td colSpan={5} className="py-20 text-center text-gray-300 uppercase tracking-widest opacity-30">
-                        No se detectan habilidades calificadas para Corte y Laminado
+                        No se encontraron registros bajo este criterio
                       </td>
                     </tr>
                   ) : (
-                    filteredHabilidades.map((h, i) => (
+                    processedHabilidades.map((h, i) => (
                       <tr key={i} className="hover:bg-indigo-50/30 transition-colors">
-                        <td className="px-4 py-3 border-r border-gray-100 text-slate-400 font-mono">{String(h.IDENTIFICADOR || '—')}</td>
+                        <td className="px-4 py-3 border-r border-gray-100 text-slate-400 font-mono">{String(h.IDENTIFICADOR || h.ID || '—')}</td>
                         <td className="px-4 py-3 border-r border-gray-100 text-slate-800 uppercase">{String(h.NOMBRE || '—')}</td>
                         <td className="px-4 py-3 border-r border-gray-100 text-slate-500 uppercase">{String(h.DEPARTAMENTO || '—')}</td>
                         <td className="px-4 py-3 border-r border-gray-100 text-indigo-700 font-black">{String(h.PUESTO_TRABAJO || '—')}</td>
@@ -754,7 +823,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               <div key={idx} className="space-y-4">
                 <h3 className="text-[11px] font-black uppercase text-gray-400 text-left tracking-widest px-1">Catálogo de Tiempos - {center.t}</h3>
                 <Card className="rounded-2xl border border-gray-100 shadow-md overflow-hidden bg-white">
-                  <div className="overflow-x-auto max-h-[400px]">
+                  <div className="overflow-x-auto max-h-[700px]">
                     <table className="w-full border-collapse text-center font-sans">
                       <thead className="bg-[#bde0fe] sticky top-0 text-[10px] font-black uppercase text-slate-800 border-b border-gray-100">
                         <tr>
