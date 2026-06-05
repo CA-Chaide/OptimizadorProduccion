@@ -26,7 +26,8 @@ import {
   Calculator,
   TestTube,
   FileSpreadsheet,
-  GraduationCap
+  GraduationCap,
+  Wrench
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -83,6 +84,13 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [habilidadesPage, setHabilidadesPage] = useState(1);
   const [habilidadesRowsPerPage] = useState(20);
   const [habilidadesFilters, setHabilidadesFilters] = useState<Record<string, string>>({});
+
+  // MANTENIMIENTOS
+  const [mantenimientosData, setMantenimientosData] = useState<any[]>([]);
+  const [isLoadingMantenimientos, setIsLoadingMantenimientos] = useState(false);
+  const [mantenimientosPage, setMantenimientosPage] = useState(1);
+  const [mantenimientosRowsPerPage] = useState(20);
+  const [mantenimientosFilters, setMantenimientosFilters] = useState<Record<string, string>>({});
 
   // CONFIGURACIÓN DE JORNADAS
   const DIURNA_OPTIONS = [
@@ -308,6 +316,20 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
   }, [addNotification]);
 
+  const fetchMantenimientos = useCallback(async () => {
+    setIsLoadingMantenimientos(true);
+    try {
+      const res = await serviciosService.ListarMantenimientoPreventivosProgramados();
+      setMantenimientosData(res.data || []);
+      setMantenimientosPage(1);
+    } catch (error) {
+      console.error('Error fetching Mantenimientos:', error);
+      addNotification('error', 'No se pudieron cargar los Mantenimientos Preventivos.');
+    } finally {
+      setIsLoadingMantenimientos(false);
+    }
+  }, [addNotification]);
+
   const uniqueMachines = useMemo(() => {
     const machinesSet = new Set<string>();
     tiemposProduccion.forEach(t => {
@@ -352,15 +374,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
                  (rName.includes(mNorm) || rName.includes(m.toUpperCase()));
         });
 
-        const shiftsRes = forrosRestricciones.find(r => {
-          const rName = r.nombre_restriccion.toUpperCase();
-          return (rName.includes('TURNOS') || rName.includes('CANTIDAD_TURNOS')) && 
-                 (rName.includes(mNorm) || rName.includes(m.toUpperCase()));
-        });
-
         initial[m] = { 
           machine: m, 
-          shifts: shiftsRes ? parseInt(shiftsRes.valor_restriccion) || 1 : 1, 
+          shifts: 1, 
           people: peopleRes ? parseInt(peopleRes.valor_restriccion) || 1 : 1,
           dayCode: '',
           dayName: '',
@@ -431,8 +447,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
       fetchTiemposProduccion();
       fetchDailyOrders();
       fetchHabilidadesOp();
+      fetchMantenimientos();
     }
-  }, [isMounted, forrosGruposList, fetchTiemposProduccion, fetchDailyOrders, fetchHabilidadesOp]);
+  }, [isMounted, forrosGruposList, fetchTiemposProduccion, fetchDailyOrders, fetchHabilidadesOp, fetchMantenimientos]);
 
   const getResolvedMachine = useCallback((order: any) => {
     const orderFields = ['MAQUINA', 'Maquina', 'maquina', 'PUESTOTRABAJO', 'PuestoTrabajo', 'puestotrabajo'];
@@ -612,6 +629,26 @@ export const TacticalPlanForrosSection: React.FC = () => {
     setHabilidadesPage(1);
   };
 
+  const filteredMantenimientos = useMemo(() => {
+    return mantenimientosData.filter(item => {
+      return Object.entries(mantenimientosFilters).every(([col, val]) => {
+        if (!val) return true;
+        return String(item[col] ?? '').toLowerCase().includes(val.toLowerCase());
+      });
+    });
+  }, [mantenimientosData, mantenimientosFilters]);
+
+  const totalMantenimientosPages = Math.max(1, Math.ceil(filteredMantenimientos.length / mantenimientosRowsPerPage));
+  const paginatedMantenimientosData = useMemo(() => {
+    const start = (mantenimientosPage - 1) * mantenimientosRowsPerPage;
+    return filteredMantenimientos.slice(start, start + mantenimientosRowsPerPage);
+  }, [filteredMantenimientos, mantenimientosPage, mantenimientosRowsPerPage]);
+
+  const handleMantenimientosFilterChange = (column: string, value: string) => {
+    setMantenimientosFilters(prev => ({ ...prev, [column]: value }));
+    setMantenimientosPage(1);
+  };
+
   const chnBasesDateTotals = useMemo(() => {
     const filteredForTab = dailyOrders.filter(order => {
       const machine = getResolvedMachine(order);
@@ -691,7 +728,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const formattedTodayDisp = displayTodayDate ? formatValueForDisplay('FECHA', displayTodayDate) : '...';
   const formattedTargetDisp = displayTargetDate ? formatValueForDisplay('FECHA', displayTargetDate) : '...';
 
-  // --- Lógica para pestaña PRUEBAS ---
   const pruebasOrders = useMemo(() => {
     return dailyOrders.filter(order => {
       const machine = getResolvedMachine(order);
@@ -798,6 +834,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
             <TabsTrigger value="tiempos" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><Timer className="w-4 h-4" /> Tiempos de Producción</TabsTrigger>
             <TabsTrigger value="personal-turnos" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><UserPlus className="w-4 h-4" /> Distribución del personal</TabsTrigger>
             <TabsTrigger value="habilidades-op" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><GraduationCap className="w-4 h-4" /> Habilidades OP</TabsTrigger>
+            <TabsTrigger value="mantenimiento" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><Wrench className="w-4 h-4" /> Mantenimiento Preventivo</TabsTrigger>
             <TabsTrigger value="explosion" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><ListTree className="w-4 h-4" /> Explosión de Materiales</TabsTrigger>
             <TabsTrigger value="forros-chn-bases" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><Package className="w-4 h-4" /> Forros CHN & Bases</TabsTrigger>
             <TabsTrigger value="diaria" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><CalendarCheck className="w-4 h-4" /> Programación Componentes</TabsTrigger>
@@ -1117,7 +1154,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                           ))}
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-gray-100">
+                      <tbody className="divide-y divide-100">
                         {isLoadingHabilidades ? (
                           <tr><td colSpan={10} className="py-24 text-center"><Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" /></td></tr>
                         ) : paginatedHabilidadesData.length > 0 ? paginatedHabilidadesData.map((row, idx) => (
@@ -1158,6 +1195,77 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setHabilidadesPage(totalHabilidadesPages)} disabled={habilidadesPage === totalHabilidadesPages}><ChevronsRight className="h-4 w-4" /></Button>
                   </div>
                   <span className="text-[10px] text-gray-400 font-bold uppercase">{filteredHabilidades.length} habilidades registradas</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="mantenimiento">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Mantenimientos Preventivos Programados</CardTitle>
+                  <CardDescription>Visualización de equipos que entrarán en mantenimiento programado.</CardDescription>
+                </div>
+                <Button variant="outline" size="sm" onClick={fetchMantenimientos} disabled={isLoadingMantenimientos}>
+                  <RefreshCw className={cn("h-4 w-4 mr-2", isLoadingMantenimientos && "animate-spin")} />
+                  Actualizar
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
+                    <Input 
+                      placeholder="Filtrar por Equipo/Máquina..." 
+                      className="pl-9 h-10 text-sm" 
+                      onChange={(e) => handleMantenimientosFilterChange('EQUIPO', e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm">
+                  <div className="overflow-x-auto max-h-[60vh]">
+                    <table className="min-w-full divide-y divide-gray-200 border-collapse">
+                      <thead className="bg-gray-50 sticky top-0 z-10 shadow-sm">
+                        <tr>
+                          {mantenimientosData.length > 0 && Object.keys(mantenimientosData[0]).map((col) => (
+                            <th key={`maint-head-${col}`} className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase whitespace-nowrap">{col}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-100">
+                        {isLoadingMantenimientos ? (
+                          <tr><td colSpan={12} className="py-24 text-center"><Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" /></td></tr>
+                        ) : paginatedMantenimientosData.length > 0 ? paginatedMantenimientosData.map((row, idx) => (
+                          <tr key={`maint-row-${idx}`} className="hover:bg-amber-50/20 transition-colors">
+                            {Object.keys(row).map((col, cIdx) => (
+                              <td key={`maint-cell-${idx}-${cIdx}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] font-mono text-gray-600">
+                                {formatValueForDisplay(col, row[col])}
+                              </td>
+                            ))}
+                          </tr>
+                        )) : (
+                          <tr><td colSpan={12} className="py-20 text-center text-gray-400 italic">No se encontraron mantenimientos programados.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between gap-4 py-3 px-4 bg-gray-50 rounded-lg border border-gray-200 shadow-sm">
+                  <div className="flex items-center gap-1">
+                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setMantenimientosPage(1)} disabled={mantenimientosPage === 1}><ChevronsLeft className="h-4 w-4" /></Button>
+                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setMantenimientosPage(p => Math.max(1, p - 1))} disabled={mantenimientosPage === 1}><ChevronLeft className="h-4 w-4" /></Button>
+                    <span className="px-3 text-[11px] font-bold min-w-[120px] text-center border-x py-1 bg-white rounded">Página {mantenimientosPage} de {totalMantenimientosPages}</span>
+                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setMantenimientosPage(p => Math.min(totalMantenimientosPages, p + 1))} disabled={mantenimientosPage === totalMantenimientosPages}><ChevronRight className="h-4 w-4" /></Button>
+                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setMantenimientosPage(totalMantenimientosPages)} disabled={mantenimientosPage === totalMantenimientosPages}><ChevronsRight className="h-4 w-4" /></Button>
+                  </div>
+                  <span className="text-[10px] text-gray-400 font-bold uppercase">{filteredMantenimientos.length} registros programados</span>
                 </div>
               </div>
             </CardContent>
