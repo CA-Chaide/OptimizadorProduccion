@@ -320,14 +320,18 @@ export const TacticalPlanForrosSection: React.FC = () => {
       uniqueMachines.forEach(m => {
         const mNorm = m.replace(/-/g, '_').toUpperCase();
         
+        // Búsqueda robusta de PERSONAS en las restricciones para la máquina actual
         const peopleRes = forrosRestricciones.find(r => {
           const rName = r.nombre_restriccion.toUpperCase();
-          return rName.includes('PERSONAS') && rName.includes(mNorm);
+          return (rName.includes('PERSONAS') || rName.includes('CANTIDAD_PERSONAS')) && 
+                 (rName.includes(mNorm) || rName.includes(m.toUpperCase()));
         });
 
+        // Búsqueda robusta de TURNOS en las restricciones para la máquina actual
         const shiftsRes = forrosRestricciones.find(r => {
           const rName = r.nombre_restriccion.toUpperCase();
-          return rName.includes('TURNOS') && rName.includes(mNorm);
+          return (rName.includes('TURNOS') || rName.includes('CANTIDAD_TURNOS')) && 
+                 (rName.includes(mNorm) || rName.includes(m.toUpperCase()));
         });
 
         initial[m] = { 
@@ -472,8 +476,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return String(order[column] ?? '');
   }, [getResolvedMachine]);
 
-  const totalTiemposPages = Math.max(1, Math.ceil(tiemposProduccion.length / tiemposRowsPerPage));
-
   const filteredTiempos = useMemo(() => {
     return tiemposProduccion.filter(item => {
       return Object.entries(tiemposFilters).every(([col, val]) => {
@@ -483,6 +485,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
       });
     });
   }, [tiemposProduccion, tiemposFilters]);
+
+  const totalTiemposPages = Math.max(1, Math.ceil(filteredTiempos.length / tiemposRowsPerPage));
 
   const paginatedTiemposData = useMemo(() => {
     const start = (tiemposPage - 1) * tiemposRowsPerPage;
