@@ -89,9 +89,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   // MANTENIMIENTOS
   const [mantenimientosData, setMantenimientosData] = useState<any[]>([]);
   const [isLoadingMantenimientos, setIsLoadingMantenimientos] = useState(false);
-  const [mantenimientosMonth, setMantenimientosMonth] = useState(new Date().getMonth());
-  const [mantenimientosYear, setMantenimientosYear] = useState(new Date().getFullYear());
-  const [mantenimientosFilters, setHabilidadesFiltersMaint] = useState<Record<string, string>>({});
+  const [mantenimientoSearch, setMantenimientoSearch] = useState('');
 
   // CONFIGURACIÓN DE JORNADAS
   const DIURNA_OPTIONS = [
@@ -631,15 +629,30 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   const filteredMantenimientos = useMemo(() => {
     const allowedResp = externalFilters['RESPCONTROLPROD'] || [];
-    return mantenimientosData.filter(item => {
-      // Filtrado por RespCtrlProd del área de forros
+    let result = mantenimientosData.filter(item => {
       if (allowedResp.length > 0) {
         const itemResp = String(item['RESP_CONTROL_PROD'] || item['RespCtrlProd'] || item['Responsable'] || '').trim();
         if (itemResp && !allowedResp.includes(itemResp)) return false;
       }
+      if (mantenimientoSearch) {
+        const search = mantenimientoSearch.toLowerCase();
+        return (
+          String(item.EQUIPO || '').toLowerCase().includes(search) ||
+          String(item.ACTIVIDAD || '').toLowerCase().includes(search)
+        );
+      }
       return true;
     });
-  }, [mantenimientosData, externalFilters]);
+
+    // Ordenar por fecha de inicio ascendente
+    result.sort((a, b) => {
+      const dateA = new Date(a.FECHA_INICIO || a.FECHA || 0).getTime();
+      const dateB = new Date(b.FECHA_INICIO || b.FECHA || 0).getTime();
+      return dateA - dateB;
+    });
+
+    return result;
+  }, [mantenimientosData, externalFilters, mantenimientoSearch]);
 
   const chnBasesDateTotals = useMemo(() => {
     const filteredForTab = dailyOrders.filter(order => {
@@ -808,106 +821,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     
     return finalColumns;
   }, [tiemposProduccion]);
-
-  // CALENDARIO DE MANTENIMIENTO
-  const renderMantenimientosCalendar = () => {
-    const monthStart = new Date(mantenimientosYear, mantenimientosMonth, 1);
-    const firstDay = monthStart.getDay();
-    const daysInMonth = new Date(mantenimientosYear, mantenimientosMonth + 1, 0).getDate();
-    
-    const calendarDays = [];
-    for (let i = 0; i < firstDay; i++) calendarDays.push(null);
-    for (let i = 1; i <= daysInMonth; i++) calendarDays.push(i);
-
-    const maintByDateMap = new Map<string, any[]>();
-    filteredMantenimientos.forEach(m => {
-      const dateKey = normalizeDateForFilter(m.FECHA_INICIO || m.FECHA || m.FechaProgramada);
-      if (dateKey) {
-        if (!maintByDateMap.has(dateKey)) maintByDateMap.set(dateKey, []);
-        maintByDateMap.get(dateKey)!.push(m);
-      }
-    });
-
-    const monthName = new Intl.DateTimeFormat('es-ES', { month: 'long' }).format(monthStart);
-
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
-          <div className="flex items-center gap-4">
-            <h3 className="text-xl font-bold text-gray-800 capitalize">{monthName} {mantenimientosYear}</h3>
-            <div className="flex items-center gap-1 border rounded-lg overflow-hidden">
-              <Button variant="ghost" size="sm" className="h-8 rounded-none border-r" onClick={() => {
-                const prev = new Date(mantenimientosYear, mantenimientosMonth - 1);
-                setMantenimientosMonth(prev.getMonth());
-                setMantenimientosYear(prev.getFullYear());
-              }}>
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <Button variant="ghost" size="sm" className="h-8 rounded-none" onClick={() => {
-                const now = new Date();
-                setMantenimientosMonth(now.getMonth());
-                setMantenimientosYear(now.getFullYear());
-              }}>Hoy</Button>
-              <Button variant="ghost" size="sm" className="h-8 rounded-none border-l" onClick={() => {
-                const next = new Date(mantenimientosYear, mantenimientosMonth + 1);
-                setMantenimientosMonth(next.getMonth());
-                setMantenimientosYear(next.getFullYear());
-              }}>
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-          <Button variant="outline" size="sm" onClick={fetchMantenimientos} disabled={isLoadingMantenimientos}>
-            <RefreshCw className={cn("h-4 w-4 mr-2", isLoadingMantenimientos && "animate-spin")} /> Actualizar
-          </Button>
-        </div>
-
-        <div className="bg-white border rounded-2xl overflow-hidden shadow-md">
-          <div className="grid grid-cols-7 bg-gray-50 border-b">
-            {['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'].map(d => (
-              <div key={d} className="py-3 text-center text-[10px] font-black text-gray-400 uppercase tracking-widest">{d}</div>
-            ))}
-          </div>
-          <div className="grid grid-cols-7 auto-rows-fr min-h-[500px]">
-            {calendarDays.map((day, idx) => {
-              if (day === null) return <div key={`empty-${idx}`} className="bg-gray-50/30 border-b border-r last:border-r-0" />;
-              
-              const dateStr = `${mantenimientosYear}-${String(mantenimientosMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-              const events = maintByDateMap.get(dateStr) || [];
-              const isToday = new Date().toISOString().split('T')[0] === dateStr;
-
-              return (
-                <div key={`day-${day}`} className={cn(
-                  "p-2 border-b border-r last:border-r-0 min-h-[100px] hover:bg-gray-50/50 transition-colors relative",
-                  isToday && "bg-blue-50/20"
-                )}>
-                  <span className={cn(
-                    "text-xs font-bold",
-                    isToday ? "bg-blue-600 text-white w-6 h-6 rounded-full flex items-center justify-center -ml-1 -mt-1" : "text-gray-400"
-                  )}>{day}</span>
-                  <div className="mt-1 space-y-1">
-                    {events.map((e, eIdx) => (
-                      <div key={eIdx} className="p-1.5 bg-amber-100 border-l-4 border-amber-500 rounded text-[9px] leading-tight shadow-sm">
-                        <p className="font-black text-amber-900 truncate uppercase">{e.EQUIPO || 'Equipo'}</p>
-                        <p className="text-amber-700 truncate">{e.ACTIVIDAD || e.DESCRIPCION || 'Mantenimiento'}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-        
-        <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl flex items-start gap-3">
-          <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0" />
-          <p className="text-xs text-blue-800 leading-relaxed">
-            <strong>Filtro de Responsable:</strong> Esta vista está filtrada para mostrar únicamente los mantenimientos preventivos correspondientes a los centros de control de producción del área de Forros (<strong>{externalFilters['RESPCONTROLPROD']?.join(', ') || 'N/A'}</strong>).
-          </p>
-        </div>
-      </div>
-    );
-  };
 
   if (!isMounted) return null;
 
@@ -1294,7 +1207,66 @@ export const TacticalPlanForrosSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="mantenimiento">
-          {renderMantenimientosCalendar()}
+          <Card>
+            <CardHeader>
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <CardTitle>Mantenimientos Preventivos Programados</CardTitle>
+                  <CardDescription>Programación técnica de intervenciones por equipo.</CardDescription>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="relative w-64">
+                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
+                    <Input 
+                      placeholder="Buscar equipo o actividad..." 
+                      className="pl-9 h-10 text-sm" 
+                      value={mantenimientoSearch}
+                      onChange={(e) => setMantenimientoSearch(e.target.value)}
+                    />
+                  </div>
+                  <Button variant="outline" size="sm" onClick={fetchMantenimientos} disabled={isLoadingMantenimientos}>
+                    <RefreshCw className={cn("h-4 w-4 mr-2", isLoadingMantenimientos && "animate-spin")} /> Actualizar
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm">
+                <div className="overflow-x-auto max-h-[65vh]">
+                  <table className="min-w-full divide-y divide-gray-200 border-collapse">
+                    <thead className="bg-gray-50 sticky top-0 z-10 shadow-sm">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase tracking-widest">Equipo</th>
+                        <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase tracking-widest">Actividad / Descripción</th>
+                        <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase tracking-widest">Fecha Inicio</th>
+                        <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase tracking-widest">Fecha Fin</th>
+                        <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase tracking-widest">Responsable</th>
+                        <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase tracking-widest">Estado</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 bg-white">
+                      {isLoadingMantenimientos ? (
+                        <tr><td colSpan={6} className="py-24 text-center"><Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" /></td></tr>
+                      ) : filteredMantenimientos.length > 0 ? filteredMantenimientos.map((m, idx) => (
+                        <tr key={`maint-row-${idx}`} className="hover:bg-amber-50/30 transition-colors">
+                          <td className="px-4 py-3 whitespace-nowrap text-[11px] font-bold text-gray-900 uppercase">{m.EQUIPO || '—'}</td>
+                          <td className="px-4 py-3 text-[11px] text-gray-600 min-w-[200px]">{m.ACTIVIDAD || m.DESCRIPCION || '—'}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-[11px] font-mono text-gray-600">{formatValueForDisplay('FECHA', m.FECHA_INICIO || m.FECHA)}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-[11px] font-mono text-gray-600">{formatValueForDisplay('FECHA', m.FECHA_FIN)}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-[11px] text-gray-500">{m.RESP_CONTROL_PROD || m.RespCtrlProd || '—'}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-[11px]">
+                            <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 font-bold uppercase text-[9px]">Programado</Badge>
+                          </td>
+                        </tr>
+                      )) : (
+                        <tr><td colSpan={6} className="py-20 text-center text-gray-400 italic bg-gray-50/50">No se encontraron mantenimientos para el área de Forros.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="explosion">
