@@ -21,9 +21,7 @@ import {
   Wrench,
   GraduationCap,
   Search,
-  History,
-  ChevronsLeft,
-  ChevronsRight
+  History
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -100,18 +98,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<string>('all');
   const [viewDate, setViewDate] = useState<Date | null>(null);
-
   const [habilidadesSearch, setHabilidadesSearch] = useState('');
-
-  // Helper para buscar valor en objeto dinámico (insensible a mayúsculas/guiones)
-  const getCellValue = (row: any, key: string): string => {
-    if (!row) return '';
-    const normalizedKey = key.toLowerCase().replace(/_/g, '');
-    const actualKey = Object.keys(row).find(k => 
-      k.toLowerCase().replace(/_/g, '') === normalizedKey
-    );
-    return actualKey ? String(row[actualKey]).trim() : '';
-  };
 
   useEffect(() => { 
     setMounted(true); 
@@ -143,9 +130,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         setTiemposEnsamblado(timesRes.data?.data || timesRes.data || []);
         setMantenimientos(maintRes.data || []);
         setHabilidades(Array.isArray(habRes.data) ? habRes.data : []);
-
-        inspector.captureVariable('mantenimientosCargados', maintRes.data?.length || 0);
-        inspector.captureVariable('habilidadesCargadas', habRes.data?.length || 0);
 
       } catch (error) {
         console.error('Error init TacticalPlanEspumas:', error);
@@ -193,55 +177,39 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const esp = parseFloat(info.esp) || 0;
     const densValue = parseFloat(info.dens) || 0;
     const usefulHeight = (densValue < 30) ? 103 : 85;
-    
     const itemSubbloques = (qty * esp) / usefulHeight;
     const itemBloques20m = (ancho * itemSubbloques) / 2000;
     const physicalBlocksCount = Math.ceil(itemBloques20m);
-    
     const tCarga = (physicalBlocksCount * SECONDS_LOAD_BLOCK);
     const tDescarga = (Math.ceil(qty / (esp > 10 ? 4 : 3)) * SECONDS_REPETITION);
     const tCoches = (Math.ceil(physicalBlocksCount / 2) * SECONDS_CART_SWAP);
-    
     return (tCarga + tDescarga + tCoches) / 3600;
   };
 
-  const filterData = (data: any[], centro: string) => {
+  const filterDataByCenter = (data: any[], centro: string) => {
     return data.filter(o => {
       const itemCentro = String(o.Centro || o.CENTRO || o.centro || '').trim();
       if (itemCentro !== centro) return false;
-
       const matStr = String(o.MATERIAL || o.CodMaterial || '').trim();
       if (MATERIALES_EXCLUIDOS.some(ex => matStr.includes(ex))) return false;
-
       const itemAlmValue = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
       if (centro === '1000' && itemAlmValue !== '1006') return false;
       if (centro === '2000' && itemAlmValue !== '2006') return false;
-
       const itemResp = String(o.RESPCTRLPROD || o.RESPCONTROLPROD || o.RespCtrlProd || o.RespControlProd || '').trim();
       const validResps = centro === '1000' ? RESPONSABLES_QUITO : RESPONSABLES_GYE;
       if (!validResps.includes(itemResp)) return false;
-
       const itemDateFull = String(o.FECHAINICIO || o.FECHA || '').trim();
       const itemDate = itemDateFull.includes('T') ? itemDateFull.split('T')[0] : itemDateFull;
       if (selectedDate !== 'all' && itemDate !== selectedDate) return false;
-
       return true;
     });
   };
 
-  const provC1000 = useMemo(() => filterData(ordenes, '1000'), [ordenes, selectedDate]);
-  const provC2000 = useMemo(() => filterData(ordenes, '2000'), [ordenes, selectedDate]);
+  const provC1000 = useMemo(() => filterDataByCenter(ordenes, '1000'), [ordenes, selectedDate]);
+  const provC2000 = useMemo(() => filterDataByCenter(ordenes, '2000'), [ordenes, selectedDate]);
   
   const tiemposC1000 = useMemo(() => tiemposEnsamblado.filter(t => String(t.Centro || t.centro || '').trim() === '1000'), [tiemposEnsamblado]);
   const tiemposC2000 = useMemo(() => tiemposEnsamblado.filter(t => String(t.Centro || t.centro || '').trim() === '2000'), [tiemposEnsamblado]);
-
-  const processedHabilidades = useMemo(() => {
-    return habilidades.filter(h => {
-      const search = habilidadesSearch.toUpperCase();
-      if (!search) return true;
-      return Object.values(h).some(val => String(val || '').toUpperCase().includes(search));
-    });
-  }, [habilidades, habilidadesSearch]);
 
   const datesWithOrders = useMemo(() => {
     const dates = new Set<string>();
@@ -319,15 +287,43 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const metrics1000 = useMemo(() => getPlantaMetrics('1000'), [provC1000]);
   const metrics2000 = useMemo(() => getPlantaMetrics('2000'), [provC2000]);
 
-  // LÓGICA DE CRUCE: Mantenimiento <-> Habilidades
+  // --- FILTRADO AUTOMÁTICO DE MANTENIMIENTO ---
+  const filteredMantenimientos = useMemo(() => {
+    if (selectedDate === 'all') return mantenimientos;
+    return mantenimientos.filter(m => {
+      const mDateRaw = String(m.FECHA_PRO || '').trim();
+      const mDate = mDateRaw.includes('T') ? mDateRaw.split('T')[0] : mDateRaw;
+      return mDate === selectedDate;
+    });
+  }, [mantenimientos, selectedDate]);
+
+  // --- CRUCE HABILIDADES <-> MANTENIMIENTO ---
+  const getCellValue = (row: any, keys: string[]): string => {
+    if (!row) return '';
+    for (const key of keys) {
+      const normalizedSearch = key.toLowerCase().replace(/_/g, '');
+      const actualKey = Object.keys(row).find(k => k.toLowerCase().replace(/_/g, '') === normalizedSearch);
+      if (actualKey) return String(row[actualKey]).trim();
+    }
+    return '';
+  };
+
   const getPuestoDesdeHabilidades = (idMaquina: string) => {
     if (!idMaquina || !habilidades.length) return '—';
     const match = habilidades.find(h => {
-      const maquinaSismacVal = getCellValue(h, 'MaquinaSismac');
+      const maquinaSismacVal = getCellValue(h, ['MaquinaSismac', 'ID_MAQUINA', 'MAQUINA']);
       return maquinaSismacVal.toUpperCase() === String(idMaquina).trim().toUpperCase();
     });
-    return match ? getCellValue(match, 'PuestoTrabajo') : '—';
+    return match ? getCellValue(match, ['PuestoTrabajo', 'PUESTO', 'CARGO']) : '—';
   };
+
+  const processedHabilidades = useMemo(() => {
+    return habilidades.filter(h => {
+      if (!habilidadesSearch.trim()) return true;
+      const q = habilidadesSearch.toUpperCase();
+      return Object.values(h).some(val => String(val || '').toUpperCase().includes(q));
+    });
+  }, [habilidades, habilidadesSearch]);
 
   const CapacityTab = ({ centerId, metrics }: { centerId: string, metrics: any }) => {
     const isQuito = centerId === '1000';
@@ -383,7 +379,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <div className="p-2 bg-primary/10 rounded-xl"><Wind className="w-6 h-6 text-primary" /></div>
           <div>
             <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Mando Táctico Corte Espuma</h2>
-            <p className="text-xs text-gray-500 font-medium">Gestión 360° de Planta: Capacidad, Habilidades y Paros Técnicos</p>
+            <p className="text-xs text-gray-500 font-medium">Gestión Integrada de Capacidad, Habilidades y Mantenimiento SAP</p>
           </div>
         </div>
       </div>
@@ -513,13 +509,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                <div className="p-2 bg-indigo-500/10 rounded-xl text-indigo-600"><GraduationCap className="w-5 h-5" /></div>
                <div>
                  <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter text-left">Cubo de Habilidades</h3>
-                 <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-0.5 text-left">Nómina Completa y Calificaciones Técnicas SAP</p>
+                 <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-0.5 text-left">Visualización Completa de Columnas y Registros SAP</p>
                </div>
              </div>
              <div className="flex gap-2">
                 <div className="relative">
                   <Search className="absolute left-3 top-2.5 h-3 w-3 text-gray-400" />
-                  <input type="text" placeholder="Buscar operador, departamento..." value={habilidadesSearch} onChange={e => setHabilidadesSearch(e.target.value)} className="pl-9 pr-3 py-2 bg-white border border-gray-200 rounded-lg text-[10px] font-bold w-64 focus:ring-2 focus:ring-indigo-500/20" />
+                  <input type="text" placeholder="Filtrar en toda la tabla..." value={habilidadesSearch} onChange={e => setHabilidadesSearch(e.target.value)} className="pl-9 pr-3 py-2 bg-white border border-gray-200 rounded-lg text-[10px] font-bold w-64 focus:ring-2 focus:ring-indigo-500/20" />
                 </div>
                 <Badge variant="outline" className="bg-white border-indigo-200 text-indigo-700 font-black text-[10px] uppercase">{processedHabilidades.length} Registros</Badge>
              </div>
@@ -537,7 +533,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-50 font-bold">
                   {processedHabilidades.length === 0 ? (
-                    <tr><td colSpan={habilidades.length > 0 ? Object.keys(habilidades[0]).length : 1} className="py-20 text-center text-gray-300 uppercase tracking-widest opacity-30">No se encontraron registros</td></tr>
+                    <tr><td colSpan={habilidades.length > 0 ? Object.keys(habilidades[0]).length : 1} className="py-20 text-center text-gray-300 uppercase tracking-widest opacity-30">No hay datos que coincidan con la búsqueda</td></tr>
                   ) : (
                     processedHabilidades.map((h, i) => (
                       <tr key={i} className="hover:bg-indigo-50/30 transition-colors">
@@ -559,9 +555,16 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               <div className="p-2 bg-amber-500/10 rounded-xl text-amber-600"><Wrench className="w-5 h-5" /></div>
               <div>
                 <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">Mantenimiento Preventivo Programado</h3>
-                <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-0.5 text-left">Control de Paros SAP | Cruce de Puestos SISMAC</p>
+                <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-0.5 text-left">
+                   {selectedDate === 'all' ? 'PLAN MAESTRO CONSOLIDADO' : `FILTRADO PARA EL: ${selectedDate}`} | Control de Paros SAP
+                </p>
               </div>
             </div>
+            {selectedDate !== 'all' && (
+              <Badge variant="outline" className="bg-white border-amber-200 text-amber-700 font-black text-[10px] uppercase">
+                {filteredMantenimientos.length} Paros en esta fecha
+              </Badge>
+            )}
           </div>
 
           <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
@@ -582,10 +585,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50 font-bold">
-                  {mantenimientos.length === 0 ? (
-                    <tr><td colSpan={10} className="py-20 text-center text-gray-300 uppercase tracking-widest opacity-30">No se detectan paros programados</td></tr>
+                  {filteredMantenimientos.length === 0 ? (
+                    <tr><td colSpan={10} className="py-20 text-center text-gray-300 uppercase tracking-widest opacity-30">No se detectan paros programados para el criterio de filtro</td></tr>
                   ) : (
-                    mantenimientos.map((m, i) => (
+                    filteredMantenimientos.map((m, i) => (
                       <tr key={i} className="hover:bg-amber-50/30 transition-colors">
                         <td className="px-4 py-3 border-r border-gray-100 text-slate-400 font-mono">{String(m.ID_PLANTA || '—')}</td>
                         <td className="px-4 py-3 border-r border-gray-100 text-slate-600 uppercase">{String(m.PLANTA || '—')}</td>
@@ -681,7 +684,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           ))}
         </TabsContent>
 
-        <TabsContent value="tiempos">
+        <TabsContent value="tiempos" className="animate-in fade-in duration-300">
           <div className="grid grid-cols-1 gap-10">
             {[ { t: 'Quito 1000', d: tiemposC1000 }, { t: 'Guayaquil 2000', d: tiemposC2000 } ].map((center, idx) => (
               <div key={idx} className="space-y-4">
@@ -692,7 +695,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                       <thead className="bg-[#bde0fe] sticky top-0 text-[10px] font-black uppercase text-slate-800 border-b border-gray-100">
                         <tr><th className="px-4 py-4 border-r border-gray-100">Material</th><th className="px-4 py-4 border-r border-gray-100 text-left">Descripción Técnica</th><th className="px-4 py-4 border-r border-gray-100 text-teal-700">Estándar (Min)</th></tr>
                       </thead>
-                      <tbody className="divide-y divide-gray-100 text-[11px] font-bold">
+                      <tbody className="divide-y divide-gray-50 text-[11px] font-bold">
                         {center.d.length === 0 ? (
                           <tr><td colSpan={3} className="py-12 text-center text-gray-300 font-bold uppercase tracking-widest opacity-30">No hay registros cargados</td></tr>
                         ) : (
