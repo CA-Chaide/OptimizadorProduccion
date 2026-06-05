@@ -100,7 +100,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
   // Filtros para Habilidades
   const [habilidadesSearch, setHabilidadesSearch] = useState('');
-  const [selectedDept, setSelectedDept] = useState<string>('all');
 
   useEffect(() => { 
     setMounted(true); 
@@ -131,7 +130,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         setOrders(provsRes.data?.data || provsRes.data || []);
         setTiemposEnsamblado(timesRes.data?.data || timesRes.data || []);
         setMantenimientos(maintRes.data || []);
-        setHabilidades(habRes.data || []);
+        setHabilidades(Array.isArray(habRes.data) ? habRes.data : []);
 
         inspector.captureVariable('mantenimientosCargados', maintRes.data?.length || 0);
         inspector.captureVariable('habilidadesCargadas', habRes.data?.length || 0);
@@ -224,30 +223,18 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const tiemposC1000 = useMemo(() => tiemposEnsamblado.filter(t => String(t.Centro || t.centro || '').trim() === '1000'), [tiemposEnsamblado]);
   const tiemposC2000 = useMemo(() => tiemposEnsamblado.filter(t => String(t.Centro || t.centro || '').trim() === '2000'), [tiemposEnsamblado]);
 
-  // Explorador de Departamentos Únicos
-  const uniqueDepartments = useMemo(() => {
-    const depts = new Map<string, number>();
-    habilidades.forEach(h => {
-      const d = String(h.DEPARTAMENTO || 'SIN DEPARTAMENTO').toUpperCase().trim();
-      if (d) depts.set(d, (depts.get(d) || 0) + 1);
-    });
-    return Array.from(depts.entries()).sort((a, b) => a[0].localeCompare(b[0]));
-  }, [habilidades]);
-
-  // Filtrado Procesado de Habilidades
+  // Filtrado Procesado de Habilidades - Dinámico sobre todas las columnas
   const processedHabilidades = useMemo(() => {
     return habilidades.filter(h => {
-      const depto = String(h.DEPARTAMENTO || '').toUpperCase();
-      const puesto = String(h.PUESTO_TRABAJO || '').toUpperCase();
-      const nombre = String(h.NOMBRE || '').toUpperCase();
       const search = habilidadesSearch.toUpperCase();
+      if (!search) return true;
       
-      const matchesSearch = !search || depto.includes(search) || puesto.includes(search) || nombre.includes(search);
-      const matchesDept = selectedDept === 'all' || depto === selectedDept.toUpperCase();
-      
-      return matchesSearch && matchesDept;
+      // Búsqueda en todos los valores de la fila
+      return Object.values(h).some(val => 
+        String(val || '').toUpperCase().includes(search)
+      );
     });
-  }, [habilidades, habilidadesSearch, selectedDept]);
+  }, [habilidades, habilidadesSearch]);
 
   const datesWithOrders = useMemo(() => {
     const dates = new Set<string>();
@@ -557,61 +544,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="habilidades" className="space-y-4 animate-in fade-in duration-300">
-          <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-indigo-600/10 rounded-xl text-indigo-600"><Database className="w-5 h-5" /></div>
-                <div>
-                  <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter text-left">Explorador de Departamentos</h3>
-                  <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-0.5 text-left">Total: {uniqueDepartments.length} departamentos encontrados</p>
-                </div>
-              </div>
-              <div className="relative">
-                 <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-gray-400" />
-                 <input 
-                   type="text" 
-                   placeholder="Buscar por nombre, código o puesto..." 
-                   value={habilidadesSearch}
-                   onChange={e => setHabilidadesSearch(e.target.value)}
-                   className="pl-9 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-xs font-bold w-64 focus:ring-2 focus:ring-indigo-500/20"
-                 />
-              </div>
-            </div>
-            
-            <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto p-1">
-              <button
-                onClick={() => setSelectedDept('all')}
-                className={cn(
-                  "px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border",
-                  selectedDept === 'all' 
-                    ? "bg-indigo-600 text-white border-indigo-700 shadow-md" 
-                    : "bg-white text-gray-400 border-gray-100 hover:bg-gray-50"
-                )}
-              >
-                TODOS LOS DEPARTAMENTOS ({habilidades.length})
-              </button>
-              {uniqueDepartments.map(([dept, count]) => {
-                const isLaminadoOrEspuma = dept.includes('LAMINADO') || dept.includes('ESPUMA') || dept.includes('CORTE');
-                return (
-                  <button
-                    key={dept}
-                    onClick={() => setSelectedDept(dept)}
-                    className={cn(
-                      "px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border",
-                      selectedDept === dept
-                        ? "bg-indigo-600 text-white border-indigo-700 shadow-md"
-                        : isLaminadoOrEspuma
-                        ? "bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
-                        : "bg-white text-gray-400 border-gray-100 hover:bg-gray-50"
-                    )}
-                  >
-                    {dept} ({count})
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
           <div className="flex items-center justify-between bg-indigo-50 p-4 rounded-2xl border border-indigo-100">
             <div className="flex items-center gap-4 text-left">
               <div className="p-3 bg-indigo-500/10 rounded-2xl text-indigo-600">
@@ -620,13 +552,25 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               <div>
                 <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">Cubo de Habilidades Operativas</h3>
                 <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">
-                  {selectedDept === 'all' ? 'Mostrando todo el personal' : `Filtrado por: ${selectedDept}`}
+                  Vista completa de registros SAP
                 </p>
               </div>
             </div>
-            <Badge variant="outline" className="bg-white border-indigo-200 text-indigo-700 font-black text-[10px]">
-              {processedHabilidades.length} Registros Encontrados
-            </Badge>
+            <div className="flex items-center gap-3">
+                <div className="relative">
+                     <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-gray-400" />
+                     <input 
+                       type="text" 
+                       placeholder="Filtrar registros..." 
+                       value={habilidadesSearch}
+                       onChange={e => setHabilidadesSearch(e.target.value)}
+                       className="pl-9 pr-3 py-2 bg-white border border-gray-200 rounded-lg text-xs font-bold w-64 focus:ring-2 focus:ring-indigo-500/20"
+                     />
+                </div>
+                <Badge variant="outline" className="bg-white border-indigo-200 text-indigo-700 font-black text-[10px]">
+                  {processedHabilidades.length} Registros
+                </Badge>
+            </div>
           </div>
 
           <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
@@ -634,35 +578,28 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               <table className="w-full border-collapse text-left font-sans text-[9px]">
                 <thead className="bg-[#e0e7ff] sticky top-0 z-10 text-indigo-900 uppercase font-black tracking-widest border-b border-indigo-200">
                   <tr>
-                    <th className="px-4 py-4 border-r border-indigo-100">Identificador</th>
-                    <th className="px-4 py-4 border-r border-indigo-100">Nombre del Operador</th>
-                    <th className="px-4 py-4 border-r border-indigo-100">Departamento</th>
-                    <th className="px-4 py-4 border-r border-indigo-100">Puesto de Trabajo</th>
-                    <th className="px-4 py-4 text-center">Calificación (%)</th>
+                    {habilidades.length > 0 && Object.keys(habilidades[0]).map((key) => (
+                      <th key={key} className="px-4 py-4 border-r border-indigo-100 whitespace-nowrap">
+                        {key.replace(/_/g, ' ')}
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50 font-bold">
                   {processedHabilidades.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="py-20 text-center text-gray-300 uppercase tracking-widest opacity-30">
-                        No se encontraron registros bajo este criterio
+                      <td colSpan={habilidades.length > 0 ? Object.keys(habilidades[0]).length : 1} className="py-20 text-center text-gray-300 uppercase tracking-widest opacity-30">
+                        No se encontraron registros
                       </td>
                     </tr>
                   ) : (
                     processedHabilidades.map((h, i) => (
                       <tr key={i} className="hover:bg-indigo-50/30 transition-colors">
-                        <td className="px-4 py-3 border-r border-gray-100 text-slate-400 font-mono">{String(h.IDENTIFICADOR || h.ID || '—')}</td>
-                        <td className="px-4 py-3 border-r border-gray-100 text-slate-800 uppercase">{String(h.NOMBRE || '—')}</td>
-                        <td className="px-4 py-3 border-r border-gray-100 text-slate-500 uppercase">{String(h.DEPARTAMENTO || '—')}</td>
-                        <td className="px-4 py-3 border-r border-gray-100 text-indigo-700 font-black">{String(h.PUESTO_TRABAJO || '—')}</td>
-                        <td className="px-4 py-3 text-center">
-                          <Badge className={cn(
-                            "font-black font-mono",
-                            safeNum(h.CALIFICACION) >= 100 ? "bg-green-500" : "bg-indigo-500"
-                          )}>
-                            {formatNum(h.CALIFICACION)}%
-                          </Badge>
-                        </td>
+                        {Object.keys(h).map((key) => (
+                          <td key={key} className="px-4 py-3 border-r border-gray-100 text-slate-700">
+                            {String(h[key] ?? '—')}
+                          </td>
+                        ))}
                       </tr>
                     ))
                   )}
