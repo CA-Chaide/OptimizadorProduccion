@@ -644,7 +644,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
       return true;
     });
 
-    // Ordenar por fecha de inicio ascendente
+    // Ordenar por fecha de inicio ascendente (CRONOLÓGICO)
     result.sort((a, b) => {
       const dateA = new Date(a.FECHA_INICIO || a.FECHA || 0).getTime();
       const dateB = new Date(b.FECHA_INICIO || b.FECHA || 0).getTime();
@@ -1244,7 +1244,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                         <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase tracking-widest">Estado</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100 bg-white">
+                    <tbody className="divide-y divide-100 bg-white">
                       {isLoadingMantenimientos ? (
                         <tr><td colSpan={6} className="py-24 text-center"><Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" /></td></tr>
                       ) : filteredMantenimientos.length > 0 ? filteredMantenimientos.map((m, idx) => (
