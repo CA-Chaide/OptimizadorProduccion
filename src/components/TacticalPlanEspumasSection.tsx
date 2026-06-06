@@ -45,13 +45,13 @@ import { cn } from '@/lib/utils';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, parseISO, addMonths, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
 
-// --- CONSTANTES TÉCNICAS (MODELO 3.2m + BUFFER 5%) ---
+// --- CONSTANTES TÉCNICAS (MODELO 3.2m - GAP 30CM - MODELO MANIPULACIÓN 5%) ---
 const CARRUSEL_DIAMETER_CM = 320; 
 const CIRCUNFERENCIA_NOMINAL = Math.PI * CARRUSEL_DIAMETER_CM; // ~1005.31 cm
-const BUFFER_SAFETY_FACTOR = 0.95; // 5% de la circunferencia reservada para holgura global
-const MANIPULATION_GAP_CM = 50;    // Espacio entre bloques para manipulación segura
-const SECONDS_PER_LOAD = 300;     // 5 min carga por vuelta
-const SECONDS_PER_UNIT = 45;      // 45s por unidad (repetición/descarga)
+const MANIPULATION_GAP_CM = 30;    // Reducido a 30cm por instrucción
+const MANIPULATION_TIME_FACTOR = 1.05; // Modelo de manipulación +5% en carga/descarga
+const SECONDS_PER_LOAD = 300;     // 5 min carga base
+const SECONDS_PER_UNIT = 45;      // 45s por unidad base
 
 const RESPONSABLES_QUITO = ["013", "036", "038", "039", "044"];
 const RESPONSABLES_GYE = ["002", "038", "039"];
@@ -166,7 +166,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       dimensions.tipo = techPattern[2].toUpperCase(); 
     }
 
-    // Regex mejorada para Ancho x Largo x Espesor (ej: 200 x 190 x 15)
+    // Regex mejorada para Ancho x Largo x Espesor (captura el Largo explícitamente)
     const dimMatch = desc.match(/(\d+(?:\.\d+)?)\s*[xX*]\s*(\d+(?:\.\d+)?)(?:\s*[xX*]\s*(\d+(?:\.\d+)?))?/);
     if (dimMatch) {
       dimensions.ancho = dimMatch[1];
@@ -188,20 +188,19 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const altTot = qty * esp;
     const subbl = altTot / usefulHeight;
 
-    // INGENIERÍA CARRUSEL CON TOLERANCIA 5% BUFFER Y 50CM GAP
-    const safeCircunferencia = CIRCUNFERENCIA_NOMINAL * BUFFER_SAFETY_FACTOR; // ~955cm
+    // INGENIERÍA CARRUSEL (SIN BUFFER - GAP 30CM)
     const effectiveSpacePerBlock = ancho + MANIPULATION_GAP_CM;
     
     const subblPorCarga = effectiveSpacePerBlock > 0 
-      ? Math.floor(safeCircunferencia / effectiveSpacePerBlock) 
+      ? Math.floor(CIRCUNFERENCIA_NOMINAL / effectiveSpacePerBlock) 
       : 0;
     
     const bloques20m = (ancho * subbl) / 2000;
     const cargas = subblPorCarga > 0 ? Math.ceil(subbl / subblPorCarga) : 0;
 
-    // TIEMPOS DE CARGA Y DESCARGA
-    const tCarga = (cargas * SECONDS_PER_LOAD);
-    const tDescarga = (qty * SECONDS_PER_UNIT);
+    // TIEMPOS DE CARGA Y DESCARGA (APLICANDO MODELO MANIPULACIÓN 5%)
+    const tCarga = (cargas * SECONDS_PER_LOAD) * MANIPULATION_TIME_FACTOR;
+    const tDescarga = (qty * SECONDS_PER_UNIT) * MANIPULATION_TIME_FACTOR;
     const operativeHours = (tCarga + tDescarga) / 3600;
 
     return { 
@@ -233,6 +232,24 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const provC1000 = useMemo(() => filterDataByCenter(ordenes, '1000'), [ordenes, selectedDate]);
   const provC2000 = useMemo(() => filterDataByCenter(ordenes, '2000'), [ordenes, selectedDate]);
   
+  const datesWithOrders = useMemo(() => {
+    if (!mounted) return new Set<string>();
+    const dates = new Set<string>();
+    ordenes.forEach(o => {
+      const centro = String(o.CENTRO || o.Centro || '').trim();
+      if (centro === '2000') {
+         const resp = String(o.RESPCONTROLPROD || o.RespControlProd || '').trim();
+         if (!RESPONSABLES_GYE.includes(resp)) return;
+      } else {
+         const resp = String(o.RESPCONTROLPROD || o.RespControlProd || '').trim();
+         if (!RESPONSABLES_QUITO.includes(resp)) return;
+      }
+      const d = String(o.FECHAINICIO || o.FECHA || '').trim();
+      if (d && d !== 'null') dates.add(d.includes('T') ? d.split('T')[0] : d);
+    });
+    return dates;
+  }, [ordenes, mounted]);
+
   const metrics1000 = useMemo(() => {
     const resources = OPERATIVE_RESOURCES['1000'];
     const plannedHrs = provC1000.reduce((s, o) => s + calculateEngineeringData(o).operativeHours, 0);
@@ -249,14 +266,15 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return { globalCap: cap, globalPlanned: plannedHrs, globalUnits: units, globalOccupancy: cap > 0 ? (plannedHrs / cap) * 100 : 0 };
   }, [provC2000]);
 
-  const filteredMantenimientos = useMemo(() => {
-    if (selectedDate === 'all') return mantenimientos;
-    return mantenimientos.filter(m => {
-      const mDateRaw = String(m.FECHA_PRO || '').trim();
-      const mDate = mDateRaw.includes('T') ? mDateRaw.split('T')[0] : mDateRaw;
-      return mDate === selectedDate;
-    });
-  }, [mantenimientos, selectedDate]);
+  const calendarDays = useMemo(() => {
+    if (!mounted || !viewDate) return [];
+    const start = startOfMonth(viewDate);
+    const end = endOfMonth(viewDate);
+    const days = eachDayOfInterval({ start, end });
+    const startDay = getDay(start);
+    const padding = startDay === 0 ? 6 : startDay - 1;
+    return [...Array(padding).fill(null), ...days];
+  }, [viewDate, mounted]);
 
   const getPuestoDesdeHabilidades = (idMaquina: string) => {
     if (!idMaquina || !habilidades.length) return '—';
@@ -267,24 +285,14 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return match ? getCellValue(match, ['PuestoTrabajo', 'PUESTO', 'CARGO']) : '—';
   };
 
-  const datesWithOrders = useMemo(() => {
-    const dates = new Set<string>();
-    ordenes.forEach(o => {
-      const d = String(o.FECHAINICIO || o.FECHA || '').trim();
-      if (d && d !== 'null') dates.add(d.includes('T') ? d.split('T')[0] : d);
+  const filteredMantenimientos = useMemo(() => {
+    if (selectedDate === 'all') return mantenimientos;
+    return mantenimientos.filter(m => {
+      const mDateRaw = String(m.FECHA_PRO || '').trim();
+      const mDate = mDateRaw.includes('T') ? mDateRaw.split('T')[0] : mDateRaw;
+      return mDate === selectedDate;
     });
-    return dates;
-  }, [ordenes]);
-
-  const calendarDays = useMemo(() => {
-    if (!mounted || !viewDate) return [];
-    const start = startOfMonth(viewDate);
-    const end = endOfMonth(viewDate);
-    const days = eachDayOfInterval({ start, end });
-    const startDay = getDay(start);
-    const padding = startDay === 0 ? 6 : startDay - 1;
-    return [...Array(padding).fill(null), ...days];
-  }, [viewDate, mounted]);
+  }, [mantenimientos, selectedDate]);
 
   const CapacityTab = ({ centerId, metrics }: { centerId: string, metrics: any }) => {
     const isQuito = centerId === '1000';
@@ -321,7 +329,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <div className="p-2 bg-primary/10 rounded-xl"><Wind className="w-6 h-6 text-primary" /></div>
           <div>
             <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Programación Táctica Corte Espuma</h2>
-            <p className="text-xs text-gray-500 font-medium">Ingeniería Carrusel 3.2m con Buffer 5% | Auditoría de Largo y Cargas</p>
+            <p className="text-xs text-gray-500 font-medium">Ingeniería Carrusel 3.2m - Gap 30cm | Modelo de Manipulación Técnica 5%</p>
           </div>
         </div>
       </div>
@@ -404,6 +412,72 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               <CapacityTab centerId="2000" metrics={metrics2000} />
             </div>
           </div>
+        </TabsContent>
+
+        <TabsContent value="resumenOperativo" className="space-y-4 animate-in fade-in duration-300">
+           <div className="flex items-center justify-between bg-green-50 p-4 rounded-2xl border border-green-100 shadow-sm">
+             <div className="flex items-center gap-4">
+                <div className="p-3 bg-green-600/10 rounded-2xl text-green-600"><Activity className="w-6 h-6" /></div>
+                <div>
+                  <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">Monitor de Operación Diaria</h3>
+                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Cruce Maestro: Disponibilidad Máquina | Operador (Habilidades) | MTTO | Citas Médicas</p>
+                </div>
+             </div>
+           </div>
+
+           {selectedDate === 'all' ? (
+              <div className="py-32 text-center border-2 border-dashed border-gray-100 rounded-3xl bg-gray-50/30">
+                <AlertCircle className="w-16 h-16 text-gray-200 mx-auto mb-4" />
+                <p className="text-[11px] font-black text-gray-300 uppercase tracking-widest">Seleccione una fecha específica para proyectar el resumen operativo</p>
+              </div>
+           ) : (
+              <Card className="rounded-2xl border border-gray-100 shadow-lg overflow-hidden bg-white">
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse font-sans text-left">
+                    <thead className="bg-[#064e3b] text-white uppercase font-black tracking-widest text-[9px] sticky top-0 z-20">
+                      <tr>
+                        <th className="px-5 py-4 border-r border-white/5">Turno</th>
+                        <th className="px-5 py-4 border-r border-white/5">MÁQUINA</th>
+                        <th className="px-5 py-4 border-r border-white/5">Código Operador</th>
+                        <th className="px-5 py-4 border-r border-white/5">Nombre Empleado</th>
+                        <th className="px-4 py-4 border-r border-white/5 text-center">_Habilidades (%)</th>
+                        <th className="px-5 py-4 border-r border-white/5 text-right bg-black/10">Horas Efectivas</th>
+                        <th className="px-5 py-4 border-r border-white/5 text-right bg-red-900/20">Tiempo MTTO</th>
+                        <th className="px-5 py-4 text-right bg-amber-900/20">Citas Médicas</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 text-[10px] font-bold">
+                      {(() => {
+                        const allRes = [...OPERATIVE_RESOURCES['1000'], ...OPERATIVE_RESOURCES['2000']];
+                        return allRes.map((res, idx) => {
+                          const op = habilidades.find(h => getCellValue(h, ['MaquinaSismac']).toUpperCase() === res.code.toUpperCase());
+                          const mtto = filteredMantenimientos.filter(m => String(m.ID_MAQUINA).trim().toUpperCase() === res.code.toUpperCase());
+                          const hMtto = mtto.reduce((s, m) => s + safeNum(m.TIEMPO), 0);
+                          const hCitas = 0; 
+                          const hBase = res.t1 + res.t2;
+                          const hEfec = Math.max(0, hBase - hMtto - hCitas);
+
+                          return (
+                            <tr key={idx} className="hover:bg-gray-50 transition-colors">
+                              <td className="px-5 py-3 border-r border-gray-50 text-slate-400 font-mono">{res.t1}h / {res.t2}h</td>
+                              <td className="px-5 py-3 border-r border-gray-100 text-slate-800 font-black uppercase">{res.code} - {res.name}</td>
+                              <td className="px-5 py-3 border-r border-gray-50 text-indigo-600 font-mono">{op ? getCellValue(op, ['IDENTIFICADOR']) : '—'}</td>
+                              <td className="px-5 py-3 border-r border-gray-100 text-slate-700 uppercase">{op ? getCellValue(op, ['NOMBRE']) : <span className="text-red-400">NO ASIGNADO</span>}</td>
+                              <td className="px-4 py-3 border-r border-gray-50 text-center">
+                                {op ? <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 text-[9px] font-black">{getCellValue(op, ['CALIFICACION'])}%</Badge> : '—'}
+                              </td>
+                              <td className="px-5 py-3 border-r border-gray-50 text-right font-black text-indigo-900 bg-indigo-50/10 font-mono">{hEfec.toFixed(1)}h</td>
+                              <td className="px-5 py-3 border-r border-gray-50 text-right font-black text-red-600 bg-red-50/10 font-mono">{hMtto > 0 ? `${hMtto}h` : '—'}</td>
+                              <td className="px-5 py-3 text-right font-black text-amber-600 bg-amber-50/10 font-mono">{hCitas > 0 ? `${hCitas}h` : '—'}</td>
+                            </tr>
+                          );
+                        });
+                      })()}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+           )}
         </TabsContent>
 
         <TabsContent value="habilidades" className="space-y-4 animate-in fade-in duration-300">
@@ -506,129 +580,71 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           </Card>
         </TabsContent>
 
-        <TabsContent value="resumenOperativo" className="space-y-4 animate-in fade-in duration-300">
-           <div className="flex items-center justify-between bg-green-50 p-4 rounded-2xl border border-green-100 shadow-sm">
-             <div className="flex items-center gap-4">
-                <div className="p-3 bg-green-600/10 rounded-2xl text-green-600"><Activity className="w-6 h-6" /></div>
-                <div>
-                  <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">Monitor de Operación Diaria</h3>
-                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Cruce Maestro: Disponibilidad Máquina | Operador (Habilidades) | MTTO | Citas Médicas</p>
-                </div>
-             </div>
-           </div>
-
-           {selectedDate === 'all' ? (
-              <div className="py-32 text-center border-2 border-dashed border-gray-100 rounded-3xl bg-gray-50/30">
-                <AlertCircle className="w-16 h-16 text-gray-200 mx-auto mb-4" />
-                <p className="text-[11px] font-black text-gray-300 uppercase tracking-widest">Seleccione una fecha específica para proyectar el resumen operativo</p>
-              </div>
-           ) : (
-              <Card className="rounded-2xl border border-gray-100 shadow-lg overflow-hidden bg-white">
+        <TabsContent value="ordenes" className="space-y-10 animate-in fade-in duration-300">
+          {[ 
+            { t: 'Planta 1000 - Quito', d: provC1000, id: '1000', c: 'text-green-700', b: 'bg-green-600' }, 
+            { t: 'Planta 2000 - Guayaquil', d: provC2000, id: '2000', c: 'text-indigo-700', b: 'bg-indigo-600' } 
+          ].map((center, idx) => (
+            <div key={idx} className="space-y-4">
+              <h3 className={cn("text-[11px] font-black uppercase flex items-center gap-2 px-1 text-left", center.c)}>
+                <div className={cn("w-2 h-2 rounded-full", center.b)} /> {center.t} (Gap 30cm | Modelo Man. 5%)
+              </h3>
+              <Card className="rounded-2xl border border-gray-100 shadow-md overflow-hidden bg-white">
                 <div className="overflow-x-auto">
-                  <table className="w-full border-collapse font-sans text-left">
-                    <thead className="bg-[#064e3b] text-white uppercase font-black tracking-widest text-[9px] sticky top-0 z-20">
+                  <table className="w-full border-collapse text-center font-sans text-[10px]">
+                    <thead className="bg-[#f1f5f9] sticky top-0 z-10 text-slate-500 uppercase font-black tracking-tighter border-b border-gray-100">
                       <tr>
-                        <th className="px-5 py-4 border-r border-white/5">Turno</th>
-                        <th className="px-5 py-4 border-r border-white/5">MÁQUINA</th>
-                        <th className="px-5 py-4 border-r border-white/5">Código Operador</th>
-                        <th className="px-5 py-4 border-r border-white/5">Nombre Empleado</th>
-                        <th className="px-4 py-4 border-r border-white/5 text-center">_Habilidades (%)</th>
-                        <th className="px-5 py-4 border-r border-white/5 text-right bg-black/10">Horas Efectivas</th>
-                        <th className="px-5 py-4 border-r border-white/5 text-right bg-red-900/20">Tiempo MTTO</th>
-                        <th className="px-5 py-4 text-right bg-amber-900/20">Citas Médicas</th>
+                        <th className="px-3 py-4 border-r border-gray-50">Orden</th>
+                        <th className="px-3 py-4 border-r border-gray-50">Fecha</th>
+                        <th className="px-3 py-4 border-r border-gray-50">Material</th>
+                        <th className="px-3 py-4 border-r border-gray-50 text-left">Descripción</th>
+                        <th className="px-2 py-4 border-r border-gray-50">DENS.</th>
+                        <th className="px-2 py-4 border-r border-gray-50">ANCHO</th>
+                        <th className="px-2 py-4 border-r border-gray-50">LARGO</th>
+                        <th className="px-2 py-4 border-r border-gray-50">ESP.</th>
+                        <th className="px-3 py-4 border-r border-gray-100 font-black text-slate-700">Cant.</th>
+                        <th className="px-3 py-4 border-r border-gray-100 font-black text-indigo-700 bg-indigo-50/20">Máquina</th>
+                        <th className="px-2 py-4 border-r border-gray-50 bg-purple-50/50 text-purple-900">SUBBL.</th>
+                        <th className="px-2 py-4 border-r border-gray-50 bg-indigo-50/50 text-indigo-900">SUBBL./CARGA</th>
+                        <th className="px-2 py-4 border-r border-gray-50 bg-orange-50/50 text-orange-900 font-black">BLOQUES 20M</th>
+                        <th className="px-3 py-4 text-red-700 bg-red-50/50 font-black">CARGAS</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100 text-[10px] font-bold">
-                      {(() => {
-                        const allRes = [...OPERATIVE_RESOURCES['1000'], ...OPERATIVE_RESOURCES['2000']];
-                        return allRes.map((res, idx) => {
-                          const op = habilidades.find(h => getCellValue(h, ['MaquinaSismac']).toUpperCase() === res.code.toUpperCase());
-                          const mtto = filteredMantenimientos.filter(m => String(m.ID_MAQUINA).trim().toUpperCase() === res.code.toUpperCase());
-                          const hMtto = mtto.reduce((s, m) => s + safeNum(m.TIEMPO), 0);
-                          const hCitas = 0; // Placeholder para integración futura de ausentismos dinámicos
-                          const hBase = res.t1 + res.t2;
-                          const hEfec = Math.max(0, hBase - hMtto - hCitas);
-
+                    <tbody className="divide-y divide-gray-50">
+                      {center.d.length === 0 ? (
+                        <tr><td colSpan={14} className="py-20 text-center text-gray-300 font-bold uppercase tracking-widest opacity-20">Sin registros para esta planta</td></tr>
+                      ) : (
+                        center.d.map((o, i) => {
+                          const eng = calculateEngineeringData(o);
+                          const dRaw = String(o.FECHAINICIO || o.FECHA || '—').trim();
+                          const date = dRaw.includes('T') ? dRaw.split('T')[0] : dRaw;
+                          const maquina = String(o.MAQUINA || o.Maquina || o.RECURSO || '—').trim();
                           return (
-                            <tr key={idx} className="hover:bg-gray-50 transition-colors">
-                              <td className="px-5 py-3 border-r border-gray-50 text-slate-400 font-mono">{res.t1}h / {res.t2}h</td>
-                              <td className="px-5 py-3 border-r border-gray-100 text-slate-800 font-black uppercase">{res.code} - {res.name}</td>
-                              <td className="px-5 py-3 border-r border-gray-50 text-indigo-600 font-mono">{op ? getCellValue(op, ['IDENTIFICADOR']) : '—'}</td>
-                              <td className="px-5 py-3 border-r border-gray-100 text-slate-700 uppercase">{op ? getCellValue(op, ['NOMBRE']) : <span className="text-red-400">NO ASIGNADO</span>}</td>
-                              <td className="px-4 py-3 border-r border-gray-50 text-center">
-                                {op ? <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 text-[9px] font-black">{getCellValue(op, ['CALIFICACION'])}%</Badge> : '—'}
-                              </td>
-                              <td className="px-5 py-3 border-r border-gray-50 text-right font-black text-indigo-900 bg-indigo-50/10 font-mono">{hEfec.toFixed(1)}h</td>
-                              <td className="px-5 py-3 border-r border-gray-50 text-right font-black text-red-600 bg-red-50/10 font-mono">{hMtto > 0 ? `${hMtto}h` : '—'}</td>
-                              <td className="px-5 py-3 text-right font-black text-amber-600 bg-amber-50/10 font-mono">{hCitas > 0 ? `${hCitas}h` : '—'}</td>
+                            <tr key={i} className="hover:bg-gray-50/50 transition-colors">
+                              <td className="px-3 py-2 text-slate-400 border-r border-gray-50">{o.ORDENPREVISIONAL || '—'}</td>
+                              <td className="px-3 py-2 border-r border-gray-50 font-mono text-[8px] text-gray-400">{date}</td>
+                              <td className="px-3 py-2 font-mono text-primary border-r border-gray-50 font-bold">{eng.code}</td>
+                              <td className="px-3 py-2 text-left border-r border-gray-50 truncate max-w-[140px] uppercase font-bold text-gray-500">{eng.desc}</td>
+                              <td className="px-2 py-2 border-r border-gray-50 font-black text-gray-400">{eng.dens}</td>
+                              <td className="px-2 py-2 border-r border-gray-50 font-mono text-slate-400">{eng.ancho}</td>
+                              <td className="px-2 py-2 border-r border-gray-50 font-mono text-slate-400">{eng.largo}</td>
+                              <td className="px-2 py-2 border-r border-gray-50 font-mono text-slate-400">{eng.esp}</td>
+                              <td className="px-3 py-2 border-r border-gray-100 font-black text-gray-900 font-mono">{eng.qty.toLocaleString()}</td>
+                              <td className="px-3 py-2 border-r border-gray-100 font-black text-indigo-700 bg-indigo-50/5 uppercase">{maquina}</td>
+                              <td className="px-2 py-2 border-r border-gray-50 bg-purple-50/10 font-mono font-bold text-purple-700">{formatNum(eng.subbl, 1)}</td>
+                              <td className="px-2 py-2 border-r border-gray-50 bg-indigo-50/10 font-mono font-black text-indigo-700">{eng.subblPorCarga}</td>
+                              <td className="px-2 py-2 border-r border-gray-50 bg-orange-50/10 font-mono font-black text-orange-800">{formatNum(eng.bloques20m, 1)}</td>
+                              <td className="px-3 py-2 bg-red-50/20 font-mono font-black text-red-600">{String(eng.cargas)}</td>
                             </tr>
                           );
-                        });
-                      })()}
+                        })
+                      )}
                     </tbody>
                   </table>
                 </div>
               </Card>
-           )}
-        </TabsContent>
-
-        <TabsContent value="ordenes" className="space-y-10 animate-in fade-in duration-300">
-          <div className="space-y-4">
-            <h3 className="text-[11px] font-black uppercase flex items-center gap-2 px-1 text-left text-green-700">
-              <div className="w-2 h-2 rounded-full bg-green-600" /> Planta 1000 - Quito (Ingeniería Carrusel 3.2m | Buffer 5%)
-            </h3>
-            <Card className="rounded-2xl border border-gray-100 shadow-md overflow-hidden bg-white">
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse text-center font-sans text-[10px]">
-                  <thead className="bg-[#f1f5f9] sticky top-0 z-10 text-slate-500 uppercase font-black tracking-tighter border-b border-gray-100">
-                    <tr>
-                      <th className="px-3 py-4 border-r border-gray-50">Orden</th>
-                      <th className="px-3 py-4 border-r border-gray-50">Fecha</th>
-                      <th className="px-3 py-4 border-r border-gray-50">Material</th>
-                      <th className="px-3 py-4 border-r border-gray-50 text-left">Descripción</th>
-                      <th className="px-2 py-4 border-r border-gray-50">DENS.</th>
-                      <th className="px-2 py-4 border-r border-gray-50">ANCHO</th>
-                      <th className="px-2 py-4 border-r border-gray-50 bg-blue-50/50 text-blue-900">LARGO</th>
-                      <th className="px-2 py-4 border-r border-gray-50">ESP.</th>
-                      <th className="px-3 py-4 border-r border-gray-100 font-black text-slate-700">Cant.</th>
-                      <th className="px-2 py-4 border-r border-gray-50 bg-purple-50/50 text-purple-900">SUBBL.</th>
-                      <th className="px-2 py-4 border-r border-gray-50 bg-indigo-50/50 text-indigo-900">SUBBL./CARGA</th>
-                      <th className="px-2 py-4 border-r border-gray-50 bg-orange-50/50 text-orange-900 font-black">BLOQUES 20M</th>
-                      <th className="px-3 py-4 text-red-700 bg-red-50/50 font-black">CARGAS</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {provC1000.length === 0 ? (
-                      <tr><td colSpan={13} className="py-20 text-center text-gray-300 font-bold uppercase tracking-widest opacity-20">Sin registros para esta planta</td></tr>
-                    ) : (
-                      provC1000.map((o, i) => {
-                        const eng = calculateEngineeringData(o);
-                        const dRaw = String(o.FECHAINICIO || o.FECHA || '—').trim();
-                        const date = dRaw.includes('T') ? dRaw.split('T')[0] : dRaw;
-                        return (
-                          <tr key={i} className="hover:bg-gray-50/50 transition-colors">
-                            <td className="px-3 py-2 text-slate-400 border-r border-gray-50">{o.ORDENPREVISIONAL || '—'}</td>
-                            <td className="px-3 py-2 border-r border-gray-50 font-mono text-[8px] text-gray-400">{date}</td>
-                            <td className="px-3 py-2 font-mono text-primary border-r border-gray-50 font-bold">{eng.code}</td>
-                            <td className="px-3 py-2 text-left border-r border-gray-50 truncate max-w-[140px] uppercase font-bold text-gray-500">{eng.desc}</td>
-                            <td className="px-2 py-2 border-r border-gray-50 font-black text-gray-400">{eng.dens}</td>
-                            <td className="px-2 py-2 border-r border-gray-50 font-mono text-slate-400">{eng.ancho}</td>
-                            <td className="px-2 py-2 border-r border-gray-50 font-mono font-black text-blue-700 bg-blue-50/5">{eng.largo}</td>
-                            <td className="px-2 py-2 border-r border-gray-50 font-mono text-slate-400">{eng.esp}</td>
-                            <td className="px-3 py-2 border-r border-gray-100 font-black text-gray-900 font-mono">{eng.qty.toLocaleString()}</td>
-                            <td className="px-2 py-2 border-r border-gray-50 bg-purple-50/10 font-mono font-bold text-purple-700">{formatNum(eng.subbl, 1)}</td>
-                            <td className="px-2 py-2 border-r border-gray-50 bg-indigo-50/10 font-mono font-black text-indigo-700">{eng.subblPorCarga}</td>
-                            <td className="px-2 py-2 border-r border-gray-50 bg-orange-50/10 font-mono font-black text-orange-800">{formatNum(eng.bloques20m, 1)}</td>
-                            <td className="px-3 py-2 bg-red-50/20 font-mono font-black text-red-600">{String(eng.cargas)}</td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
-          </div>
+            </div>
+          ))}
         </TabsContent>
 
         <TabsContent value="tiempos" className="animate-in fade-in duration-300">
@@ -668,7 +684,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       <div className="px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl flex items-center gap-2">
         <Info className="w-4 h-4 text-blue-600" />
         <p className="text-[9px] font-black text-blue-700 uppercase tracking-widest">
-          Nota: Ingeniería de carrusel basada en Diámetro 3.2m con un Buffer de Seguridad del 5% y Gap de Manipulación de 50cm (+-5%) entre bloques.
+          Ingeniería Carrusel 3.2m: Sin buffer de seguridad | Gap de manipulación: 30cm | Modelo de maniobra técnica: +5% en carga y descarga.
         </p>
       </div>
     </div>
