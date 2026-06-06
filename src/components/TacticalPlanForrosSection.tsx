@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -27,8 +28,7 @@ import {
   TestTube,
   FileSpreadsheet,
   GraduationCap,
-  Wrench,
-  AlertCircle
+  Wrench
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -68,6 +68,8 @@ const PUESTO_TRABAJO_OVERRIDES: Record<string, string> = {
   'HR-INTPT': 'COSEDORA-INTPR',
 };
 
+const MAINT_ROWS_PER_PAGE = 20;
+
 export const TacticalPlanForrosSection: React.FC = () => {
   const { addNotification } = useAppContext();
   const [isMounted, setIsMounted] = useState(false);
@@ -86,10 +88,11 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [habilidadesRowsPerPage] = useState(20);
   const [habilidadesFilters, setHabilidadesFilters] = useState<Record<string, string>>({});
 
-  // MANTENIMIENTOS
+  // MANTENIMIENTOS (ORIGINAL TABLE STRUCTURE)
   const [mantenimientosData, setMantenimientosData] = useState<any[]>([]);
   const [isLoadingMantenimientos, setIsLoadingMantenimientos] = useState(false);
-  const [mantenimientoSearch, setMantenimientoSearch] = useState('');
+  const [maintCurrentPage, setMaintCurrentPage] = useState(1);
+  const [maintColumns, setMaintColumns] = useState<string[]>([]);
 
   // CONFIGURACIÓN DE JORNADAS
   const DIURNA_OPTIONS = [
@@ -319,7 +322,12 @@ export const TacticalPlanForrosSection: React.FC = () => {
     setIsLoadingMantenimientos(true);
     try {
       const res = await serviciosService.ListarMantenimientoPreventivosProgramados();
-      setMantenimientosData(res.data || []);
+      const rawData = res.data || [];
+      setMantenimientosData(rawData);
+      if (rawData.length > 0) {
+        setMaintColumns(Object.keys(rawData[0]));
+      }
+      setMaintCurrentPage(1);
     } catch (error) {
       console.error('Error fetching Mantenimientos:', error);
       addNotification('error', 'No se pudieron cargar los Mantenimientos Preventivos.');
@@ -627,24 +635,17 @@ export const TacticalPlanForrosSection: React.FC = () => {
     setHabilidadesPage(1);
   };
 
-  const filteredMantenimientos = useMemo(() => {
+  // MANTENIMIENTOS (ORIGINAL LOGIC)
+  const filteredMantenimientosFull = useMemo(() => {
     const allowedResp = externalFilters['RESPCONTROLPROD'] || [];
     let result = mantenimientosData.filter(item => {
       if (allowedResp.length > 0) {
         const itemResp = String(item['RESP_CONTROL_PROD'] || item['RespCtrlProd'] || item['Responsable'] || '').trim();
         if (itemResp && !allowedResp.includes(itemResp)) return false;
       }
-      if (mantenimientoSearch) {
-        const search = mantenimientoSearch.toLowerCase();
-        return (
-          String(item.EQUIPO || item.MAQUINA || '').toLowerCase().includes(search) ||
-          String(item.ACTIVIDAD || item.DESCRIPCION || '').toLowerCase().includes(search)
-        );
-      }
       return true;
     });
 
-    // Ordenar por fecha de inicio ascendente (CRONOLÓGICO)
     result.sort((a, b) => {
       const dateA = new Date(a.FECHA_INICIO || a.FECHA || 0).getTime();
       const dateB = new Date(b.FECHA_INICIO || b.FECHA || 0).getTime();
@@ -652,7 +653,13 @@ export const TacticalPlanForrosSection: React.FC = () => {
     });
 
     return result;
-  }, [mantenimientosData, externalFilters, mantenimientoSearch]);
+  }, [mantenimientosData, externalFilters]);
+
+  const maintTotalPages = Math.max(1, Math.ceil(filteredMantenimientosFull.length / MAINT_ROWS_PER_PAGE));
+  const paginatedMantenimientos = useMemo(() => {
+    const start = (maintCurrentPage - 1) * MAINT_ROWS_PER_PAGE;
+    return filteredMantenimientosFull.slice(start, start + MAINT_ROWS_PER_PAGE);
+  }, [filteredMantenimientosFull, maintCurrentPage]);
 
   const chnBasesDateTotals = useMemo(() => {
     const filteredForTab = dailyOrders.filter(order => {
@@ -1211,64 +1218,123 @@ export const TacticalPlanForrosSection: React.FC = () => {
             <CardHeader>
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                  <CardTitle>Mantenimientos Preventivos Programados</CardTitle>
-                  <CardDescription>Programación técnica de intervenciones por equipo.</CardDescription>
+                  <CardTitle>Mantenimientos Preventivos Programados (Gestión Original)</CardTitle>
+                  <CardDescription>Visualización oficial de paros técnicos programados por equipo.</CardDescription>
                 </div>
-                <div className="flex items-center gap-3">
-                  <div className="relative w-64">
-                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
-                    <Input 
-                      placeholder="Buscar equipo o actividad..." 
-                      className="pl-9 h-10 text-sm" 
-                      value={mantenimientoSearch}
-                      onChange={(e) => setMantenimientoSearch(e.target.value)}
-                    />
-                  </div>
-                  <Button variant="outline" size="sm" onClick={fetchMantenimientos} disabled={isLoadingMantenimientos}>
-                    <RefreshCw className={cn("h-4 w-4 mr-2", isLoadingMantenimientos && "animate-spin")} /> Actualizar
-                  </Button>
-                </div>
+                <Button variant="outline" size="sm" onClick={fetchMantenimientos} disabled={isLoadingMantenimientos}>
+                  <RefreshCw className={cn("h-4 w-4 mr-2", isLoadingMantenimientos && "animate-spin")} />
+                  Actualizar Datos
+                </Button>
               </div>
             </CardHeader>
             <CardContent>
-              <div className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm">
-                <div className="overflow-x-auto max-h-[65vh]">
-                  <table className="min-w-full divide-y divide-gray-200 border-collapse">
-                    <thead className="bg-gray-50 sticky top-0 z-10 shadow-sm">
-                      <tr>
-                        <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase tracking-widest">Equipo</th>
-                        <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase tracking-widest">Actividad / Descripción</th>
-                        <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase tracking-widest">Fecha Inicio</th>
-                        <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase tracking-widest">Fecha Fin</th>
-                        <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase tracking-widest">Responsable</th>
-                        <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase tracking-widest">Estado</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-100 bg-white">
-                      {isLoadingMantenimientos ? (
-                        <tr><td colSpan={6} className="py-24 text-center"><Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" /></td></tr>
-                      ) : filteredMantenimientos.length > 0 ? filteredMantenimientos.map((m, idx) => (
-                        <tr key={`maint-row-${idx}`} className="hover:bg-amber-50/30 transition-colors">
-                          <td className="px-4 py-3 whitespace-nowrap text-[11px] font-bold text-gray-900 uppercase">{m.EQUIPO || m.MAQUINA || m.MAQUINA_NOMBRE || '—'}</td>
-                          <td className="px-4 py-3 text-[11px] text-gray-600 min-w-[200px]">{m.ACTIVIDAD || m.DESCRIPCION || '—'}</td>
-                          <td className="px-4 py-3 whitespace-nowrap text-[11px] font-mono text-gray-600">{formatValueForDisplay('FECHA', m.FECHA_INICIO || m.FECHA)}</td>
-                          <td className="px-4 py-3 whitespace-nowrap text-[11px] font-mono text-gray-600">{formatValueForDisplay('FECHA', m.FECHA_FIN)}</td>
-                          <td className="px-4 py-3 whitespace-nowrap text-[11px] text-gray-500">{m.RESP_CONTROL_PROD || m.RespCtrlProd || m.Responsable || '—'}</td>
-                          <td className="px-4 py-3 whitespace-nowrap text-[11px]">
-                            <Badge variant="outline" className={cn(
-                              "font-bold uppercase text-[9px]",
-                              m.ESTADO === 'EJECUTADO' ? "bg-green-50 text-green-700 border-green-200" : "bg-amber-50 text-amber-700 border-amber-200"
-                            )}>
-                              {m.ESTADO || 'Programado'}
-                            </Badge>
-                          </td>
+              <div className="space-y-4">
+                <div className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm">
+                  <div className="overflow-x-auto border rounded-lg">
+                    <table className="w-full border-collapse">
+                      <thead>
+                        <tr className="bg-gray-100 border-b">
+                          {maintColumns.map((col) => (
+                            <th
+                              key={`maint-col-${col}`}
+                              className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase whitespace-nowrap"
+                            >
+                              {col}
+                            </th>
+                          ))}
                         </tr>
-                      )) : (
-                        <tr><td colSpan={6} className="py-20 text-center text-gray-400 italic bg-gray-50/50">No se encontraron mantenimientos para el área de Forros.</td></tr>
-                      )}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="bg-white">
+                        {isLoadingMantenimientos ? (
+                          <tr><td colSpan={maintColumns.length || 6} className="py-24 text-center"><Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" /></td></tr>
+                        ) : paginatedMantenimientos.length > 0 ? (
+                          paginatedMantenimientos.map((row, idx) => (
+                            <tr key={`maint-row-${idx}`} className="border-b hover:bg-gray-50 transition-colors">
+                              {maintColumns.map((col) => (
+                                <td
+                                  key={`${idx}-${col}`}
+                                  className="px-4 py-3 text-xs text-gray-700"
+                                >
+                                  {typeof row[col] === 'object' 
+                                    ? JSON.stringify(row[col]) 
+                                    : String(row[col] ?? '-')}
+                                </td>
+                              ))}
+                            </tr>
+                          ))
+                        ) : (
+                          <tr>
+                            <td colSpan={maintColumns.length || 6} className="text-center py-20 text-gray-500 italic">
+                              No hay mantenimientos programados para el área de Forros.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
+
+                {/* Pagination Controls (Match Original Style) */}
+                {maintTotalPages > 1 && (
+                  <div className="flex justify-between items-center mt-6">
+                    <div className="text-sm text-gray-600">
+                      Mostrando página {maintCurrentPage} de {maintTotalPages} ({filteredMantenimientosFull.length} registros filtrados)
+                    </div>
+
+                    <div className="flex gap-2 items-center">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setMaintCurrentPage(1)}
+                        disabled={maintCurrentPage === 1 || isLoadingMantenimientos}
+                        className="h-8"
+                      >
+                        <ChevronsLeft className="h-4 w-4" />
+                      </Button>
+
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setMaintCurrentPage(prev => Math.max(1, prev - 1))}
+                        disabled={maintCurrentPage === 1 || isLoadingMantenimientos}
+                        className="h-8"
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </Button>
+
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          min={1}
+                          max={maintTotalPages}
+                          value={maintCurrentPage}
+                          onChange={(e) => setMaintCurrentPage(parseInt(e.target.value) || 1)}
+                          className="w-16 h-8 text-center text-xs"
+                        />
+                      </div>
+
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setMaintCurrentPage(prev => Math.min(maintTotalPages, prev + 1))}
+                        disabled={maintCurrentPage === maintTotalPages || isLoadingMantenimientos}
+                        className="h-8"
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setMaintCurrentPage(maintTotalPages)}
+                        disabled={maintCurrentPage === maintTotalPages || isLoadingMantenimientos}
+                        className="h-8"
+                      >
+                        <ChevronsRight className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
