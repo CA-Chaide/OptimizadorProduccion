@@ -44,11 +44,11 @@ import { cn } from '@/lib/utils';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, parseISO, addMonths, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
 
-// --- CONSTANTES TÉCNICAS Y OPERATIVAS ---
-const CARRUSEL_RADIO_CM = 350; // Radio 3.5m -> Diámetro 7m
-const CIRCUNFERENCIA_UTIL = 2 * Math.PI * CARRUSEL_RADIO_CM; // ~2199.11 cm
-const SECONDS_LOAD_BLOCK = 300;   
-const SECONDS_REPETITION = 45;    
+// --- CONSTANTES TÉCNICAS Y OPERATIVAS (AJUSTE 3.2m) ---
+const CARRUSEL_DIAMETER_CM = 320; // Diámetro promedio 3.2 metros
+const CIRCUNFERENCIA_UTIL = Math.PI * CARRUSEL_DIAMETER_CM; // ~1005.31 cm
+const SECONDS_LOAD_BLOCK = 300;   // 5 minutos para cargar un bloque
+const SECONDS_REPETITION = 45;    // 45 segundos por repetición/descarga
 const SECONDS_CART_SWAP = 60;     
 
 const MATERIALES_EXCLUIDOS = ["30009844", "30007116"];
@@ -102,7 +102,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const [viewDate, setViewDate] = useState<Date | null>(null);
   const [habilidadesSearch, setHabilidadesSearch] = useState('');
 
-  // Auxiliares para evitar errores de renderizado
+  // Auxiliar para obtener valor de celda insensible a mayúsculas/minúsculas
   const getCellValue = (row: any, keys: string[]): string => {
     if (!row) return '';
     for (const key of keys) {
@@ -182,7 +182,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       if (dimMatch[3]) dimensions.esp = dimMatch[3];
     }
     
-    // Detección de Apertura (Quito)
     const apertureRegex = /194\.5|206|219/;
     const apertureMatch = catStr.match(apertureRegex) || desc.match(apertureRegex);
     if (apertureMatch) dimensions.apertura = apertureMatch[0];
@@ -197,15 +196,19 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const esp = parseFloat(info.esp) || 0;
     const densValue = parseFloat(info.dens) || 0;
     
-    // Lógica técnica de altura útil según densidad
     const usefulHeight = (densValue < 30) ? 103 : 85;
     
-    // Cálculos de ingeniería
     const altTot = qty * esp;
     const subbl = altTot / usefulHeight;
+    // NUEVA LÓGICA DE CARGA: Basada en circunferencia útil de diámetro 3.2m
     const subblPorCarga = ancho > 0 ? Math.floor(CIRCUNFERENCIA_UTIL / ancho) - 1 : 0;
     const bloques20m = (ancho * subbl) / 2000;
     const cargas = subblPorCarga > 0 ? Math.ceil(subbl / subblPorCarga) : 0;
+
+    // Tiempo de carga y descarga
+    const tCarga = (cargas * SECONDS_LOAD_BLOCK);
+    const tDescarga = (Math.ceil(qty / 3.5) * SECONDS_REPETITION);
+    const operativeHours = (tCarga + tDescarga) / 3600;
 
     return { 
       ...info, 
@@ -214,7 +217,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       subblPorCarga, 
       bloques20m, 
       cargas,
-      operativeHours: 0 // Se calcularía con tiempos de carga/descarga si fuera necesario
+      operativeHours
     };
   };
 
@@ -271,12 +274,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const resources = OPERATIVE_RESOURCES[centerId];
     const centerOrders = centerId === '1000' ? provC1000 : provC2000;
     
-    // Cálculo de carga basado en el método manual operativo si no hay tiempos estándar
     const globalPlanned = centerOrders.reduce((sum, o) => {
       const eng = calculateEngineeringData(o);
-      const tCarga = (eng.cargas * SECONDS_LOAD_BLOCK);
-      const tDescarga = (Math.ceil(safeNum(o.CANTIDAD || o.CANTPROGRAMADA) / 3.5) * SECONDS_REPETITION);
-      return sum + (tCarga + tDescarga) / 3600;
+      return sum + eng.operativeHours;
     }, 0);
 
     const globalUnits = centerOrders.reduce((sum, o) => sum + safeNum(o.CANTPROGRAMADA || o.CANTIDAD || 0), 0);
@@ -290,9 +290,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       
       const plannedHrs = resourceOrders.reduce((sum, o) => {
         const eng = calculateEngineeringData(o);
-        const tCarga = (eng.cargas * SECONDS_LOAD_BLOCK);
-        const tDescarga = (Math.ceil(safeNum(o.CANTIDAD || o.CANTPROGRAMADA) / 3.5) * SECONDS_REPETITION);
-        return sum + (tCarga + tDescarga) / 3600;
+        return sum + eng.operativeHours;
       }, 0);
 
       const plannedUnits = resourceOrders.reduce((sum, o) => sum + safeNum(o.CANTPROGRAMADA || o.CANTIDAD || 0), 0);
@@ -448,7 +446,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <div className="p-2 bg-primary/10 rounded-xl"><Wind className="w-6 h-6 text-primary" /></div>
           <div>
             <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Planificación Táctica Corte Espuma</h2>
-            <p className="text-xs text-gray-500 font-medium">Radio Carrusel: 3.5m | Ingeniería de Carga por Ancho | Monitor SAP</p>
+            <p className="text-xs text-gray-500 font-medium">Ingeniería de Carga Carrusel (D: 3.2m) | Monitor Unificado SAP</p>
           </div>
         </div>
       </div>
@@ -610,8 +608,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
              <div className="flex items-center gap-3">
                <div className="p-2 bg-indigo-500/10 rounded-xl text-indigo-600"><GraduationCap className="w-5 h-5" /></div>
                <div>
-                 <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter text-left">Cubo de Habilidades</h3>
-                 <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-0.5 text-left">Visualización Dinámica de Todas las Columnas y Registros SAP</p>
+                 <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter text-left">Matriz Técnica de Habilidades</h3>
+                 <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-0.5 text-left">Visualización Dinámica de Todas las Columnas SAP</p>
                </div>
              </div>
              <div className="flex gap-2">
@@ -633,7 +631,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-50 font-bold">
+                <tbody className="divide-y divide-gray-100 font-bold">
                   {processedHabilidades.length === 0 ? (
                     <tr><td colSpan={habilidades.length > 0 ? Object.keys(habilidades[0]).length : 1} className="py-20 text-center text-gray-300 uppercase tracking-widest opacity-30">No se detectaron datos vinculados</td></tr>
                   ) : (
@@ -686,7 +684,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                     <th className="px-4 py-4 text-center">RANGO OT (INI - FIN)</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-50 font-bold">
+                <tbody className="divide-y divide-gray-100 font-bold">
                   {filteredMantenimientos.length === 0 ? (
                     <tr><td colSpan={10} className="py-20 text-center text-gray-300 uppercase font-black tracking-widest opacity-30">No se detectan paros programados para el criterio de filtro</td></tr>
                   ) : (
@@ -750,10 +748,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="ordenes" className="space-y-10 animate-in fade-in duration-300">
-          {/* PLANTA 1000 - QUITO (Vista de Ingeniería Completa) */}
           <div className="space-y-4">
             <h3 className="text-[11px] font-black uppercase flex items-center gap-2 px-1 text-left text-green-700">
-              <div className="w-2 h-2 rounded-full bg-green-600" /> Planta 1000 - Quito (Ingeniería de Carrusel 7m)
+              <div className="w-2 h-2 rounded-full bg-green-600" /> Planta 1000 - Quito (Ingeniería de Carrusel 3.2m)
             </h3>
             <Card className="rounded-2xl border border-gray-100 shadow-md overflow-hidden bg-white">
               <div className="overflow-x-auto">
@@ -808,7 +805,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             </Card>
           </div>
 
-          {/* PLANTA 2000 - GUAYAQUIL (Vista Simplificada) */}
           <div className="space-y-4">
             <h3 className="text-[11px] font-black uppercase flex items-center gap-2 px-1 text-left text-indigo-700">
               <div className="w-2 h-2 rounded-full bg-indigo-600" /> Planta 2000 - Guayaquil (Vista Operativa)
@@ -894,7 +890,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       <div className="px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl flex items-center gap-2">
         <Info className="w-4 h-4 text-blue-600" />
         <p className="text-[9px] font-black text-blue-700 uppercase tracking-widest">
-          Nota: Cálculos de carrusel basados en radio 3.5m y ancho de material. Holgura de seguridad operativa aplicada (-1 unidad/carga).
+          Nota: Cálculos de carrusel basados en diámetro de 3.2m y circunferencia de 1005cm. Margen de seguridad operativa: -1 subbloque/carga.
         </p>
       </div>
     </div>
