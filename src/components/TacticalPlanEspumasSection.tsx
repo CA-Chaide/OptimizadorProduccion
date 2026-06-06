@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Wind, 
   Package, 
@@ -13,7 +13,6 @@ import {
   Filter, 
   Activity,
   Database,
-  Info,
   TrendingUp,
   Box,
   Users,
@@ -48,7 +47,7 @@ import { es } from 'date-fns/locale';
 const DIAMETER_CM = 320;
 const CIRCUMFERENCE = Math.PI * DIAMETER_CM; // ~1005.31 cm
 const BASE_GAP_CM = 30;
-const MANIPULATION_FACTOR = 1.05; // +5% solo en distancia
+const MANIPULATION_FACTOR = 1.05; // +5% solo en distancia física
 const EFFECTIVE_GAP_CM = BASE_GAP_CM * MANIPULATION_FACTOR; // 31.5 cm
 const BLOCK_20M_CM = 2000;
 const SECONDS_PER_LOAD = 300; 
@@ -85,6 +84,14 @@ const getCellValue = (row: any, keys: string[]): string => {
     if (foundKey) return String(row[foundKey]).trim();
   }
   return '';
+};
+
+const formatNum = (val: any, decimals: number = 0): string => {
+  const n = safeNum(val);
+  return n.toLocaleString(undefined, { 
+    minimumFractionDigits: decimals, 
+    maximumFractionDigits: decimals 
+  });
 };
 
 export const TacticalPlanEspumasSection: React.FC = () => {
@@ -154,14 +161,12 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
     const dimensions: any = { dens: '—', ancho: '—', largo: '—', esp: '—', tipo: '—' };
     
-    // Captura técnica de densidad y tipo
     const techPattern = catStr.match(/D(\d+)([a-zA-Z]+)/i);
     if (techPattern) {
       dimensions.dens = techPattern[1]; 
       dimensions.tipo = techPattern[2].toUpperCase(); 
     }
 
-    // Regex para dimensiones: Ancho x Largo x Espesor
     const dimMatch = desc.match(/(\d+(?:\.\d+)?)\s*[xX*]\s*(\d+(?:\.\d+)?)(?:\s*[xX*]\s*(\d+(?:\.\d+)?))?/);
     if (dimMatch) {
       dimensions.ancho = dimMatch[1];
@@ -184,11 +189,11 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const altTot = qty * esp;
     const subbl = altTot / usefulHeight;
 
-    // INGENIERÍA BLOQUES 20M (Correcta)
+    // INGENIERÍA BLOQUES 20M REAL
     const piecesPerBlockLength = largo > 0 ? Math.floor(BLOCK_20M_CM / largo) : 1;
     const bloques20m = piecesPerBlockLength > 0 ? subbl / piecesPerBlockLength : 0;
 
-    // INGENIERÍA CARRUSEL (Gap 31.5cm)
+    // INGENIERÍA CARRUSEL (Gap 31.5cm Efectivo)
     const spacePerBlock = ancho + EFFECTIVE_GAP_CM;
     const subblPorCarga = spacePerBlock > 0 ? Math.floor(CIRCUMFERENCE / spacePerBlock) : 0;
     const cargas = subblPorCarga > 0 ? Math.ceil(subbl / subblPorCarga) : 0;
@@ -236,6 +241,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const provC1000 = useMemo(() => filterDataByCenter(ordenes, '1000'), [ordenes, selectedDate]);
   const provC2000 = useMemo(() => filterDataByCenter(ordenes, '2000'), [ordenes, selectedDate]);
   
+  // Catálogo de tiempos filtrado simplemente por centro para restaurar visualización
+  const tiemposC1000 = useMemo(() => tiemposEnsamblado.filter(t => String(t.Centro || t.centro || '').trim() === '1000'), [tiemposEnsamblado]);
+  const tiemposC2000 = useMemo(() => tiemposEnsamblado.filter(t => String(t.Centro || t.centro || '').trim() === '2000'), [tiemposEnsamblado]);
+
   const datesWithOrders = useMemo(() => {
     if (!mounted) return new Set<string>();
     const dates = new Set<string>();
@@ -381,53 +390,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           </div>
         </TabsContent>
 
-        <TabsContent value="habilidades" className="space-y-4 animate-in fade-in duration-300">
-          <div className="flex items-center justify-between bg-indigo-50 p-3 rounded-2xl border border-indigo-100 shadow-sm">
-             <div className="flex items-center gap-3 text-left">
-               <div className="p-2 bg-indigo-500/10 rounded-xl text-indigo-600"><GraduationCap className="w-5 h-5" /></div>
-               <div>
-                 <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">Cubo de Habilidades SAP (Visibilidad Total)</h3>
-                 <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">Todas las Columnas y Registros Cargados del Sistema</p>
-               </div>
-             </div>
-             <div className="flex gap-2">
-                <div className="relative">
-                  <Search className="absolute left-3 top-2.5 h-3 w-3 text-gray-400" />
-                  <input type="text" placeholder="Búsqueda global..." value={habilidadesSearch} onChange={e => setHabilidadesSearch(e.target.value)} className="pl-9 pr-3 py-2 bg-white border border-gray-200 rounded-lg text-[10px] font-bold w-64 focus:ring-2 focus:ring-indigo-500/20 shadow-sm" />
-                </div>
-                <Badge variant="outline" className="bg-white border-indigo-200 text-indigo-700 font-black text-[10px] uppercase h-8 px-4">{habilidades.length} Operadores</Badge>
-             </div>
-          </div>
-
-          <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
-            <div className="overflow-x-auto max-h-[650px] relative">
-              <table className="w-full border-collapse text-left font-sans text-[9px]">
-                <thead className="bg-[#e0e7ff] sticky top-0 z-20 text-indigo-900 uppercase font-black tracking-widest border-b border-indigo-200">
-                  <tr>
-                    {habilidades.length > 0 && Object.keys(habilidades[0]).map((key) => (
-                      <th key={key} className="px-4 py-3 border-r border-indigo-100 whitespace-nowrap">{key.replace(/_/g, ' ')}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 font-bold">
-                  {habilidades.filter(h => {
-                    const q = habilidadesSearch.toUpperCase();
-                    return !habilidadesSearch || Object.values(h).some(v => String(v || '').toUpperCase().includes(q));
-                  }).map((h, i) => (
-                    <tr key={i} className="hover:bg-indigo-50/30 transition-colors">
-                      {Object.keys(h).map((key) => (
-                        <td key={key} className="px-4 py-2 border-r border-gray-100 text-slate-700 font-medium">
-                          {String(h[key] ?? '—')}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-        </TabsContent>
-
         <TabsContent value="resumenOperativo" className="animate-in fade-in duration-300">
            {selectedDate === 'all' ? (
               <div className="py-32 text-center border-2 border-dashed border-gray-100 rounded-3xl bg-gray-50/30">
@@ -496,6 +458,53 @@ export const TacticalPlanEspumasSection: React.FC = () => {
            )}
         </TabsContent>
 
+        <TabsContent value="habilidades" className="space-y-4 animate-in fade-in duration-300">
+          <div className="flex items-center justify-between bg-indigo-50 p-3 rounded-2xl border border-indigo-100 shadow-sm">
+             <div className="flex items-center gap-3 text-left">
+               <div className="p-2 bg-indigo-500/10 rounded-xl text-indigo-600"><GraduationCap className="w-5 h-5" /></div>
+               <div>
+                 <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">Cubo de Habilidades SAP (Visibilidad Total)</h3>
+                 <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">Todas las Columnas y Registros Cargados del Sistema</p>
+               </div>
+             </div>
+             <div className="flex gap-2">
+                <div className="relative">
+                  <Search className="absolute left-3 top-2.5 h-3 w-3 text-gray-400" />
+                  <input type="text" placeholder="Búsqueda global..." value={habilidadesSearch} onChange={e => setHabilidadesSearch(e.target.value)} className="pl-9 pr-3 py-2 bg-white border border-gray-200 rounded-lg text-[10px] font-bold w-64 focus:ring-2 focus:ring-indigo-500/20 shadow-sm" />
+                </div>
+                <Badge variant="outline" className="bg-white border-indigo-200 text-indigo-700 font-black text-[10px] uppercase h-8 px-4">{habilidades.length} Operadores</Badge>
+             </div>
+          </div>
+
+          <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
+            <div className="overflow-x-auto max-h-[650px] relative">
+              <table className="w-full border-collapse text-left font-sans text-[9px]">
+                <thead className="bg-[#e0e7ff] sticky top-0 z-20 text-indigo-900 uppercase font-black tracking-widest border-b border-indigo-200">
+                  <tr>
+                    {habilidades.length > 0 && Object.keys(habilidades[0]).map((key) => (
+                      <th key={key} className="px-4 py-3 border-r border-indigo-100 whitespace-nowrap">{key.replace(/_/g, ' ')}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 font-bold">
+                  {habilidades.filter(h => {
+                    const q = habilidadesSearch.toUpperCase();
+                    return !habilidadesSearch || Object.values(h).some(v => String(v || '').toUpperCase().includes(q));
+                  }).map((h, i) => (
+                    <tr key={i} className="hover:bg-indigo-50/30 transition-colors">
+                      {Object.keys(h).map((key) => (
+                        <td key={key} className="px-4 py-2 border-r border-gray-100 text-slate-700 font-medium">
+                          {String(h[key] ?? '—')}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </TabsContent>
+
         <TabsContent value="mantenimiento" className="space-y-4 animate-in fade-in duration-300">
           <div className="flex items-center justify-between bg-amber-50 p-4 rounded-2xl border border-amber-100 shadow-sm">
             <div className="flex items-center gap-4 text-left">
@@ -551,6 +560,44 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           </Card>
         </TabsContent>
 
+        <TabsContent value="grupos" className="animate-in fade-in duration-300">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 text-left">
+            {grupos.map(g => (
+              <Card key={g.codigo_grupo} className="relative overflow-hidden group hover:shadow-md transition-all border border-gray-100 rounded-2xl bg-white p-6">
+                <div className="absolute top-0 left-0 w-1 h-full bg-primary/20 group-hover:bg-primary transition-colors" />
+                <Badge className="bg-gray-100 text-gray-600 mb-2 font-bold text-[9px] uppercase">PLANTA {g.centro}</Badge>
+                <h4 className="font-bold text-gray-800 uppercase text-sm">{g.nombre_grupo}</h4>
+                <p className="text-[9px] font-mono text-gray-400 mt-2">ID: {g.codigo_grupo}</p>
+              </Card>
+            ))}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="restricciones" className="animate-in fade-in duration-300">
+          <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
+            <table className="w-full border-collapse text-center">
+              <thead className="bg-gray-100/50 text-[10px] font-bold uppercase text-gray-400 border-b border-gray-100">
+                <tr>
+                  <th className="px-6 py-5 border-r border-dashed border-gray-200 text-left">Parámetro Técnico</th>
+                  <th className="px-6 py-5 border-r border-dashed border-gray-200">Valor</th>
+                  <th className="px-6 py-5 text-left">Descripción Operativa</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 text-[11px] font-bold">
+                {restricciones.map(r => (
+                  <tr key={r.codigo_restriccion} className="hover:bg-gray-50/50">
+                    <td className="px-6 py-4 text-gray-500 border-r border-gray-100 uppercase text-left">{r.nombre_restriccion}</td>
+                    <td className="px-6 py-4 border-r border-gray-100">
+                      <Badge variant="outline" className="font-mono text-indigo-700 border-indigo-200 bg-indigo-50/50">{r.valor_restriccion}</Badge>
+                    </td>
+                    <td className="px-6 py-4 text-gray-400 italic text-left">{r.descripcion || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Card>
+        </TabsContent>
+
         <TabsContent value="ordenes" className="space-y-10 animate-in fade-in duration-300">
           {[ 
             { t: 'Planta 1000 - Quito', d: provC1000, id: '1000', c: 'text-green-700', b: 'bg-green-600' }, 
@@ -558,7 +605,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           ].map((center, idx) => (
             <div key={idx} className="space-y-4">
               <h3 className={cn("text-[11px] font-black uppercase flex items-center gap-2 px-1 text-left", center.c)}>
-                <div className={cn("w-2.5 h-2.5 rounded-full", center.b)} /> {center.t} (Gap 31.5cm | Modelo Man. +5% Dist)
+                <div className={cn("w-2.5 h-2.5 rounded-full", center.b)} /> {center.t} (Gap 31.5cm Efectivo)
               </h3>
               <Card className="rounded-2xl border border-gray-100 shadow-md overflow-hidden bg-white">
                 <div className="overflow-x-auto">
@@ -579,13 +626,12 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <th className="px-2 py-4 border-r border-gray-50 bg-indigo-50/50 text-indigo-900">SB/CARGA</th>
                         <th className="px-2 py-4 border-r border-gray-50 bg-orange-50/50 text-orange-900 font-black">BLOQUES 20M</th>
                         <th className="px-3 py-4 border-r border-gray-50 text-red-700 bg-red-50/50 font-black">CARGAS</th>
-                        <th className="px-3 py-4 border-r border-gray-50 bg-teal-50 text-teal-800">T. ESTD (MIN)</th>
                         <th className="px-3 py-4 bg-teal-100 text-teal-900 font-black">T. TOTAL (H)</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
                       {center.d.length === 0 ? (
-                        <tr><td colSpan={16} className="py-20 text-center text-gray-300 font-bold uppercase tracking-widest opacity-20">Sin órdenes para procesar</td></tr>
+                        <tr><td colSpan={15} className="py-20 text-center text-gray-300 font-bold uppercase tracking-widest opacity-20">Sin órdenes para procesar</td></tr>
                       ) : (
                         center.d.map((o, i) => {
                           const eng = calculateEngineering(o);
@@ -608,7 +654,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                               <td className="px-2 py-2 border-r border-gray-50 bg-indigo-50/10 font-mono font-black text-indigo-700">{eng.subblPorCarga}</td>
                               <td className="px-2 py-2 border-r border-gray-50 bg-orange-50/10 font-mono font-black text-orange-800">{eng.bloques20m.toFixed(1)}</td>
                               <td className="px-3 py-2 border-r border-gray-50 bg-red-50/20 font-mono font-black text-red-600">{String(eng.cargas)}</td>
-                              <td className="px-3 py-2 border-r border-gray-50 bg-teal-50/5 font-mono text-teal-700">{eng.stdTimeMin.toFixed(2)}</td>
                               <td className="px-3 py-2 bg-teal-100/20 font-mono font-black text-teal-900">{eng.operativeHours.toFixed(1)}</td>
                             </tr>
                           );
@@ -623,47 +668,46 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="tiempos" className="animate-in fade-in duration-300">
-           <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
-            <div className="overflow-x-auto max-h-[700px]">
-              <table className="w-full border-collapse text-center">
-                <thead className="bg-[#1e293b] text-white sticky top-0 z-10 text-[10px] font-black uppercase tracking-tight border-b border-white/5">
-                  <tr>
-                    <th className="px-5 py-4 border-r border-white/5 text-left">Material</th>
-                    <th className="px-5 py-4 border-r border-white/5 text-left">Descripción Técnica</th>
-                    <th className="px-5 py-4 border-r border-white/5">Puesto Trabajo</th>
-                    <th className="px-5 py-4">Estándar (Min)</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 text-[11px] font-bold">
-                  {tiemposEnsamblado.length === 0 ? (
-                    <tr><td colSpan={4} className="py-24 text-gray-300 font-black uppercase tracking-widest opacity-30 text-center">Sin catálogo de tiempos disponible</td></tr>
-                  ) : (
-                    tiemposEnsamblado.map((t, i) => {
-                      const code = String(t.CodMaterial || '').slice(-8);
-                      const desc = String(t.Material || t.Descripcion || '—').toUpperCase();
-                      return (
-                        <tr key={i} className="hover:bg-gray-50 transition-colors">
-                          <td className="px-4 py-4 font-mono text-indigo-600 border-r border-dashed border-gray-100 text-left">{code}</td>
-                          <td className="px-4 py-4 text-left border-r border-dashed border-gray-100 text-gray-600 truncate max-w-[400px]">{desc}</td>
-                          <td className="px-4 py-4 border-r border-dashed border-gray-100 font-black text-gray-400 uppercase text-[9px]">{t.PuestoTrabajo || '—'}</td>
-                          <td className="px-4 py-4 font-mono text-teal-600 bg-teal-50/10">{Number(t.Tiempo || 0).toFixed(4)}</td>
+          <div className="grid grid-cols-1 gap-10">
+            {[ { t: 'Quito 1000', d: tiemposC1000 }, { t: 'Guayaquil 2000', d: tiemposC2000 } ].map((center, idx) => (
+              <div key={idx} className="space-y-4">
+                <h3 className="text-[11px] font-black uppercase text-gray-400 text-left tracking-widest px-1">Catálogo de Tiempos - {center.t}</h3>
+                <Card className="rounded-2xl border border-gray-100 shadow-md overflow-hidden bg-white">
+                  <div className="overflow-x-auto max-h-[700px]">
+                    <table className="w-full border-collapse text-center">
+                      <thead className="bg-[#1e293b] text-white sticky top-0 z-10 text-[10px] font-black uppercase tracking-tight border-b border-white/5">
+                        <tr>
+                          <th className="px-5 py-4 border-r border-white/5 text-left">Material</th>
+                          <th className="px-5 py-4 border-r border-white/5 text-left">Descripción Técnica</th>
+                          <th className="px-5 py-4 border-r border-white/5">Puesto Trabajo</th>
+                          <th className="px-5 py-4">Estándar (Min)</th>
                         </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </Card>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100 text-[11px] font-bold">
+                        {center.d.length === 0 ? (
+                          <tr><td colSpan={4} className="py-24 text-gray-300 font-black uppercase tracking-widest opacity-30 text-center">Sin catálogo de tiempos disponible</td></tr>
+                        ) : (
+                          center.d.map((t, i) => {
+                            const info = extractMaterialInfo(t);
+                            return (
+                              <tr key={i} className="hover:bg-gray-50/50 transition-colors">
+                                <td className="px-4 py-4 font-mono text-indigo-600 border-r border-dashed border-gray-100 text-left">{info.code}</td>
+                                <td className="px-4 py-4 text-left border-r border-dashed border-gray-100 text-gray-600 truncate max-w-[400px]">{info.desc}</td>
+                                <td className="px-4 py-4 border-r border-dashed border-gray-100 font-black text-gray-400 uppercase text-[9px]">{t.PuestoTrabajo || t.PuestoTrabajoLinea || '—'}</td>
+                                <td className="px-4 py-4 font-mono text-teal-600 bg-teal-50/10">{formatNum(t.Tiempo || 0, 4)}</td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+              </div>
+            ))}
+          </div>
         </TabsContent>
       </Tabs>
-
-      <div className="px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl flex items-center gap-2">
-        <Info className="w-4 h-4 text-blue-600" />
-        <p className="text-[9px] font-black text-blue-700 uppercase tracking-widest">
-          Ingeniería Carrusel: Diámetro 3.2m | Gap de Manipulación Efectivo: 31.5 cm (+5% Distancia) | Cálculo Bloque 20m Real: Piezas longitudinales por bloque estándar.
-        </p>
-      </div>
     </div>
   );
 };
