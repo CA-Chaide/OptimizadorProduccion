@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -328,12 +327,15 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
   }, [addNotification]);
 
-  // CATEGORIAS DE PUESTO DE TRABAJO UNICOS
+  // CATEGORIAS DE PUESTO DE TRABAJO UNICOS (Filtrado de 'MARCOSUIO')
   const uniqueWorkstations = useMemo(() => {
     const wsSet = new Set<string>();
     tiemposProduccion.forEach(t => {
       const ws = String(t.PuestoTrabajo || '').trim();
-      if (ws && ws !== 'null') wsSet.add(ws);
+      // Filtrar MARCOSUIO y otros valores inválidos
+      if (ws && ws !== 'null' && ws.toUpperCase() !== 'MARCOSUIO') {
+        wsSet.add(ws);
+      }
     });
     return Array.from(wsSet).sort();
   }, [tiemposProduccion]);
