@@ -60,14 +60,6 @@ interface WorkstationConfig {
   nightName?: string;
 }
 
-const PUESTO_TRABAJO_OVERRIDES: Record<string, string> = {
-  'HR-ACH09': 'ACOLCHADORA09',
-  'HR-ACH12': 'ACOLCHADORA12',
-  'HR-BO01': 'COSEDORA-BO01',
-  'HR-INTE2': 'COSEDORA-INTPR',
-  'HR-INTPT': 'COSEDORA-INTPR',
-};
-
 const MAINT_ROWS_PER_PAGE = 20;
 
 export const TacticalPlanForrosSection: React.FC = () => {
@@ -88,7 +80,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [habilidadesRowsPerPage] = useState(20);
   const [habilidadesFilters, setHabilidadesFilters] = useState<Record<string, string>>({});
 
-  // MANTENIMIENTOS (ORIGINAL TABLE STRUCTURE)
+  // MANTENIMIENTOS
   const [mantenimientosData, setMantenimientosData] = useState<any[]>([]);
   const [isLoadingMantenimientos, setIsLoadingMantenimientos] = useState(false);
   const [maintCurrentPage, setMaintCurrentPage] = useState(1);
@@ -336,52 +328,31 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
   }, [addNotification]);
 
-  const uniqueMachines = useMemo(() => {
-    const machinesSet = new Set<string>();
+  // CATEGORIAS DE PUESTO DE TRABAJO UNICOS
+  const uniqueWorkstations = useMemo(() => {
+    const wsSet = new Set<string>();
     tiemposProduccion.forEach(t => {
-      const values = Object.values(t).map(v => String(v || '').trim().toUpperCase());
-      const hr = values.find(v => v.startsWith('HR'));
-      if (hr) machinesSet.add(hr);
+      const ws = String(t.PuestoTrabajo || '').trim();
+      if (ws && ws !== 'null') wsSet.add(ws);
     });
-    
-    const machinesArray = Array.from(machinesSet);
-
-    return machinesArray.sort((a, b) => {
-      const getParts = (name: string) => {
-        const match = name.match(/^HR-(ACH|PEF)(\d+)$/);
-        if (match) return { type: match[1], suffix: parseInt(match[2]), isMain: true };
-        return { type: name, suffix: 0, isMain: false };
-      };
-
-      const partA = getParts(a);
-      const partB = getParts(b);
-
-      if (partA.isMain && partB.isMain) {
-        if (partA.suffix !== partB.suffix) return partA.suffix - partB.suffix;
-        return partA.type.localeCompare(partB.type); 
-      }
-
-      if (partA.isMain && !partB.isMain) return -1;
-      if (!partA.isMain && partB.isMain) return 1;
-
-      return a.localeCompare(b);
-    });
+    return Array.from(wsSet).sort();
   }, [tiemposProduccion]);
 
   useEffect(() => {
-    if (uniqueMachines.length > 0 && Object.keys(workstationConfigs).length === 0 && forrosRestricciones.length > 0) {
+    if (uniqueWorkstations.length > 0 && Object.keys(workstationConfigs).length === 0 && forrosRestricciones.length > 0) {
       const initial: Record<string, WorkstationConfig> = {};
-      uniqueMachines.forEach(m => {
-        const mNorm = m.replace(/-/g, '_').toUpperCase();
+      uniqueWorkstations.forEach(ws => {
+        const wsNorm = ws.replace(/[\s-]/g, '_').toUpperCase();
         
+        // Búsqueda de personas en restricciones usando el nombre del puesto
         const peopleRes = forrosRestricciones.find(r => {
           const rName = r.nombre_restriccion.toUpperCase();
           return (rName.includes('PERSONAS') || rName.includes('CANTIDAD_PERSONAS')) && 
-                 (rName.includes(mNorm) || rName.includes(m.toUpperCase()));
+                 (rName.includes(wsNorm) || rName.includes(ws.toUpperCase()));
         });
 
-        initial[m] = { 
-          machine: m, 
+        initial[ws] = { 
+          machine: ws, 
           shifts: 1, 
           people: peopleRes ? parseInt(peopleRes.valor_restriccion) || 1 : 1,
           dayCode: '',
@@ -392,7 +363,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
       });
       setWorkstationConfigs(initial);
     }
-  }, [uniqueMachines, forrosRestricciones, workstationConfigs]);
+  }, [uniqueWorkstations, forrosRestricciones, workstationConfigs]);
 
   const fetchDailyOrders = useCallback(async () => {
     if (Object.keys(externalFilters).length === 0 || !todayDate || !targetDate) return;
@@ -587,11 +558,11 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return processedDailyOrders.slice(start, start + dailyRowsPerPage);
   }, [processedDailyOrders, dailyPage, dailyRowsPerPage]);
 
-  const handleWorkstationConfigChange = (machine: string, field: keyof WorkstationConfig, value: any) => {
+  const handleWorkstationConfigChange = (ws: string, field: keyof WorkstationConfig, value: any) => {
     setWorkstationConfigs(prev => ({
       ...prev,
-      [machine]: {
-        ...prev[machine],
+      [ws]: {
+        ...prev[ws],
         [field]: value
       }
     }));
@@ -599,7 +570,14 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   const productionSummary = useMemo(() => {
     const summaryMap = new Map<string, { machine: string; quantity: number; count: number; totalTime: number }>();
-    uniqueMachines.forEach(m => summaryMap.set(m, { machine: m, quantity: 0, count: 0, totalTime: 0 }));
+    const machines = new Set<string>();
+    tiemposProduccion.forEach(t => {
+      const values = Object.values(t).map(v => String(v || '').trim().toUpperCase());
+      const hr = values.find(v => v.startsWith('HR'));
+      if (hr) machines.add(hr);
+    });
+
+    machines.forEach(m => summaryMap.set(m, { machine: m, quantity: 0, count: 0, totalTime: 0 }));
 
     dailyOrders.forEach(order => {
       const machine = getResolvedMachine(order) || 'SIN MÁQUINA';
@@ -613,7 +591,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     });
     
     return Array.from(summaryMap.values()).sort((a, b) => a.machine.localeCompare(b.machine));
-  }, [dailyOrders, uniqueMachines, getResolvedMachine, calculateProductionTime]);
+  }, [dailyOrders, tiemposProduccion, getResolvedMachine, calculateProductionTime]);
 
   const filteredHabilidades = useMemo(() => {
     return habilidadesOpData.filter(item => {
@@ -635,7 +613,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     setHabilidadesPage(1);
   };
 
-  // MANTENIMIENTOS (ORIGINAL LOGIC)
   const filteredMantenimientosFull = useMemo(() => {
     const allowedResp = externalFilters['RESPCONTROLPROD'] || [];
     let result = mantenimientosData.filter(item => {
@@ -1058,14 +1035,13 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 <table className="min-w-full divide-y divide-gray-200 border-collapse">
                   <thead className="bg-gray-50/50">
                     <tr className="border-b border-gray-200">
-                      <th colSpan={2} className="px-4 py-2"></th>
+                      <th colSpan={1} className="px-4 py-2"></th>
                       <th colSpan={1} className="px-4 py-2 text-center text-[10px] font-black text-gray-400 uppercase tracking-widest border-l border-gray-100">Configuración</th>
                       <th colSpan={2} className="px-4 py-2 text-center text-[10px] font-black text-orange-600 uppercase tracking-widest border-l border-orange-100 bg-orange-50/30">Turno Día</th>
                       <th colSpan={2} className="px-4 py-2 text-center text-[10px] font-black text-indigo-600 uppercase tracking-widest border-l border-indigo-100 bg-indigo-50/30">Turno Noche</th>
                       <th className="px-4 py-2"></th>
                     </tr>
                     <tr>
-                      <th className="px-6 py-4 text-left text-xs font-black text-gray-500 uppercase tracking-widest">HOJA DE RUTA</th>
                       <th className="px-6 py-4 text-left text-xs font-black text-gray-500 uppercase tracking-widest">PUESTO DE TRABAJO</th>
                       <th className="px-4 py-4 text-center text-xs font-black text-gray-500 uppercase tracking-widest border-l border-gray-100">Pers / Turno</th>
                       <th className="px-4 py-4 text-left text-[10px] font-black text-orange-700 uppercase tracking-widest border-l border-orange-100 bg-orange-50/30">Código</th>
@@ -1076,29 +1052,27 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {uniqueMachines.map((m) => {
-                      const config = workstationConfigs[m] || { machine: m, shifts: 1, people: 1 };
+                    {uniqueWorkstations.map((ws) => {
+                      const config = workstationConfigs[ws] || { machine: ws, shifts: 1, people: 1 };
                       const totalNetHours = totalHorasNetas * config.people;
-                      const workstationName = PUESTO_TRABAJO_OVERRIDES[m.toUpperCase()] || tiemposProduccion.find(t => Object.values(t).map(v => String(v || '').trim().toUpperCase()).includes(m.toUpperCase()))?.PuestoTrabajo || '—';
 
                       return (
-                        <tr key={`config-${m}`} className="hover:bg-indigo-50/30 transition-colors group">
-                          <td className="px-6 py-4 whitespace-nowrap font-bold text-gray-800">{m}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 group-hover:text-indigo-700 transition-colors">{workstationName}</td>
+                        <tr key={`config-${ws}`} className="hover:bg-indigo-50/30 transition-colors group">
+                          <td className="px-6 py-4 whitespace-nowrap font-bold text-gray-800">{ws}</td>
                           <td className="px-4 py-4 whitespace-nowrap text-center border-l border-gray-50">
-                            <Input type="number" className="w-16 h-9 text-center text-xs font-bold border-gray-200 bg-gray-50/30 mx-auto" value={config.people} min="1" max="10" onChange={(e) => handleWorkstationConfigChange(m, 'people', parseInt(e.target.value) || 1)} />
+                            <Input type="number" className="w-16 h-9 text-center text-xs font-bold border-gray-200 bg-gray-50/30 mx-auto" value={config.people} min="1" max="10" onChange={(e) => handleWorkstationConfigChange(ws, 'people', parseInt(e.target.value) || 1)} />
                           </td>
                           <td className="px-2 py-4 whitespace-nowrap border-l border-orange-100 bg-orange-50/20">
-                            <Input className="h-8 text-[10px] font-mono border-orange-200 focus:ring-orange-500" placeholder="Cód. Día" value={config.dayCode || ''} onChange={(e) => handleWorkstationConfigChange(m, 'dayCode', e.target.value)} />
+                            <Input className="h-8 text-[10px] font-mono border-orange-200 focus:ring-orange-500" placeholder="Cód. Día" value={config.dayCode || ''} onChange={(e) => handleWorkstationConfigChange(ws, 'dayCode', e.target.value)} />
                           </td>
                           <td className="px-2 py-4 whitespace-nowrap bg-orange-50/20">
-                            <Input className="h-8 text-[10px] border-orange-200 focus:ring-orange-500" placeholder="Nombre Operador" value={config.dayName || ''} onChange={(e) => handleWorkstationConfigChange(m, 'dayName', e.target.value)} />
+                            <Input className="h-8 text-[10px] border-orange-200 focus:ring-orange-500" placeholder="Nombre Operador" value={config.dayName || ''} onChange={(e) => handleWorkstationConfigChange(ws, 'dayName', e.target.value)} />
                           </td>
                           <td className="px-2 py-4 whitespace-nowrap border-l border-indigo-100 bg-indigo-50/20">
-                            <Input className="h-8 text-[10px] font-mono border-indigo-200 focus:ring-indigo-500" placeholder="Cód. Noche" disabled={parseFloat(jornadaNocturnaSel) === 0} value={config.nightCode || ''} onChange={(e) => handleWorkstationConfigChange(m, 'nightCode', e.target.value)} />
+                            <Input className="h-8 text-[10px] font-mono border-indigo-200 focus:ring-indigo-500" placeholder="Cód. Noche" disabled={parseFloat(jornadaNocturnaSel) === 0} value={config.nightCode || ''} onChange={(e) => handleWorkstationConfigChange(ws, 'nightCode', e.target.value)} />
                           </td>
                           <td className="px-2 py-4 whitespace-nowrap bg-indigo-50/20">
-                            <Input className="h-8 text-[10px] border-indigo-200 focus:ring-indigo-500" placeholder="Nombre Operador" disabled={parseFloat(jornadaNocturnaSel) === 0} value={config.nightName || ''} onChange={(e) => handleWorkstationConfigChange(m, 'nightName', e.target.value)} />
+                            <Input className="h-8 text-[10px] border-indigo-200 focus:ring-indigo-500" placeholder="Nombre Operador" disabled={parseFloat(jornadaNocturnaSel) === 0} value={config.nightName || ''} onChange={(e) => handleWorkstationConfigChange(ws, 'nightName', e.target.value)} />
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-right font-mono font-bold text-indigo-700 text-md tabular-nums">
                             {totalNetHours.toFixed(2)} <span className="text-[10px] font-bold opacity-40">h</span>
@@ -1274,7 +1248,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Pagination Controls (Match Original Style) */}
+                {/* Pagination Controls */}
                 {maintTotalPages > 1 && (
                   <div className="flex justify-between items-center mt-6">
                     <div className="text-sm text-gray-600">
