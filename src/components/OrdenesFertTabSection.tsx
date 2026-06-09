@@ -7,12 +7,11 @@ import { restriccionService } from '@/services/restriccion.service';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
 import { operationTracker } from '@/services/OperationTracker';
-import { ClipboardList, Loader2, Search, Home, Database, LayoutGrid, AlertCircle, ChevronDown } from 'lucide-react';
+import { ClipboardList, Loader2, Search, Home, Database, LayoutGrid, AlertCircle, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
 
 interface OrdenFert {
   CENTRO: string;
@@ -68,7 +67,6 @@ export const OrdenesFertTabSection: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSector, setSelectedSector] = useState<string>("ALL");
-  const [colFilters, setColFilters] = useState<Record<string, string>>({});
 
   // Paginación
   const [currentPage, setCurrentPage] = useState(1);
@@ -200,25 +198,9 @@ export const OrdenesFertTabSection: React.FC = () => {
         if (!matches) return false;
       }
 
-      for (const [key, value] of Object.entries(colFilters)) {
-        if (!value || value === "ALL") continue;
-        if (String(o[key] || '').trim() !== value) return false;
-      }
-
       return true;
     });
-  }, [allRawOrders, filteredDataByCenter, selectedTab, searchTerm, selectedSector, colFilters]);
-
-  const colOptions = useMemo(() => {
-    const base = selectedTab === "raw_view" ? allRawOrders : (filteredDataByCenter[selectedTab] || []);
-    const getUnique = (key: string) => [...new Set(base.map(o => String(o[key] || '').trim()))].sort();
-    return {
-      CENTRO: getUnique('CENTRO'),
-      MAQUINA: getUnique('MAQUINA'),
-      MATERIAL: getUnique('MATERIAL'),
-      FECHA: getUnique('FECHA').sort((a, b) => new Date(a).getTime() - new Date(b).getTime()),
-    };
-  }, [allRawOrders, filteredDataByCenter, selectedTab]);
+  }, [allRawOrders, filteredDataByCenter, selectedTab, searchTerm, selectedSector]);
 
   const totals = useMemo(() => {
     return currentViewOrders.reduce((acc, o) => {
@@ -238,11 +220,6 @@ export const OrdenesFertTabSection: React.FC = () => {
   const endIndex = startIndex + rowsPerPage;
   const totalPagesLocal = Math.max(1, Math.ceil(currentViewOrders.length / rowsPerPage));
   const displayedOrders = currentViewOrders.slice(startIndex, endIndex);
-
-  const handleFilter = (key: string, val: string) => {
-    setColFilters(prev => ({ ...prev, [key]: val }));
-    setCurrentPage(1);
-  };
 
   return (
     <div className="space-y-6">
@@ -309,13 +286,6 @@ export const OrdenesFertTabSection: React.FC = () => {
                       <th className="px-4 py-3 text-right text-[10px] font-bold text-emerald-700 uppercase bg-emerald-50/50">TTCERRADO1 L2</th>
                       <th className="px-4 py-3 text-right text-[10px] font-bold text-emerald-700 uppercase bg-emerald-50/50">TTCERRADO2 L2</th>
                       <th className="px-4 py-3 text-right text-[10px] font-bold text-emerald-700 uppercase bg-emerald-50/50">TTCERRADO L3</th>
-                    </tr>
-                    <tr className="bg-gray-100/50">
-                      <th className="px-2 py-2"><select className="w-full text-[10px] border rounded h-7" value={colFilters.CENTRO || "ALL"} onChange={e => handleFilter('CENTRO', e.target.value)}><option value="ALL">CENTRO</option>{colOptions.CENTRO.map(v => <option key={v} value={v}>{v}</option>)}</select></th>
-                      <th className="px-2 py-2"><select className="w-full text-[10px] border rounded h-7" value={colFilters.MAQUINA || "ALL"} onChange={e => handleFilter('MAQUINA', e.target.value)}><option value="ALL">MÁQUINA</option>{colOptions.MAQUINA.map(v => <option key={v} value={v}>{v}</option>)}</select></th>
-                      <th className="px-2 py-2"><select className="w-full text-[10px] border rounded h-7" value={colFilters.MATERIAL || "ALL"} onChange={e => handleFilter('MATERIAL', e.target.value)}><option value="ALL">MATERIAL</option>{colOptions.MATERIAL.map(v => <option key={v} value={v}>{v}</option>)}</select></th>
-                      <th className="px-2 py-2"><select className="w-full text-[10px] border rounded h-7" value={colFilters.FECHA || "ALL"} onChange={e => handleFilter('FECHA', e.target.value)}><option value="ALL">FECHA</option>{colOptions.FECHA.map(v => <option key={v} value={v}>{v}</option>)}</select></th>
-                      <th colSpan={10}></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
