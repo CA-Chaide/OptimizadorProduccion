@@ -196,7 +196,15 @@ export const OrdenesFertTabSection: React.FC = () => {
       if (selectedSector !== "ALL" && String(o.SECTORDESC || '').toUpperCase() !== selectedSector) return false;
       
       if (term) {
-        const matches = [o.ORDEN, o.MATERIAL, o.NOMBRE, o.PEDIDO, o.SECTOR, o.ETIQUETA].some(v => String(v || '').toLowerCase().includes(term));
+        const matches = [
+          o.ORDEN, 
+          o.MATERIAL, 
+          o.NOMBRE, 
+          o.PEDIDO, 
+          o.SECTOR, 
+          o.ETIQUETA,
+          o.SECTORDESC
+        ].some(v => String(v || '').toLowerCase().includes(term));
         if (!matches) return false;
       }
 
@@ -215,7 +223,7 @@ export const OrdenesFertTabSection: React.FC = () => {
       acc.tt2L2 += Number(o.ttCerrado2L2 || 0);
       acc.ttL3 += Number(o.ttCerradoL3 || 0);
       return acc;
-    }, { prog: 0, entreg: 0, noti: 0, ttArm: 0, ttL1: 0, tt1L2: 0, tt2L2: 0, ttL3: 0 });
+    }, { prog: 0, entreg: 0, noti: 0, ttArm: 0, ttL1: 0, tt1L2: 0, tt2L2: 0, tt3L3: 0, ttL3: 0 });
   }, [currentViewOrders]);
 
   const startIndex = (currentPage - 1) * rowsPerPage;
@@ -257,7 +265,7 @@ export const OrdenesFertTabSection: React.FC = () => {
           <span className="mt-4 text-gray-600 font-medium">Cargando datos...</span>
         </div>
       ) : (
-        <Tabs value={selectedTab} onValueChange={setSelectedTab} className="w-full">
+        <Tabs value={selectedTab} onValueChange={(val) => { setSelectedTab(val); setCurrentPage(1); }} className="w-full">
           <TabsList className="flex flex-wrap h-auto bg-gray-100/50 p-1 mb-4">
             <TabsTrigger value="raw_view" className="data-[state=active]:bg-amber-100 data-[state=active]:text-amber-800 px-4 py-2 text-xs font-bold uppercase tracking-wider border-r border-gray-200">
               <Database className="w-3 h-3 mr-2" /> VISTA BRUTA ({allRawOrders.length})
@@ -274,11 +282,11 @@ export const OrdenesFertTabSection: React.FC = () => {
               <div style={{ transform: 'rotateX(180deg)' }}>
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
-                    <tr className="border-b border-gray-200">
+                    <tr className="border-b border-gray-300">
                       <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[80px]">Centro</th>
-                      <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[100px]">Sector</th>
-                      <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[120px]">Etiqueta</th>
-                      <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[100px]">Máquina</th>
+                      <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[120px]">Sector</th>
+                      <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[150px]">Etiqueta</th>
+                      <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[120px]">Máquina</th>
                       <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[100px]">Material</th>
                       <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[120px]">Fecha</th>
                       <th colSpan={2} className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Orden / Nombre</th>
@@ -296,21 +304,21 @@ export const OrdenesFertTabSection: React.FC = () => {
                     {displayedOrders.length > 0 ? displayedOrders.map((o, idx) => (
                       <tr key={idx} className="hover:bg-gray-50 text-[10px]">
                         <td className="px-3 py-2 font-bold text-gray-500">{o.CENTRO}</td>
-                        <td className="px-3 py-2 text-gray-600">{o.SECTOR || '-'}</td>
-                        <td className="px-3 py-2 text-gray-600 truncate max-w-[120px]" title={o.ETIQUETA}>{o.ETIQUETA || '-'}</td>
-                        <td className="px-3 py-2 font-mono">{o.MAQUINA || '-'}</td>
-                        <td className="px-3 py-2 font-mono">{o.MATERIAL}</td>
+                        <td className="px-3 py-2 text-gray-600 truncate max-w-[120px]" title={o.SECTOR || o.SECTORDESC}>{o.SECTOR || o.SECTORDESC || '-'}</td>
+                        <td className="px-3 py-2 text-gray-600 truncate max-w-[150px]" title={o.ETIQUETA}>{o.ETIQUETA || '-'}</td>
+                        <td className="px-3 py-2 font-mono text-gray-600">{o.MAQUINA || '-'}</td>
+                        <td className="px-3 py-2 font-mono text-gray-900 font-bold">{o.MATERIAL}</td>
                         <td className="px-3 py-2 text-gray-500">{o.FECHA}</td>
                         <td className="px-3 py-2 font-bold text-indigo-600">{o.ORDEN}</td>
                         <td className="px-3 py-2 text-gray-600 truncate max-w-[150px]">{o.NOMBRE}</td>
                         <td className="px-3 py-2 text-right font-bold">{o.CANTPROGRAMADA}</td>
                         <td className="px-3 py-2 text-right font-bold text-green-600">{o.CANTENTREGADA}</td>
                         <td className="px-3 py-2 text-right font-bold text-blue-600">{o.CANTNOTIFICADA}</td>
-                        <td className="px-4 py-2 text-right font-bold text-emerald-700">{o.ttArmado?.toFixed(1)}</td>
-                        <td className="px-4 py-2 text-right font-bold text-emerald-700">{o.ttCerradoL1?.toFixed(1)}</td>
-                        <td className="px-4 py-2 text-right font-bold text-emerald-700">{o.ttCerrado1L2?.toFixed(1)}</td>
-                        <td className="px-4 py-2 text-right font-bold text-emerald-700">{o.ttCerrado2L2?.toFixed(1)}</td>
-                        <td className="px-4 py-2 text-right font-bold text-emerald-700">{o.ttCerradoL3?.toFixed(1)}</td>
+                        <td className="px-4 py-2 text-right font-bold text-emerald-700 bg-emerald-50/10">{o.ttArmado?.toFixed(1)}</td>
+                        <td className="px-4 py-2 text-right font-bold text-emerald-700 bg-emerald-50/10">{o.ttCerradoL1?.toFixed(1)}</td>
+                        <td className="px-4 py-2 text-right font-bold text-emerald-700 bg-emerald-50/10">{o.ttCerrado1L2?.toFixed(1)}</td>
+                        <td className="px-4 py-2 text-right font-bold text-emerald-700 bg-emerald-50/10">{o.ttCerrado2L2?.toFixed(1)}</td>
+                        <td className="px-4 py-2 text-right font-bold text-emerald-700 bg-emerald-50/10">{o.ttCerradoL3?.toFixed(1)}</td>
                       </tr>
                     )) : (
                       <tr><td colSpan={16} className="px-6 py-12 text-center text-gray-400 italic">No se encontraron órdenes para los criterios seleccionados.</td></tr>
