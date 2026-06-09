@@ -18,6 +18,7 @@ import {
   ProductionCapacitySection,
   TacticalPlanMueblesSection,
   NeedsCalculationC2000Section,
+  TacticalPlanPlanchasMixtasSection,
 } from '@/components';
 import { ActiveView, viewConfig } from '@/constants/constants';
 import { useAppContext } from '@/context/AppProvider';
@@ -83,6 +84,8 @@ const ProductionOptimizerClient: React.FC = () => {
                 return <TacticalPlan2Section />;
             case ActiveView.TACTICAL_SCHEDULING_MUEBLES:
                 return <TacticalPlanMueblesSection />;
+            case ActiveView.TACTICAL_SCHEDULING_PLANCHAS_MIXTAS:
+                return <TacticalPlanPlanchasMixtasSection />;
             case ActiveView.WORK_SHIFT_PLANNING:
                 return <WorkShiftPlanningSection shifts={workShifts} setShifts={setWorkShifts} constraints={constraints} employees={employees} absenteeismEvents={absenteeismEvents} employeeSkills={employeeSkills} />;
             case ActiveView.DICTIONARY:
