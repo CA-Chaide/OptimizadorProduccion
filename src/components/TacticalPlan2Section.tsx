@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -289,15 +290,7 @@ export const TacticalPlan2Section: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="prog_diaria">
-          <Card>
-            <CardHeader>
-              <CardTitle>Programación Diaria de Planta</CardTitle>
-              <CardDescription>Configuración de Hojas de Ruta activas por Centro.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ProgDiariaTabSection groups={grupos} restrictions={restricciones} />
-            </CardContent>
-          </Card>
+          {/* Pestaña vacía por solicitud del usuario */}
         </TabsContent>
       </Tabs>
     </div>
