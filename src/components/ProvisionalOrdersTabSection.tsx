@@ -8,6 +8,9 @@ import { useAppContext } from '@/context/AppProvider';
 import { Package } from 'lucide-react';
 import type { ProvisionalOrder } from '@/types/interfaces';
 
+interface ProvisionalOrdersTabSectionProps {
+  respCodes?: string[];
+}
 
 interface PaginationState {
   currentPage: number;
@@ -17,7 +20,7 @@ interface PaginationState {
   rowsPerPage: number;
 }
 
-export const ProvisionalOrdersTabSection: React.FC = () => {
+export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionProps> = ({ respCodes }) => {
   const inspector = useRuntimeInspector('ProvisionalOrdersTab');
   const { addNotification } = useAppContext();
 
@@ -92,7 +95,9 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
   }, [addNotification, inspector, pagination.pageSize]);
 
   const filteredOrders = useMemo(() => {
-    const validCodes = ['026', '033', '042', '037', '036', '044'];
+    // Si no se pasan códigos, usamos los de colchones por defecto
+    const validCodes = respCodes || ['026', '033', '042', '037', '036', '044'];
+    
     return orders
       .filter(order => {
         const respCode = String(order.RESPCONTROLPROD || '').trim();
@@ -103,7 +108,7 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
         const dateB = b.FECHAINICIO ? new Date(b.FECHAINICIO).getTime() : 0;
         return dateA - dateB;
       });
-  }, [orders]);
+  }, [orders, respCodes]);
   
   const totalPagesLocal = Math.ceil(filteredOrders.length / pagination.rowsPerPage);
   

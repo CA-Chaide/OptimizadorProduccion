@@ -21,11 +21,11 @@ export const TacticalPlanPlanchasMixtasSection: React.FC = () => {
         <CardHeader>
           <CardTitle>Datos de Órdenes Previsionales</CardTitle>
           <CardDescription>
-            Visualización y exploración de todas las órdenes previsionales correspondientes al área de Planchas Mixtas.
+            Visualización y exploración de todas las órdenes previsionales correspondientes al área de Planchas Mixtas (Responsables 015 y 016).
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <ProvisionalOrdersTabSection />
+          <ProvisionalOrdersTabSection respCodes={['015', '016']} />
         </CardContent>
       </Card>
     </div>
