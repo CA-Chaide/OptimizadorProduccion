@@ -17,13 +17,21 @@ import { useAppContext } from '@/context/AppProvider';
  */
 export const TacticalPlanPlanchasMixtasSection: React.FC = () => {
   const { addNotification } = useAppContext();
+  const [mounted, setMounted] = useState(false);
   const [gruposPlanchas, setGruposPlanchas] = useState<Grupo[]>([]);
   const [tiemposPlanchasData, setTiemposPlanchasData] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isTiemposLoading, setIsTiemposLoading] = useState(false);
 
+  // Hydration Guard
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   // Cargar grupos para identificar el código de grupo de Planchas
   useEffect(() => {
+    if (!mounted) return;
+
     const fetchInitialData = async () => {
       setIsLoading(true);
       try {
@@ -43,16 +51,16 @@ export const TacticalPlanPlanchasMixtasSection: React.FC = () => {
       }
     };
     fetchInitialData();
-  }, [addNotification]);
+  }, [addNotification, mounted]);
 
   // Cargar Tiempos de Fabricación basados en el grupo encontrado
   useEffect(() => {
-    const fetchTiempos = async () => {
-      if (gruposPlanchas.length === 0) {
-        if (!isLoading) setIsTiemposLoading(false);
-        return;
-      }
+    if (!mounted || gruposPlanchas.length === 0) {
+      if (mounted && !isLoading) setIsTiemposLoading(false);
+      return;
+    }
 
+    const fetchTiempos = async () => {
       setIsTiemposLoading(true);
       // Tomamos el primer grupo como referencia (usualmente 1000 - Planchas)
       const targetGroup = gruposPlanchas[0];
@@ -83,7 +91,15 @@ export const TacticalPlanPlanchasMixtasSection: React.FC = () => {
     };
 
     fetchTiempos();
-  }, [gruposPlanchas, addNotification, isLoading]);
+  }, [gruposPlanchas, addNotification, isLoading, mounted]);
+
+  if (!mounted) {
+    return (
+      <div className="p-6 md:p-8 flex justify-center items-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 md:p-8 space-y-6">

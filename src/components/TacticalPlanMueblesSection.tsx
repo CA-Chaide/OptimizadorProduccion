@@ -103,6 +103,7 @@ const RestriccionesTab: React.FC<{ restricciones: (Restriccion & { grupo?: Grupo
 
 export const TacticalPlanMueblesSection: React.FC = () => {
     const { addNotification } = useAppContext();
+    const [mounted, setMounted] = useState(false);
     const [gruposMuebles, setGruposMuebles] = useState<Grupo[]>([]);
     const [restriccionesMuebles, setRestriccionesMuebles] = useState<Restriccion[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -110,6 +111,12 @@ export const TacticalPlanMueblesSection: React.FC = () => {
     const [isTiemposLoading, setIsTiemposLoading] = useState(true);
 
     useEffect(() => {
+        setMounted(true);
+    }, []);
+
+    useEffect(() => {
+        if (!mounted) return;
+
         const fetchInitialData = async () => {
             setIsLoading(true);
             try {
@@ -152,14 +159,15 @@ export const TacticalPlanMueblesSection: React.FC = () => {
             }
         };
         fetchInitialData();
-    }, [addNotification]);
+    }, [addNotification, mounted]);
 
     useEffect(() => {
+        if (!mounted || gruposMuebles.length === 0) {
+            if(mounted && !isLoading) setIsTiemposLoading(false);
+            return;
+        }
+        
         const fetchTiemposData = async () => {
-            if (gruposMuebles.length === 0) {
-                if(!isLoading) setIsTiemposLoading(false);
-                return;
-            }
             setIsTiemposLoading(true);
             const centro = '1000';
             const grupoMuebles = gruposMuebles.find(g => 
@@ -190,7 +198,15 @@ export const TacticalPlanMueblesSection: React.FC = () => {
         };
 
         fetchTiemposData();
-    }, [gruposMuebles, addNotification, isLoading]);
+    }, [gruposMuebles, addNotification, isLoading, mounted]);
+
+  if (!mounted) {
+    return (
+      <div className="p-6 md:p-8 flex justify-center items-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 md:p-8 space-y-6">

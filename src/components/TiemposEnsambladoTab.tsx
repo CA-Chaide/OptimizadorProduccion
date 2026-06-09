@@ -15,6 +15,7 @@ interface TiemposEnsambladoTabProps {
 const ROWS_PER_PAGE_OPTIONS = [20, 50, 100];
 
 export const TiemposEnsambladoTab: React.FC<TiemposEnsambladoTabProps> = ({ data, isLoading }) => {
+    const [isMounted, setIsMounted] = useState(false);
     const [columns, setColumns] = useState<string[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [currentPage, setCurrentPage] = useState(1);
@@ -25,6 +26,11 @@ export const TiemposEnsambladoTab: React.FC<TiemposEnsambladoTabProps> = ({ data
     const tableRef = useRef<HTMLTableElement>(null);
     const [tableWidth, setTableWidth] = useState(0);
     const lastScrolledRef = useRef<'top' | 'table' | null>(null);
+
+    // Hydration Guard
+    useEffect(() => {
+        setIsMounted(true);
+    }, []);
 
     // Extraer columnas únicas de los datos
     useEffect(() => {
@@ -61,6 +67,8 @@ export const TiemposEnsambladoTab: React.FC<TiemposEnsambladoTabProps> = ({ data
 
     // Lógica para sincronizar scrollbars dobles
     useEffect(() => {
+        if (!isMounted) return;
+
         const calculateWidth = () => {
             if (tableRef.current) {
                 setTableWidth(tableRef.current.offsetWidth);
@@ -80,7 +88,7 @@ export const TiemposEnsambladoTab: React.FC<TiemposEnsambladoTabProps> = ({ data
                 resizeObserver.unobserve(tableRef.current);
             }
         };
-    }, [paginatedData]);
+    }, [paginatedData, isMounted]);
 
     const handleTopScroll = (e: React.UIEvent<HTMLDivElement>) => {
         if (lastScrolledRef.current === 'table') {
@@ -103,6 +111,16 @@ export const TiemposEnsambladoTab: React.FC<TiemposEnsambladoTabProps> = ({ data
             topScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
         }
     };
+
+    if (!isMounted) {
+        return (
+            <Card>
+                <CardContent className="p-8 flex justify-center">
+                    <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+                </CardContent>
+            </Card>
+        );
+    }
 
     return (
         <Card>
@@ -177,16 +195,16 @@ export const TiemposEnsambladoTab: React.FC<TiemposEnsambladoTabProps> = ({ data
                                             Página {currentPage} de {totalPages} ({totalRecords} registros)
                                         </span>
                                         <div className="flex gap-1">
-                                            <Button variant="outline" size="sm" onClick={() => setCurrentPage(1)} disabled={currentPage === 1}>
+                                            <Button variant="outline" size="sm" onClick={() => goToPage(1)} disabled={currentPage === 1}>
                                                 Primera
                                             </Button>
-                                            <Button variant="outline" size="sm" onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))} disabled={currentPage === 1}>
+                                            <Button variant="outline" size="sm" onClick={() => goToPage(prev => Math.max(1, prev - 1))} disabled={currentPage === 1}>
                                                 Anterior
                                             </Button>
-                                            <Button variant="outline" size="sm" onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))} disabled={currentPage === totalPages}>
+                                            <Button variant="outline" size="sm" onClick={() => goToPage(prev => Math.min(totalPages, prev + 1))} disabled={currentPage === totalPages}>
                                                 Siguiente
                                             </Button>
-                                            <Button variant="outline" size="sm" onClick={() => setCurrentPage(totalPages)} disabled={currentPage === totalPages}>
+                                            <Button variant="outline" size="sm" onClick={() => goToPage(totalPages)} disabled={currentPage === totalPages}>
                                                 Última
                                             </Button>
                                         </div>

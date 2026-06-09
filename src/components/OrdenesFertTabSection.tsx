@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { serviciosService } from '@/services/servicios.service';
 import { useAppContext } from '@/context/AppProvider';
-import { Package, Check, ChevronsUpDown } from 'lucide-react';
+import { Package, Check, ChevronsUpDown, Loader2 } from 'lucide-react';
 import type { OrdenFert, Restriccion } from '@/types/interfaces';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -128,6 +128,7 @@ const MultiSelect: React.FC<{
 
 export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ restricciones, columns, hideControls = false, tiemposData = [], displayMode = 'full' }) => {
   const { addNotification } = useAppContext();
+  const [isMounted, setIsMounted] = useState(false);
   const [orders, setOrders] = useState<OrdenFert[]>([]);
   const [tapiceros, setTapiceros] = useState<any[]>([]);
   const [pagination, setPagination] = useState<PaginationState>({
@@ -144,6 +145,17 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
   const [hasSetDefaultDate, setHasSetDefaultDate] = useState(false);
   const [workSchedule, setWorkSchedule] = useState<string>("9");
   const [workTables, setWorkTables] = useState<string>("14");
+
+  // Hydration Guard
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  const topScrollRef = useRef<HTMLDivElement>(null);
+  const tableScrollRef = useRef<HTMLDivElement>(null);
+  const tableRef = useRef<HTMLTableElement>(null);
+  const [tableWidth, setTableWidth] = useState(0);
+  const lastScrolledRef = useRef<'top' | 'table' | null>(null);
 
   // TIEMPO DISPONIBLE DIARIO TOTAL (Suma de todas las mesas seleccionadas)
   const TIEMPO_DISPONIBLE_DIARIO_TOTAL = useMemo(() => {
@@ -182,6 +194,8 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
 
   // Cargar Habilidades (Tapiceros)
   useEffect(() => {
+    if (!isMounted) return;
+
     const fetchTapiceros = async () => {
       try {
         const res = await serviciosService.getCuboHabilidadesOP();
@@ -202,7 +216,6 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
 
           // Ordenar por calificación descendente
           const sorted = finalFiltered.sort((a: any, b: any) => (Number(b.CALIFICACION) || 0) - (Number(a.CALIFICACION) || 0));
-          console.log(`[OrdenesFertTabSection] Se cargaron ${sorted.length} tapiceros.`);
           setTapiceros(sorted);
         }
       } catch (e) {
@@ -210,9 +223,11 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
       }
     };
     fetchTapiceros();
-  }, []);
+  }, [isMounted]);
 
   useEffect(() => {
+    if (!isMounted) return;
+
     const fetchOrders = async () => {
       setIsLoading(true);
       setError(null);
@@ -253,7 +268,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
     if (restricciones) {
       fetchOrders();
     }
-  }, [addNotification, restricciones]);
+  }, [addNotification, restricciones, isMounted]);
 
   const uniqueDates = useMemo(() => {
     if (!orders) return [];
@@ -436,6 +451,30 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
     setSelectedDates(dates);
     setPagination(prev => ({ ...prev, currentPage: 1 }));
   };
+
+  useEffect(() => {
+    if (!isMounted) return;
+
+    const calculateWidth = () => {
+      if (tableRef.current) setTableWidth(tableRef.current.offsetWidth);
+    };
+    calculateWidth();
+    window.addEventListener('resize', calculateWidth);
+    const resizeObserver = new ResizeObserver(calculateWidth);
+    if (tableRef.current) resizeObserver.observe(tableRef.current);
+    return () => {
+      window.removeEventListener('resize', calculateWidth);
+      if (tableRef.current) resizeObserver.unobserve(tableRef.current);
+    };
+  }, [displayedOrders, isMounted]);
+
+  if (!isMounted) {
+    return (
+      <div className="flex justify-center items-center py-20">
+        <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+      </div>
+    );
+  }
 
   if (isLoading && orders.length === 0) {
     return (
