@@ -128,27 +128,23 @@ export const TacticalPlanMueblesSection: React.FC = () => {
                 const allGrupos = gruposRes.data || [];
                 const allRestricciones = restriccionesRes.data || [];
 
-                // Filter for "Muebles" group
                 const mueblesGrupos = allGrupos.filter(g => 
                     g.nombre_grupo.toLowerCase().includes('muebles')
                 );
                 setGruposMuebles(mueblesGrupos);
 
-                // Filter restrictions for "Muebles" groups
                 if (mueblesGrupos.length > 0) {
                     const mueblesGrupoIds = new Set(mueblesGrupos.map(g => g.codigo_grupo));
                     const filteredRestricciones = allRestricciones.filter(r => 
                         mueblesGrupoIds.has(r.codigo_grupo)
                     );
                     
-                    // Add group name to restrictions for display
                     const restriccionesConGrupo = filteredRestricciones.map(r => {
                         const grupo = allGrupos.find(g => g.codigo_grupo === r.codigo_grupo);
                         return { ...r, grupo };
                     });
                     setRestriccionesMuebles(restriccionesConGrupo);
                 } else {
-                    addNotification('warning', 'No se encontró ningún grupo "Muebles" para filtrar las restricciones.');
                     setRestriccionesMuebles([]);
                 }
 
@@ -163,7 +159,7 @@ export const TacticalPlanMueblesSection: React.FC = () => {
 
     useEffect(() => {
         if (!mounted || gruposMuebles.length === 0) {
-            if(mounted && !isLoading) setIsTiemposLoading(false);
+            if (mounted) setIsTiemposLoading(false);
             return;
         }
         
@@ -175,7 +171,6 @@ export const TacticalPlanMueblesSection: React.FC = () => {
             );
 
             if (!grupoMuebles) {
-                addNotification('warning', 'No se encontró el grupo "Muebles" para el centro 1000 para cargar tiempos.');
                 setIsTiemposLoading(false);
                 return;
             }
@@ -187,18 +182,16 @@ export const TacticalPlanMueblesSection: React.FC = () => {
                 if (response && response.data) {
                     const dataArray = Array.isArray(response.data) ? response.data : [response.data];
                     setTiemposMueblesData(dataArray);
-                } else {
-                    addNotification('warning', 'No se encontraron datos de tiempos para Muebles.');
                 }
             } catch (error) {
-                addNotification('error', `Error al cargar tiempos de Muebles: ${(error as Error).message}`);
+                console.error('Error al cargar tiempos de Muebles:', error);
             } finally {
                 setIsTiemposLoading(false);
             }
         };
 
         fetchTiemposData();
-    }, [gruposMuebles, addNotification, isLoading, mounted]);
+    }, [gruposMuebles, mounted]);
 
   if (!mounted) {
     return (
@@ -217,17 +210,18 @@ export const TacticalPlanMueblesSection: React.FC = () => {
 
       <Tabs defaultValue="plan" className="w-full">
           <TabsList className="grid w-full grid-cols-10 h-auto p-1 bg-muted border border-dashed border-gray-300 rounded-lg">
-              <TabsTrigger value="grupos" className="border-r border-dashed border-gray-300 last:border-r-0">Grupos</TabsTrigger>
-              <TabsTrigger value="restricciones" className="border-r border-dashed border-gray-300 last:border-r-0">Restricciones</TabsTrigger>
-              <TabsTrigger value="ordenes" className="border-r border-dashed border-gray-300 last:border-r-0">Ord. Prev.</TabsTrigger>
-              <TabsTrigger value="ordenesFert" className="border-r border-dashed border-gray-300 last:border-r-0">Ord. Fert</TabsTrigger>
-              <TabsTrigger value="tiemposMuebles" className="border-r border-dashed border-gray-300 last:border-r-0">Tiempos</TabsTrigger>
-              <TabsTrigger value="habilidades" className="border-r border-dashed border-gray-300 last:border-r-0">Habilidades</TabsTrigger>
-              <TabsTrigger value="cascos" className="border-r border-dashed border-gray-300 last:border-r-0">Cascos</TabsTrigger>
-              <TabsTrigger value="telas" className="border-r border-dashed border-gray-300 last:border-r-0">Telas</TabsTrigger>
-              <TabsTrigger value="materialesBrutos" className="border-r border-dashed border-gray-300 last:border-r-0">Mat. Brutos</TabsTrigger>
-              <TabsTrigger value="plan" className="last:border-r-0">PLAN</TabsTrigger>
+              <TabsTrigger value="grupos" className="border-r border-dashed border-gray-300 last:border-r-0 text-[10px]">Grupos</TabsTrigger>
+              <TabsTrigger value="restricciones" className="border-r border-dashed border-gray-300 last:border-r-0 text-[10px]">Restricciones</TabsTrigger>
+              <TabsTrigger value="ordenes" className="border-r border-dashed border-gray-300 last:border-r-0 text-[10px]">Ord. Prev.</TabsTrigger>
+              <TabsTrigger value="ordenesFert" className="border-r border-dashed border-gray-300 last:border-r-0 text-[10px]">Ord. Fert</TabsTrigger>
+              <TabsTrigger value="tiemposMuebles" className="border-r border-dashed border-gray-300 last:border-r-0 text-[10px]">Tiempos</TabsTrigger>
+              <TabsTrigger value="habilidades" className="border-r border-dashed border-gray-300 last:border-r-0 text-[10px]">Habilidades</TabsTrigger>
+              <TabsTrigger value="cascos" className="border-r border-dashed border-gray-300 last:border-r-0 text-[10px]">Cascos</TabsTrigger>
+              <TabsTrigger value="telas" className="border-r border-dashed border-gray-300 last:border-r-0 text-[10px]">Telas</TabsTrigger>
+              <TabsTrigger value="materialesBrutos" className="border-r border-dashed border-gray-300 last:border-r-0 text-[10px]">Mat. Brutos</TabsTrigger>
+              <TabsTrigger value="plan" className="last:border-r-0 text-[10px]">PLAN</TabsTrigger>
           </TabsList>
+          
           <TabsContent value="grupos" className="mt-4">
               <GruposTab grupos={gruposMuebles} isLoading={isLoading} />
           </TabsContent>
