@@ -37,6 +37,8 @@ interface OrdenFert {
   MAQUINA: string;
   PEDIDO: string;
   CANTPROGPESONETO: number;
+  SECTOR?: string;
+  ETIQUETA?: string;
   T_ARMADO?: number;
   T_CERRADO_L1?: number;
   T_CERRADO1_L2?: number;
@@ -194,7 +196,7 @@ export const OrdenesFertTabSection: React.FC = () => {
       if (selectedSector !== "ALL" && String(o.SECTORDESC || '').toUpperCase() !== selectedSector) return false;
       
       if (term) {
-        const matches = [o.ORDEN, o.MATERIAL, o.NOMBRE, o.PEDIDO].some(v => String(v || '').toLowerCase().includes(term));
+        const matches = [o.ORDEN, o.MATERIAL, o.NOMBRE, o.PEDIDO, o.SECTOR, o.ETIQUETA].some(v => String(v || '').toLowerCase().includes(term));
         if (!matches) return false;
       }
 
@@ -273,7 +275,9 @@ export const OrdenesFertTabSection: React.FC = () => {
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr className="border-b border-gray-200">
-                      <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[100px]">Centro</th>
+                      <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[80px]">Centro</th>
+                      <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[100px]">Sector</th>
+                      <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[120px]">Etiqueta</th>
                       <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[100px]">Máquina</th>
                       <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[100px]">Material</th>
                       <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[120px]">Fecha</th>
@@ -292,6 +296,8 @@ export const OrdenesFertTabSection: React.FC = () => {
                     {displayedOrders.length > 0 ? displayedOrders.map((o, idx) => (
                       <tr key={idx} className="hover:bg-gray-50 text-[10px]">
                         <td className="px-3 py-2 font-bold text-gray-500">{o.CENTRO}</td>
+                        <td className="px-3 py-2 text-gray-600">{o.SECTOR || '-'}</td>
+                        <td className="px-3 py-2 text-gray-600 truncate max-w-[120px]" title={o.ETIQUETA}>{o.ETIQUETA || '-'}</td>
                         <td className="px-3 py-2 font-mono">{o.MAQUINA || '-'}</td>
                         <td className="px-3 py-2 font-mono">{o.MATERIAL}</td>
                         <td className="px-3 py-2 text-gray-500">{o.FECHA}</td>
@@ -307,12 +313,12 @@ export const OrdenesFertTabSection: React.FC = () => {
                         <td className="px-4 py-2 text-right font-bold text-emerald-700">{o.ttCerradoL3?.toFixed(1)}</td>
                       </tr>
                     )) : (
-                      <tr><td colSpan={14} className="px-6 py-12 text-center text-gray-400 italic">No se encontraron órdenes para los criterios seleccionados.</td></tr>
+                      <tr><td colSpan={16} className="px-6 py-12 text-center text-gray-400 italic">No se encontraron órdenes para los criterios seleccionados.</td></tr>
                     )}
                   </tbody>
                   <tfoot className="bg-gray-800 text-white font-bold text-[10px] sticky bottom-0 z-10">
                     <tr>
-                      <td colSpan={6} className="px-4 py-3 text-right uppercase border-r border-gray-700">TOTALES FILTRADOS:</td>
+                      <td colSpan={8} className="px-4 py-3 text-right uppercase border-r border-gray-700">TOTALES FILTRADOS:</td>
                       <td className="px-3 py-3 text-right">{totals.prog.toLocaleString()}</td>
                       <td className="px-3 py-3 text-right text-green-300">{totals.entreg.toLocaleString()}</td>
                       <td className="px-3 py-3 text-right text-blue-300 border-r border-gray-700">{totals.noti.toLocaleString()}</td>
