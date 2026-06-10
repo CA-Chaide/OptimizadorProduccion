@@ -84,9 +84,6 @@ export const OrdenesFertTabSection: React.FC = () => {
     return isNaN(n) ? 0 : n;
   };
 
-  // Función para normalizar nombres de puestos (quitar espacios y mayúsculas)
-  const normStation = (name: string) => String(name || '').replace(/\s+/g, '').toUpperCase();
-
   const loadData = useCallback(async () => {
     const opId = operationTracker.startOperation('FertOrders', 'data_load', 'Cargando Órdenes FERT y Tiempos');
     setIsLoading(true);
@@ -100,8 +97,8 @@ export const OrdenesFertTabSection: React.FC = () => {
       const centersFromGroups = [...new Set(groupsData.map((g: any) => String(g.centro).trim()))].sort();
       setAvailableCenters(centersFromGroups);
 
-      // 2. Cargar Tiempos Técnicos (EXHAUSTIVO - CARGA COMPLETA)
-      operationTracker.updateOperation(opId, 'running', 'Sincronizando maestra completa de tiempos técnicos...');
+      // 2. Cargar Tiempos Técnicos (CARGA COMPLETA)
+      operationTracker.updateOperation(opId, 'running', 'Sincronizando maestra de tiempos técnicos...');
       
       let allTiempos: any[] = [];
       let tPage = 1;
@@ -119,17 +116,15 @@ export const OrdenesFertTabSection: React.FC = () => {
         } else {
           tPage++;
         }
-        if (tPage > 100) break; // Límite de seguridad
+        if (tPage > 50) break;
       }
 
-      // Crear mapa de búsqueda normalizado
+      // Crear mapa de búsqueda
       const lookup = new Map<string, Record<string, number>>();
       allTiempos.forEach((t: any) => {
         const key = `${String(t.Centro).trim()}|${normalizeMaterialCode(t.CodMaterial)}`;
         if (!lookup.has(key)) lookup.set(key, {});
-        // Guardamos el puesto sin espacios para un match exacto
-        const stationKey = normStation(t.PuestoTrabajo);
-        lookup.get(key)![stationKey] = Number(t.Tiempo_Min) || 0;
+        lookup.get(key)![String(t.PuestoTrabajo).trim().toUpperCase()] = Number(t.Tiempo_Min) || 0;
       });
       setTiemposLookup(lookup);
 
@@ -138,7 +133,6 @@ export const OrdenesFertTabSection: React.FC = () => {
       const firstPageRes = await serviciosService.getOrdenesFert(1, 10000);
       const rawData: any[] = Array.isArray(firstPageRes?.data) ? firstPageRes.data : [];
       
-      // Normalización y Filtrado de Sectores
       let orders: OrdenFert[] = rawData.map(o => ({
         ...o,
         SECTOR: (o.SECTOR || o.Sector || o.sector || o.SECTORDESC || '').trim().toUpperCase(),
@@ -155,7 +149,7 @@ export const OrdenesFertTabSection: React.FC = () => {
       const restRes = await restriccionService.getAll();
       setRestrictions(restRes?.data || []);
 
-      operationTracker.completeOperation(opId, `Finalizado: ${orders.length} órdenes y ${allTiempos.length} tiempos técnicos.`);
+      operationTracker.completeOperation(opId, `Finalizado: ${orders.length} órdenes.`);
       inspector.captureVariable('fert_total_loaded', orders.length);
 
     } catch (err) {
@@ -199,21 +193,14 @@ export const OrdenesFertTabSection: React.FC = () => {
         const materialKey = `${centerId}|${matCode}`;
         const stations = tiemposLookup.get(materialKey) || {};
         
-        const cat = String(order.CATEGORIA || '').trim().toUpperCase();
-        
-        // Detección de líneas robusta
-        const isL1 = cat.includes('L1') || cat.includes('LINEA1') || cat.includes('LINEA 1');
-        const isL2 = cat.includes('L2') || cat.includes('LINEA2') || cat.includes('LINEA 2');
-        const isL3 = cat.includes('L3') || cat.includes('LINEA3') || cat.includes('LINEA 3');
-        
+        const catSuffix = String(order.CATEGORIA || '').trim().slice(-2).toUpperCase();
         const pend = safeNum(order.CANTPENDIENTE);
 
-        // Búsqueda de tiempos con normalización de nombres
-        const tArmado = stations[normStation('ARMADO')] || 0;
-        const tCerradoL1 = isL1 ? (stations[normStation('CERRADO L1')] || 0) : 0;
-        const tCerrado1L2 = isL2 ? (stations[normStation('CERRADO 1 L2')] || stations[normStation('CERRADO1 L2')] || 0) : 0;
-        const tCerrado2L2 = isL2 ? (stations[normStation('CERRADO 2 L2')] || stations[normStation('CERRADO2 L2')] || 0) : 0;
-        const tCerradoL3 = isL3 ? (stations[normStation('CERRADO L3')] || 0) : 0;
+        const tArmado = stations['ARMADO'] || 0;
+        const tCerradoL1 = catSuffix === 'L1' ? (stations['CERRADO L1'] || 0) : 0;
+        const tCerrado1L2 = catSuffix === 'L2' ? (stations['CERRADO 1 L2'] || 0) : 0;
+        const tCerrado2L2 = catSuffix === 'L2' ? (stations['CERRADO 2 L2'] || 0) : 0;
+        const tCerradoL3 = catSuffix === 'L3' ? (stations['CERRADO L3'] || 0) : 0;
 
         return {
           ...order,
@@ -338,12 +325,7 @@ export const OrdenesFertTabSection: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {displayedOrders.length > 0 ? displayedOrders.map((o, idx) => {
-                    const formatTT = (val: number | undefined) => {
-                      if (val === undefined || val === null) return '-';
-                      if (val === 0) return '-'; // Ocultar ceros para claridad si no aplica la estación
-                      return val.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-                    };
-
+                    const formatTT = (val: number | undefined) => (val && val > 0) ? val.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : '-';
                     return (
                       <tr key={idx} className="hover:bg-gray-50 text-[10px]">
                         <td className="px-3 py-2 font-bold text-gray-500">{o.CENTRO}</td>
@@ -359,30 +341,20 @@ export const OrdenesFertTabSection: React.FC = () => {
                         <td className="px-3 py-2 text-right font-bold text-green-600">{o.CANTENTREGADA}</td>
                         <td className="px-3 py-2 text-right font-bold text-amber-600 bg-amber-50/20">{o.CANTPENDIENTE}</td>
                         <td className="px-3 py-2 text-right font-bold text-blue-600">{o.CANTNOTIFICADA}</td>
-                        <td className="px-4 py-2 text-right font-bold text-emerald-700 bg-emerald-50/10">
-                          {formatTT(o.ttArmado)}
-                        </td>
-                        <td className="px-4 py-2 text-right font-bold text-emerald-700 bg-emerald-50/10">
-                          {formatTT(o.ttCerradoL1)}
-                        </td>
-                        <td className="px-4 py-2 text-right font-bold text-emerald-700 bg-emerald-50/10">
-                          {formatTT(o.ttCerrado1L2)}
-                        </td>
-                        <td className="px-4 py-2 text-right font-bold text-emerald-700 bg-emerald-50/10">
-                          {formatTT(o.ttCerrado2L2)}
-                        </td>
-                        <td className="px-4 py-2 text-right font-bold text-emerald-700 bg-emerald-50/10">
-                          {formatTT(o.ttCerradoL3)}
-                        </td>
+                        <td className="px-4 py-2 text-right font-bold text-emerald-700 bg-emerald-50/10">{formatTT(o.ttArmado)}</td>
+                        <td className="px-4 py-2 text-right font-bold text-emerald-700 bg-emerald-50/10">{formatTT(o.ttCerradoL1)}</td>
+                        <td className="px-4 py-2 text-right font-bold text-emerald-700 bg-emerald-50/10">{formatTT(o.tt1L2)}</td>
+                        <td className="px-4 py-2 text-right font-bold text-emerald-700 bg-emerald-50/10">{formatTT(o.tt2L2)}</td>
+                        <td className="px-4 py-2 text-right font-bold text-emerald-700 bg-emerald-50/10">{formatTT(o.ttL3)}</td>
                       </tr>
                     );
                   }) : (
-                    <tr><td colSpan={18} className="px-6 py-12 text-center text-gray-400 italic">No se encontraron órdenes para los criterios seleccionados.</td></tr>
+                    <tr><td colSpan={18} className="px-6 py-12 text-center text-gray-400 italic">No se encontraron órdenes.</td></tr>
                   )}
                 </tbody>
                 <tfoot className="bg-gray-800 text-white font-bold text-[10px] sticky bottom-0 z-10">
                   <tr>
-                    <td colSpan={9} className="px-4 py-3 text-right uppercase border-r border-gray-700">TOTALES FILTRADOS:</td>
+                    <td colSpan={9} className="px-4 py-3 text-right uppercase border-r border-gray-700">TOTALES:</td>
                     <td className="px-3 py-3 text-right">{totals.prog.toLocaleString()}</td>
                     <td className="px-3 py-3 text-right text-green-300">{totals.entreg.toLocaleString()}</td>
                     <td className="px-3 py-3 text-right text-amber-300">{totals.pend.toLocaleString()}</td>
