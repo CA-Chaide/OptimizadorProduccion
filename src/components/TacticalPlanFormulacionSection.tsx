@@ -168,6 +168,8 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     const desc = nameStr || matStr.replace(/^\d+\s*/, '') || '—';
 
     const dimensions: any = { dens: '—', ancho: '—', largo: '—', esp: '—', apertura: '—', tipo: '—' };
+    
+    // Extracción de densidad mejorada
     const techPattern = catStr.match(/D(\d+)([a-zA-Z]+)/i);
     if (techPattern) {
       dimensions.dens = techPattern[1]; 
@@ -267,7 +269,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     return Array.from(map.entries()).sort();
   }, [unifiedSummaryData]);
 
-  // SEGMENTACIÓN SOLICITADA: f_bloq (Maquina F_BLOQ && estadoTras CALLE) vs f_bloq_m (Maquina F_BLOQ_M && estadoTras BCALL)
   const curadoGroupsSummary = useMemo(() => {
     const fBloqRows: any[] = [];
     const fBloqMRows: any[] = [];
@@ -277,18 +278,26 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       const estadoTrasVal = getProp(row, ['estadoTras', 'Estado_Tras']).toUpperCase();
       
       const info = extractMaterialInfo({ MATERIAL: row.NomMaterial || row.CodMaterial || '', CATEGORIA: row.NomMaterial || '' });
-      const enriched = { ...row, apertura: info.apertura };
       
+      // Corrección de Densidad: Prioridad al campo, fallback a extracción Regex del nombre
+      let densityVal = getProp(row, ['Densidad', 'DENSIDAD', 'Dens']);
+      if (!densityVal || densityVal === '—' || densityVal === '0') {
+        densityVal = info.dens;
+      }
+
+      const enriched = { ...row, apertura: info.apertura, densityFixed: densityVal };
+      
+      // Segmentación técnica: Maquina F_BLOQ && estadoTras CALLE vs Maquina F_BLOQ_M && estadoTras BCALL
       if (maquinaVal.includes('F_BLOQ_M') && estadoTrasVal.includes('BCALL')) {
         fBloqMRows.push(enriched);
-      } else if (maquinaVal.includes('F_BLOQ') && estadoTrasVal.includes('CALLE')) {
+      } else if (maquinaVal.includes('F_BLOQ') && !maquinaVal.includes('F_BLOQ_M') && estadoTrasVal.includes('CALLE')) {
         fBloqRows.push(enriched);
       }
     });
 
     const getStats = (rows: any[]) => {
       const count = rows.length;
-      const weight = rows.reduce((s, r) => s + safeNum(r.peso), 0);
+      const weight = rows.reduce((s, r) => s + safeNum(r.peso || r.PESO), 0);
       const apertureMap = new Map<string, number>();
       const callesSet = new Set<string>();
 
@@ -537,7 +546,8 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                             <th className="px-3 py-3 border-r border-gray-100 text-indigo-700">Maquina</th>
                             <th className="px-3 py-3 border-r border-gray-100 text-indigo-700 bg-indigo-50/30">estadoTras</th>
                             <th className="px-3 py-3 border-r border-gray-100">Stock</th>
-                            <th className="px-3 py-3">Dens</th>
+                            <th className="px-3 py-3 border-r border-gray-100">Densidad</th>
+                            <th className="px-3 py-3 bg-blue-50 text-blue-900">Apertura</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100 font-bold">
@@ -561,7 +571,8 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                                  </Badge>
                               </td>
                               <td className="px-2 py-2 border-r border-gray-100 text-gray-900 font-mono">{formatNum(row.CantidadStock || row.CANTIDAD_STOCK || 1)}</td>
-                              <td className="px-2 py-2 text-blue-700 font-black">{String(row.Densidad || row.DENSIDAD || '—')}</td>
+                              <td className="px-2 py-2 border-r border-gray-100 text-blue-700 font-black">{String(row.densityFixed || '—')}</td>
+                              <td className="px-2 py-2 text-indigo-900 font-black bg-blue-50/50">{String(row.apertura || '—')}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -692,7 +703,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                             <td className="px-4 py-3 font-mono text-primary border-r border-gray-50 text-left">{info.code}</td>
                             <td className="px-4 py-3 text-left border-r border-gray-50 text-gray-500 uppercase truncate max-w-[300px]">{info.desc}</td>
                             <td className="px-4 py-3 border-r border-gray-100 font-bold text-gray-400 uppercase">{t.Linea || t.PuestoTrabajoLinea || '—'}</td>
-                            <td className="px-4 py-3 font-mono text-teal-600 bg-teal-50/5">{(t.Tiempo_Min || t.Tiempo || 0).toFixed(4)}</td>
+                            <td className="px-4 py-3 font-mono text-teal-600 bg-teal-50/10">{(t.Tiempo_Min || t.Tiempo || 0).toFixed(4)}</td>
                           </tr>
                         );
                       })}
