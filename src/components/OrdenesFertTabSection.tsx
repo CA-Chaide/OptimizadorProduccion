@@ -99,8 +99,8 @@ export const OrdenesFertTabSection: React.FC = () => {
       // Normalización de campos clave (Sector y Etiqueta)
       let orders: OrdenFert[] = rawData.map(o => ({
         ...o,
-        SECTOR: o.SECTOR || o.Sector || o.sector || o.SECTORDESC || '',
-        ETIQUETA: o.ETIQUETA || o.Etiqueta || o.etiqueta || ''
+        SECTOR: (o.SECTOR || o.Sector || o.sector || o.SECTORDESC || '').trim().toUpperCase(),
+        ETIQUETA: (o.ETIQUETA || o.Etiqueta || o.etiqueta || '').trim()
       }));
 
       // FILTRO: Solo sectores "01 COLCHONES" y "02 BASES"
@@ -114,7 +114,7 @@ export const OrdenesFertTabSection: React.FC = () => {
 
       // 3. Cargar Tiempos Técnicos para cruce
       operationTracker.updateOperation(opId, 'running', 'Cruzando con Tiempos de Ensamblado...');
-      const tiemposRes = await serviciosService.getTiemposEnsamblado(1, 10000);
+      const tiemposRes = await serviciosService.getTiemposEnsamblado(1, 20000); // Aumentar límite para cruce
       const lookup = new Map<string, Record<string, number>>();
       if (Array.isArray(tiemposRes?.data)) {
         tiemposRes.data.forEach((t: any) => {
@@ -156,7 +156,7 @@ export const OrdenesFertTabSection: React.FC = () => {
     return rest.valor_restriccion.split(/[,&]/).map((v: string) => v.trim()).filter(Boolean);
   };
 
-  // Enriquecimiento y Agrupación por Centro
+  // Enriquecimiento y Agrupación por Centro con Lógica de Tiempos Totales (TT)
   const filteredDataByCenter = useMemo(() => {
     const grouped: Record<string, OrdenFert[]> = {};
     
@@ -172,15 +172,21 @@ export const OrdenesFertTabSection: React.FC = () => {
         const matCode = normalizeMaterialCode(order.MATERIAL);
         const materialKey = `${centerId}|${matCode}`;
         const times = tiemposLookup.get(materialKey) || {};
-        const catSuffix = String(order.CATEGORIA || '').trim().slice(-2).toUpperCase();
+        
+        // Normalización de categoría para detección de línea
+        const catUpper = String(order.CATEGORIA || '').toUpperCase();
+        const isL1 = catUpper.includes('L1');
+        const isL2 = catUpper.includes('L2');
+        const isL3 = catUpper.includes('L3');
+        
         const pend = Number(order.CANTPENDIENTE || 0);
 
-        // Lógica de cálculo solicitada
+        // Obtención de tiempos unitarios de la maestra
         const tArmado = times['ARMADO'] || 0;
-        const tCerradoL1 = catSuffix === 'L1' ? (times['CERRADO L1'] || 0) : 0;
-        const tCerrado1L2 = catSuffix === 'L2' ? (times['CERRADO1 L2'] || 0) : 0;
-        const tCerrado2L2 = catSuffix === 'L2' ? (times['CERRADO2 L2'] || 0) : 0;
-        const tCerradoL3 = catSuffix === 'L3' ? (times['CERRADO L3'] || 0) : 0;
+        const tCerradoL1 = isL1 ? (times['CERRADO L1'] || 0) : 0;
+        const tCerrado1L2 = isL2 ? (times['CERRADO1 L2'] || 0) : 0;
+        const tCerrado2L2 = isL2 ? (times['CERRADO2 L2'] || 0) : 0;
+        const tCerradoL3 = isL3 ? (times['CERRADO L3'] || 0) : 0;
 
         return {
           ...order,
@@ -244,6 +250,8 @@ export const OrdenesFertTabSection: React.FC = () => {
   const endIndex = startIndex + rowsPerPage;
   const totalPagesLocal = Math.max(1, Math.ceil(currentViewOrders.length / rowsPerPage));
   const displayedOrders = currentViewOrders.slice(startIndex, endIndex);
+
+  const formatMaterial = (mat: string) => String(mat || '').replace(/^0+/, '');
 
   return (
     <div className="space-y-6">
@@ -334,13 +342,13 @@ export const OrdenesFertTabSection: React.FC = () => {
                         <td className="px-3 py-2 text-gray-600 truncate max-w-[150px]">{o.NOMBRE}</td>
                         <td className="px-3 py-2 text-right font-bold">{o.CANTPROGRAMADA}</td>
                         <td className="px-3 py-2 text-right font-bold text-green-600">{o.CANTENTREGADA}</td>
-                        <td className="px-3 py-2 text-right font-bold text-amber-600">{o.CANTPENDIENTE}</td>
+                        <td className="px-3 py-2 text-right font-bold text-amber-600 bg-amber-50/20">{o.CANTPENDIENTE}</td>
                         <td className="px-3 py-2 text-right font-bold text-blue-600">{o.CANTNOTIFICADA}</td>
-                        <td className="px-4 py-2 text-right font-bold text-emerald-700 bg-emerald-50/10">{o.ttArmado?.toFixed(1) || '-'}</td>
-                        <td className="px-4 py-2 text-right font-bold text-emerald-700 bg-emerald-50/10">{o.ttCerradoL1?.toFixed(1) || '-'}</td>
-                        <td className="px-4 py-2 text-right font-bold text-emerald-700 bg-emerald-50/10">{o.tt1L2?.toFixed(1) || '-'}</td>
-                        <td className="px-4 py-2 text-right font-bold text-emerald-700 bg-emerald-50/10">{o.tt2L2?.toFixed(1) || '-'}</td>
-                        <td className="px-4 py-2 text-right font-bold text-emerald-700 bg-emerald-50/10">{o.ttL3?.toFixed(1) || '-'}</td>
+                        <td className="px-4 py-2 text-right font-bold text-emerald-700 bg-emerald-50/10">{o.ttArmado > 0 ? o.ttArmado.toFixed(1) : '-'}</td>
+                        <td className="px-4 py-2 text-right font-bold text-emerald-700 bg-emerald-50/10">{o.ttCerradoL1 > 0 ? o.ttCerradoL1.toFixed(1) : '-'}</td>
+                        <td className="px-4 py-2 text-right font-bold text-emerald-700 bg-emerald-50/10">{o.tt1L2 > 0 ? o.tt1L2.toFixed(1) : '-'}</td>
+                        <td className="px-4 py-2 text-right font-bold text-emerald-700 bg-emerald-50/10">{o.tt2L2 > 0 ? o.tt2L2.toFixed(1) : '-'}</td>
+                        <td className="px-4 py-2 text-right font-bold text-emerald-700 bg-emerald-50/10">{o.ttL3 > 0 ? o.ttL3.toFixed(1) : '-'}</td>
                       </tr>
                     )) : (
                       <tr><td colSpan={18} className="px-6 py-12 text-center text-gray-400 italic">No se encontraron órdenes para los criterios seleccionados.</td></tr>
