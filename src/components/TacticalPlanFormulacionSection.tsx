@@ -114,7 +114,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   };
 
   const fetchCurado = async () => {
-    setIsHistoryLoading(true);
+    setIsLoadingCurado(true);
     try {
       const res = await serviciosService.getTiemposCuradoBloqueFormulado(1, 10000);
       const data = res.data || [];
@@ -254,7 +254,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     return Array.from(groupsMap.values()).sort((a, b) => a.fecha.localeCompare(b.fecha) || a.maquina.localeCompare(b.maquina) || a.dens.localeCompare(b.dens));
   }, [provC1000, provC2000]);
 
-  // --- TOTALES POR APERTURA (RESTAURADO) ---
+  // Totales por Apertura en el Resumen
   const totalsByAperture = useMemo(() => {
     const map = new Map<string, number>();
     unifiedSummaryData.forEach(row => {
@@ -264,10 +264,8 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     return Array.from(map.entries()).sort();
   }, [unifiedSummaryData]);
 
-  // --- LÓGICA DE CURADO f_bloq / f_bloq_m (CON RESUMEN) ---
+  // Agrupación de Stock Curado (f_bloq / f_bloq_m)
   const curadoGroupsSummary = useMemo(() => {
-    if (!mounted) return [];
-    
     const stirlingRows: any[] = [];
     const manualRows: any[] = [];
     
@@ -301,7 +299,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       { id: 'f_bloq', label: 'f_bloq (SISTEMA STIRLING)', rows: stirlingRows, stats: getStats(stirlingRows), color: 'bg-indigo-600' },
       { id: 'f_bloq_m', label: 'f_bloq_m (PROCESO MANUAL)', rows: manualRows, stats: getStats(manualRows), color: 'bg-orange-600' }
     ];
-  }, [curadoRows, mounted]);
+  }, [curadoRows]);
 
   if (!mounted) return null;
 
@@ -390,7 +388,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
             </Popover>
           </div>
 
-          {/* --- TOTALES POR APERTURA (RESTAURADO) --- */}
           <div className="grid grid-cols-3 gap-4">
              {totalsByAperture.map(([ap, total]) => (
                <Card key={ap} className="p-4 border-none shadow-sm bg-indigo-50/50 flex flex-col items-center justify-center">
@@ -458,11 +455,9 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                 </p>
               </div>
             </div>
-            <div className="flex gap-6 items-center">
-              <div className="text-right">
-                <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest">Registros en Memoria</p>
-                <p className="text-2xl font-black text-indigo-400 font-mono">{curadoRows.length}</p>
-              </div>
+            <div className="text-right">
+              <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest">Registros en Memoria</p>
+              <p className="text-2xl font-black text-indigo-400 font-mono">{curadoRows.length}</p>
             </div>
           </div>
 
@@ -475,7 +470,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
             <div className="space-y-12">
               {curadoGroupsSummary.map((group) => (
                 <div key={group.id} className="space-y-4">
-                  {/* --- SUMMARY HEADER f_bloq / f_bloq_m --- */}
                   <div className={cn("p-4 rounded-2xl border flex flex-col md:flex-row items-center justify-between gap-4 text-white shadow-lg", group.color)}>
                      <div className="flex items-center gap-4">
                         <div className="p-2 bg-white/10 rounded-xl"><Layers className="w-6 h-6" /></div>
@@ -506,7 +500,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                      </div>
                   </div>
 
-                  {/* --- DETAILED TABLE --- */}
                   <Card className="rounded-2xl border border-gray-100 shadow-md overflow-hidden bg-white">
                     <div className="overflow-x-auto max-h-[450px]">
                       <table className="w-full border-collapse text-center font-sans text-[10px]">
@@ -653,16 +646,16 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                 <h3 className="text-[11px] font-black uppercase text-gray-400 text-left tracking-widest px-1">Catálogo de Tiempos - {center.t}</h3>
                 <Card className="rounded-2xl border border-gray-100 shadow-md overflow-hidden bg-white">
                   <div className="overflow-x-auto max-h-[400px]">
-                    <table className="w-full border-collapse text-center font-sans">
-                      <thead className="bg-[#bde0fe] sticky top-0 text-[10px] font-black uppercase text-slate-800 border-b border-gray-100">
+                    <table className="w-full border-collapse text-[11px] font-bold text-center">
+                      <thead className="bg-[#1e293b] text-white sticky top-0 z-10 uppercase font-black tracking-widest text-[9px]">
                         <tr>
-                          <th className="px-4 py-4 border-r border-gray-100">Material</th>
-                          <th className="px-4 py-4 border-r border-gray-100 text-left">Descripción Técnica</th>
-                          <th className="px-4 py-4 border-r border-gray-100">Línea</th>
-                          <th className="px-4 py-4 border-r border-gray-100 text-teal-700">Estándar (Min)</th>
+                          <th className="px-5 py-4 border-r border-white/5 text-left">Material</th>
+                          <th className="px-5 py-4 border-r border-white/5 text-left">Descripción Técnica</th>
+                          <th className="px-4 py-4 border-r border-white/5">Línea</th>
+                          <th className="px-4 py-4 text-teal-400">Estándar (Min)</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-gray-100 text-[11px] font-bold">
+                      <tbody className="divide-y divide-gray-100">
                         {center.d.length === 0 ? (
                           <tr><td colSpan={4} className="py-12 text-center text-gray-300 font-bold uppercase tracking-widest opacity-30">No hay registros cargados</td></tr>
                         ) : (
