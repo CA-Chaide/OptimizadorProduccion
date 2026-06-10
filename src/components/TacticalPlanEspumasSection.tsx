@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -44,22 +45,25 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, parseISO, 
 import { es } from 'date-fns/locale';
 
 /**
- * --- CONSTANTES DE INGENIERÍA DE PLANTA ---
- * Basadas en Carrusel de 3.2m de Diámetro
+ * --- CONSTANTES DE INGENIERÍA DE PLANTA (ACTUALIZADO) ---
  */
-const DIAMETER_CM = 320;
-const CIRCUMFERENCE = Math.PI * DIAMETER_CM; // ~1005.31 cm (Pista total)
-const BASE_GAP_CM = 30; // Distancia mínima entre bloques
-const MANIPULATION_FACTOR = 1.05; // +5% de tolerancia para maniobras manuales
-const EFFECTIVE_GAP_CM = BASE_GAP_CM * MANIPULATION_FACTOR; // 31.5 cm reales de separación
-const BLOCK_20M_CM = 2000; // Longitud estándar bloque de espuma
-const SECONDS_PER_LOAD = 300; // 5 minutos por cada carga completa de máquina
-const SECONDS_PER_UNIT = 45; // 0.75 minutos por cada unidad descargada/cortada
+const CARRUSEL_DIAMETER_CM = 320;
+const CIRCUMFERENCE = Math.PI * CARRUSEL_DIAMETER_CM; // ~1005.31 cm
+const BASE_GAP_CM = 30; 
+const MANIPULATION_FACTOR = 1.05; // +5% sobre distancia entre bloques
+const EFFECTIVE_GAP_CM = BASE_GAP_CM * MANIPULATION_FACTOR; // 31.5 cm reales
+const BLOCK_20M_CM = 2000; 
+
+// Capacidad de Coche: 2 bloques apilados, altura máxima 2 metros (200cm)
+const MAX_STACK_HEIGHT_CM = 200; 
+
+// Tiempos Estándar (Segundos)
+const SECONDS_PER_LOAD_VUELTA = 300; // 5 min por vuelta de carrusel
+const SECONDS_PER_MANEUVER_DESC = 45; // 0.75 min por cada repetición de descarga
 
 const RESPONSABLES_QUITO = ["013", "036", "038", "039", "044"];
 const RESPONSABLES_GYE = ["002", "038", "039"];
 
-// Catálogo Base de Recursos para el Resumen Operativo
 const OPERATIVE_BASE = {
   '1000': [
     { maquina: 'CNC01 - CNC Giotto', puesto: 'CNC01', code: 'CNC01' },
@@ -154,18 +158,21 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const extractMaterialInfo = (item: any) => {
     const matStr = String(item.MATERIAL || item.CodMaterial || '').trim();
     const nameStr = String(item.NOMBRE || item.Descripcion || '').trim();
+    const catStr = String(item.CATEGORIA || item.Categoria || '').trim();
     const match = matStr.match(/^(\d+)/);
     const code = match ? match[1].slice(-8) : matStr.slice(-8);
     const desc = nameStr || matStr.replace(/^\d+\s*/, '') || '—';
 
     const dims: any = { dens: '—', ancho: '—', largo: '—', esp: '—' };
+    
+    // Captura de dimensiones: Ancho x Largo x Espesor
     const dimMatch = desc.match(/(\d+(?:\.\d+)?)\s*[xX*]\s*(\d+(?:\.\d+)?)(?:\s*[xX*]\s*(\d+(?:\.\d+)?))?/);
     if (dimMatch) {
       dims.ancho = dimMatch[1];
       dims.largo = dimMatch[2];
       if (dimMatch[3]) dims.esp = dimMatch[3];
     }
-    const catStr = String(item.CATEGORIA || item.Categoria || '').trim();
+    
     const densM = catStr.match(/D(\d+)/i) || desc.match(/D-?(\d+)/i);
     if (densM) dims.dens = densM[1];
 
@@ -173,7 +180,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   };
 
   /**
-   * --- MOTOR DE CÁLCULO TÉCNICO ---
+   * --- MOTOR DE CÁLCULO TÉCNICO (COCHE 2m & DESCARGAS POR REP) ---
    */
   const calculateEngineering = (o: any) => {
     const info = extractMaterialInfo(o);
@@ -183,38 +190,54 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const esp = parseFloat(info.esp) || 0;
     const densV = parseFloat(info.dens) || 0;
 
-    // 1. Altura Útil del Bloque Madre según Densidad
-    const usefulH = (densV < 30) ? 103 : 85;
+    // 1. Altura Útil según apilamiento de 2 bloques (Capped a 200cm)
+    const singleBlockH = (densV < 30) ? 103 : 85;
+    const stackedH = singleBlockH * 2;
+    const usefulH = Math.min(MAX_STACK_HEIGHT_CM, stackedH);
     
-    // 2. Cálculo de Subbloques (Rebanadas verticales necesarias)
-    const totalH = qty * esp;
-    const subblocks = totalH / usefulH;
+    // 2. Cálculo de Subbloques (Pilas verticales en el carrusel)
+    const sheetsPerStack = esp > 0 ? Math.floor(usefulH / esp) : 1;
+    const subblocks = sheetsPerStack > 0 ? Math.ceil(qty / sheetsPerStack) : 0;
 
-    // 3. Consumo de Bloques de 20 metros (Longitudinal)
-    const piezasPorLargoBloque = Math.floor(BLOCK_20M_CM / largo);
-    const blocks20m = piezasPorLargoBloque > 0 ? subblocks / piezasPorLargoBloque : 0;
+    // 3. Consumo Real de Bloques de 20 metros (Cada subbloque usa 2 bloques apilados)
+    const piezasPorLargoBloque = largo > 0 ? Math.floor(BLOCK_20M_CM / largo) : 0;
+    const blocks20m = piezasPorLargoBloque > 0 ? (subblocks * 2) / piezasPorLargoBloque : 0;
 
-    // 4. Capacidad del Carrusel (Gap 31.5cm)
-    const sbPerLoad = Math.floor(CIRCUMFERENCE / (ancho + EFFECTIVE_GAP_CM));
+    // 4. Capacidad del Carrusel (Gap 31.5cm dinámico)
+    const sbPerLoad = ancho > 0 ? Math.floor(CIRCUMFERENCE / (ancho + EFFECTIVE_GAP_CM)) : 1;
     const loads = sbPerLoad > 0 ? Math.ceil(subblocks / sbPerLoad) : 0;
 
-    // 5. Tiempos de Maniobra
-    const loadingTimeSec = loads * SECONDS_PER_LOAD; // 5 min por vuelta
-    const unloadingTimeSec = qty * SECONDS_PER_UNIT; // 45s por pieza
-    const totalTimeSec = loadingTimeSec + unloadingTimeSec;
+    // 5. Tiempos de Maniobra y Proceso (Basado en Segundos)
+    // Carga: 300s por vuelta completa
+    const tCargaSec = loads * SECONDS_PER_LOAD_VUELTA; 
+    
+    // Descarga: Repeticiones basadas en espesor
+    // > 10: 4 laminas por rep | <= 10: 3 laminas por rep
+    const sheetsPerRep = (esp > 10) ? 4 : 3;
+    const totalRepsDescarga = sheetsPerRep > 0 ? Math.ceil(qty / sheetsPerRep) : qty;
+    const tDescargaSec = totalRepsDescarga * SECONDS_PER_MANEUVER_DESC;
+
+    // Tiempo SAP (Asumimos segundos)
+    const matchTime = tiemposEnsamblado.find(t => String(t.CodMaterial).slice(-8) === info.code);
+    const sapSecPerUnit = safeNum(matchTime?.Tiempo || 0);
+    const totalSapSec = qty * sapSecPerUnit;
+
+    const totalTimeSec = tCargaSec + tDescargaSec + totalSapSec;
     const hours = totalTimeSec / 3600;
+    const indivMin = qty > 0 ? (totalTimeSec / qty) / 60 : 0;
 
     return { 
       ...info, 
-      totalH, 
       subblocks, 
       sbPerLoad, 
       blocks20m, 
       loads, 
       hours, 
+      indivMin,
       qty, 
-      loadingTimeSec, 
-      unloadingTimeSec 
+      tCargaSec, 
+      tDescargaSec,
+      totalSapSec
     };
   };
 
@@ -297,7 +320,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <div className="p-2 bg-primary/10 rounded-xl"><Wind className="w-6 h-6 text-primary" /></div>
           <div>
             <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Programación Táctica Corte Espuma</h2>
-            <p className="text-xs text-gray-500 font-medium">Gap 31.5cm | Diámetro 3.2m | Consolidación de Planta</p>
+            <p className="text-xs text-gray-500 font-medium">Coche 2m | Descargas por Repetición | Engineering Model v2.0</p>
           </div>
         </div>
       </div>
@@ -311,7 +334,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             { v: 'mantenimiento', l: 'MTTO Preventivo', i: Wrench }, 
             { v: 'grupos', l: 'Grupos', i: Users }, 
             { v: 'restricciones', l: 'Parámetros', i: Lock }, 
-            { v: 'ordenes', l: 'Órdenes', i: Package }, 
+            { v: 'ordenes', l: 'Provisionales', i: Package }, 
             { v: 'tiempos', l: 'Catálogo Tiempos', i: Clock }
           ].map(tab => (
             <TabsTrigger key={tab.v} value={tab.v} className="gap-2 text-[9px] font-bold uppercase transition-all data-[state=active]:bg-white data-[state=active]:shadow-sm">
@@ -325,7 +348,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             <div className="flex items-center gap-3">
               <div className="p-2 bg-primary/10 rounded-xl text-primary"><Activity className="w-4 h-4" /></div>
               <div>
-                <p className="text-[9px] font-black uppercase text-gray-400 tracking-widest">Tablero de Mando Diario</p>
+                <p className="text-[9px] font-black uppercase text-gray-400 tracking-widest">Tablero de Mando Diario (Imagen 2)</p>
                 <h3 className="text-[10px] font-black text-gray-700 uppercase">{selectedDate === 'all' ? 'Vista Consolidada' : `Fecha: ${selectedDate}`}</h3>
               </div>
             </div>
@@ -423,37 +446,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           </Card>
         </TabsContent>
 
-        <TabsContent value="resumen" className="space-y-6 animate-in fade-in duration-300">
-           <div className="grid grid-cols-2 gap-6">
-            <Card className="p-4 bg-green-50/20 border-green-100 rounded-2xl shadow-sm text-left">
-              <h3 className="text-[10px] font-black text-green-700 uppercase tracking-widest mb-4">PLANTA 1000 - QUITO</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="text-center p-2 bg-white rounded-xl border border-green-100">
-                  <p className="text-[8px] font-bold text-gray-400 uppercase mb-1">Unidades</p>
-                  <p className="text-lg font-black text-gray-800">{provC1000.reduce((s,o)=>s+safeNum(o.CANTIDAD||o.CANTPROGRAMADA),0).toLocaleString()}</p>
-                </div>
-                <div className="text-center p-2 bg-white rounded-xl border border-green-100">
-                  <p className="text-[8px] font-bold text-gray-400 uppercase mb-1">Horas Operativas</p>
-                  <p className="text-lg font-black text-indigo-600">{provC1000.reduce((s,o)=>s+calculateEngineering(o).hours,0).toFixed(1)}</p>
-                </div>
-              </div>
-            </Card>
-            <Card className="p-4 bg-blue-50/20 border-blue-100 rounded-2xl shadow-sm text-left">
-              <h3 className="text-[10px] font-black text-indigo-700 uppercase tracking-widest mb-4">PLANTA 2000 - GUAYAQUIL</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="text-center p-2 bg-white rounded-xl border border-blue-100">
-                  <p className="text-[8px] font-bold text-gray-400 uppercase mb-1">Unidades</p>
-                  <p className="text-lg font-black text-gray-800">{provC2000.reduce((s,o)=>s+safeNum(o.CANTIDAD||o.CANTPROGRAMADA),0).toLocaleString()}</p>
-                </div>
-                <div className="text-center p-2 bg-white rounded-xl border border-blue-100">
-                  <p className="text-[8px] font-bold text-gray-400 uppercase mb-1">Horas Operativas</p>
-                  <p className="text-lg font-black text-indigo-600">{provC2000.reduce((s,o)=>s+calculateEngineering(o).hours,0).toFixed(1)}</p>
-                </div>
-              </div>
-            </Card>
-          </div>
-        </TabsContent>
-
         <TabsContent value="habilidades" className="animate-in fade-in duration-300">
           <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
             <div className="overflow-x-auto max-h-[650px] relative text-left">
@@ -549,8 +541,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         const date = dRaw.includes('T') ? dRaw.split('T')[0] : dRaw;
                         
                         // Desglose de Carga y Descarga en minutos
-                        const loadMin = (eng.loadingTimeSec / 60).toFixed(1);
-                        const unloadMin = (eng.unloadingTimeSec / 60).toFixed(1);
+                        const loadMin = (eng.tCargaSec / 60).toFixed(1);
+                        const unloadMin = (eng.tDescargaSec / 60).toFixed(1);
                         
                         return (
                           <tr key={i} className="hover:bg-gray-50/50">
@@ -564,7 +556,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                             <td className="px-2 py-2 border-r border-gray-50 text-gray-400 font-mono">{eng.esp}</td>
                             <td className="px-3 py-2 border-r border-gray-100 font-black text-gray-900 font-mono">{eng.qty.toLocaleString()}</td>
                             <td className="px-3 py-2 border-r border-gray-100 font-black text-indigo-700 bg-indigo-50/5 uppercase">{String(o.MAQUINA || o.RECURSO || '—')}</td>
-                            <td className="px-3 py-2 border-r border-gray-100 bg-blue-50/10 font-mono text-blue-700 text-center">{(eng.hours * 60 / (eng.qty || 1)).toFixed(2)}</td>
+                            <td className="px-3 py-2 border-r border-gray-100 bg-blue-50/10 font-mono text-blue-700 text-center">{eng.indivMin.toFixed(2)}</td>
                             <td className="px-3 py-2 border-r border-gray-100 bg-amber-50/10 font-mono text-amber-700 text-center">{eng.hours.toFixed(2)}</td>
                             <td className="px-3 py-2 border-r border-gray-100 bg-green-50/10 font-mono text-green-700 text-center" title={`${loadMin}m Carga + ${unloadMin}m Descarga`}>{loadMin} + {unloadMin}</td>
                             <td className="px-2 py-2 border-r border-gray-50 bg-purple-50/10 text-purple-700">{eng.subblocks.toFixed(1)}</td>
@@ -595,7 +587,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <th className="px-5 py-4 border-r border-white/5 text-left">Material</th>
                         <th className="px-5 py-4 border-r border-white/5 text-left">Descripción</th>
                         <th className="px-5 py-4 border-r border-white/5">Línea</th>
-                        <th className="px-5 py-4 text-teal-400">Estándar (Min)</th>
+                        <th className="px-5 py-4 text-teal-400">Estándar (Seg)</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
@@ -606,7 +598,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                             <td className="px-4 py-3 font-mono text-indigo-600 border-r border-gray-50 text-left">{info.code}</td>
                             <td className="px-4 py-3 text-left border-r border-gray-50 text-gray-600 truncate max-w-[300px] uppercase">{String(t.Material || t.Descripcion || '—')}</td>
                             <td className="px-4 py-3 border-r border-gray-100 text-gray-400 uppercase">{String(t.Linea || '—')}</td>
-                            <td className="px-4 py-3 font-mono text-teal-600 bg-teal-50/10">{Number(t.Tiempo || 0).toFixed(4)}</td>
+                            <td className="px-4 py-3 font-mono text-teal-600 bg-teal-50/10">{Number(t.Tiempo || 0).toFixed(2)}</td>
                           </tr>
                         );
                       })}
