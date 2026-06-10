@@ -97,7 +97,7 @@ export const OrdenesFertTabSection: React.FC = () => {
       const centersFromGroups = [...new Set(groupsData.map((g: any) => String(g.centro).trim()))].sort();
       setAvailableCenters(centersFromGroups);
 
-      // 2. Cargar Tiempos Técnicos (CARGA COMPLETA)
+      // 2. Cargar Tiempos Técnicos (CARGA COMPLETA RECURSIVA)
       operationTracker.updateOperation(opId, 'running', 'Sincronizando maestra de tiempos técnicos...');
       
       let allTiempos: any[] = [];
@@ -116,15 +116,18 @@ export const OrdenesFertTabSection: React.FC = () => {
         } else {
           tPage++;
         }
-        if (tPage > 50) break;
+        if (tPage > 100) break;
       }
 
-      // Crear mapa de búsqueda
+      // Crear mapa de búsqueda con NORMALIZACIÓN de puestos (quitar espacios)
       const lookup = new Map<string, Record<string, number>>();
       allTiempos.forEach((t: any) => {
         const key = `${String(t.Centro).trim()}|${normalizeMaterialCode(t.CodMaterial)}`;
         if (!lookup.has(key)) lookup.set(key, {});
-        lookup.get(key)![String(t.PuestoTrabajo).trim().toUpperCase()] = Number(t.Tiempo_Min) || 0;
+        
+        // Normalización: quitar espacios y pasar a mayúsculas
+        const stationKey = String(t.PuestoTrabajo || '').replace(/\s+/g, '').toUpperCase();
+        lookup.get(key)![stationKey] = Number(t.Tiempo_Min) || Number(t.Tiempo) || 0;
       });
       setTiemposLookup(lookup);
 
@@ -193,14 +196,15 @@ export const OrdenesFertTabSection: React.FC = () => {
         const materialKey = `${centerId}|${matCode}`;
         const stations = tiemposLookup.get(materialKey) || {};
         
-        const catSuffix = String(order.CATEGORIA || '').trim().slice(-2).toUpperCase();
+        const cat = String(order.CATEGORIA || '').toUpperCase();
         const pend = safeNum(order.CANTPENDIENTE);
 
+        // Búsqueda usando llaves normalizadas (sin espacios)
         const tArmado = stations['ARMADO'] || 0;
-        const tCerradoL1 = catSuffix === 'L1' ? (stations['CERRADO L1'] || 0) : 0;
-        const tCerrado1L2 = catSuffix === 'L2' ? (stations['CERRADO 1 L2'] || 0) : 0;
-        const tCerrado2L2 = catSuffix === 'L2' ? (stations['CERRADO 2 L2'] || 0) : 0;
-        const tCerradoL3 = catSuffix === 'L3' ? (stations['CERRADO L3'] || 0) : 0;
+        const tCerradoL1 = cat.includes('L1') ? (stations['CERRADOL1'] || 0) : 0;
+        const tCerrado1L2 = cat.includes('L2') ? (stations['CERRADO1L2'] || 0) : 0;
+        const tCerrado2L2 = cat.includes('L2') ? (stations['CERRADO2L2'] || 0) : 0;
+        const tCerradoL3 = cat.includes('L3') ? (stations['CERRADOL3'] || 0) : 0;
 
         return {
           ...order,
@@ -325,7 +329,7 @@ export const OrdenesFertTabSection: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {displayedOrders.length > 0 ? displayedOrders.map((o, idx) => {
-                    const formatTT = (val: number | undefined) => (val && val > 0) ? val.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : '-';
+                    const formatTT = (val: number | undefined) => (val !== undefined && !isNaN(val)) ? val.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : '-';
                     return (
                       <tr key={idx} className="hover:bg-gray-50 text-[10px]">
                         <td className="px-3 py-2 font-bold text-gray-500">{o.CENTRO}</td>
