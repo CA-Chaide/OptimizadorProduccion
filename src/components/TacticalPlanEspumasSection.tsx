@@ -181,8 +181,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const totalH = qty * esp;
     const subblocks = totalH / usefulH;
 
-    const sbPerLength = largo > 0 ? Math.floor(2000 / largo) : 1;
-    const blocks20m = sbPerLength > 0 ? subblocks / sbPerLength : 0;
+    const piezasPorLargoBloque = Math.floor(2000 / largo);
+    const blocks20m = piezasPorLargoBloque > 0 ? subblocks / piezasPorLargoBloque : 0;
 
     const spacePerSb = ancho + EFFECTIVE_GAP_CM;
     const sbPerLoad = spacePerSb > 0 ? Math.floor(CIRCUMFERENCE / spacePerSb) : 0;
@@ -496,7 +496,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <th className="px-2 py-4 border-r border-gray-50">ESP.</th>
                         <th className="px-3 py-4 border-r border-gray-100 font-black">Cant.</th>
                         <th className="px-3 py-4 border-r border-gray-100 font-black text-indigo-700 bg-indigo-50/20">Máquina</th>
-                        <th className="px-2 py-4 border-r border-gray-50 bg-blue-50/50 text-blue-900">T. INDIV. (min)</th>
+                        <th className="px-3 py-4 border-r border-gray-100 bg-blue-50/20 text-blue-900">T. INDIV. (min)</th>
+                        <th className="px-3 py-4 border-r border-gray-100 bg-amber-50/50 text-amber-900">T. TOTAL (H)</th>
                         <th className="px-2 py-4 border-r border-gray-50 bg-purple-50/50 text-purple-900">SUBBL.</th>
                         <th className="px-2 py-4 border-r border-gray-50 bg-orange-50/50 font-black">BLOQUES 20M</th>
                         <th className="px-3 py-4 border-r border-gray-50 text-red-700 bg-red-50/50 font-black">CARGAS</th>
@@ -521,7 +522,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                             <td className="px-2 py-2 border-r border-gray-50 text-gray-400 font-mono">{eng.esp}</td>
                             <td className="px-3 py-2 border-r border-gray-100 font-black text-gray-900 font-mono">{eng.qty.toLocaleString()}</td>
                             <td className="px-3 py-2 border-r border-gray-100 font-black text-indigo-700 bg-indigo-50/5 uppercase">{String(o.MAQUINA || o.RECURSO || '—')}</td>
-                            <td className="px-3 py-2 border-r border-gray-50 bg-blue-50/10 font-mono text-blue-700">{(eng.hours * 60 / (eng.qty || 1)).toFixed(2)}</td>
+                            <td className="px-3 py-2 border-r border-gray-100 bg-blue-50/10 font-mono text-blue-700 text-center">{(eng.hours * 60 / (eng.qty || 1)).toFixed(2)}</td>
+                            <td className="px-3 py-2 border-r border-gray-100 bg-amber-50/10 font-mono text-amber-700 text-center">{eng.hours.toFixed(2)}</td>
                             <td className="px-2 py-2 border-r border-gray-50 bg-purple-50/10 text-purple-700">{eng.subblocks.toFixed(1)}</td>
                             <td className="px-2 py-2 border-r border-gray-50 bg-orange-50/10 font-black text-orange-800">{eng.blocks20m.toFixed(1)}</td>
                             <td className="px-3 py-2 border-r border-gray-50 bg-red-50/20 font-black text-red-600">{String(eng.loads)}</td>
@@ -554,14 +556,17 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {center.d.map((t, i) => (
-                        <tr key={i} className="hover:bg-gray-50/50 transition-colors">
-                          <td className="px-4 py-3 font-mono text-indigo-600 border-r border-gray-50 text-left">{String(t.CodMaterial).slice(-8)}</td>
-                          <td className="px-4 py-3 text-left border-r border-gray-50 text-gray-600 truncate max-w-[300px] uppercase">{String(t.Material || t.Descripcion || '—')}</td>
-                          <td className="px-4 py-3 border-r border-gray-100 text-gray-400 uppercase">{String(t.Linea || '—')}</td>
-                          <td className="px-4 py-3 font-mono text-teal-600 bg-teal-50/10">{Number(t.Tiempo || 0).toFixed(4)}</td>
-                        </tr>
-                      ))}
+                      {center.d.map((t, i) => {
+                        const info = extractMaterialInfo(t);
+                        return (
+                          <tr key={i} className="hover:bg-gray-50/50 transition-colors">
+                            <td className="px-4 py-3 font-mono text-indigo-600 border-r border-gray-50 text-left">{info.code}</td>
+                            <td className="px-4 py-3 text-left border-r border-gray-50 text-gray-600 truncate max-w-[300px] uppercase">{String(t.Material || t.Descripcion || '—')}</td>
+                            <td className="px-4 py-3 border-r border-gray-100 text-gray-400 uppercase">{String(t.Linea || '—')}</td>
+                            <td className="px-4 py-3 font-mono text-teal-600 bg-teal-50/10">{Number(t.Tiempo || 0).toFixed(4)}</td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
