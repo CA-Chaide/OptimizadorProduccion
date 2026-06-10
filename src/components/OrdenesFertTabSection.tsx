@@ -96,21 +96,21 @@ export const OrdenesFertTabSection: React.FC = () => {
       const firstPageRes = await serviciosService.getOrdenesFert(1, 10000);
       const rawData: any[] = Array.isArray(firstPageRes?.data) ? firstPageRes.data : [];
       
-      // Normalización de campos clave (Sector y Etiqueta) para evitar problemas de casing en el JSON
+      // Normalización de campos clave (Sector y Etiqueta)
       let orders: OrdenFert[] = rawData.map(o => ({
         ...o,
         SECTOR: o.SECTOR || o.Sector || o.sector || o.SECTORDESC || '',
         ETIQUETA: o.ETIQUETA || o.Etiqueta || o.etiqueta || ''
       }));
 
-      // FILTRO SOLICITADO: Solo sectores "01 COLCHONES" y "02 BASES"
+      // FILTRO: Solo sectores "01 COLCHONES" y "02 BASES"
       orders = orders.filter(o => {
         const sectorStr = String(o.SECTOR).trim().toUpperCase();
         return sectorStr === "01 COLCHONES" || sectorStr === "02 BASES";
       });
 
       setAllRawOrders(orders);
-      operationTracker.updateOperation(opId, 'running', `Cargadas ${orders.length} órdenes filtradas por sector.`);
+      operationTracker.updateOperation(opId, 'running', `Cargadas ${orders.length} órdenes filtradas.`);
 
       // 3. Cargar Tiempos Técnicos para cruce
       operationTracker.updateOperation(opId, 'running', 'Cruzando con Tiempos de Ensamblado...');
@@ -175,6 +175,7 @@ export const OrdenesFertTabSection: React.FC = () => {
         const catSuffix = String(order.CATEGORIA || '').trim().slice(-2).toUpperCase();
         const pend = Number(order.CANTPENDIENTE || 0);
 
+        // Lógica de cálculo solicitada
         const tArmado = times['ARMADO'] || 0;
         const tCerradoL1 = catSuffix === 'L1' ? (times['CERRADO L1'] || 0) : 0;
         const tCerrado1L2 = catSuffix === 'L2' ? (times['CERRADO1 L2'] || 0) : 0;
@@ -209,7 +210,7 @@ export const OrdenesFertTabSection: React.FC = () => {
       if (selectedSector !== "ALL" && String(o.SECTOR || '').trim().toUpperCase() !== selectedSector) return false;
       
       if (term) {
-        const matches = [
+        return [
           o.ORDEN, 
           o.MATERIAL, 
           o.NOMBRE, 
@@ -218,7 +219,6 @@ export const OrdenesFertTabSection: React.FC = () => {
           o.ETIQUETA,
           o.CATEGORIA
         ].some(v => String(v || '').toLowerCase().includes(term));
-        if (!matches) return false;
       }
 
       return true;
@@ -236,7 +236,7 @@ export const OrdenesFertTabSection: React.FC = () => {
       acc.tt2L2 += Number(o.ttCerrado2L2 || 0);
       acc.ttL3 += Number(o.ttCerradoL3 || 0);
       return acc;
-    }, { prog: 0, entreg: 0, noti: 0, ttArm: 0, ttL1: 0, tt1L2: 0, tt2L2: 0, tt3L3: 0, ttL3: 0 });
+    }, { prog: 0, entreg: 0, noti: 0, ttArm: 0, ttL1: 0, tt1L2: 0, tt2L2: 0, ttL3: 0 });
   }, [currentViewOrders]);
 
   const startIndex = (currentPage - 1) * rowsPerPage;
@@ -257,10 +257,14 @@ export const OrdenesFertTabSection: React.FC = () => {
         
         <div className="flex flex-wrap items-center gap-3">
           <Select value={selectedSector} onValueChange={setSelectedSector}>
-            <SelectTrigger className="h-9 w-56 bg-white"><LayoutGrid className="w-3.5 h-3.5 mr-2 text-gray-400" /><SelectValue placeholder="Sector" /></SelectTrigger>
+            <SelectTrigger className="h-9 w-56 bg-white">
+              <LayoutGrid className="w-3.5 h-3.5 mr-2 text-gray-400" />
+              <SelectValue placeholder="Sector" />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">Todos los Sectores</SelectItem>
-              {[...new Set(allRawOrders.map(o => String(o.SECTOR || 'N/A').trim().toUpperCase()))].sort().map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+              <SelectItem value="01 COLCHONES">01 COLCHONES</SelectItem>
+              <SelectItem value="02 BASES">02 BASES</SelectItem>
             </SelectContent>
           </Select>
 
@@ -329,11 +333,11 @@ export const OrdenesFertTabSection: React.FC = () => {
                         <td className="px-3 py-2 text-right font-bold">{o.CANTPROGRAMADA}</td>
                         <td className="px-3 py-2 text-right font-bold text-green-600">{o.CANTENTREGADA}</td>
                         <td className="px-3 py-2 text-right font-bold text-blue-600">{o.CANTNOTIFICADA}</td>
-                        <td className="px-4 py-2 text-right font-bold text-emerald-700 bg-emerald-50/10">{o.ttArmado?.toFixed(1)}</td>
-                        <td className="px-4 py-2 text-right font-bold text-emerald-700 bg-emerald-50/10">{o.ttCerradoL1?.toFixed(1)}</td>
-                        <td className="px-4 py-2 text-right font-bold text-emerald-700 bg-emerald-50/10">{o.ttCerrado1L2?.toFixed(1)}</td>
-                        <td className="px-4 py-2 text-right font-bold text-emerald-700 bg-emerald-50/10">{o.ttCerrado2L2?.toFixed(1)}</td>
-                        <td className="px-4 py-2 text-right font-bold text-emerald-700 bg-emerald-50/10">{o.ttCerradoL3?.toFixed(1)}</td>
+                        <td className="px-4 py-2 text-right font-bold text-emerald-700 bg-emerald-50/10">{o.ttArmado?.toFixed(1) || '-'}</td>
+                        <td className="px-4 py-2 text-right font-bold text-emerald-700 bg-emerald-50/10">{o.ttCerradoL1?.toFixed(1) || '-'}</td>
+                        <td className="px-4 py-2 text-right font-bold text-emerald-700 bg-emerald-50/10">{o.tt1L2?.toFixed(1) || '-'}</td>
+                        <td className="px-4 py-2 text-right font-bold text-emerald-700 bg-emerald-50/10">{o.tt2L2?.toFixed(1) || '-'}</td>
+                        <td className="px-4 py-2 text-right font-bold text-emerald-700 bg-emerald-50/10">{o.ttL3?.toFixed(1) || '-'}</td>
                       </tr>
                     )) : (
                       <tr><td colSpan={17} className="px-6 py-12 text-center text-gray-400 italic">No se encontraron órdenes para los criterios seleccionados.</td></tr>
