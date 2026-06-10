@@ -42,7 +42,11 @@ interface TiempoEnsamblado {
   NombRespControlProd: string;
 }
 
-export const TiemposEnsambladoTabSection: React.FC = () => {
+interface TiemposEnsambladoTabSectionProps {
+  readonly allowedLines?: string[];
+}
+
+export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionProps> = ({ allowedLines }) => {
   const inspector = useRuntimeInspector('TiemposEnsambladoTab');
   const { addNotification } = useAppContext();
   const hasStarted = useRef(false);
@@ -114,48 +118,62 @@ export const TiemposEnsambladoTabSection: React.FC = () => {
     }
   }, [loadData]);
 
-  // Lista de responsables únicos para el centro seleccionado
-  const responsablesDisponibles = useMemo(() => {
-    const centerData = allData.filter(row => String(row.Centro || '').trim() === selectedCenter);
-    const unique = [...new Set(centerData.map(row => String(row.NombRespControlProd || '').trim()))]
-      .filter(Boolean)
-      .sort();
-    return unique;
-  }, [allData, selectedCenter]);
-
-  // Lista de líneas únicas para el centro seleccionado
-  const lineasDisponibles = useMemo(() => {
-    const centerData = allData.filter(row => String(row.Centro || '').trim() === selectedCenter);
-    const unique = [...new Set(centerData.map(row => String(row.Linea || '').trim()))]
-      .filter(Boolean)
-      .sort();
-    return unique;
-  }, [allData, selectedCenter]);
-
-  // Filtrado por Centro, Responsables, Líneas y Búsqueda
-  const currentViewData = useMemo(() => {
+  // Filtrado base por Centro y Líneas Permitidas
+  const baseData = useMemo(() => {
     let base = allData.filter(row => String(row.Centro || '').trim() === selectedCenter);
+    
+    // Filtro estricto si hay allowedLines (Caso Prog Tiempos)
+    if (allowedLines && allowedLines.length > 0) {
+      const allowedUpper = allowedLines.map(l => l.toUpperCase());
+      base = base.filter(row => {
+        const rowLinea = String(row.Linea || '').trim().toUpperCase();
+        return allowedUpper.some(allowed => rowLinea === allowed || rowLinea.includes(allowed) || allowed.includes(rowLinea));
+      });
+    }
+    
+    return base;
+  }, [allData, selectedCenter, allowedLines]);
+
+  // Lista de responsables únicos para los datos base
+  const responsablesDisponibles = useMemo(() => {
+    const unique = [...new Set(baseData.map(row => String(row.NombRespControlProd || '').trim()))]
+      .filter(Boolean)
+      .sort();
+    return unique;
+  }, [baseData]);
+
+  // Lista de líneas únicas para los datos base
+  const lineasDisponibles = useMemo(() => {
+    const unique = [...new Set(baseData.map(row => String(row.Linea || '').trim()))]
+      .filter(Boolean)
+      .sort();
+    return unique;
+  }, [baseData]);
+
+  // Filtrado final por Responsables, Líneas (UI) y Búsqueda
+  const currentViewData = useMemo(() => {
+    let result = baseData;
 
     // Filtro de Responsables (Múltiple)
     if (selectedResponsables.length > 0) {
-      base = base.filter(row => selectedResponsables.includes(String(row.NombRespControlProd || '').trim()));
+      result = result.filter(row => selectedResponsables.includes(String(row.NombRespControlProd || '').trim()));
     }
 
     // Filtro de Líneas (Múltiple)
     if (selectedLineas.length > 0) {
-      base = base.filter(row => selectedLineas.includes(String(row.Linea || '').trim()));
+      result = result.filter(row => selectedLineas.includes(String(row.Linea || '').trim()));
     }
 
     const term = searchTerm.toLowerCase().trim();
-    if (!term) return base;
+    if (!term) return result;
 
-    return base.filter(row => 
+    return result.filter(row => 
       String(row.CodMaterial || '').toLowerCase().includes(term) ||
       String(row.Linea || '').toLowerCase().includes(term) ||
       String(row.PuestoTrabajo || '').toLowerCase().includes(term) ||
       String(row.NombRespControlProd || '').toLowerCase().includes(term)
     );
-  }, [allData, selectedCenter, selectedResponsables, selectedLineas, searchTerm]);
+  }, [baseData, selectedResponsables, selectedLineas, searchTerm]);
 
   const totalPagesLocal = Math.max(1, Math.ceil(currentViewData.length / rowsPerPage));
   const startIndex = (currentPage - 1) * rowsPerPage;
