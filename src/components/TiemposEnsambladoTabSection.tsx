@@ -44,10 +44,15 @@ interface TiempoEnsamblado {
 
 interface TiemposEnsambladoTabSectionProps {
   readonly allowedLines?: string[];
+  readonly allowedWorkstations?: string[];
   readonly isCompact?: boolean;
 }
 
-export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionProps> = ({ allowedLines, isCompact = false }) => {
+export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionProps> = ({ 
+  allowedLines, 
+  allowedWorkstations,
+  isCompact = false 
+}) => {
   const inspector = useRuntimeInspector('TiemposEnsambladoTab');
   const { addNotification } = useAppContext();
   const hasStarted = useRef(false);
@@ -119,7 +124,7 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
     }
   }, [loadData]);
 
-  // Filtrado base por Centro y Líneas Permitidas
+  // Filtrado base por Centro, Líneas Permitidas y Puestos Permitidos
   const baseData = useMemo(() => {
     let base = allData.filter(row => String(row.Centro || '').trim() === selectedCenter);
     
@@ -131,9 +136,18 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
         return allowedUpper.some(allowed => rowLinea === allowed || rowLinea.includes(allowed) || allowed.includes(rowLinea));
       });
     }
+
+    // Filtro estricto de Puestos de Trabajo (Caso Prog Tiempos)
+    if (allowedWorkstations && allowedWorkstations.length > 0) {
+      const allowedNormalized = allowedWorkstations.map(w => String(w).toUpperCase().replace(/\s+/g, ''));
+      base = base.filter(row => {
+        const rowPuesto = String(row.PuestoTrabajo || '').toUpperCase().replace(/\s+/g, '');
+        return allowedNormalized.includes(rowPuesto);
+      });
+    }
     
     return base;
-  }, [allData, selectedCenter, allowedLines]);
+  }, [allData, selectedCenter, allowedLines, allowedWorkstations]);
 
   // Lista de responsables únicos para los datos base
   const responsablesDisponibles = useMemo(() => {

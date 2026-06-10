@@ -285,6 +285,7 @@ export const TacticalPlan2Section: React.FC = () => {
             <CardContent>
               <TiemposEnsambladoTabSection 
                 allowedLines={['LINEA 1', 'LINEA 2', 'LINEA 3', 'LINEA 5']} 
+                allowedWorkstations={['Armado', 'Cerrado L1', 'Cerrado1 L2', 'Cerrado2 L2', 'Cerrado L3']}
                 isCompact={true}
               />
             </CardContent>
