@@ -56,7 +56,7 @@ const SECONDS_PER_UNIT = 45;
 const RESPONSABLES_QUITO = ["013", "036", "038", "039", "044"];
 const RESPONSABLES_GYE = ["002", "038", "039"];
 
-// Catálogo Base de Recursos (Imagen 2)
+// Catálogo Base de Recursos
 const OPERATIVE_BASE = {
   '1000': [
     { maquina: 'CNC01 - CNC Giotto', puesto: 'CNC01', code: 'CNC01' },
@@ -181,11 +181,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const totalH = qty * esp;
     const subblocks = totalH / usefulH;
 
-    const piezasPorLargoBloque = Math.floor(2000 / largo);
+    const piezasPorLargoBloque = Math.floor(BLOCK_20M_CM / largo);
     const blocks20m = piezasPorLargoBloque > 0 ? subblocks / piezasPorLargoBloque : 0;
 
-    const spacePerSb = ancho + EFFECTIVE_GAP_CM;
-    const sbPerLoad = spacePerSb > 0 ? Math.floor(CIRCUMFERENCE / spacePerSb) : 0;
+    const sbPerLoad = Math.floor(CIRCUMFERENCE / (ancho + EFFECTIVE_GAP_CM));
     const loads = sbPerLoad > 0 ? Math.ceil(subblocks / sbPerLoad) : 0;
 
     const hours = ((loads * SECONDS_PER_LOAD) + (qty * SECONDS_PER_UNIT)) / 3600;
@@ -255,6 +254,15 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   };
 
   if (!mounted) return null;
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center p-20 gap-4">
+        <Loader2 className="w-10 h-10 animate-spin text-primary" />
+        <p className="text-xs font-bold text-gray-400 uppercase tracking-widest animate-pulse">Sincronizando Módulo de Espumas...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
@@ -451,18 +459,20 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                     <th className="px-4 py-4 border-r border-amber-100 text-left">Máquina</th>
                     <th className="px-4 py-4 border-r border-amber-100 bg-indigo-50 text-indigo-900">Puesto (SISMAC)</th>
                     <th className="px-4 py-4 border-r border-amber-100">Tiempo (H)</th>
-                    <th className="px-4 py-4 border-r border-amber-100">Fecha PROG.</th>
+                    <th className="px-4 py-4 border-r border-amber-100">Fecha Inicio</th>
+                    <th className="px-4 py-4 border-r border-amber-100">Fecha Fin</th>
                     <th className="px-4 py-4">OT ID</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 font-bold">
-                  {mantenimientos.filter(m => selectedDate === 'all' || (String(m.FECHA_PRO || '').split('T')[0]) === selectedDate).map((m, i) => (
+                  {mantenimientos.filter(m => selectedDate === 'all' || (String(m.FECHA_PRO || m.FECHA_INI || '').split('T')[0]) === selectedDate).map((m, i) => (
                     <tr key={i} className="hover:bg-amber-50/30">
                       <td className="px-4 py-3 border-r border-gray-100 text-slate-400">{String(m.ID_PLANTA || '—')}</td>
                       <td className="px-4 py-3 border-r border-gray-100 text-left uppercase">{String(m.MAQUINA || '—')}</td>
                       <td className="px-4 py-3 border-r border-gray-100 bg-indigo-50/20 text-indigo-700 uppercase">{getPuestoMTTO(String(m.ID_MAQUINA))}</td>
                       <td className="px-4 py-3 border-r border-gray-100 font-black text-red-600">{String(m.TIEMPO || '0')}h</td>
-                      <td className="px-4 py-3 border-r border-gray-100 font-mono">{String(m.FECHA_PRO || '—')}</td>
+                      <td className="px-4 py-3 border-r border-gray-100 font-mono">{String(m.FECHA_INI || m.FECHA_PRO || '—')}</td>
+                      <td className="px-4 py-3 border-r border-gray-100 font-mono">{String(m.FECHA_FIN || '—')}</td>
                       <td className="px-4 py-3 font-mono">{String(m.OT_PRG_ID || '—')}</td>
                     </tr>
                   ))}
@@ -541,7 +551,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="tiempos" className="animate-in fade-in duration-300 space-y-10">
-          {[ { t: 'Quito 1000', d: tiemposEnsamblado.filter(t => String(t.Centro).trim()==='1000') }, { t: 'Guayaquil 2000', d: tiemposEnsamblado.filter(t => String(t.Centro).trim()==='2000') } ].map((center, idx) => (
+          {[ { t: 'Quito 1000', d: tiemposEnsamblado.filter(t => String(t.Centro || t.centro || '').trim()==='1000') }, { t: 'Guayaquil 2000', d: tiemposEnsamblado.filter(t => String(t.Centro || t.centro || '').trim()==='2000') } ].map((center, idx) => (
             <div key={idx} className="space-y-4">
               <h3 className="text-[11px] font-black uppercase text-gray-400 text-left tracking-widest">Catálogo Tiempos - {center.t}</h3>
               <Card className="rounded-2xl border border-gray-100 shadow-md overflow-hidden bg-white">
