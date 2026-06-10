@@ -96,8 +96,14 @@ export const OrdenesFertTabSection: React.FC = () => {
       const firstPageRes = await serviciosService.getOrdenesFert(1, 10000);
       let orders: OrdenFert[] = Array.isArray(firstPageRes?.data) ? firstPageRes.data : [];
       
+      // FILTRO SOLICITADO: Solo sectores "01 COLCHONES" y "02 BASES"
+      orders = orders.filter(o => {
+        const sectorStr = String(o.SECTOR || o.SECTORDESC || '').trim().toUpperCase();
+        return sectorStr === "01 COLCHONES" || sectorStr === "02 BASES";
+      });
+
       setAllRawOrders(orders);
-      operationTracker.updateOperation(opId, 'running', `Cargadas ${orders.length} órdenes.`);
+      operationTracker.updateOperation(opId, 'running', `Cargadas ${orders.length} órdenes filtradas por sector.`);
 
       // 3. Cargar Tiempos Técnicos para cruce
       operationTracker.updateOperation(opId, 'running', 'Cruzando con Tiempos de Ensamblado...');
@@ -193,7 +199,7 @@ export const OrdenesFertTabSection: React.FC = () => {
     const term = searchTerm.toLowerCase().trim();
     
     return base.filter(o => {
-      if (selectedSector !== "ALL" && String(o.SECTORDESC || '').toUpperCase() !== selectedSector) return false;
+      if (selectedSector !== "ALL" && String(o.SECTOR || o.SECTORDESC || '').trim().toUpperCase() !== selectedSector) return false;
       
       if (term) {
         const matches = [
@@ -247,7 +253,7 @@ export const OrdenesFertTabSection: React.FC = () => {
             <SelectTrigger className="h-9 w-56 bg-white"><LayoutGrid className="w-3.5 h-3.5 mr-2 text-gray-400" /><SelectValue placeholder="Sector" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">Todos los Sectores</SelectItem>
-              {[...new Set(allRawOrders.map(o => String(o.SECTORDESC || 'N/A').trim().toUpperCase()))].sort().map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+              {[...new Set(allRawOrders.map(o => String(o.SECTOR || o.SECTORDESC || 'N/A').trim().toUpperCase()))].sort().map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
             </SelectContent>
           </Select>
 
