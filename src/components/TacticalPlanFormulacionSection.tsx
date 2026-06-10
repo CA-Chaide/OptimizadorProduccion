@@ -20,7 +20,8 @@ import {
   History,
   TrendingUp,
   Box,
-  Layers
+  Layers,
+  MapPin
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -287,12 +288,24 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     const getStats = (rows: any[]) => {
       const count = rows.length;
       const weight = rows.reduce((s, r) => s + safeNum(r.peso), 0);
+      
       const apertureMap = new Map<string, number>();
+      const callesSet = new Set<string>();
+
       rows.forEach(r => {
+        // Aperturas
         const ap = r.apertura || '—';
         apertureMap.set(ap, (apertureMap.get(ap) || 0) + 1);
+
+        // Calles (Búsqueda de CALLE_ en columna Estado_Tras o Maquina)
+        const estadoTras = String(r.Estado_Tras || r.ESTADO_TRAS || '').toUpperCase();
+        if (estadoTras.includes('CALLE_')) {
+          const match = estadoTras.match(/CALLE_\d+/);
+          if (match) callesSet.add(match[0]);
+        }
       });
-      return { count, weight, apertureMap };
+
+      return { count, weight, apertureMap, calles: Array.from(callesSet).sort() };
     };
 
     return [
@@ -317,7 +330,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           <div className="p-2 bg-primary/10 rounded-xl"><FlaskConical className="w-6 h-6 text-primary" /></div>
           <div>
             <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Plan Táctico Formulación</h2>
-            <p className="text-xs text-gray-500 font-medium">Control Maestro de Bloques | Auditoría de Stock Curado por Apertura</p>
+            <p className="text-xs text-gray-500 font-medium">Control Maestro de Bloques | Auditoría de Stock Curado y Ubicaciones (Calles)</p>
           </div>
         </div>
       </div>
@@ -449,14 +462,14 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
             <div className="flex items-center gap-4 text-left">
               <div className="p-3 bg-indigo-500/20 rounded-2xl text-indigo-400"><History className="w-6 h-6" /></div>
               <div>
-                <h3 className="text-md font-black text-white uppercase tracking-tight">Consolidado de Bloques Curados</h3>
+                <h3 className="text-md font-black text-white uppercase tracking-tight">Consolidado de Bloques Curados y Ubicaciones</h3>
                 <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">
-                  Visibilidad Total SAP | Resumen por Objetos Maestro f_bloq / f_bloq_m
+                  Visibilidad Total SAP | Segmentación f_bloq - f_bloq_m | Auditoría de Calles de Maduración
                 </p>
               </div>
             </div>
             <div className="text-right">
-              <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest">Registros en Memoria</p>
+              <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest">Bloques Registrados</p>
               <p className="text-2xl font-black text-indigo-400 font-mono">{curadoRows.length}</p>
             </div>
           </div>
@@ -464,35 +477,49 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           {isLoadingCurado ? (
             <div className="py-32 text-center">
               <Loader2 className="w-10 h-10 animate-spin mx-auto text-indigo-500" />
-              <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mt-6 animate-pulse">Sincronizando con SAP ERP...</p>
+              <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mt-6 animate-pulse">Sincronizando Inventario de SAP ERP...</p>
             </div>
           ) : (
             <div className="space-y-12">
               {curadoGroupsSummary.map((group) => (
                 <div key={group.id} className="space-y-4">
-                  <div className={cn("p-4 rounded-2xl border flex flex-col md:flex-row items-center justify-between gap-4 text-white shadow-lg", group.color)}>
-                     <div className="flex items-center gap-4">
-                        <div className="p-2 bg-white/10 rounded-xl"><Layers className="w-6 h-6" /></div>
-                        <div>
-                           <h4 className="text-sm font-black uppercase tracking-widest">{group.label}</h4>
-                           <p className="text-[10px] font-bold opacity-60 uppercase mt-0.5">Centro de Consolidación de Ruta</p>
+                  <div className={cn("p-5 rounded-2xl border flex flex-col gap-4 text-white shadow-lg", group.color)}>
+                     <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4 text-left">
+                           <div className="p-2 bg-white/10 rounded-xl"><Layers className="w-6 h-6" /></div>
+                           <div>
+                              <h4 className="text-sm font-black uppercase tracking-widest">{group.label}</h4>
+                              <p className="text-[10px] font-bold opacity-60 uppercase mt-0.5">Gestión de Ruta de Proceso</p>
+                           </div>
                         </div>
+                        {group.stats.calles.length > 0 && (
+                          <div className="flex items-center gap-2 bg-black/20 px-3 py-1.5 rounded-xl border border-white/5">
+                             <MapPin className="w-3.5 h-3.5 text-white/70" />
+                             <span className="text-[10px] font-black uppercase tracking-widest">Calles Activas:</span>
+                             <div className="flex gap-1">
+                                {group.stats.calles.map(calle => (
+                                  <Badge key={calle} variant="outline" className="bg-white/10 border-white/20 text-white text-[9px] font-black px-2">{calle}</Badge>
+                                ))}
+                             </div>
+                          </div>
+                        )}
                      </div>
+                     
                      <div className="flex gap-8 items-center bg-black/10 p-3 rounded-xl border border-white/5">
-                        <div className="text-center">
-                           <p className="text-[9px] font-black uppercase opacity-60">Bloques</p>
-                           <p className="text-lg font-black font-mono">{group.stats.count}</p>
+                        <div className="text-center min-w-[100px]">
+                           <p className="text-[9px] font-black uppercase opacity-60">Total Bloques</p>
+                           <p className="text-xl font-black font-mono">{group.stats.count}</p>
                         </div>
-                        <div className="text-center">
-                           <p className="text-[9px] font-black uppercase opacity-60">Peso Total (Kg)</p>
-                           <p className="text-lg font-black font-mono">{group.stats.weight.toLocaleString()}</p>
+                        <div className="text-center min-w-[120px] border-l border-white/10">
+                           <p className="text-[9px] font-black uppercase opacity-60">Peso Acumulado</p>
+                           <p className="text-xl font-black font-mono">{group.stats.weight.toLocaleString()} <span className="text-[10px]">Kg</span></p>
                         </div>
-                        <div className="text-center px-4 border-l border-white/10">
-                           <p className="text-[9px] font-black uppercase opacity-60 mb-1">Aperturas</p>
-                           <div className="flex gap-2">
+                        <div className="text-left px-4 border-l border-white/10 flex-1">
+                           <p className="text-[9px] font-black uppercase opacity-60 mb-1">Disponibilidad por Apertura</p>
+                           <div className="flex flex-wrap gap-2">
                               {Array.from(group.stats.apertureMap.entries()).map(([ap, count]) => (
-                                <Badge key={ap} variant="outline" className="bg-white/10 border-white/20 text-white text-[9px] font-black">
-                                   {ap}: {count}
+                                <Badge key={ap} variant="outline" className="bg-white/10 border-white/20 text-white text-[9px] font-black px-3 py-1">
+                                   {ap}: {count} piezas
                                 </Badge>
                               ))}
                            </div>
@@ -514,28 +541,37 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                             <th className="px-4 py-4 border-r border-gray-100 bg-teal-50 text-teal-900">Apertura</th>
                             <th className="px-4 py-4 border-r border-gray-100">Cód Bloque</th>
                             <th className="px-4 py-4 border-r border-gray-100 text-orange-800 font-black">Peso (Kg)</th>
-                            <th className="px-4 py-4 border-r border-gray-100">Estado Tras</th>
+                            <th className="px-4 py-4 border-r border-gray-100 text-indigo-700 bg-indigo-50/30">Estado Tras / Ubicación</th>
                             <th className="px-4 py-4 border-r border-gray-100">Operador</th>
                             <th className="px-4 py-4">Estado</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100 font-bold">
-                          {group.rows.map((row, i) => (
-                            <tr key={i} className="hover:bg-gray-50/50 transition-colors">
-                              <td className="px-3 py-2 border-r border-gray-100 text-gray-400 font-mono">{String(row.Idbloque)}</td>
-                              <td className="px-3 py-2 border-r border-gray-100 text-gray-500 font-black">{String(row.fecha).split('T')[0]}</td>
-                              <td className="px-3 py-2 border-r border-gray-100 text-indigo-600 font-mono">{String(row.orden)}</td>
-                              <td className="px-3 py-2 border-r border-gray-100 font-mono text-slate-800">{String(row.CodMaterial)}</td>
-                              <td className="px-3 py-2 border-r border-gray-100 text-left uppercase text-slate-500 truncate max-w-[200px]" title={row.NomMaterial}>{String(row.NomMaterial)}</td>
-                              <td className="px-3 py-2 border-r border-gray-100 font-black text-blue-800 bg-blue-50/5">{String(row.densidad)}</td>
-                              <td className="px-3 py-2 border-r border-gray-100 font-black text-teal-700 bg-teal-50/20">{row.apertura || '—'}</td>
-                              <td className="px-3 py-2 border-r border-gray-100 font-mono text-purple-700">{String(row.CodBloque)}</td>
-                              <td className="px-3 py-2 border-r border-gray-100 bg-orange-50/5 font-mono text-orange-700 font-black">{formatNum(row.peso, 1)}</td>
-                              <td className="px-3 py-2 border-r border-gray-100 font-black text-indigo-400 uppercase">{String(row.Estado_Tras || row.ESTADO_TRAS || '—')}</td>
-                              <td className="px-3 py-2 border-r border-gray-100 text-gray-400">{String(row.operador)}</td>
-                              <td className="px-3 py-2"><Badge variant="outline" className="text-[9px] font-black uppercase bg-green-50 text-green-700 border-green-200">{String(row.estado)}</Badge></td>
-                            </tr>
-                          ))}
+                          {group.rows.map((row, i) => {
+                            const estadoTras = String(row.Estado_Tras || row.ESTADO_TRAS || '—');
+                            const isCalle = estadoTras.toUpperCase().includes('CALLE_');
+                            
+                            return (
+                              <tr key={i} className="hover:bg-gray-50/50 transition-colors">
+                                <td className="px-3 py-2 border-r border-gray-100 text-gray-400 font-mono">{String(row.Idbloque)}</td>
+                                <td className="px-3 py-2 border-r border-gray-100 text-gray-500 font-black">{String(row.fecha).split('T')[0]}</td>
+                                <td className="px-3 py-2 border-r border-gray-100 text-indigo-600 font-mono">{String(row.orden)}</td>
+                                <td className="px-3 py-2 border-r border-gray-100 font-mono text-slate-800">{String(row.CodMaterial)}</td>
+                                <td className="px-3 py-2 border-r border-gray-100 text-left uppercase text-slate-500 truncate max-w-[200px]" title={row.NomMaterial}>{String(row.NomMaterial)}</td>
+                                <td className="px-3 py-2 border-r border-gray-100 font-black text-blue-800 bg-blue-50/5">{String(row.densidad)}</td>
+                                <td className="px-3 py-2 border-r border-gray-100 font-black text-teal-700 bg-teal-50/20">{row.apertura || '—'}</td>
+                                <td className="px-3 py-2 border-r border-gray-100 font-mono text-purple-700">{String(row.CodBloque)}</td>
+                                <td className="px-3 py-2 border-r border-gray-100 bg-orange-50/5 font-mono text-orange-700 font-black">{formatNum(row.peso, 1)}</td>
+                                <td className="px-3 py-2 border-r border-gray-100">
+                                   <Badge variant={isCalle ? "default" : "outline"} className={cn("text-[9px] font-black uppercase tracking-widest", isCalle ? "bg-indigo-600 text-white" : "text-gray-400")}>
+                                      {estadoTras}
+                                   </Badge>
+                                </td>
+                                <td className="px-3 py-2 border-r border-gray-100 text-gray-400">{String(row.operador)}</td>
+                                <td className="px-3 py-2"><Badge variant="outline" className="text-[9px] font-black uppercase bg-green-50 text-green-700 border-green-200">{String(row.estado)}</Badge></td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
@@ -572,7 +608,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
               <tbody className="divide-y divide-gray-100 text-[11px] font-bold">
                 {restricciones.map(r => (
                   <tr key={r.codigo_restriccion} className="hover:bg-gray-50/50">
-                    <td className="px-6 py-4 text-gray-500 border-r border-gray-100 uppercase">{r.nombre_restriccion}</td>
+                    <td className="px-6 py-4 text-gray-500 border-r border-gray-100 uppercase text-left">{r.nombre_restriccion}</td>
                     <td className="px-6 py-4 border-r border-gray-100">
                       <Badge variant="outline" className="font-mono text-indigo-700 border-indigo-200 bg-indigo-50/50">{r.valor_restriccion}</Badge>
                     </td>
