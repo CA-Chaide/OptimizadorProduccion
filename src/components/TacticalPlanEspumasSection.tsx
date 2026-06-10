@@ -45,7 +45,7 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, parseISO, 
 import { es } from 'date-fns/locale';
 
 /**
- * --- CONSTANTES DE INGENIERÍA DE PLANTA (ACTUALIZADO) ---
+ * --- CONSTANTES DE INGENIERÍA DE PLANTA ---
  */
 const CARRUSEL_DIAMETER_CM = 320;
 const CIRCUMFERENCE = Math.PI * CARRUSEL_DIAMETER_CM; // ~1005.31 cm
@@ -59,7 +59,7 @@ const MAX_STACK_HEIGHT_CM = 200;
 
 // Tiempos Estándar (Segundos)
 const SECONDS_PER_LOAD_VUELTA = 300; // 5 min por vuelta de carrusel
-const SECONDS_PER_MANEUVER_DESC = 45; // 0.75 min por cada repetición de descarga
+const SECONDS_PER_MANEUVER_DESC = 45; // 45 segundos por repetición de descarga
 
 const RESPONSABLES_QUITO = ["013", "036", "038", "039", "044"];
 const RESPONSABLES_GYE = ["002", "038", "039"];
@@ -109,7 +109,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState('resumenOperativo');
   const [grupos, setGrupos] = useState<Grupo[]>([]);
-  const [restricciones, setRestricciones] = useState<Restriccion[]>([]);
+  const [restriccionesArray, setRestriccionesArray] = useState<Restriccion[]>([]);
   const [ordenes, setOrders] = useState<any[]>([]);
   const [tiemposEnsamblado, setTiemposEnsamblado] = useState<any[]>([]);
   const [mantenimientos, setMantenimientos] = useState<any[]>([]);
@@ -140,10 +140,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           serviciosService.OrdenesProvisionalesPaginados(1, 20000),
           serviciosService.getTiemposEnsamblado(1, 15000),
           serviciosService.ListarMantenimientoPreventivosProgramados().catch(() => ({ data: [] })),
-          serviciosService.getCuboHabilidadesOP().catch(() => ({ data: [] }))
+          serviciosService.getHabilidadesOperadorPorEstacion().catch(() => ({ data: [] }))
         ]);
 
-        setRestricciones((restrs.data || []).filter((r: any) => gIds.includes(r.codigo_grupo)));
+        setRestriccionesArray((restrs.data || []).filter((r: any) => gIds.includes(r.codigo_grupo)));
         setOrders(provs.data?.data || provs.data || []);
         setTiemposEnsamblado(times.data?.data || times.data || []);
         setMantenimientos(maint.data || []);
@@ -165,12 +165,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
     const dims: any = { dens: '—', ancho: '—', largo: '—', esp: '—' };
     
-    // Captura de dimensiones: Ancho x Largo x Espesor
-    const dimMatch = desc.match(/(\d+(?:\.\d+)?)\s*[xX*]\s*(\d+(?:\.\d+)?)(?:\s*[xX*]\s*(\d+(?:\.\d+)?))?/);
-    if (dimMatch) {
-      dims.ancho = dimMatch[1];
-      dims.largo = dimMatch[2];
-      if (dimMatch[3]) dims.esp = dimMatch[3];
+    const dimMatch = desc.match(/(\d+(?:\.\d+)?)\s*[xX*]\s/);
+    const dimFullMatch = desc.match(/(\d+(?:\.\d+)?)\s*[xX*]\s*(\d+(?:\.\d+)?)(?:\s*[xX*]\s*(\d+(?:\.\d+)?))?/);
+    
+    if (dimFullMatch) {
+      dims.ancho = dimFullMatch[1];
+      dims.largo = dimFullMatch[2];
+      if (dimFullMatch[3]) dims.esp = dimFullMatch[3];
     }
     
     const densM = catStr.match(/D(\d+)/i) || desc.match(/D-?(\d+)/i);
@@ -180,7 +181,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   };
 
   /**
-   * --- MOTOR DE CÁLCULO TÉCNICO (COCHE 2m & DESCARGAS POR REP) ---
+   * --- MOTOR DE CÁLCULO TÉCNICO (INGENIERÍA DE PLANTA) ---
    */
   const calculateEngineering = (o: any) => {
     const info = extractMaterialInfo(o);
@@ -190,7 +191,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const esp = parseFloat(info.esp) || 0;
     const densV = parseFloat(info.dens) || 0;
 
-    // 1. Altura Útil según apilamiento de 2 bloques (Capped a 200cm)
+    // 1. Altura Útil según apilamiento de 2 bloques
     const singleBlockH = (densV < 30) ? 103 : 85;
     const stackedH = singleBlockH * 2;
     const usefulH = Math.min(MAX_STACK_HEIGHT_CM, stackedH);
@@ -208,11 +209,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const loads = sbPerLoad > 0 ? Math.ceil(subblocks / sbPerLoad) : 0;
 
     // 5. Tiempos de Maniobra y Proceso (Basado en Segundos)
-    // Carga: 300s por vuelta completa
     const tCargaSec = loads * SECONDS_PER_LOAD_VUELTA; 
     
-    // Descarga: Repeticiones basadas en espesor
-    // > 10: 4 laminas por rep | <= 10: 3 laminas por rep
     const sheetsPerRep = (esp > 10) ? 4 : 3;
     const totalRepsDescarga = sheetsPerRep > 0 ? Math.ceil(qty / sheetsPerRep) : qty;
     const tDescargaSec = totalRepsDescarga * SECONDS_PER_MANEUVER_DESC;
@@ -320,7 +318,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <div className="p-2 bg-primary/10 rounded-xl"><Wind className="w-6 h-6 text-primary" /></div>
           <div>
             <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Programación Táctica Corte Espuma</h2>
-            <p className="text-xs text-gray-500 font-medium">Coche 2m | Descargas por Repetición | Engineering Model v2.0</p>
+            <p className="text-xs text-gray-500 font-medium">Coche 2m | Descargas por Repetición | Engineering Model v2.1</p>
           </div>
         </div>
       </div>
@@ -348,7 +346,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             <div className="flex items-center gap-3">
               <div className="p-2 bg-primary/10 rounded-xl text-primary"><Activity className="w-4 h-4" /></div>
               <div>
-                <p className="text-[9px] font-black uppercase text-gray-400 tracking-widest">Tablero de Mando Diario (Imagen 2)</p>
+                <p className="text-[9px] font-black uppercase text-gray-400 tracking-widest">Tablero de Mando Diario</p>
                 <h3 className="text-[10px] font-black text-gray-700 uppercase">{selectedDate === 'all' ? 'Vista Consolidada' : `Fecha: ${selectedDate}`}</h3>
               </div>
             </div>
@@ -500,7 +498,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           </Card>
         </TabsContent>
 
-        <TabsContent value="ordenes" className="space-y-8 animate-in fade-in duration-300">
+        <TabsContent value="ordenes" className="space-y-10 animate-in fade-in duration-300">
           {[ 
             { t: 'Planta 1000 - Quito', d: provC1000, id: '1000', c: 'text-green-700', b: 'bg-green-600' }, 
             { t: 'Planta 2000 - Guayaquil', d: provC2000, id: '2000', c: 'text-indigo-700', b: 'bg-indigo-600' } 
@@ -526,7 +524,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <th className="px-3 py-4 border-r border-gray-100 font-black text-indigo-700 bg-indigo-50/20">Máquina</th>
                         <th className="px-3 py-4 border-r border-gray-100 bg-blue-50/20 text-blue-900">T. INDIV. (min)</th>
                         <th className="px-3 py-4 border-r border-gray-100 bg-amber-50/50 text-amber-900">T. TOTAL (H)</th>
-                        <th className="px-3 py-4 border-r border-gray-100 bg-green-50/50 text-green-900">T. C/D (min)</th>
+                        <th className="px-3 py-4 border-r border-gray-100 bg-green-50/50 text-green-900">T. C/D (H)</th>
                         <th className="px-2 py-4 border-r border-gray-50 bg-purple-50/50 text-purple-900">SUBBL.</th>
                         <th className="px-2 py-4 border-r border-gray-50 bg-orange-50/50 font-black">BLOQUES 20M</th>
                         <th className="px-3 py-4 border-r border-gray-50 text-red-700 bg-red-50/50 font-black">CARGAS</th>
@@ -540,9 +538,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         const dRaw = String(o.FECHAINICIO || o.FECHA || '—').trim();
                         const date = dRaw.includes('T') ? dRaw.split('T')[0] : dRaw;
                         
-                        // Desglose de Carga y Descarga en minutos
-                        const loadMin = (eng.tCargaSec / 60).toFixed(1);
-                        const unloadMin = (eng.tDescargaSec / 60).toFixed(1);
+                        // Tiempos de Carga y Descarga transformados a HORAS
+                        const loadHours = (eng.tCargaSec / 3600).toFixed(2);
+                        const unloadHours = (eng.tDescargaSec / 3600).toFixed(2);
                         
                         return (
                           <tr key={i} className="hover:bg-gray-50/50">
@@ -558,7 +556,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                             <td className="px-3 py-2 border-r border-gray-100 font-black text-indigo-700 bg-indigo-50/5 uppercase">{String(o.MAQUINA || o.RECURSO || '—')}</td>
                             <td className="px-3 py-2 border-r border-gray-100 bg-blue-50/10 font-mono text-blue-700 text-center">{eng.indivMin.toFixed(2)}</td>
                             <td className="px-3 py-2 border-r border-gray-100 bg-amber-50/10 font-mono text-amber-700 text-center">{eng.hours.toFixed(2)}</td>
-                            <td className="px-3 py-2 border-r border-gray-100 bg-green-50/10 font-mono text-green-700 text-center" title={`${loadMin}m Carga + ${unloadMin}m Descarga`}>{loadMin} + {unloadMin}</td>
+                            <td className="px-3 py-2 border-r border-gray-100 bg-green-50/10 font-mono text-green-700 text-center" title={`${loadHours}h Carga + ${unloadHours}h Descarga`}>{loadHours} + {unloadHours}</td>
                             <td className="px-2 py-2 border-r border-gray-50 bg-purple-50/10 text-purple-700">{eng.subblocks.toFixed(1)}</td>
                             <td className="px-2 py-2 border-r border-gray-50 bg-orange-50/10 font-black text-orange-800">{eng.blocks20m.toFixed(1)}</td>
                             <td className="px-3 py-2 border-r border-gray-50 bg-red-50/20 font-black text-red-600">{String(eng.loads)}</td>
