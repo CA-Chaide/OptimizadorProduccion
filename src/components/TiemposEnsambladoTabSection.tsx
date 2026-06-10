@@ -58,7 +58,7 @@ export const TiemposEnsambladoTabSection: React.FC = () => {
   const [isRespFilterOpen, setIsRespFilterOpen] = useState(false);
   const [isLineaFilterOpen, setIsLineFilterOpen] = useState(false);
   
-  // Paginación
+  // Paginación de visualización (UI)
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(20);
 
@@ -71,12 +71,35 @@ export const TiemposEnsambladoTabSection: React.FC = () => {
       setAvailableCenters(centersFromGroups);
       if (centersFromGroups.length > 0 && !selectedCenter) setSelectedCenter(centersFromGroups[0]);
 
-      // 2. Cargar datos de tiempos
-      const response = await serviciosService.getTiemposEnsamblado(1, 10000);
-      const rawData = Array.isArray(response?.data) ? response.data : [];
-      setAllData(rawData);
+      // 2. Cargar datos de tiempos (Paginado exhaustivo para traer TODO el backend)
+      let allTiempos: TiempoEnsamblado[] = [];
+      let page = 1;
+      let hasMore = true;
+      const pageSize = 10000;
 
-      inspector.captureVariable('tiempos_raw_count', rawData.length);
+      while (hasMore) {
+        const response = await serviciosService.getTiemposEnsamblado(page, pageSize);
+        const rawData = Array.isArray(response?.data) ? response.data : [];
+        allTiempos = [...allTiempos, ...rawData];
+        
+        // Determinar si hay más páginas basado en la respuesta
+        const total = response.totalRegistros || response.totalRecords || 0;
+        if (allTiempos.length >= total || rawData.length < pageSize || total === 0) {
+          hasMore = false;
+        } else {
+          page++;
+        }
+        
+        // Límite de seguridad para evitar bucles infinitos
+        if (page > 50) break; 
+      }
+      
+      setAllData(allTiempos);
+      inspector.captureVariable('tiempos_raw_count', allTiempos.length);
+      
+      if (allTiempos.length > 0) {
+        console.log(`[TiemposEnsamblado] Se cargaron ${allTiempos.length} registros en total.`);
+      }
     } catch (err) {
       addNotification('error', `Error al cargar tiempos de ensamblado: ${(err as Error).message}`);
     } finally {
@@ -170,7 +193,7 @@ export const TiemposEnsambladoTabSection: React.FC = () => {
     return (
       <div className="flex flex-col justify-center items-center py-20 bg-white rounded-lg border border-dashed">
         <Loader2 className="h-10 w-10 animate-spin text-indigo-500" />
-        <span className="mt-4 text-gray-600 font-medium">Cargando tiempos técnicos...</span>
+        <span className="mt-4 text-gray-600 font-medium">Cargando tiempos técnicos (exhaustivo)...</span>
       </div>
     );
   }
@@ -361,6 +384,7 @@ export const TiemposEnsambladoTabSection: React.FC = () => {
                 <option value={10}>10</option>
                 <option value={20}>20</option>
                 <option value={50}>50</option>
+                <option value={100}>100</option>
               </select>
               <span className="text-gray-400">
                 {startIndex + 1} - {Math.min(endIndex, currentViewData.length)} de {currentViewData.length}
