@@ -43,20 +43,23 @@ import { cn } from '@/lib/utils';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, parseISO, addMonths, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
 
-// --- CONSTANTES TÉCNICAS Y DE INGENIERÍA (3.2m / 31.5cm Gap) ---
+/**
+ * --- CONSTANTES DE INGENIERÍA DE PLANTA ---
+ * Basadas en Carrusel de 3.2m de Diámetro
+ */
 const DIAMETER_CM = 320;
-const CIRCUMFERENCE = Math.PI * DIAMETER_CM; // ~1005.31 cm
-const BASE_GAP_CM = 30;
-const MANIPULATION_FACTOR = 1.05; // +5% sobre la DISTANCIA (Gap)
-const EFFECTIVE_GAP_CM = BASE_GAP_CM * MANIPULATION_FACTOR; // 31.5 cm
-const BLOCK_20M_CM = 2000;
-const SECONDS_PER_LOAD = 300; 
-const SECONDS_PER_UNIT = 45;
+const CIRCUMFERENCE = Math.PI * DIAMETER_CM; // ~1005.31 cm (Pista total)
+const BASE_GAP_CM = 30; // Distancia mínima entre bloques
+const MANIPULATION_FACTOR = 1.05; // +5% de tolerancia para maniobras manuales
+const EFFECTIVE_GAP_CM = BASE_GAP_CM * MANIPULATION_FACTOR; // 31.5 cm reales de separación
+const BLOCK_20M_CM = 2000; // Longitud estándar bloque de espuma
+const SECONDS_PER_LOAD = 300; // 5 minutos por cada carga completa de máquina
+const SECONDS_PER_UNIT = 45; // 0.75 minutos por cada unidad descargada/cortada
 
 const RESPONSABLES_QUITO = ["013", "036", "038", "039", "044"];
 const RESPONSABLES_GYE = ["002", "038", "039"];
 
-// Catálogo Base de Recursos
+// Catálogo Base de Recursos para el Resumen Operativo
 const OPERATIVE_BASE = {
   '1000': [
     { maquina: 'CNC01 - CNC Giotto', puesto: 'CNC01', code: 'CNC01' },
@@ -169,6 +172,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return { code, desc, ...dims };
   };
 
+  /**
+   * --- MOTOR DE CÁLCULO TÉCNICO ---
+   */
   const calculateEngineering = (o: any) => {
     const info = extractMaterialInfo(o);
     const qty = safeNum(o.CANTIDAD || o.CANTPROGRAMADA || 0);
@@ -177,22 +183,39 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const esp = parseFloat(info.esp) || 0;
     const densV = parseFloat(info.dens) || 0;
 
+    // 1. Altura Útil del Bloque Madre según Densidad
     const usefulH = (densV < 30) ? 103 : 85;
+    
+    // 2. Cálculo de Subbloques (Rebanadas verticales necesarias)
     const totalH = qty * esp;
     const subblocks = totalH / usefulH;
 
+    // 3. Consumo de Bloques de 20 metros (Longitudinal)
     const piezasPorLargoBloque = Math.floor(BLOCK_20M_CM / largo);
     const blocks20m = piezasPorLargoBloque > 0 ? subblocks / piezasPorLargoBloque : 0;
 
+    // 4. Capacidad del Carrusel (Gap 31.5cm)
     const sbPerLoad = Math.floor(CIRCUMFERENCE / (ancho + EFFECTIVE_GAP_CM));
     const loads = sbPerLoad > 0 ? Math.ceil(subblocks / sbPerLoad) : 0;
 
-    const loadingTimeSec = loads * SECONDS_PER_LOAD;
-    const unloadingTimeSec = qty * SECONDS_PER_UNIT;
+    // 5. Tiempos de Maniobra
+    const loadingTimeSec = loads * SECONDS_PER_LOAD; // 5 min por vuelta
+    const unloadingTimeSec = qty * SECONDS_PER_UNIT; // 45s por pieza
     const totalTimeSec = loadingTimeSec + unloadingTimeSec;
     const hours = totalTimeSec / 3600;
 
-    return { ...info, totalH, subblocks, sbPerLoad, blocks20m, loads, hours, qty, loadingTimeSec, unloadingTimeSec };
+    return { 
+      ...info, 
+      totalH, 
+      subblocks, 
+      sbPerLoad, 
+      blocks20m, 
+      loads, 
+      hours, 
+      qty, 
+      loadingTimeSec, 
+      unloadingTimeSec 
+    };
   };
 
   const filterData = (data: any[], centro: string) => {
@@ -532,7 +555,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         return (
                           <tr key={i} className="hover:bg-gray-50/50">
                             <td className="px-3 py-2 text-slate-400 border-r border-gray-50">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
-                            <td className="px-3 py-2 border-r border-gray-50 font-mono text-[8px] text-gray-400">{date}</td>
+                            <td className="px-3 py-2 border-r border-gray-100 font-mono text-[8px] text-gray-400">{date}</td>
                             <td className="px-3 py-2 font-mono text-primary border-r border-gray-50">{eng.code}</td>
                             <td className="px-3 py-2 text-left border-r border-gray-50 truncate max-w-[120px] uppercase text-gray-500">{eng.desc}</td>
                             <td className="px-2 py-2 border-r border-gray-50 text-gray-400">{eng.dens}</td>
