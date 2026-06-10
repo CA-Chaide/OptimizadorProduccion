@@ -165,7 +165,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
     const dims: any = { dens: '—', ancho: '—', largo: '—', esp: '—' };
     
-    const dimMatch = desc.match(/(\d+(?:\.\d+)?)\s*[xX*]\s/);
     const dimFullMatch = desc.match(/(\d+(?:\.\d+)?)\s*[xX*]\s*(\d+(?:\.\d+)?)(?:\s*[xX*]\s*(\d+(?:\.\d+)?))?/);
     
     if (dimFullMatch) {
@@ -204,7 +203,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const piezasPorLargoBloque = largo > 0 ? Math.floor(BLOCK_20M_CM / largo) : 0;
     const blocks20m = piezasPorLargoBloque > 0 ? (subblocks * 2) / piezasPorLargoBloque : 0;
 
-    // 4. Capacidad del Carrusel (Gap 31.5cm dinámico)
+    // 4. Capacidad del Carrusel (Gap 31.5cm dinámico: 30cm + 5% maniobra)
     const sbPerLoad = ancho > 0 ? Math.floor(CIRCUMFERENCE / (ancho + EFFECTIVE_GAP_CM)) : 1;
     const loads = sbPerLoad > 0 ? Math.ceil(subblocks / sbPerLoad) : 0;
 
@@ -215,7 +214,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const totalRepsDescarga = sheetsPerRep > 0 ? Math.ceil(qty / sheetsPerRep) : qty;
     const tDescargaSec = totalRepsDescarga * SECONDS_PER_MANEUVER_DESC;
 
-    // Tiempo SAP (Asumimos segundos)
+    // Tiempo SAP (Segundos)
     const matchTime = tiemposEnsamblado.find(t => String(t.CodMaterial).slice(-8) === info.code);
     const sapSecPerUnit = safeNum(matchTime?.Tiempo || 0);
     const totalSapSec = qty * sapSecPerUnit;
@@ -254,8 +253,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     });
   };
 
-  const provC1000 = useMemo(() => filterData(ordenes, '1000'), [ordenes, selectedDate]);
-  const provC2000 = useMemo(() => filterData(ordenes, '2000'), [ordenes, selectedDate]);
+  const provC1000 = useMemo(() => filterData(ordenes, '1000'), [ordenes, selectedDate, tiemposEnsamblado]);
+  const provC2000 = useMemo(() => filterData(ordenes, '2000'), [ordenes, selectedDate, tiemposEnsamblado]);
 
   const datesWithOrders = useMemo(() => {
     if (!mounted) return new Set<string>();
@@ -318,7 +317,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <div className="p-2 bg-primary/10 rounded-xl"><Wind className="w-6 h-6 text-primary" /></div>
           <div>
             <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Programación Táctica Corte Espuma</h2>
-            <p className="text-xs text-gray-500 font-medium">Coche 2m | Descargas por Repetición | Engineering Model v2.1</p>
+            <p className="text-xs text-gray-500 font-medium">Coche 2m | Descargas por Repetición | Engineering Model v2.2</p>
           </div>
         </div>
       </div>
@@ -360,7 +359,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                 <div className="bg-white p-3 font-sans text-left">
                   {viewDate && (
                     <>
-                      <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center justify-between mb-3 text-left">
                         <h3 className="text-[10px] font-bold text-gray-800 capitalize">{format(viewDate, 'MMMM yyyy', { locale: es })}</h3>
                         <div className="flex gap-1">
                           <Button variant="ghost" size="icon" onClick={() => setViewDate(subMonths(viewDate, 1))} className="h-6 h-6"><ChevronLeft className="w-3 h-3" /></Button>
@@ -374,7 +373,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                           const dStr = format(day, 'yyyy-MM-dd');
                           const sel = selectedDate === dStr;
                           return (
-                            <button key={dStr} onClick={() => setSelectedDate(sel ? 'all' : dStr)} className={cn("relative h-7 w-7 mx-auto rounded-xl flex items-center justify-center transition-all", sel ? "bg-primary text-white" : "hover:bg-gray-100")}>
+                            <button key={dStr} onClick={() => setSelectedDate(sel ? 'all' : dStr)} className={cn("relative h-7 w-7 mx-auto rounded-xl flex items-center justify-center transition-all", sel ? "bg-primary text-white shadow-md" : "hover:bg-gray-100")}>
                               <span className={cn("text-[10px] font-bold", !datesWithOrders.has(dStr) && !sel ? "text-gray-200" : "")}>{format(day, 'd')}</span>
                               {datesWithOrders.has(dStr) && !sel && <div className="absolute bottom-1 w-1 h-1 bg-primary/40 rounded-full" />}
                             </button>
@@ -383,6 +382,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                       </div>
                     </>
                   )}
+                  <Button variant="ghost" size="sm" className="w-full text-[9px] font-bold uppercase text-primary h-7 mt-1 rounded-lg hover:bg-primary/5" onClick={() => setSelectedDate('all')}>Ver Todo</Button>
                 </div>
               </PopoverContent>
             </Popover>
@@ -475,8 +475,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                     <th className="px-4 py-4 border-r border-amber-100 text-left">Máquina</th>
                     <th className="px-4 py-4 border-r border-amber-100 bg-indigo-50 text-indigo-900">Puesto (SISMAC)</th>
                     <th className="px-4 py-4 border-r border-amber-100">Tiempo (H)</th>
-                    <th className="px-4 py-4 border-r border-amber-100">Fecha Inicio</th>
-                    <th className="px-4 py-4 border-r border-amber-100">Fecha Fin</th>
+                    <th className="px-4 py-4 border-r border-amber-100 text-left">Fecha Inicio</th>
+                    <th className="px-4 py-4 border-r border-amber-100 text-left">Fecha Fin</th>
                     <th className="px-4 py-4">OT ID</th>
                   </tr>
                 </thead>
@@ -487,8 +487,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                       <td className="px-4 py-3 border-r border-gray-100 text-left uppercase">{String(m.MAQUINA || '—')}</td>
                       <td className="px-4 py-3 border-r border-gray-100 bg-indigo-50/20 text-indigo-700 uppercase">{getPuestoMTTO(String(m.ID_MAQUINA))}</td>
                       <td className="px-4 py-3 border-r border-gray-100 font-black text-red-600">{String(m.TIEMPO || '0')}h</td>
-                      <td className="px-4 py-3 border-r border-gray-100 font-mono">{String(m.FECHA_INI || m.FECHA_PRO || '—')}</td>
-                      <td className="px-4 py-3 border-r border-gray-100 font-mono">{String(m.FECHA_FIN || '—')}</td>
+                      <td className="px-4 py-3 border-r border-gray-100 text-left font-mono">{String(m.FECHA_INI || m.FECHA_PRO || '—')}</td>
+                      <td className="px-4 py-3 border-r border-gray-100 text-left font-mono">{String(m.FECHA_FIN || '—')}</td>
                       <td className="px-4 py-3 font-mono">{String(m.OT_PRG_ID || '—')}</td>
                     </tr>
                   ))}
@@ -538,9 +538,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         const dRaw = String(o.FECHAINICIO || o.FECHA || '—').trim();
                         const date = dRaw.includes('T') ? dRaw.split('T')[0] : dRaw;
                         
-                        // Tiempos de Carga y Descarga transformados a HORAS
-                        const loadHours = (eng.tCargaSec / 3600).toFixed(2);
-                        const unloadHours = (eng.tDescargaSec / 3600).toFixed(2);
+                        // Unificación de Tiempos de Maniobra en una sola columna en Horas
+                        const totalCDHours = ((eng.tCargaSec + eng.tDescargaSec) / 3600).toFixed(2);
+                        const cdTooltip = `${(eng.tCargaSec / 3600).toFixed(2)}h Carga + ${(eng.tDescargaSec / 3600).toFixed(2)}h Descarga`;
                         
                         return (
                           <tr key={i} className="hover:bg-gray-50/50">
@@ -556,7 +556,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                             <td className="px-3 py-2 border-r border-gray-100 font-black text-indigo-700 bg-indigo-50/5 uppercase">{String(o.MAQUINA || o.RECURSO || '—')}</td>
                             <td className="px-3 py-2 border-r border-gray-100 bg-blue-50/10 font-mono text-blue-700 text-center">{eng.indivMin.toFixed(2)}</td>
                             <td className="px-3 py-2 border-r border-gray-100 bg-amber-50/10 font-mono text-amber-700 text-center">{eng.hours.toFixed(2)}</td>
-                            <td className="px-3 py-2 border-r border-gray-100 bg-green-50/10 font-mono text-green-700 text-center" title={`${loadHours}h Carga + ${unloadHours}h Descarga`}>{loadHours} + {unloadHours}</td>
+                            <td className="px-3 py-2 border-r border-gray-100 bg-green-50/10 font-mono text-green-700 text-center" title={cdTooltip}>{totalCDHours}</td>
                             <td className="px-2 py-2 border-r border-gray-50 bg-purple-50/10 text-purple-700">{eng.subblocks.toFixed(1)}</td>
                             <td className="px-2 py-2 border-r border-gray-50 bg-orange-50/10 font-black text-orange-800">{eng.blocks20m.toFixed(1)}</td>
                             <td className="px-3 py-2 border-r border-gray-50 bg-red-50/20 font-black text-red-600">{String(eng.loads)}</td>
@@ -583,7 +583,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                     <thead className="bg-[#1e293b] text-white sticky top-0 z-10 uppercase font-black tracking-widest text-[9px]">
                       <tr>
                         <th className="px-5 py-4 border-r border-white/5 text-left">Material</th>
-                        <th className="px-5 py-4 border-r border-white/5 text-left">Descripción</th>
+                        <th className="px-5 py-4 border-r border-white/5 text-left">Descripción Técnica</th>
                         <th className="px-5 py-4 border-r border-white/5">Línea</th>
                         <th className="px-5 py-4 text-teal-400">Estándar (Seg)</th>
                       </tr>
