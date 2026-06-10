@@ -57,6 +57,16 @@ const formatNum = (val: any, decimals: number = 0): string => {
   });
 };
 
+const getProp = (obj: any, keys: string[]): string => {
+  if (!obj) return '';
+  const rowKeys = Object.keys(obj);
+  for (const k of keys) {
+    const found = rowKeys.find(rk => rk.toLowerCase().trim() === k.toLowerCase().trim());
+    if (found) return String(obj[found]).trim();
+  }
+  return '';
+};
+
 export const TacticalPlanFormulacionSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanFormulacion');
   const { addNotification } = useAppContext();
@@ -257,25 +267,22 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     return Array.from(map.entries()).sort();
   }, [unifiedSummaryData]);
 
-  // SEGMENTACIÓN SOLICITADA: f_bloq (CALLE) vs f_bloq_m (BCALL)
+  // SEGMENTACIÓN SOLICITADA: f_bloq (Maquina F_BLOQ && estadoTras CALLE) vs f_bloq_m (Maquina F_BLOQ_M && estadoTras BCALL)
   const curadoGroupsSummary = useMemo(() => {
     const fBloqRows: any[] = [];
     const fBloqMRows: any[] = [];
     
     curadoRows.forEach(row => {
-      const estTras = String(row.estadoTras || row.Estado_Tras || row.ESTADO_TRAS || '').toUpperCase();
+      const maquinaVal = getProp(row, ['Maquina']).toUpperCase();
+      const estadoTrasVal = getProp(row, ['estadoTras', 'Estado_Tras']).toUpperCase();
+      
       const info = extractMaterialInfo({ MATERIAL: row.NomMaterial || row.CodMaterial || '', CATEGORIA: row.NomMaterial || '' });
       const enriched = { ...row, apertura: info.apertura };
       
-      if (estTras.includes('BCALL')) {
+      if (maquinaVal.includes('F_BLOQ_M') && estadoTrasVal.includes('BCALL')) {
         fBloqMRows.push(enriched);
-      } else if (estTras.includes('CALLE')) {
+      } else if (maquinaVal.includes('F_BLOQ') && estadoTrasVal.includes('CALLE')) {
         fBloqRows.push(enriched);
-      } else {
-        // Fallback si no tiene etiqueta explícita
-        const maquinaRaw = String(row.Maquina || '').toUpperCase();
-        if (maquinaRaw.includes('BLOQUE_M')) fBloqMRows.push(enriched);
-        else fBloqRows.push(enriched);
       }
     });
 
@@ -288,7 +295,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       rows.forEach(r => {
         const ap = r.apertura || '—';
         apertureMap.set(ap, (apertureMap.get(ap) || 0) + 1);
-        const estTras = String(r.estadoTras || r.Estado_Tras || r.ESTADO_TRAS || '').toUpperCase();
+        const estTras = getProp(r, ['estadoTras', 'Estado_Tras']).toUpperCase();
         if (estTras.includes('CALLE')) {
           const match = estTras.match(/(?:B)?CALLE[\s_]*\d+/);
           if (match) callesSet.add(match[0]);
@@ -299,8 +306,8 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     };
 
     return [
-      { id: 'f_bloq', label: 'f_bloq (RUTA CALLE - STIRLING)', rows: fBloqRows, stats: getStats(fBloqRows), color: 'bg-indigo-700' },
-      { id: 'f_bloq_m', label: 'f_bloq_m (RUTA BCALL - MANUAL)', rows: fBloqMRows, stats: getStats(fBloqMRows), color: 'bg-orange-700' }
+      { id: 'f_bloq', label: 'F_BLOQ (RUTA CALLE - STIRLING)', rows: fBloqRows, stats: getStats(fBloqRows), color: 'bg-indigo-700' },
+      { id: 'f_bloq_m', label: 'F_BLOQ_M (RUTA BCALL - MANUAL)', rows: fBloqMRows, stats: getStats(fBloqMRows), color: 'bg-orange-700' }
     ];
   }, [curadoRows]);
 
@@ -320,7 +327,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           <div className="p-2 bg-primary/10 rounded-xl"><FlaskConical className="w-6 h-6 text-primary" /></div>
           <div>
             <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Plan Táctico Formulación</h2>
-            <p className="text-xs text-gray-500 font-medium">Control Maestro de Bloques | Auditoría de Stock Curado por Ubicación</p>
+            <p className="text-xs text-gray-500 font-medium">Control Maestro de Bloques | Auditoría Técnica Multinivel</p>
           </div>
         </div>
       </div>
@@ -448,7 +455,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
               <div className="p-3 bg-indigo-500/20 rounded-2xl text-indigo-400"><History className="w-6 h-6" /></div>
               <div>
                 <h3 className="text-md font-black text-white uppercase tracking-tight">Monitor Maestro de Bloques Curados</h3>
-                <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">Segmentación Logística: CALLE (f_bloq) vs BCALL (f_bloq_m)</p>
+                <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">Segmentación Logística: CALLE (F_BLOQ) vs BCALL (F_BLOQ_M)</p>
               </div>
             </div>
             <div className="text-right">
@@ -522,13 +529,12 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                             <th className="px-3 py-3 border-r border-gray-100">orden</th>
                             <th className="px-3 py-3 border-r border-gray-100">CodMaterial</th>
                             <th className="px-4 py-3 border-r border-gray-100 text-left">NomMaterial</th>
-                            <th className="px-3 py-3 border-r border-gray-100 bg-blue-50/50 text-blue-900">APERTURA</th>
                             <th className="px-2 py-3 border-r border-gray-100">C.Proc</th>
                             <th className="px-3 py-3 border-r border-gray-100 text-orange-800">peso</th>
                             <th className="px-3 py-3 border-r border-gray-100">est.2</th>
                             <th className="px-3 py-3 border-r border-gray-100">CodBloque</th>
                             <th className="px-3 py-3 border-r border-gray-100">operador</th>
-                            <th className="px-3 py-3 border-r border-gray-100">Maquina</th>
+                            <th className="px-3 py-3 border-r border-gray-100 text-indigo-700">Maquina</th>
                             <th className="px-3 py-3 border-r border-gray-100 text-indigo-700 bg-indigo-50/30">estadoTras</th>
                             <th className="px-3 py-3 border-r border-gray-100">Stock</th>
                             <th className="px-3 py-3">Dens</th>
@@ -537,26 +543,25 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                         <tbody className="divide-y divide-gray-100 font-bold">
                           {group.rows.map((row, i) => (
                             <tr key={i} className="hover:bg-gray-50/50 transition-colors">
-                              <td className="px-2 py-2 border-r border-gray-100 text-gray-400 font-mono">{String(row.Idbloque)}</td>
-                              <td className="px-2 py-2 border-r border-gray-100 text-gray-500">{String(row.fecha).split('T')[0]}</td>
+                              <td className="px-2 py-2 border-r border-gray-100 text-gray-400 font-mono">{String(row.Idbloque || row.ID_BLOQUE)}</td>
+                              <td className="px-2 py-2 border-r border-gray-100 text-gray-500">{String(row.fecha || row.FECHA).split('T')[0]}</td>
                               <td className="px-2 py-2 border-r border-gray-100 uppercase text-[8px] text-gray-400">{String(row.ESTADO || '—')}</td>
-                              <td className="px-2 py-2 border-r border-gray-100 text-indigo-600 font-mono">{String(row.orden)}</td>
-                              <td className="px-2 py-2 border-r border-gray-100 font-mono text-slate-800">{String(row.CodMaterial)}</td>
-                              <td className="px-3 py-2 border-r border-gray-100 text-left uppercase text-slate-500 truncate max-w-[150px]">{String(row.NomMaterial)}</td>
-                              <td className="px-3 py-2 border-r border-gray-100 font-black text-blue-700 bg-blue-50/5">{row.apertura}</td>
-                              <td className="px-1 py-2 border-r border-gray-100 text-gray-400">{String(row.corridaproceso || '1')}</td>
-                              <td className="px-2 py-2 border-r border-gray-100 font-mono text-orange-700 font-black">{formatNum(row.peso, 1)}</td>
-                              <td className="px-2 py-2 border-r border-gray-100 text-[8px] text-gray-400">{String(row.estado2 || 'CR')}</td>
-                              <td className="px-2 py-2 border-r border-gray-100 font-mono text-purple-700">{String(row.CodBloque)}</td>
-                              <td className="px-2 py-2 border-r border-gray-100 text-gray-400">{String(row.operador)}</td>
-                              <td className="px-2 py-2 border-r border-gray-100 font-black text-[9px] text-indigo-700 uppercase">{String(row.Maquina || '—')}</td>
+                              <td className="px-2 py-2 border-r border-gray-100 text-indigo-600 font-mono">{String(row.orden || row.ORDEN)}</td>
+                              <td className="px-2 py-2 border-r border-gray-100 font-mono text-slate-800">{String(row.CodMaterial || row.COD_MATERIAL)}</td>
+                              <td className="px-3 py-2 border-r border-gray-100 text-left uppercase text-slate-500 truncate max-w-[150px]">{String(row.NomMaterial || row.NOM_MATERIAL)}</td>
+                              <td className="px-1 py-2 border-r border-gray-100 text-gray-400">{String(row.corridaproceso || row.CORRIDA_PROCESO || '1')}</td>
+                              <td className="px-2 py-2 border-r border-gray-100 font-mono text-orange-700 font-black">{formatNum(row.peso || row.PESO, 1)}</td>
+                              <td className="px-2 py-2 border-r border-gray-100 text-[8px] text-gray-400">{String(row.estado2 || row.ESTADO2 || 'CR')}</td>
+                              <td className="px-2 py-2 border-r border-gray-100 font-mono text-purple-700">{String(row.CodBloque || row.COD_BLOQUE)}</td>
+                              <td className="px-2 py-2 border-r border-gray-100 text-gray-400">{String(row.operador || row.OPERADOR)}</td>
+                              <td className="px-2 py-2 border-r border-gray-100 font-black text-[9px] text-indigo-700 uppercase">{String(row.Maquina || row.MAQUINA || '—')}</td>
                               <td className="px-2 py-2 border-r border-gray-100 text-center">
-                                 <Badge variant="outline" className={cn("text-[8px] font-black uppercase tracking-widest", (String(row.estadoTras || '').includes('CALLE')) ? "bg-indigo-600 text-white" : "text-gray-400")}>
-                                    {String(row.estadoTras || '—')}
+                                 <Badge variant="outline" className={cn("text-[8px] font-black uppercase tracking-widest", (String(row.estadoTras || row.Estado_Tras || '').includes('CALLE')) ? "bg-indigo-600 text-white" : "text-gray-400")}>
+                                    {String(row.estadoTras || row.Estado_Tras || '—')}
                                  </Badge>
                               </td>
-                              <td className="px-2 py-2 border-r border-gray-100 text-gray-900 font-mono">{formatNum(row.CantidadStock || 1)}</td>
-                              <td className="px-2 py-2 text-blue-700 font-black">{String(row.Densidad || '—')}</td>
+                              <td className="px-2 py-2 border-r border-gray-100 text-gray-900 font-mono">{formatNum(row.CantidadStock || row.CANTIDAD_STOCK || 1)}</td>
+                              <td className="px-2 py-2 text-blue-700 font-black">{String(row.Densidad || row.DENSIDAD || '—')}</td>
                             </tr>
                           ))}
                         </tbody>
