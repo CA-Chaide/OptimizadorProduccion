@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -38,7 +39,7 @@ import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 import { cn } from '@/lib/utils';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, parseISO, addMonths, subMonths, subDays, isWithinInterval } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, parseISO, addMonths, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 // --- CONSTANTES OPERATIVAS ---
@@ -262,57 +263,22 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     return map;
   }, [unifiedSummaryData]);
 
-  const summaryTotals = useMemo(() => {
-    const base = { bloques1000: 0, bloques2000: 0, totalBloques: 0, planReposicion: 0, byAperture: {} as Record<string, number> };
-    return unifiedSummaryData.reduce((acc, row) => {
-      const ap = row.apertura || 'N/A';
-      acc.byAperture[ap] = (acc.byAperture[ap] || 0) + row.planReposicion;
-      return { 
-        ...acc,
-        bloques1000: acc.bloques1000 + row.bloques1000,
-        bloques2000: acc.bloques2000 + row.bloques2000,
-        totalBloques: acc.totalBloques + row.totalBloques,
-        planReposicion: acc.planReposicion + row.planReposicion
-      };
-    }, base);
-  }, [unifiedSummaryData]);
-
-  // --- LÓGICA DE CURADO: FILTRO 10 DÍAS ATRÁS SEGÚN RUTA Y OBJETO ---
-  const filteredCurado = useMemo(() => {
-    if (!mounted) return [];
-    
-    let target = new Date();
-    if (selectedDate !== 'all') {
-      try {
-        target = parseISO(selectedDate);
-      } catch (e) {
-        target = new Date();
-      }
-    }
-    
-    const limit = subDays(target, 10); // Ventana de 10 días de ingresos
-    
-    return curadoRows.filter(row => {
-      if (!row.fecha) return false;
-      const rowDate = parseISO(String(row.fecha).split('T')[0]);
-      return isWithinInterval(rowDate, { start: limit, end: target });
-    });
-  }, [curadoRows, selectedDate, mounted]);
-
+  // --- LÓGICA DE CURADO: SIN FILTRO DE TIEMPO (VISIBILIDAD TOTAL) ---
   const curadoByGroup = useMemo(() => {
+    if (!mounted) return new Map<string, any[]>();
     const map = new Map<string, any[]>();
-    filteredCurado.forEach(row => {
+    
+    curadoRows.forEach(row => {
       const maquinaRaw = String(row.Maquina || 'SIN RUTA').trim().toUpperCase();
       
       // Clasificación por objetos f_bloq (automático/stirling) y f_bloq_m (manual)
-      let groupKey = 'OTROS RECURSOS';
+      let groupKey = 'f_bloq (SISTEMA STIRLING)';
       if (maquinaRaw.includes('BLOQUE_M')) groupKey = 'f_bloq_m (PROCESO MANUAL)';
-      else if (maquinaRaw.includes('BLOQUE_ST')) groupKey = 'f_bloq (SISTEMA STIRLING)';
-      else if (maquinaRaw !== 'SIN RUTA') groupKey = `OBJETO: ${maquinaRaw}`;
+      else if (!maquinaRaw.includes('BLOQUE_ST') && maquinaRaw !== 'SIN RUTA') groupKey = `OBJETO: ${maquinaRaw}`;
 
       if (!map.has(groupKey)) map.set(groupKey, []);
       
-      // Extraer apertura técnica para la visualización del stock curado
+      // Extraer apertura técnica
       const info = extractMaterialInfo({ 
         MATERIAL: row.NomMaterial || row.CodMaterial || '', 
         CATEGORIA: row.NomMaterial || '' 
@@ -321,7 +287,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       map.get(groupKey)!.push({ ...row, apertura: info.apertura });
     });
     return map;
-  }, [filteredCurado]);
+  }, [curadoRows, mounted]);
 
   if (!mounted) return null;
 
@@ -339,7 +305,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           <div className="p-2 bg-primary/10 rounded-xl"><FlaskConical className="w-6 h-6 text-primary" /></div>
           <div>
             <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Plan Táctico Formulación</h2>
-            <p className="text-xs text-gray-500 font-medium">Control Maestro de Bloques | Auditoría f_bloq / f_bloq_m (10 Días)</p>
+            <p className="text-xs text-gray-500 font-medium">Control Maestro de Bloques | Auditoría de Stock Curado Total</p>
           </div>
         </div>
       </div>
@@ -348,7 +314,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         <TabsList className="grid grid-cols-6 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
           {[ 
             { v: 'resumen', l: 'Capacidad y Carga', i: LayoutDashboard }, 
-            { v: 'curado', l: 'Curado (10 Días)', i: History },
+            { v: 'curado', l: 'Stock Curado', i: History },
             { v: 'grupos', l: 'Grupos', i: Users }, 
             { v: 'restricciones', l: 'Parámetros', i: Lock }, 
             { v: 'ordenes', l: 'Provisionales', i: Package }, 
@@ -410,35 +376,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
             </Popover>
           </div>
 
-          {selectedDate !== 'all' && (
-            <Card className="p-4 border-2 border-primary/10 rounded-2xl shadow-sm bg-primary/5">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <Activity className="w-4 h-4 text-primary" />
-                  <span className="text-xs font-bold uppercase text-gray-600">Estado de Carga Diaria Consolidada</span>
-                </div>
-                <div className="text-right">
-                  {(() => {
-                    const currentLoad = dailyLoadSummary.get(selectedDate) || 0;
-                    const utilization = (currentLoad / MAX_DAILY_BLOCKS) * 100;
-                    return (
-                      <>
-                        <span className="text-lg font-black text-primary">{formatNum(currentLoad)}</span>
-                        <span className="text-xs font-bold text-gray-400"> / {MAX_DAILY_BLOCKS} Bloques</span>
-                        <div className="mt-1">
-                           <Badge className={cn("font-black text-[9px]", utilization <= 100 ? "bg-green-500" : "bg-red-500")}>
-                            {utilization <= 100 ? "DENTRO DE CAPACIDAD" : "SOBRECARGA DETECTADA"}
-                          </Badge>
-                        </div>
-                      </>
-                    );
-                  })()}
-                </div>
-              </div>
-              <Progress value={((dailyLoadSummary.get(selectedDate) || 0) / MAX_DAILY_BLOCKS) * 100} className="h-2 bg-primary/20" />
-            </Card>
-          )}
-
           <div className="space-y-4">
             <h3 className="text-[11px] font-bold uppercase flex items-center gap-2 px-1 tracking-wider text-left text-primary">
               <div className="w-2.5 h-2.5 rounded-full bg-primary" /> Distribución Maestro de Producción por Máquina
@@ -485,68 +422,75 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
             <div className="flex items-center gap-3 text-left">
               <div className="p-2 bg-indigo-600/10 rounded-xl text-indigo-600"><History className="w-5 h-5" /></div>
               <div>
-                <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">Stock de Bloques Curados (Últimos 10 Días)</h3>
+                <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">Stock de Bloques Curados (Visibilidad Total)</h3>
                 <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">
-                  Segmentación por Objetos Técnicos: f_bloq (Stirling) y f_bloq_m (Manual)
+                  Segmentación por Objetos Maestros: f_bloq / f_bloq_m | Apertura Técnica Integrada
                 </p>
               </div>
             </div>
             <div className="flex gap-4">
               <div className="text-right">
-                <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest">Registros Ventana</p>
-                <p className="text-lg font-black text-indigo-700">{filteredCurado.length}</p>
+                <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest">Total en Memoria</p>
+                <p className="text-lg font-black text-indigo-700">{curadoRows.length}</p>
               </div>
               <Badge variant="outline" className="bg-white border-indigo-200 text-indigo-700 font-black text-[10px] uppercase">{totalCurado} Histórico SAP</Badge>
             </div>
           </div>
 
-          <div className="space-y-8">
-            {Array.from(curadoByGroup.entries()).map(([grupo, rows]) => (
-              <div key={grupo} className="space-y-3">
-                <h4 className="text-[10px] font-black uppercase text-gray-400 flex items-center gap-2 px-1 tracking-widest">
-                  <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full" /> {grupo}
-                </h4>
-                <Card className="rounded-2xl border border-gray-100 shadow-md overflow-hidden bg-white">
-                  <div className="overflow-x-auto max-h-[400px]">
-                    <table className="w-full border-collapse text-center font-sans text-[10px]">
-                      <thead className="bg-[#f8fafc] sticky top-0 z-10 text-slate-800 uppercase font-black tracking-tight border-b border-gray-100">
-                        <tr>
-                          <th className="px-4 py-4 border-r border-gray-100">ID Bloque</th>
-                          <th className="px-4 py-4 border-r border-gray-100">Fecha Prod.</th>
-                          <th className="px-4 py-4 border-r border-gray-100">Orden</th>
-                          <th className="px-4 py-4 border-r border-gray-100">Material</th>
-                          <th className="px-4 py-4 border-r border-gray-100 text-left">Descripción</th>
-                          <th className="px-4 py-4 border-r border-gray-100 bg-blue-50/50 text-blue-900">Dens.</th>
-                          <th className="px-4 py-4 border-r border-gray-100 bg-teal-50 text-teal-900">Apertura</th>
-                          <th className="px-4 py-4 border-r border-gray-100">Cód Bloque</th>
-                          <th className="px-4 py-4 border-r border-gray-100 text-orange-800 font-black">Peso (Kg)</th>
-                          <th className="px-4 py-4 border-r border-gray-100">Operador</th>
-                          <th className="px-4 py-4">Estado</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100 font-bold">
-                        {rows.map((row, i) => (
-                          <tr key={i} className="hover:bg-gray-50/50 transition-colors">
-                            <td className="px-3 py-2 border-r border-gray-100 text-gray-400 font-mono">{String(row.Idbloque)}</td>
-                            <td className="px-3 py-2 border-r border-gray-100 text-gray-500 font-black">{String(row.fecha).split('T')[0]}</td>
-                            <td className="px-3 py-2 border-r border-gray-100 text-indigo-600 font-mono">{String(row.orden)}</td>
-                            <td className="px-3 py-2 border-r border-gray-100 font-mono text-slate-800">{String(row.CodMaterial)}</td>
-                            <td className="px-3 py-2 border-r border-gray-100 text-left uppercase text-slate-500 truncate max-w-[200px]" title={row.NomMaterial}>{String(row.NomMaterial)}</td>
-                            <td className="px-3 py-2 border-r border-gray-100 font-black text-blue-800 bg-blue-50/5">{String(row.densidad)}</td>
-                            <td className="px-3 py-2 border-r border-gray-100 font-black text-teal-700 bg-teal-50/20">{row.apertura || '—'}</td>
-                            <td className="px-3 py-2 border-r border-gray-100 font-mono text-purple-700">{String(row.CodBloque)}</td>
-                            <td className="px-3 py-2 border-r border-gray-100 bg-orange-50/5 font-mono text-orange-700 font-black">{formatNum(row.peso, 1)}</td>
-                            <td className="px-3 py-2 border-r border-gray-100 text-gray-400">{String(row.operador)}</td>
-                            <td className="px-3 py-2"><Badge variant="outline" className="text-[9px] font-black uppercase bg-green-50 text-green-700 border-green-200">{String(row.estado)}</Badge></td>
+          {isLoadingCurado ? (
+            <div className="py-20 text-center">
+              <Loader2 className="w-8 h-8 animate-spin mx-auto text-indigo-600" />
+              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-4">Consultando SAP ERP...</p>
+            </div>
+          ) : (
+            <div className="space-y-8">
+              {Array.from(curadoByGroup.entries()).map(([grupo, rows]) => (
+                <div key={grupo} className="space-y-3">
+                  <h4 className="text-[10px] font-black uppercase text-gray-400 flex items-center gap-2 px-1 tracking-widest">
+                    <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full" /> {grupo}
+                  </h4>
+                  <Card className="rounded-2xl border border-gray-100 shadow-md overflow-hidden bg-white">
+                    <div className="overflow-x-auto max-h-[450px]">
+                      <table className="w-full border-collapse text-center font-sans text-[10px]">
+                        <thead className="bg-[#f8fafc] sticky top-0 z-10 text-slate-800 uppercase font-black tracking-tight border-b border-gray-100">
+                          <tr>
+                            <th className="px-4 py-4 border-r border-gray-100">ID Bloque</th>
+                            <th className="px-4 py-4 border-r border-gray-100">Fecha Prod.</th>
+                            <th className="px-4 py-4 border-r border-gray-100">Orden</th>
+                            <th className="px-4 py-4 border-r border-gray-100">Material</th>
+                            <th className="px-4 py-4 border-r border-gray-100 text-left">Descripción</th>
+                            <th className="px-4 py-4 border-r border-gray-100 bg-blue-50/50 text-blue-900">Dens.</th>
+                            <th className="px-4 py-4 border-r border-gray-100 bg-teal-50 text-teal-900">Apertura</th>
+                            <th className="px-4 py-4 border-r border-gray-100">Cód Bloque</th>
+                            <th className="px-4 py-4 border-r border-gray-100 text-orange-800 font-black">Peso (Kg)</th>
+                            <th className="px-4 py-4 border-r border-gray-100">Operador</th>
+                            <th className="px-4 py-4">Estado</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </Card>
-              </div>
-            ))}
-          </div>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100 font-bold">
+                          {rows.map((row, i) => (
+                            <tr key={i} className="hover:bg-gray-50/50 transition-colors">
+                              <td className="px-3 py-2 border-r border-gray-100 text-gray-400 font-mono">{String(row.Idbloque)}</td>
+                              <td className="px-3 py-2 border-r border-gray-100 text-gray-500 font-black">{String(row.fecha).split('T')[0]}</td>
+                              <td className="px-3 py-2 border-r border-gray-100 text-indigo-600 font-mono">{String(row.orden)}</td>
+                              <td className="px-3 py-2 border-r border-gray-100 font-mono text-slate-800">{String(row.CodMaterial)}</td>
+                              <td className="px-3 py-2 border-r border-gray-100 text-left uppercase text-slate-500 truncate max-w-[200px]" title={row.NomMaterial}>{String(row.NomMaterial)}</td>
+                              <td className="px-3 py-2 border-r border-gray-100 font-black text-blue-800 bg-blue-50/5">{String(row.densidad)}</td>
+                              <td className="px-3 py-2 border-r border-gray-100 font-black text-teal-700 bg-teal-50/20">{row.apertura || '—'}</td>
+                              <td className="px-3 py-2 border-r border-gray-100 font-mono text-purple-700">{String(row.CodBloque)}</td>
+                              <td className="px-3 py-2 border-r border-gray-100 bg-orange-50/5 font-mono text-orange-700 font-black">{formatNum(row.peso, 1)}</td>
+                              <td className="px-3 py-2 border-r border-gray-100 text-gray-400">{String(row.operador)}</td>
+                              <td className="px-3 py-2"><Badge variant="outline" className="text-[9px] font-black uppercase bg-green-50 text-green-700 border-green-200">{String(row.estado)}</Badge></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </Card>
+                </div>
+              ))}
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="grupos">
@@ -609,7 +553,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                         <th className="px-2 py-4 border-r border-gray-100">ANCHO</th>
                         <th className="px-2 py-4 border-r border-gray-100">LARGO</th>
                         <th className="px-2 py-4 border-r border-gray-100">ESP.</th>
-                        <th className="px-3 py-4 border-r border-gray-100 bg-blue-50/50 text-blue-900">APERTURA</th>
+                        <th className="px-3 py-4 border-r border-gray-100 bg-blue-50/50 text-blue-900 font-black">APERTURA</th>
                         <th className="px-3 py-4 border-r border-gray-100">Cant.</th>
                         <th className="px-3 py-4 border-r border-gray-100">Máquina</th>
                         <th className="px-3 py-4">ALM.</th>
@@ -629,7 +573,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                             <td className="px-2 py-2 border-r border-gray-100 text-gray-400 font-mono">{info.ancho}</td>
                             <td className="px-2 py-2 border-r border-gray-100 text-gray-400 font-mono">{info.largo}</td>
                             <td className="px-2 py-2 border-r border-gray-100 text-gray-400 font-mono">{info.esp}</td>
-                            <td className="px-3 py-2 border-r border-gray-100 font-bold text-blue-700 bg-blue-50/5">{info.apertura}</td>
+                            <td className="px-3 py-2 border-r border-gray-100 font-black text-blue-700 bg-blue-50/5">{info.apertura}</td>
                             <td className="px-3 py-2 font-bold text-gray-900 border-r border-gray-100">{String(o.CANTIDAD || o.CANTPROGRAMADA || 0)}</td>
                             <td className="px-3 py-2 font-black text-indigo-700 border-r border-gray-100 uppercase">{maquina}</td>
                             <td className="px-3 py-2 font-bold text-gray-200">{o.Almacen || o.ALMACEN || '—'}</td>
@@ -670,8 +614,8 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                               <tr key={i} className="hover:bg-gray-50/50 transition-colors">
                                 <td className="px-4 py-3 font-mono text-primary border-r border-gray-50 text-left">{info.code}</td>
                                 <td className="px-4 py-3 text-left border-r border-gray-50 text-gray-500 uppercase truncate max-w-[280px]">{info.desc}</td>
-                                <td className="px-4 py-3 border-r border-gray-100 font-bold text-gray-400 uppercase">{t.Linea || '—'}</td>
-                                <td className="px-4 py-3 font-mono text-teal-600 bg-teal-50/5">{formatNum(t.Tiempo || 0, 4)}</td>
+                                <td className="px-4 py-3 border-r border-gray-100 font-bold text-gray-400 uppercase">{t.Linea || t.PuestoTrabajoLinea || '—'}</td>
+                                <td className="px-4 py-3 font-mono text-teal-600 bg-teal-50/5">{(t.Tiempo_Min || t.Tiempo || 0).toFixed(4)}</td>
                               </tr>
                             );
                           })
@@ -685,6 +629,13 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           </div>
         </TabsContent>
       </Tabs>
+
+      <div className="px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl flex items-center gap-2">
+        <Info className="w-4 h-4 text-blue-600" />
+        <p className="text-[9px] font-black text-blue-700 uppercase tracking-widest">
+          Nota: Auditoría íntegra basada en el método de explosión jerárquica multinivel de SAP.
+        </p>
+      </div>
     </div>
   );
 };
