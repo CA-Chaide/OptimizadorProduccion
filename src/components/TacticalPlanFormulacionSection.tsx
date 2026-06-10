@@ -116,7 +116,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   const fetchCurado = async () => {
     setIsLoadingCurado(true);
     try {
-      // Cargamos un bloque amplio de datos para el filtro de 8 días
       const res = await serviciosService.getTiemposCuradoBloqueFormulado(1, 10000);
       const data = res.data || [];
       setCuradoRows(Array.isArray(data) ? data : []);
@@ -278,18 +277,17 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     }, base);
   }, [unifiedSummaryData]);
 
-  // --- LÓGICA DE CURADO: FILTRO 8 DÍAS ATRÁS ---
+  // --- LÓGICA DE CURADO: FILTRO 10 DÍAS ATRÁS SEGÚN RUTA ---
   const filteredCurado = useMemo(() => {
     if (selectedDate === 'all' || !mounted) return curadoRows;
     
     try {
       const target = parseISO(selectedDate);
-      const limit = subDays(target, 8);
+      const limit = subDays(target, 10); // Ventana de 10 días solicitada
       
       return curadoRows.filter(row => {
         if (!row.fecha) return false;
         const rowDate = parseISO(String(row.fecha).split('T')[0]);
-        // Solo registros que estén entre Hace 8 Días y Hoy (ventana de maduración)
         return isWithinInterval(rowDate, { start: limit, end: target });
       });
     } catch (e) {
@@ -297,12 +295,17 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     }
   }, [curadoRows, selectedDate, mounted]);
 
-  const curadoByMachine = useMemo(() => {
+  const curadoByRoute = useMemo(() => {
     const map = new Map<string, any[]>();
     filteredCurado.forEach(row => {
-      const m = String(row.Maquina || 'SIN MÁQUINA').trim().toUpperCase();
-      if (!map.has(m)) map.set(m, []);
-      map.get(m)!.push(row);
+      const maquinaRaw = String(row.Maquina || 'SIN RUTA').trim().toUpperCase();
+      let ruta = 'OTROS RECURSOS';
+      if (maquinaRaw.includes('BLOQUE_M')) ruta = 'RUTA: BLOQUE_M (PROCESO MANUAL)';
+      else if (maquinaRaw.includes('BLOQUE_ST')) ruta = 'RUTA: BLOQUE_ST (STIRLING)';
+      else if (maquinaRaw !== 'SIN RUTA') ruta = `RUTA: ${maquinaRaw}`;
+
+      if (!map.has(ruta)) map.set(ruta, []);
+      map.get(ruta)!.push(row);
     });
     return map;
   }, [filteredCurado]);
@@ -323,7 +326,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           <div className="p-2 bg-primary/10 rounded-xl"><FlaskConical className="w-6 h-6 text-primary" /></div>
           <div>
             <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Plan Táctico Formulación</h2>
-            <p className="text-xs text-gray-500 font-medium">Control Maestro de Bloques | Ciclos de Curado: 8 Días</p>
+            <p className="text-xs text-gray-500 font-medium">Control Maestro de Bloques | Auditoría de Curado (10 Días)</p>
           </div>
         </div>
       </div>
@@ -332,7 +335,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         <TabsList className="grid grid-cols-6 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
           {[ 
             { v: 'resumen', l: 'Capacidad y Carga', i: LayoutDashboard }, 
-            { v: 'curado', l: 'Curado (8 Días)', i: History },
+            { v: 'curado', l: 'Curado (10 Días)', i: History },
             { v: 'grupos', l: 'Grupos', i: Users }, 
             { v: 'restricciones', l: 'Parámetros', i: Lock }, 
             { v: 'ordenes', l: 'Provisionales', i: Package }, 
@@ -466,29 +469,29 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
 
         <TabsContent value="curado" className="space-y-6 animate-in fade-in duration-300">
           <div className="flex items-center justify-between bg-indigo-50 p-4 rounded-2xl border border-indigo-100">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 text-left">
               <div className="p-2 bg-indigo-600/10 rounded-xl text-indigo-600"><History className="w-5 h-5" /></div>
               <div>
-                <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter text-left">Monitor de Curado Segmentado por Máquina</h3>
-                <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-0.5 text-left">
-                  {selectedDate === 'all' ? 'Historial Completo' : `Ventana de 8 Días desde: ${selectedDate}`}
+                <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">Monitor de Curado por Ruta Técnica</h3>
+                <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">
+                  {selectedDate === 'all' ? 'Historial Completo' : `Ventana de Maduración (10 Días) desde: ${selectedDate}`}
                 </p>
               </div>
             </div>
             <div className="flex gap-4">
               <div className="text-right">
-                <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest">En Ventana</p>
+                <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest">Bloques en Curado</p>
                 <p className="text-lg font-black text-indigo-700">{filteredCurado.length}</p>
               </div>
-              <Badge variant="outline" className="bg-white border-indigo-200 text-indigo-700 font-black text-[10px]">{totalCurado} Total DB</Badge>
+              <Badge variant="outline" className="bg-white border-indigo-200 text-indigo-700 font-black text-[10px]">{totalCurado} Total SAP</Badge>
             </div>
           </div>
 
           <div className="space-y-8">
-            {Array.from(curadoByMachine.entries()).map(([maquina, rows]) => (
-              <div key={maquina} className="space-y-3">
+            {Array.from(curadoByRoute.entries()).map(([ruta, rows]) => (
+              <div key={ruta} className="space-y-3">
                 <h4 className="text-[10px] font-black uppercase text-gray-400 flex items-center gap-2 px-1 tracking-widest">
-                  <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full" /> MÁQUINA: {maquina}
+                  <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full" /> {ruta}
                 </h4>
                 <Card className="rounded-2xl border border-gray-100 shadow-md overflow-hidden bg-white">
                   <div className="overflow-x-auto max-h-[400px]">
@@ -502,7 +505,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                           <th className="px-4 py-4 border-r border-gray-100 text-left">Descripción</th>
                           <th className="px-4 py-4 border-r border-gray-100 bg-blue-50/50 text-blue-900">Dens.</th>
                           <th className="px-4 py-4 border-r border-gray-100">Cód Bloque</th>
-                          <th className="px-4 py-4 border-r border-gray-100 text-orange-800 font-black">Peso</th>
+                          <th className="px-4 py-4 border-r border-gray-100 text-orange-800 font-black">Peso (Kg)</th>
                           <th className="px-4 py-4 border-r border-gray-100">Operador</th>
                           <th className="px-4 py-4">Estado</th>
                         </tr>
@@ -591,6 +594,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                         <th className="px-2 py-4 border-r border-gray-100">ANCHO</th>
                         <th className="px-2 py-4 border-r border-gray-100">LARGO</th>
                         <th className="px-2 py-4 border-r border-gray-100">ESP.</th>
+                        <th className="px-3 py-4 border-r border-gray-100 bg-blue-50/50 text-blue-900">APERTURA</th>
                         <th className="px-3 py-4 border-r border-gray-100">Cant.</th>
                         <th className="px-3 py-4 border-r border-gray-100">Máquina</th>
                         <th className="px-3 py-4">ALM.</th>
@@ -610,6 +614,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                             <td className="px-2 py-2 border-r border-gray-100 text-gray-400 font-mono">{info.ancho}</td>
                             <td className="px-2 py-2 border-r border-gray-100 text-gray-400 font-mono">{info.largo}</td>
                             <td className="px-2 py-2 border-r border-gray-100 text-gray-400 font-mono">{info.esp}</td>
+                            <td className="px-3 py-2 border-r border-gray-100 font-bold text-blue-700 bg-blue-50/5">{info.apertura}</td>
                             <td className="px-3 py-2 font-bold text-gray-900 border-r border-gray-100">{String(o.CANTIDAD || o.CANTPROGRAMADA || 0)}</td>
                             <td className="px-3 py-2 font-black text-indigo-700 border-r border-gray-100 uppercase">{maquina}</td>
                             <td className="px-3 py-2 font-bold text-gray-200">{o.Almacen || o.ALMACEN || '—'}</td>
@@ -640,7 +645,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                           <th className="px-4 py-4 border-r border-gray-100 text-teal-700">Estándar (Min)</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-gray-50 text-[11px] font-bold">
+                      <tbody className="divide-y divide-gray-100 text-[11px] font-bold">
                         {center.d.length === 0 ? (
                           <tr><td colSpan={4} className="py-12 text-center text-gray-300 font-bold uppercase tracking-widest opacity-30">No hay registros cargados</td></tr>
                         ) : (
