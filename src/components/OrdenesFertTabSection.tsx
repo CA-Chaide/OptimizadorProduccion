@@ -7,10 +7,10 @@ import { restriccionService } from '@/services/restriccion.service';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
 import { operationTracker } from '@/services/OperationTracker';
-import { ClipboardList, Loader2, Search, Home, Database, LayoutGrid, AlertCircle, X } from 'lucide-react';
+import { ClipboardList, Loader2, Search, Home, Database, LayoutGrid, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface OrdenFert {
@@ -39,16 +39,6 @@ interface OrdenFert {
   CANTPROGPESONETO: number;
   SECTOR?: string;
   ETIQUETA?: string;
-  T_ARMADO?: number;
-  T_CERRADO_L1?: number;
-  T_CERRADO1_L2?: number;
-  T_CERRADO2_L2?: number;
-  T_CERRADO_L3?: number;
-  ttArmado?: number;
-  ttCerradoL1?: number;
-  ttCerrado1L2?: number;
-  ttCerrado2L2?: number;
-  ttCerradoL3?: number;
   [key: string]: any;
 }
 
@@ -59,7 +49,6 @@ export const OrdenesFertTabSection: React.FC = () => {
 
   // Estados de Datos
   const [allRawOrders, setAllRawOrders] = useState<OrdenFert[]>([]);
-  const [tiemposLookup, setTiemposLookup] = useState<Map<string, Record<string, number>>>(new Map());
   const [availableCenters, setAvailableCenters] = useState<string[]>([]);
   const [groups, setGroups] = useState<any[]>([]);
   const [restrictions, setRestrictions] = useState<any[]>([]);
@@ -74,10 +63,6 @@ export const OrdenesFertTabSection: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(20);
 
-  const normalizeMaterialCode = (code: string | number): string => {
-    return String(code || '').trim().slice(-8);
-  };
-
   const safeNum = (v: any): number => {
     if (v === null || v === undefined) return 0;
     const n = typeof v === 'string' ? parseFloat(v.replace(/,/g, '').trim()) : Number(v);
@@ -85,7 +70,7 @@ export const OrdenesFertTabSection: React.FC = () => {
   };
 
   const loadData = useCallback(async () => {
-    const opId = operationTracker.startOperation('FertOrders', 'data_load', 'Cargando Órdenes FERT y Tiempos');
+    const opId = operationTracker.startOperation('FertOrders', 'data_load', 'Cargando Órdenes FERT');
     setIsLoading(true);
     
     try {
@@ -97,41 +82,7 @@ export const OrdenesFertTabSection: React.FC = () => {
       const centersFromGroups = [...new Set(groupsData.map((g: any) => String(g.centro).trim()))].sort();
       setAvailableCenters(centersFromGroups);
 
-      // 2. Cargar Tiempos Técnicos (CARGA COMPLETA RECURSIVA)
-      operationTracker.updateOperation(opId, 'running', 'Sincronizando maestra de tiempos técnicos...');
-      
-      let allTiempos: any[] = [];
-      let tPage = 1;
-      let tHasMore = true;
-      const tPageSize = 10000;
-
-      while (tHasMore) {
-        const tRes = await serviciosService.getTiemposEnsamblado(tPage, tPageSize);
-        const tData = Array.isArray(tRes?.data) ? tRes.data : [];
-        allTiempos = [...allTiempos, ...tData];
-        
-        const total = tRes.totalRegistros || tRes.totalRecords || 0;
-        if (allTiempos.length >= total || tData.length < tPageSize || total === 0) {
-          tHasMore = false;
-        } else {
-          tPage++;
-        }
-        if (tPage > 100) break;
-      }
-
-      // Crear mapa de búsqueda con NORMALIZACIÓN de puestos (quitar espacios)
-      const lookup = new Map<string, Record<string, number>>();
-      allTiempos.forEach((t: any) => {
-        const key = `${String(t.Centro).trim()}|${normalizeMaterialCode(t.CodMaterial)}`;
-        if (!lookup.has(key)) lookup.set(key, {});
-        
-        // Normalización: quitar espacios y pasar a mayúsculas
-        const stationKey = String(t.PuestoTrabajo || '').replace(/\s+/g, '').toUpperCase();
-        lookup.get(key)![stationKey] = Number(t.Tiempo_Min) || Number(t.Tiempo) || 0;
-      });
-      setTiemposLookup(lookup);
-
-      // 3. Cargar Órdenes Fert
+      // 2. Cargar Órdenes Fert
       operationTracker.updateOperation(opId, 'running', 'Recuperando órdenes FERT...');
       const firstPageRes = await serviciosService.getOrdenesFert(1, 10000);
       const rawData: any[] = Array.isArray(firstPageRes?.data) ? firstPageRes.data : [];
@@ -148,7 +99,7 @@ export const OrdenesFertTabSection: React.FC = () => {
 
       setAllRawOrders(orders);
 
-      // 4. Cargar Restricciones
+      // 3. Cargar Restricciones
       const restRes = await restriccionService.getAll();
       setRestrictions(restRes?.data || []);
 
@@ -158,7 +109,7 @@ export const OrdenesFertTabSection: React.FC = () => {
     } catch (err) {
       const msg = (err as Error).message;
       operationTracker.failOperation(opId, msg);
-      addNotification('error', `Error en sincronización: ${msg}`);
+      addNotification('error', `Error en carga de datos: ${msg}`);
     } finally {
       setIsLoading(false);
     }
@@ -179,7 +130,7 @@ export const OrdenesFertTabSection: React.FC = () => {
     return rest.valor_restriccion.split(/[,&]/).map((v: string) => v.trim()).filter(Boolean);
   };
 
-  // Enriquecimiento y Agrupación por Centro
+  // Agrupación por Centro
   const filteredDataByCenter = useMemo(() => {
     const grouped: Record<string, OrdenFert[]> = {};
     
@@ -191,39 +142,11 @@ export const OrdenesFertTabSection: React.FC = () => {
         centerOrders = centerOrders.filter(o => allowedResps.includes(String(o.RESPCTRLPROD).trim()));
       }
 
-      grouped[centerId] = centerOrders.map(order => {
-        const matCode = normalizeMaterialCode(order.MATERIAL);
-        const materialKey = `${centerId}|${matCode}`;
-        const stations = tiemposLookup.get(materialKey) || {};
-        
-        const cat = String(order.CATEGORIA || '').toUpperCase();
-        const pend = safeNum(order.CANTPENDIENTE);
-
-        // Búsqueda usando llaves normalizadas (sin espacios)
-        const tArmado = stations['ARMADO'] || 0;
-        const tCerradoL1 = cat.includes('L1') ? (stations['CERRADOL1'] || 0) : 0;
-        const tCerrado1L2 = cat.includes('L2') ? (stations['CERRADO1L2'] || 0) : 0;
-        const tCerrado2L2 = cat.includes('L2') ? (stations['CERRADO2L2'] || 0) : 0;
-        const tCerradoL3 = cat.includes('L3') ? (stations['CERRADOL3'] || 0) : 0;
-
-        return {
-          ...order,
-          T_ARMADO: tArmado,
-          T_CERRADO_L1: tCerradoL1,
-          T_CERRADO1_L2: tCerrado1L2,
-          T_CERRADO2_L2: tCerrado2L2,
-          T_CERRADO_L3: tCerradoL3,
-          ttArmado: tArmado * pend,
-          ttCerradoL1: tCerradoL1 * pend,
-          ttCerrado1L2: tCerrado1L2 * pend,
-          ttCerrado2L2: tCerrado2L2 * pend,
-          ttCerradoL3: tCerradoL3 * pend,
-        };
-      });
+      grouped[centerId] = centerOrders;
     });
 
     return grouped;
-  }, [allRawOrders, availableCenters, groups, restrictions, tiemposLookup]);
+  }, [allRawOrders, availableCenters, groups, restrictions]);
 
   const currentViewOrders = useMemo(() => {
     const base = selectedTab === "raw_view" ? allRawOrders : (filteredDataByCenter[selectedTab] || []);
@@ -243,20 +166,16 @@ export const OrdenesFertTabSection: React.FC = () => {
       acc.prog += safeNum(o.CANTPROGRAMADA);
       acc.entreg += safeNum(o.CANTENTREGADA);
       acc.pend += safeNum(o.CANTPENDIENTE);
-      acc.noti += safeNum(o.CANTNOTIFICADA);
-      acc.ttArm += safeNum(o.ttArmado);
-      acc.ttL1 += safeNum(o.ttCerradoL1);
-      acc.tt1L2 += safeNum(o.ttCerrado1L2);
-      acc.tt2L2 += safeNum(o.ttCerrado2L2);
-      acc.ttL3 += safeNum(o.ttCerradoL3);
       return acc;
-    }, { prog: 0, entreg: 0, pend: 0, noti: 0, ttArm: 0, ttL1: 0, tt1L2: 0, tt2L2: 0, ttL3: 0 });
+    }, { prog: 0, entreg: 0, pend: 0 });
   }, [currentViewOrders]);
 
   const startIndex = (currentPage - 1) * rowsPerPage;
   const endIndex = startIndex + rowsPerPage;
   const totalPagesLocal = Math.max(1, Math.ceil(currentViewOrders.length / rowsPerPage));
   const displayedOrders = currentViewOrders.slice(startIndex, endIndex);
+
+  const formatMaterial = (mat: string) => String(mat || '').replace(/^0+/, '');
 
   return (
     <div className="space-y-6">
@@ -265,7 +184,7 @@ export const OrdenesFertTabSection: React.FC = () => {
           <ClipboardList className="w-6 h-6 text-indigo-600" />
           <div>
             <h3 className="text-xl font-semibold text-gray-800">Órdenes FERT</h3>
-            <p className="text-xs text-gray-500 mt-1">Cálculo de tiempos totales (TT) basado en cantidades pendientes</p>
+            <p className="text-xs text-gray-500 mt-1">Seguimiento de cantidades programadas y pendientes</p>
           </div>
         </div>
         
@@ -303,75 +222,52 @@ export const OrdenesFertTabSection: React.FC = () => {
         </TabsList>
 
         <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
-          <div className="overflow-x-auto" style={{ transform: 'rotateX(180deg)' }}>
-            <div style={{ transform: 'rotateX(180deg)' }}>
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr className="border-b border-gray-300">
-                    <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[80px]">Centro</th>
-                    <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[120px]">Sector</th>
-                    <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[150px]">Etiqueta</th>
-                    <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[100px]">Categoría</th>
-                    <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[120px]">Máquina</th>
-                    <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[100px]">Material</th>
-                    <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[120px]">Fecha</th>
-                    <th colSpan={2} className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Orden / Nombre</th>
-                    <th className="px-3 py-3 text-right text-[10px] font-bold text-gray-700 uppercase bg-gray-100/50 min-w-[60px]">PROG</th>
-                    <th className="px-3 py-3 text-right text-green-700 uppercase bg-green-50/30 min-w-[60px]">ENTREG</th>
-                    <th className="px-3 py-3 text-right text-amber-700 uppercase bg-amber-50/30 min-w-[60px]">PENDIENTE</th>
-                    <th className="px-3 py-3 text-right text-blue-600 uppercase bg-blue-50/30 min-w-[60px]">NOTI</th>
-                    <th className="px-4 py-3 text-right text-[10px] font-bold text-emerald-700 uppercase bg-emerald-50/50">TT ARMADO</th>
-                    <th className="px-4 py-3 text-right text-[10px] font-bold text-emerald-700 uppercase bg-emerald-50/50">TT CERRADO L1</th>
-                    <th className="px-4 py-3 text-right text-[10px] font-bold text-emerald-700 uppercase bg-emerald-50/50">TTCERRADO1 L2</th>
-                    <th className="px-4 py-3 text-right text-[10px] font-bold text-emerald-700 uppercase bg-emerald-50/50">TTCERRADO2 L2</th>
-                    <th className="px-4 py-3 text-right text-[10px] font-bold text-emerald-700 uppercase bg-emerald-50/50">TTCERRADO L3</th>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr className="border-b border-gray-300">
+                  <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[80px]">Centro</th>
+                  <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[120px]">Sector</th>
+                  <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[150px]">Etiqueta</th>
+                  <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[100px]">Categoría</th>
+                  <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[120px]">Máquina</th>
+                  <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[100px]">Material</th>
+                  <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[120px]">Fecha</th>
+                  <th colSpan={2} className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Orden / Nombre</th>
+                  <th className="px-4 py-3 text-right text-[10px] font-bold text-gray-700 uppercase bg-gray-100/50 min-w-[80px]">PROG</th>
+                  <th className="px-4 py-3 text-right text-green-700 uppercase bg-green-50/30 min-w-[80px]">ENTREG</th>
+                  <th className="px-4 py-3 text-right text-amber-700 uppercase bg-amber-50/30 min-w-[80px]">PENDIENTE</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {displayedOrders.length > 0 ? displayedOrders.map((o, idx) => (
+                  <tr key={idx} className="hover:bg-gray-50 text-[10px]">
+                    <td className="px-3 py-2 font-bold text-gray-500">{o.CENTRO}</td>
+                    <td className="px-3 py-2 text-gray-600 truncate max-w-[120px]" title={o.SECTOR}>{o.SECTOR || '-'}</td>
+                    <td className="px-3 py-2 text-gray-600 truncate max-w-[150px]" title={o.ETIQUETA}>{o.ETIQUETA || '-'}</td>
+                    <td className="px-3 py-2 text-gray-600 truncate max-w-[100px]">{o.CATEGORIA || '-'}</td>
+                    <td className="px-3 py-2 font-mono text-gray-600">{o.MAQUINA || '-'}</td>
+                    <td className="px-3 py-2 font-mono text-gray-900 font-bold">{o.MATERIAL}</td>
+                    <td className="px-3 py-2 text-gray-500">{o.FECHA}</td>
+                    <td className="px-3 py-2 font-bold text-indigo-600">{o.ORDEN}</td>
+                    <td className="px-3 py-2 text-gray-600 truncate max-w-[150px]">{o.NOMBRE}</td>
+                    <td className="px-4 py-2 text-right font-bold text-gray-700 bg-gray-100/10">{o.CANTPROGRAMADA.toLocaleString()}</td>
+                    <td className="px-4 py-2 text-right font-bold text-green-600 bg-green-50/10">{o.CANTENTREGADA.toLocaleString()}</td>
+                    <td className="px-4 py-2 text-right font-bold text-amber-600 bg-amber-50/20">{o.CANTPENDIENTE.toLocaleString()}</td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {displayedOrders.length > 0 ? displayedOrders.map((o, idx) => {
-                    const formatTT = (val: number | undefined) => (val !== undefined && !isNaN(val)) ? val.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : '-';
-                    return (
-                      <tr key={idx} className="hover:bg-gray-50 text-[10px]">
-                        <td className="px-3 py-2 font-bold text-gray-500">{o.CENTRO}</td>
-                        <td className="px-3 py-2 text-gray-600 truncate max-w-[120px]" title={o.SECTOR}>{o.SECTOR || '-'}</td>
-                        <td className="px-3 py-2 text-gray-600 truncate max-w-[150px]" title={o.ETIQUETA}>{o.ETIQUETA || '-'}</td>
-                        <td className="px-3 py-2 text-gray-600 truncate max-w-[100px]">{o.CATEGORIA || '-'}</td>
-                        <td className="px-3 py-2 font-mono text-gray-600">{o.MAQUINA || '-'}</td>
-                        <td className="px-3 py-2 font-mono text-gray-900 font-bold">{o.MATERIAL}</td>
-                        <td className="px-3 py-2 text-gray-500">{o.FECHA}</td>
-                        <td className="px-3 py-2 font-bold text-indigo-600">{o.ORDEN}</td>
-                        <td className="px-3 py-2 text-gray-600 truncate max-w-[150px]">{o.NOMBRE}</td>
-                        <td className="px-3 py-2 text-right font-bold">{o.CANTPROGRAMADA}</td>
-                        <td className="px-3 py-2 text-right font-bold text-green-600">{o.CANTENTREGADA}</td>
-                        <td className="px-3 py-2 text-right font-bold text-amber-600 bg-amber-50/20">{o.CANTPENDIENTE}</td>
-                        <td className="px-3 py-2 text-right font-bold text-blue-600">{o.CANTNOTIFICADA}</td>
-                        <td className="px-4 py-2 text-right font-bold text-emerald-700 bg-emerald-50/10">{formatTT(o.ttArmado)}</td>
-                        <td className="px-4 py-2 text-right font-bold text-emerald-700 bg-emerald-50/10">{formatTT(o.ttCerradoL1)}</td>
-                        <td className="px-4 py-2 text-right font-bold text-emerald-700 bg-emerald-50/10">{formatTT(o.tt1L2)}</td>
-                        <td className="px-4 py-2 text-right font-bold text-emerald-700 bg-emerald-50/10">{formatTT(o.tt2L2)}</td>
-                        <td className="px-4 py-2 text-right font-bold text-emerald-700 bg-emerald-50/10">{formatTT(o.ttL3)}</td>
-                      </tr>
-                    );
-                  }) : (
-                    <tr><td colSpan={18} className="px-6 py-12 text-center text-gray-400 italic">No se encontraron órdenes.</td></tr>
-                  )}
-                </tbody>
-                <tfoot className="bg-gray-800 text-white font-bold text-[10px] sticky bottom-0 z-10">
-                  <tr>
-                    <td colSpan={9} className="px-4 py-3 text-right uppercase border-r border-gray-700">TOTALES:</td>
-                    <td className="px-3 py-3 text-right">{totals.prog.toLocaleString()}</td>
-                    <td className="px-3 py-3 text-right text-green-300">{totals.entreg.toLocaleString()}</td>
-                    <td className="px-3 py-3 text-right text-amber-300">{totals.pend.toLocaleString()}</td>
-                    <td className="px-3 py-3 text-right text-blue-300 border-r border-gray-700">{totals.noti.toLocaleString()}</td>
-                    <td className="px-4 py-3 text-right text-emerald-300">{totals.ttArm.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
-                    <td className="px-4 py-3 text-right text-emerald-300">{totals.ttL1.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
-                    <td className="px-4 py-3 text-right text-emerald-300">{totals.tt1L2.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
-                    <td className="px-4 py-3 text-right text-emerald-300">{totals.tt2L2.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
-                    <td className="px-4 py-3 text-right text-emerald-300">{totals.ttL3.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
+                )) : (
+                  <tr><td colSpan={12} className="px-6 py-12 text-center text-gray-400 italic">No se encontraron órdenes.</td></tr>
+                )}
+              </tbody>
+              <tfoot className="bg-gray-800 text-white font-bold text-[10px] sticky bottom-0 z-10">
+                <tr>
+                  <td colSpan={9} className="px-4 py-3 text-right uppercase border-r border-gray-700">TOTALES:</td>
+                  <td className="px-4 py-3 text-right">{totals.prog.toLocaleString()}</td>
+                  <td className="px-4 py-3 text-right text-green-300">{totals.entreg.toLocaleString()}</td>
+                  <td className="px-4 py-3 text-right text-amber-300">{totals.pend.toLocaleString()}</td>
+                </tr>
+              </tfoot>
+            </table>
           </div>
 
           <div className="bg-gray-50 px-6 py-4 border-t flex flex-col sm:flex-row items-center justify-between gap-4">
