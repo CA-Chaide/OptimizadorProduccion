@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -13,8 +12,6 @@ import {
   ClipboardList, 
   UserCheck, 
   Clock, 
-  ListChecks, 
-  CalendarDays, 
   CalendarRange 
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -25,7 +22,6 @@ import { ProvisionalOrdersTabSection } from './ProvisionalOrdersTabSection';
 import { OrdenesFertTabSection } from './OrdenesFertTabSection';
 import { HabilidadesOpTabSection } from './HabilidadesOpTabSection';
 import { TiemposEnsambladoTabSection } from './TiemposEnsambladoTabSection';
-import { ProgDiariaTabSection } from './ProgDiariaTabSection';
 import { PresupuestoProdSemanalTabSection } from './PresupuestoProdSemanalTabSection';
 import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
@@ -104,7 +100,7 @@ export const TacticalPlan2Section: React.FC = () => {
       </div>
       
       <Tabs defaultValue="grupos" className="w-full">
-        <TabsList className="grid w-full grid-cols-9 mb-8">
+        <TabsList className="grid w-full grid-cols-7 mb-8">
           <TabsTrigger value="grupos" className="flex items-center gap-2">
             <Users className="w-4 h-4" />
             Grupos
@@ -132,14 +128,6 @@ export const TacticalPlan2Section: React.FC = () => {
           <TabsTrigger value="fert" className="flex items-center gap-2">
             <ClipboardList className="w-4 h-4" />
             Fert
-          </TabsTrigger>
-          <TabsTrigger value="prog_turnos" className="flex items-center gap-2">
-            <CalendarDays className="w-4 h-4" />
-            prog Turnos
-          </TabsTrigger>
-          <TabsTrigger value="prog_diaria" className="flex items-center gap-2">
-            <ListChecks className="w-4 h-4" />
-            prog Diaria
           </TabsTrigger>
         </TabsList>
 
@@ -283,14 +271,6 @@ export const TacticalPlan2Section: React.FC = () => {
               <OrdenesFertTabSection />
             </CardContent>
           </Card>
-        </TabsContent>
-
-        <TabsContent value="prog_turnos">
-          {/* Pestaña vacía por solicitud del usuario */}
-        </TabsContent>
-
-        <TabsContent value="prog_diaria">
-          {/* Pestaña vacía por solicitud del usuario */}
         </TabsContent>
       </Tabs>
     </div>
