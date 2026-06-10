@@ -19,6 +19,7 @@ interface OrdenFert {
   MATERIAL: string;
   SECTORDESC: string;
   CATEGORIA: string;
+  LINEA?: string;
   NOMBRE: string;
   CANTPROGRAMADA: number;
   CANTENTREGADA: number;
@@ -91,7 +92,8 @@ export const OrdenesFertTabSection: React.FC = () => {
         ...o,
         SECTOR: (o.SECTOR || o.Sector || o.sector || o.SECTORDESC || '').trim().toUpperCase(),
         ETIQUETA: (o.ETIQUETA || o.Etiqueta || o.etiqueta || '').trim(),
-        CATEGORIA: String(o.CATEGORIA || '').trim().toUpperCase()
+        CATEGORIA: String(o.CATEGORIA || '').trim().toUpperCase(),
+        LINEA: (o.LINEA || o.Linea || o.linea || '').trim().toUpperCase()
       })).filter(o => {
         const s = String(o.SECTOR).trim().toUpperCase();
         return s === "01 COLCHONES" || s === "02 BASES";
@@ -155,7 +157,7 @@ export const OrdenesFertTabSection: React.FC = () => {
     return base.filter(o => {
       if (selectedSector !== "ALL" && String(o.SECTOR || '').trim().toUpperCase() !== selectedSector) return false;
       if (term) {
-        return [o.ORDEN, o.MATERIAL, o.NOMBRE, o.PEDIDO, o.SECTOR, o.ETIQUETA, o.CATEGORIA].some(v => String(v || '').toLowerCase().includes(term));
+        return [o.ORDEN, o.MATERIAL, o.NOMBRE, o.PEDIDO, o.SECTOR, o.ETIQUETA, o.CATEGORIA, o.LINEA].some(v => String(v || '').toLowerCase().includes(term));
       }
       return true;
     });
@@ -174,8 +176,6 @@ export const OrdenesFertTabSection: React.FC = () => {
   const endIndex = startIndex + rowsPerPage;
   const totalPagesLocal = Math.max(1, Math.ceil(currentViewOrders.length / rowsPerPage));
   const displayedOrders = currentViewOrders.slice(startIndex, endIndex);
-
-  const formatMaterial = (mat: string) => String(mat || '').replace(/^0+/, '');
 
   return (
     <div className="space-y-6">
@@ -230,6 +230,7 @@ export const OrdenesFertTabSection: React.FC = () => {
                   <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[120px]">Sector</th>
                   <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[150px]">Etiqueta</th>
                   <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[100px]">Categoría</th>
+                  <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[100px]">Línea</th>
                   <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[120px]">Máquina</th>
                   <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[100px]">Material</th>
                   <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[120px]">Fecha</th>
@@ -246,6 +247,7 @@ export const OrdenesFertTabSection: React.FC = () => {
                     <td className="px-3 py-2 text-gray-600 truncate max-w-[120px]" title={o.SECTOR}>{o.SECTOR || '-'}</td>
                     <td className="px-3 py-2 text-gray-600 truncate max-w-[150px]" title={o.ETIQUETA}>{o.ETIQUETA || '-'}</td>
                     <td className="px-3 py-2 text-gray-600 truncate max-w-[100px]">{o.CATEGORIA || '-'}</td>
+                    <td className="px-3 py-2 text-gray-600 truncate max-w-[100px]">{o.LINEA || '-'}</td>
                     <td className="px-3 py-2 font-mono text-gray-600">{o.MAQUINA || '-'}</td>
                     <td className="px-3 py-2 font-mono text-gray-900 font-bold">{o.MATERIAL}</td>
                     <td className="px-3 py-2 text-gray-500">{o.FECHA}</td>
@@ -256,12 +258,12 @@ export const OrdenesFertTabSection: React.FC = () => {
                     <td className="px-4 py-2 text-right font-bold text-amber-600 bg-amber-50/20">{o.CANTPENDIENTE.toLocaleString()}</td>
                   </tr>
                 )) : (
-                  <tr><td colSpan={12} className="px-6 py-12 text-center text-gray-400 italic">No se encontraron órdenes.</td></tr>
+                  <tr><td colSpan={13} className="px-6 py-12 text-center text-gray-400 italic">No se encontraron órdenes.</td></tr>
                 )}
               </tbody>
               <tfoot className="bg-gray-800 text-white font-bold text-[10px] sticky bottom-0 z-10">
                 <tr>
-                  <td colSpan={9} className="px-4 py-3 text-right uppercase border-r border-gray-700">TOTALES:</td>
+                  <td colSpan={10} className="px-4 py-3 text-right uppercase border-r border-gray-700">TOTALES:</td>
                   <td className="px-4 py-3 text-right">{totals.prog.toLocaleString()}</td>
                   <td className="px-4 py-3 text-right text-green-300">{totals.entreg.toLocaleString()}</td>
                   <td className="px-4 py-3 text-right text-amber-300">{totals.pend.toLocaleString()}</td>
