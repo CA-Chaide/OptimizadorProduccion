@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -20,7 +19,8 @@ import {
   Info,
   History,
   TrendingUp,
-  Box
+  Box,
+  Layers
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -43,7 +43,6 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, parseISO, 
 import { es } from 'date-fns/locale';
 
 // --- CONSTANTES OPERATIVAS ---
-const MAX_DAILY_BLOCKS = 36; 
 const BLOCK_LENGTH_METERS = 20;
 
 const safeNum = (val: any): number => {
@@ -115,7 +114,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   };
 
   const fetchCurado = async () => {
-    setIsLoadingCurado(true);
+    setIsHistoryLoading(true);
     try {
       const res = await serviciosService.getTiemposCuradoBloqueFormulado(1, 10000);
       const data = res.data || [];
@@ -217,7 +216,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   const tiemposC1000 = useMemo(() => tiemposEnsamblado.filter(t => String(t.Centro || t.centro || '').trim() === '1000'), [tiemposEnsamblado]);
   const tiemposC2000 = useMemo(() => tiemposEnsamblado.filter(t => String(t.Centro || t.centro || '').trim() === '2000'), [tiemposEnsamblado]);
 
-  const calculateUnifiedSummary = (data1000: any[], data2000: any[]) => {
+  const unifiedSummaryData = useMemo(() => {
     const groupsMap = new Map<string, { 
       fecha: string; maquina: string; dens: string; tipo: string; apertura: string;
       bloques1000: number; bloques2000: number; totalBloques: number;
@@ -249,44 +248,59 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       });
     };
 
-    process(data1000, '1000');
-    process(data2000, '2000');
+    process(provC1000, '1000');
+    process(provC2000, '2000');
 
     return Array.from(groupsMap.values()).sort((a, b) => a.fecha.localeCompare(b.fecha) || a.maquina.localeCompare(b.maquina) || a.dens.localeCompare(b.dens));
-  };
+  }, [provC1000, provC2000]);
 
-  const unifiedSummaryData = useMemo(() => calculateUnifiedSummary(provC1000, provC2000), [provC1000, provC2000]);
-
-  const dailyLoadSummary = useMemo(() => {
+  // --- TOTALES POR APERTURA (RESTAURADO) ---
+  const totalsByAperture = useMemo(() => {
     const map = new Map<string, number>();
-    unifiedSummaryData.forEach(row => map.set(row.fecha, (map.get(row.fecha) || 0) + row.planReposicion));
-    return map;
+    unifiedSummaryData.forEach(row => {
+      const ap = row.apertura || '—';
+      map.set(ap, (map.get(ap) || 0) + row.planReposicion);
+    });
+    return Array.from(map.entries()).sort();
   }, [unifiedSummaryData]);
 
-  // --- LÓGICA DE CURADO: SIN FILTRO DE TIEMPO (VISIBILIDAD TOTAL) ---
-  const curadoByGroup = useMemo(() => {
-    if (!mounted) return new Map<string, any[]>();
-    const map = new Map<string, any[]>();
+  // --- LÓGICA DE CURADO f_bloq / f_bloq_m (CON RESUMEN) ---
+  const curadoGroupsSummary = useMemo(() => {
+    if (!mounted) return [];
+    
+    const stirlingRows: any[] = [];
+    const manualRows: any[] = [];
     
     curadoRows.forEach(row => {
       const maquinaRaw = String(row.Maquina || 'SIN RUTA').trim().toUpperCase();
-      
-      // Clasificación por objetos f_bloq (automático/stirling) y f_bloq_m (manual)
-      let groupKey = 'f_bloq (SISTEMA STIRLING)';
-      if (maquinaRaw.includes('BLOQUE_M')) groupKey = 'f_bloq_m (PROCESO MANUAL)';
-      else if (!maquinaRaw.includes('BLOQUE_ST') && maquinaRaw !== 'SIN RUTA') groupKey = `OBJETO: ${maquinaRaw}`;
-
-      if (!map.has(groupKey)) map.set(groupKey, []);
-      
-      // Extraer apertura técnica
       const info = extractMaterialInfo({ 
         MATERIAL: row.NomMaterial || row.CodMaterial || '', 
         CATEGORIA: row.NomMaterial || '' 
       });
+      const enriched = { ...row, apertura: info.apertura };
       
-      map.get(groupKey)!.push({ ...row, apertura: info.apertura });
+      if (maquinaRaw.includes('BLOQUE_M')) {
+        manualRows.push(enriched);
+      } else {
+        stirlingRows.push(enriched);
+      }
     });
-    return map;
+
+    const getStats = (rows: any[]) => {
+      const count = rows.length;
+      const weight = rows.reduce((s, r) => s + safeNum(r.peso), 0);
+      const apertureMap = new Map<string, number>();
+      rows.forEach(r => {
+        const ap = r.apertura || '—';
+        apertureMap.set(ap, (apertureMap.get(ap) || 0) + 1);
+      });
+      return { count, weight, apertureMap };
+    };
+
+    return [
+      { id: 'f_bloq', label: 'f_bloq (SISTEMA STIRLING)', rows: stirlingRows, stats: getStats(stirlingRows), color: 'bg-indigo-600' },
+      { id: 'f_bloq_m', label: 'f_bloq_m (PROCESO MANUAL)', rows: manualRows, stats: getStats(manualRows), color: 'bg-orange-600' }
+    ];
   }, [curadoRows, mounted]);
 
   if (!mounted) return null;
@@ -305,7 +319,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           <div className="p-2 bg-primary/10 rounded-xl"><FlaskConical className="w-6 h-6 text-primary" /></div>
           <div>
             <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Plan Táctico Formulación</h2>
-            <p className="text-xs text-gray-500 font-medium">Control Maestro de Bloques | Auditoría de Stock Curado Total</p>
+            <p className="text-xs text-gray-500 font-medium">Control Maestro de Bloques | Auditoría de Stock Curado por Apertura</p>
           </div>
         </div>
       </div>
@@ -376,6 +390,22 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
             </Popover>
           </div>
 
+          {/* --- TOTALES POR APERTURA (RESTAURADO) --- */}
+          <div className="grid grid-cols-3 gap-4">
+             {totalsByAperture.map(([ap, total]) => (
+               <Card key={ap} className="p-4 border-none shadow-sm bg-indigo-50/50 flex flex-col items-center justify-center">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-indigo-400 mb-1">Apertura {ap}</p>
+                  <p className="text-2xl font-black text-indigo-700 font-mono">{total}</p>
+                  <p className="text-[9px] font-bold text-indigo-300 uppercase mt-1">Bloques Totales</p>
+               </Card>
+             ))}
+             {totalsByAperture.length === 0 && (
+               <div className="col-span-3 text-center py-4 bg-gray-50 rounded-xl border-2 border-dashed border-gray-100">
+                  <p className="text-[10px] font-black text-gray-300 uppercase tracking-widest">Sin carga por apertura en el período</p>
+               </div>
+             )}
+          </div>
+
           <div className="space-y-4">
             <h3 className="text-[11px] font-bold uppercase flex items-center gap-2 px-1 tracking-wider text-left text-primary">
               <div className="w-2.5 h-2.5 rounded-full bg-primary" /> Distribución Maestro de Producción por Máquina
@@ -383,17 +413,17 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
             <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
               <div className="overflow-x-auto max-h-[500px]">
                 <table className="w-full border-collapse text-center font-sans">
-                  <thead className="bg-[#bde0fe] sticky top-0 z-10 text-[9px] font-black uppercase text-slate-800 border-b border-gray-100">
+                  <thead className="bg-[#1e293b] sticky top-0 z-10 text-[9px] font-black uppercase text-white border-b border-white/5">
                     <tr>
-                      <th className="px-4 py-4 border-r border-gray-100">Fecha</th>
-                      <th className="px-4 py-4 border-r border-gray-100 text-indigo-700 bg-indigo-50/20">MÁQUINA</th>
-                      <th className="px-4 py-4 border-r border-gray-100">Densidad</th>
-                      <th className="px-4 py-4 border-r border-gray-100 text-primary">Tipo</th>
-                      <th className="px-4 py-4 border-r border-gray-100 bg-blue-50/50 text-blue-800">Apertura</th>
-                      <th className="px-4 py-4 border-r border-gray-100 text-green-700 bg-green-50/30">Carga Q (1000)</th>
-                      <th className="px-4 py-4 border-r border-gray-100 text-indigo-700 bg-indigo-50/30">Carga G (2000)</th>
-                      <th className="px-4 py-4 border-r border-gray-100 text-orange-800 font-black bg-orange-50/30">Total Bloques</th>
-                      <th className="px-4 py-4 bg-emerald-50 text-emerald-800 font-black">Plan Reposición</th>
+                      <th className="px-4 py-4 border-r border-white/5">Fecha</th>
+                      <th className="px-4 py-4 border-r border-white/5 text-indigo-300 bg-white/5">MÁQUINA</th>
+                      <th className="px-4 py-4 border-r border-white/5">Densidad</th>
+                      <th className="px-4 py-4 border-r border-white/5 text-primary-foreground">Tipo</th>
+                      <th className="px-4 py-4 border-r border-white/5 bg-blue-500/10 text-blue-200">Apertura</th>
+                      <th className="px-4 py-4 border-r border-white/5 text-green-300 bg-green-500/10">Carga Q (1000)</th>
+                      <th className="px-4 py-4 border-r border-white/5 text-indigo-300 bg-indigo-500/10">Carga G (2000)</th>
+                      <th className="px-4 py-4 border-r border-white/5 text-orange-300 font-black bg-orange-500/10">Total Bloques</th>
+                      <th className="px-4 py-4 bg-emerald-500/20 text-emerald-300 font-black">Plan Reposición</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50 text-[10px]">
@@ -417,42 +447,70 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           </div>
         </TabsContent>
 
-        <TabsContent value="curado" className="space-y-6 animate-in fade-in duration-300">
-          <div className="flex items-center justify-between bg-indigo-50 p-4 rounded-2xl border border-indigo-100">
-            <div className="flex items-center gap-3 text-left">
-              <div className="p-2 bg-indigo-600/10 rounded-xl text-indigo-600"><History className="w-5 h-5" /></div>
+        <TabsContent value="curado" className="space-y-8 animate-in fade-in duration-300">
+          <div className="flex items-center justify-between bg-gray-900 p-5 rounded-2xl border border-white/10 shadow-2xl">
+            <div className="flex items-center gap-4 text-left">
+              <div className="p-3 bg-indigo-500/20 rounded-2xl text-indigo-400"><History className="w-6 h-6" /></div>
               <div>
-                <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">Stock de Bloques Curados (Visibilidad Total)</h3>
-                <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">
-                  Segmentación por Objetos Maestros: f_bloq / f_bloq_m | Apertura Técnica Integrada
+                <h3 className="text-md font-black text-white uppercase tracking-tight">Consolidado de Bloques Curados</h3>
+                <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">
+                  Visibilidad Total SAP | Resumen por Objetos Maestro f_bloq / f_bloq_m
                 </p>
               </div>
             </div>
-            <div className="flex gap-4">
+            <div className="flex gap-6 items-center">
               <div className="text-right">
-                <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest">Total en Memoria</p>
-                <p className="text-lg font-black text-indigo-700">{curadoRows.length}</p>
+                <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest">Registros en Memoria</p>
+                <p className="text-2xl font-black text-indigo-400 font-mono">{curadoRows.length}</p>
               </div>
-              <Badge variant="outline" className="bg-white border-indigo-200 text-indigo-700 font-black text-[10px] uppercase">{totalCurado} Histórico SAP</Badge>
             </div>
           </div>
 
           {isLoadingCurado ? (
-            <div className="py-20 text-center">
-              <Loader2 className="w-8 h-8 animate-spin mx-auto text-indigo-600" />
-              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-4">Consultando SAP ERP...</p>
+            <div className="py-32 text-center">
+              <Loader2 className="w-10 h-10 animate-spin mx-auto text-indigo-500" />
+              <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mt-6 animate-pulse">Sincronizando con SAP ERP...</p>
             </div>
           ) : (
-            <div className="space-y-8">
-              {Array.from(curadoByGroup.entries()).map(([grupo, rows]) => (
-                <div key={grupo} className="space-y-3">
-                  <h4 className="text-[10px] font-black uppercase text-gray-400 flex items-center gap-2 px-1 tracking-widest">
-                    <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full" /> {grupo}
-                  </h4>
+            <div className="space-y-12">
+              {curadoGroupsSummary.map((group) => (
+                <div key={group.id} className="space-y-4">
+                  {/* --- SUMMARY HEADER f_bloq / f_bloq_m --- */}
+                  <div className={cn("p-4 rounded-2xl border flex flex-col md:flex-row items-center justify-between gap-4 text-white shadow-lg", group.color)}>
+                     <div className="flex items-center gap-4">
+                        <div className="p-2 bg-white/10 rounded-xl"><Layers className="w-6 h-6" /></div>
+                        <div>
+                           <h4 className="text-sm font-black uppercase tracking-widest">{group.label}</h4>
+                           <p className="text-[10px] font-bold opacity-60 uppercase mt-0.5">Centro de Consolidación de Ruta</p>
+                        </div>
+                     </div>
+                     <div className="flex gap-8 items-center bg-black/10 p-3 rounded-xl border border-white/5">
+                        <div className="text-center">
+                           <p className="text-[9px] font-black uppercase opacity-60">Bloques</p>
+                           <p className="text-lg font-black font-mono">{group.stats.count}</p>
+                        </div>
+                        <div className="text-center">
+                           <p className="text-[9px] font-black uppercase opacity-60">Peso Total (Kg)</p>
+                           <p className="text-lg font-black font-mono">{group.stats.weight.toLocaleString()}</p>
+                        </div>
+                        <div className="text-center px-4 border-l border-white/10">
+                           <p className="text-[9px] font-black uppercase opacity-60 mb-1">Aperturas</p>
+                           <div className="flex gap-2">
+                              {Array.from(group.stats.apertureMap.entries()).map(([ap, count]) => (
+                                <Badge key={ap} variant="outline" className="bg-white/10 border-white/20 text-white text-[9px] font-black">
+                                   {ap}: {count}
+                                </Badge>
+                              ))}
+                           </div>
+                        </div>
+                     </div>
+                  </div>
+
+                  {/* --- DETAILED TABLE --- */}
                   <Card className="rounded-2xl border border-gray-100 shadow-md overflow-hidden bg-white">
                     <div className="overflow-x-auto max-h-[450px]">
                       <table className="w-full border-collapse text-center font-sans text-[10px]">
-                        <thead className="bg-[#f8fafc] sticky top-0 z-10 text-slate-800 uppercase font-black tracking-tight border-b border-gray-100">
+                        <thead className="bg-[#f1f5f9] sticky top-0 z-10 text-slate-500 uppercase font-black tracking-tight border-b border-gray-200">
                           <tr>
                             <th className="px-4 py-4 border-r border-gray-100">ID Bloque</th>
                             <th className="px-4 py-4 border-r border-gray-100">Fecha Prod.</th>
@@ -468,7 +526,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100 font-bold">
-                          {rows.map((row, i) => (
+                          {group.rows.map((row, i) => (
                             <tr key={i} className="hover:bg-gray-50/50 transition-colors">
                               <td className="px-3 py-2 border-r border-gray-100 text-gray-400 font-mono">{String(row.Idbloque)}</td>
                               <td className="px-3 py-2 border-r border-gray-100 text-gray-500 font-black">{String(row.fecha).split('T')[0]}</td>
@@ -533,12 +591,12 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
 
         <TabsContent value="ordenes" className="space-y-10">
           {[ 
-            { t: 'Planta 1000 - Quito', d: provC1000, id: '1000' }, 
-            { t: 'Planta 2000 - Guayaquil', d: provC2000, id: '2000' } 
+            { t: 'Planta 1000 - Quito', d: provC1000, id: '1000', c: 'text-green-700', b: 'bg-green-600' }, 
+            { t: 'Planta 2000 - Guayaquil', d: provC2000, id: '2000', c: 'text-indigo-700', b: 'bg-indigo-600' } 
           ].map((center, idx) => (
             <div key={idx} className="space-y-4">
-              <h3 className={cn("text-[11px] font-bold uppercase flex items-center gap-2 px-1 text-left", center.id === '1000' ? 'text-green-700' : 'text-indigo-700')}>
-                <div className={cn("w-2 h-2 rounded-full", center.id === '1000' ? 'bg-green-600' : 'bg-indigo-600')} /> {center.t} ({center.d.length} órdenes)
+              <h3 className={cn("text-[11px] font-bold uppercase flex items-center gap-2 px-1 text-left", center.c)}>
+                <div className={cn("w-2 h-2 rounded-full", center.b)} /> {center.t} ({center.d.length} órdenes)
               </h3>
               <Card className="rounded-2xl border border-gray-100 shadow-md overflow-hidden bg-white">
                 <div className="overflow-x-auto max-h-[500px]">
@@ -553,7 +611,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                         <th className="px-2 py-4 border-r border-gray-100">ANCHO</th>
                         <th className="px-2 py-4 border-r border-gray-100">LARGO</th>
                         <th className="px-2 py-4 border-r border-gray-100">ESP.</th>
-                        <th className="px-3 py-4 border-r border-gray-100 bg-blue-50/50 text-blue-900 font-black">APERTURA</th>
+                        <th className="px-3 py-4 border-r border-gray-100 bg-blue-50/50 text-blue-900 font-black uppercase">APERTURA</th>
                         <th className="px-3 py-4 border-r border-gray-100">Cant.</th>
                         <th className="px-3 py-4 border-r border-gray-100">Máquina</th>
                         <th className="px-3 py-4">ALM.</th>
