@@ -94,11 +94,18 @@ export const OrdenesFertTabSection: React.FC = () => {
       // 2. Cargar Órdenes Fert
       operationTracker.updateOperation(opId, 'running', 'Consultando órdenes al servidor...');
       const firstPageRes = await serviciosService.getOrdenesFert(1, 10000);
-      let orders: OrdenFert[] = Array.isArray(firstPageRes?.data) ? firstPageRes.data : [];
+      const rawData: any[] = Array.isArray(firstPageRes?.data) ? firstPageRes.data : [];
       
+      // Normalización de campos clave (Sector y Etiqueta) para evitar problemas de casing en el JSON
+      let orders: OrdenFert[] = rawData.map(o => ({
+        ...o,
+        SECTOR: o.SECTOR || o.Sector || o.sector || o.SECTORDESC || '',
+        ETIQUETA: o.ETIQUETA || o.Etiqueta || o.etiqueta || ''
+      }));
+
       // FILTRO SOLICITADO: Solo sectores "01 COLCHONES" y "02 BASES"
       orders = orders.filter(o => {
-        const sectorStr = String(o.SECTOR || o.SECTORDESC || '').trim().toUpperCase();
+        const sectorStr = String(o.SECTOR).trim().toUpperCase();
         return sectorStr === "01 COLCHONES" || sectorStr === "02 BASES";
       });
 
@@ -199,7 +206,7 @@ export const OrdenesFertTabSection: React.FC = () => {
     const term = searchTerm.toLowerCase().trim();
     
     return base.filter(o => {
-      if (selectedSector !== "ALL" && String(o.SECTOR || o.SECTORDESC || '').trim().toUpperCase() !== selectedSector) return false;
+      if (selectedSector !== "ALL" && String(o.SECTOR || '').trim().toUpperCase() !== selectedSector) return false;
       
       if (term) {
         const matches = [
@@ -208,8 +215,7 @@ export const OrdenesFertTabSection: React.FC = () => {
           o.NOMBRE, 
           o.PEDIDO, 
           o.SECTOR, 
-          o.ETIQUETA,
-          o.SECTORDESC
+          o.ETIQUETA
         ].some(v => String(v || '').toLowerCase().includes(term));
         if (!matches) return false;
       }
@@ -253,7 +259,7 @@ export const OrdenesFertTabSection: React.FC = () => {
             <SelectTrigger className="h-9 w-56 bg-white"><LayoutGrid className="w-3.5 h-3.5 mr-2 text-gray-400" /><SelectValue placeholder="Sector" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="ALL">Todos los Sectores</SelectItem>
-              {[...new Set(allRawOrders.map(o => String(o.SECTOR || o.SECTORDESC || 'N/A').trim().toUpperCase()))].sort().map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+              {[...new Set(allRawOrders.map(o => String(o.SECTOR || 'N/A').trim().toUpperCase()))].sort().map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
             </SelectContent>
           </Select>
 
@@ -310,7 +316,7 @@ export const OrdenesFertTabSection: React.FC = () => {
                     {displayedOrders.length > 0 ? displayedOrders.map((o, idx) => (
                       <tr key={idx} className="hover:bg-gray-50 text-[10px]">
                         <td className="px-3 py-2 font-bold text-gray-500">{o.CENTRO}</td>
-                        <td className="px-3 py-2 text-gray-600 truncate max-w-[120px]" title={o.SECTOR || o.SECTORDESC}>{o.SECTOR || o.SECTORDESC || '-'}</td>
+                        <td className="px-3 py-2 text-gray-600 truncate max-w-[120px]" title={o.SECTOR}>{o.SECTOR || '-'}</td>
                         <td className="px-3 py-2 text-gray-600 truncate max-w-[150px]" title={o.ETIQUETA}>{o.ETIQUETA || '-'}</td>
                         <td className="px-3 py-2 font-mono text-gray-600">{o.MAQUINA || '-'}</td>
                         <td className="px-3 py-2 font-mono text-gray-900 font-bold">{o.MATERIAL}</td>
