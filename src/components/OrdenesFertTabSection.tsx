@@ -229,6 +229,7 @@ export const OrdenesFertTabSection: React.FC = () => {
     return currentViewOrders.reduce((acc, o) => {
       acc.prog += Number(o.CANTPROGRAMADA || 0);
       acc.entreg += Number(o.CANTENTREGADA || 0);
+      acc.pend += Number(o.CANTPENDIENTE || 0);
       acc.noti += Number(o.CANTNOTIFICADA || 0);
       acc.ttArm += Number(o.ttArmado || 0);
       acc.ttL1 += Number(o.ttCerradoL1 || 0);
@@ -236,7 +237,7 @@ export const OrdenesFertTabSection: React.FC = () => {
       acc.tt2L2 += Number(o.ttCerrado2L2 || 0);
       acc.ttL3 += Number(o.ttCerradoL3 || 0);
       return acc;
-    }, { prog: 0, entreg: 0, noti: 0, ttArm: 0, ttL1: 0, tt1L2: 0, tt2L2: 0, ttL3: 0 });
+    }, { prog: 0, entreg: 0, pend: 0, noti: 0, ttArm: 0, ttL1: 0, tt1L2: 0, tt2L2: 0, ttL3: 0 });
   }, [currentViewOrders]);
 
   const startIndex = (currentPage - 1) * rowsPerPage;
@@ -310,6 +311,7 @@ export const OrdenesFertTabSection: React.FC = () => {
                       <th colSpan={2} className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Orden / Nombre</th>
                       <th className="px-3 py-3 text-right text-[10px] font-bold text-gray-700 uppercase bg-gray-100/50 min-w-[60px]">PROG</th>
                       <th className="px-3 py-3 text-right text-green-700 uppercase bg-green-50/30 min-w-[60px]">ENTREG</th>
+                      <th className="px-3 py-3 text-right text-amber-700 uppercase bg-amber-50/30 min-w-[60px]">PENDIENTE</th>
                       <th className="px-3 py-3 text-right text-blue-600 uppercase bg-blue-50/30 min-w-[60px]">NOTI</th>
                       <th className="px-4 py-3 text-right text-[10px] font-bold text-emerald-700 uppercase bg-emerald-50/50">TT ARMADO</th>
                       <th className="px-4 py-3 text-right text-[10px] font-bold text-emerald-700 uppercase bg-emerald-50/50">TT CERRADO L1</th>
@@ -332,6 +334,7 @@ export const OrdenesFertTabSection: React.FC = () => {
                         <td className="px-3 py-2 text-gray-600 truncate max-w-[150px]">{o.NOMBRE}</td>
                         <td className="px-3 py-2 text-right font-bold">{o.CANTPROGRAMADA}</td>
                         <td className="px-3 py-2 text-right font-bold text-green-600">{o.CANTENTREGADA}</td>
+                        <td className="px-3 py-2 text-right font-bold text-amber-600">{o.CANTPENDIENTE}</td>
                         <td className="px-3 py-2 text-right font-bold text-blue-600">{o.CANTNOTIFICADA}</td>
                         <td className="px-4 py-2 text-right font-bold text-emerald-700 bg-emerald-50/10">{o.ttArmado?.toFixed(1) || '-'}</td>
                         <td className="px-4 py-2 text-right font-bold text-emerald-700 bg-emerald-50/10">{o.ttCerradoL1?.toFixed(1) || '-'}</td>
@@ -340,7 +343,7 @@ export const OrdenesFertTabSection: React.FC = () => {
                         <td className="px-4 py-2 text-right font-bold text-emerald-700 bg-emerald-50/10">{o.ttL3?.toFixed(1) || '-'}</td>
                       </tr>
                     )) : (
-                      <tr><td colSpan={17} className="px-6 py-12 text-center text-gray-400 italic">No se encontraron órdenes para los criterios seleccionados.</td></tr>
+                      <tr><td colSpan={18} className="px-6 py-12 text-center text-gray-400 italic">No se encontraron órdenes para los criterios seleccionados.</td></tr>
                     )}
                   </tbody>
                   <tfoot className="bg-gray-800 text-white font-bold text-[10px] sticky bottom-0 z-10">
@@ -348,6 +351,7 @@ export const OrdenesFertTabSection: React.FC = () => {
                       <td colSpan={9} className="px-4 py-3 text-right uppercase border-r border-gray-700">TOTALES FILTRADOS:</td>
                       <td className="px-3 py-3 text-right">{totals.prog.toLocaleString()}</td>
                       <td className="px-3 py-3 text-right text-green-300">{totals.entreg.toLocaleString()}</td>
+                      <td className="px-3 py-3 text-right text-amber-300">{totals.pend.toLocaleString()}</td>
                       <td className="px-3 py-3 text-right text-blue-300 border-r border-gray-700">{totals.noti.toLocaleString()}</td>
                       <td className="px-4 py-3 text-right text-emerald-300">{totals.ttArm.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
                       <td className="px-4 py-3 text-right text-emerald-300">{totals.ttL1.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
