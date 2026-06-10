@@ -514,6 +514,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                             <th className="px-4 py-4 border-r border-gray-100 bg-teal-50 text-teal-900">Apertura</th>
                             <th className="px-4 py-4 border-r border-gray-100">Cód Bloque</th>
                             <th className="px-4 py-4 border-r border-gray-100 text-orange-800 font-black">Peso (Kg)</th>
+                            <th className="px-4 py-4 border-r border-gray-100">Estado Tras</th>
                             <th className="px-4 py-4 border-r border-gray-100">Operador</th>
                             <th className="px-4 py-4">Estado</th>
                           </tr>
@@ -530,6 +531,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                               <td className="px-3 py-2 border-r border-gray-100 font-black text-teal-700 bg-teal-50/20">{row.apertura || '—'}</td>
                               <td className="px-3 py-2 border-r border-gray-100 font-mono text-purple-700">{String(row.CodBloque)}</td>
                               <td className="px-3 py-2 border-r border-gray-100 bg-orange-50/5 font-mono text-orange-700 font-black">{formatNum(row.peso, 1)}</td>
+                              <td className="px-3 py-2 border-r border-gray-100 font-black text-indigo-400 uppercase">{String(row.Estado_Tras || row.ESTADO_TRAS || '—')}</td>
                               <td className="px-3 py-2 border-r border-gray-100 text-gray-400">{String(row.operador)}</td>
                               <td className="px-3 py-2"><Badge variant="outline" className="text-[9px] font-black uppercase bg-green-50 text-green-700 border-green-200">{String(row.estado)}</Badge></td>
                             </tr>
@@ -618,7 +620,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                           <tr key={i} className="hover:bg-gray-50/50 transition-colors">
                             <td className="px-3 py-2 text-gray-500 border-r border-gray-100">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
                             <td className="px-3 py-2 border-r border-gray-100 font-mono text-[9px] text-gray-400">{o.FECHAINICIO || o.FECHA || '—'}</td>
-                            <td className="px-3 py-2 font-mono text-primary border-r border-gray-100">{info.code}</td>
+                            <td className="px-3 py-2 font-mono font-bold text-primary border-r border-gray-100">{info.code}</td>
                             <td className="px-3 py-2 text-left border-r border-gray-50 truncate max-w-[200px] uppercase font-bold text-gray-600">{info.desc}</td>
                             <td className="px-3 py-2 border-r border-gray-100 font-black text-gray-400">{info.dens}</td>
                             <td className="px-2 py-2 border-r border-gray-100 text-gray-400 font-mono">{info.ancho}</td>
