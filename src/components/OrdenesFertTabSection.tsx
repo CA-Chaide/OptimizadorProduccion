@@ -215,7 +215,8 @@ export const OrdenesFertTabSection: React.FC = () => {
           o.NOMBRE, 
           o.PEDIDO, 
           o.SECTOR, 
-          o.ETIQUETA
+          o.ETIQUETA,
+          o.CATEGORIA
         ].some(v => String(v || '').toLowerCase().includes(term));
         if (!matches) return false;
       }
@@ -298,6 +299,7 @@ export const OrdenesFertTabSection: React.FC = () => {
                       <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[80px]">Centro</th>
                       <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[120px]">Sector</th>
                       <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[150px]">Etiqueta</th>
+                      <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[100px]">Categoría</th>
                       <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[120px]">Máquina</th>
                       <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[100px]">Material</th>
                       <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[120px]">Fecha</th>
@@ -318,6 +320,7 @@ export const OrdenesFertTabSection: React.FC = () => {
                         <td className="px-3 py-2 font-bold text-gray-500">{o.CENTRO}</td>
                         <td className="px-3 py-2 text-gray-600 truncate max-w-[120px]" title={o.SECTOR}>{o.SECTOR || '-'}</td>
                         <td className="px-3 py-2 text-gray-600 truncate max-w-[150px]" title={o.ETIQUETA}>{o.ETIQUETA || '-'}</td>
+                        <td className="px-3 py-2 text-gray-600 truncate max-w-[100px]">{o.CATEGORIA || '-'}</td>
                         <td className="px-3 py-2 font-mono text-gray-600">{o.MAQUINA || '-'}</td>
                         <td className="px-3 py-2 font-mono text-gray-900 font-bold">{o.MATERIAL}</td>
                         <td className="px-3 py-2 text-gray-500">{o.FECHA}</td>
@@ -333,12 +336,12 @@ export const OrdenesFertTabSection: React.FC = () => {
                         <td className="px-4 py-2 text-right font-bold text-emerald-700 bg-emerald-50/10">{o.ttCerradoL3?.toFixed(1)}</td>
                       </tr>
                     )) : (
-                      <tr><td colSpan={16} className="px-6 py-12 text-center text-gray-400 italic">No se encontraron órdenes para los criterios seleccionados.</td></tr>
+                      <tr><td colSpan={17} className="px-6 py-12 text-center text-gray-400 italic">No se encontraron órdenes para los criterios seleccionados.</td></tr>
                     )}
                   </tbody>
                   <tfoot className="bg-gray-800 text-white font-bold text-[10px] sticky bottom-0 z-10">
                     <tr>
-                      <td colSpan={8} className="px-4 py-3 text-right uppercase border-r border-gray-700">TOTALES FILTRADOS:</td>
+                      <td colSpan={9} className="px-4 py-3 text-right uppercase border-r border-gray-700">TOTALES FILTRADOS:</td>
                       <td className="px-3 py-3 text-right">{totals.prog.toLocaleString()}</td>
                       <td className="px-3 py-3 text-right text-green-300">{totals.entreg.toLocaleString()}</td>
                       <td className="px-3 py-3 text-right text-blue-300 border-r border-gray-700">{totals.noti.toLocaleString()}</td>
