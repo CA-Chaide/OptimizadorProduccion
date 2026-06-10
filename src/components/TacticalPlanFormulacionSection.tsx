@@ -297,11 +297,12 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         const ap = r.apertura || '—';
         apertureMap.set(ap, (apertureMap.get(ap) || 0) + 1);
 
-        // Calles (Búsqueda de CALLE_ en columna Estado_Tras o Maquina)
-        const estadoTras = String(r.Estado_Tras || r.ESTADO_TRAS || '').toUpperCase();
-        if (estadoTras.includes('CALLE_')) {
-          const match = estadoTras.match(/CALLE_\d+/);
-          if (match) callesSet.add(match[0]);
+        // Calles (Búsqueda de CALLE en columna estadoTras o Maquina)
+        const estadoTras = String(r.estadoTras || r.Estado_Tras || r.ESTADO_TRAS || '').toUpperCase();
+        if (estadoTras.includes('CALLE')) {
+          const match = estadoTras.match(/CALLE[\s_]*\d+/);
+          if (match) callesSet.add(match[0].replace(/\s+/g, '_'));
+          else callesSet.add('CALLE_GEN');
         }
       });
 
@@ -330,7 +331,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           <div className="p-2 bg-primary/10 rounded-xl"><FlaskConical className="w-6 h-6 text-primary" /></div>
           <div>
             <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Plan Táctico Formulación</h2>
-            <p className="text-xs text-gray-500 font-medium">Control Maestro de Bloques | Auditoría de Stock Curado y Ubicaciones (Calles)</p>
+            <p className="text-xs text-gray-500 font-medium">Control Maestro de Bloques | Auditoría de Stock Curado por Calles</p>
           </div>
         </div>
       </div>
@@ -462,14 +463,14 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
             <div className="flex items-center gap-4 text-left">
               <div className="p-3 bg-indigo-500/20 rounded-2xl text-indigo-400"><History className="w-6 h-6" /></div>
               <div>
-                <h3 className="text-md font-black text-white uppercase tracking-tight">Consolidado de Bloques Curados y Ubicaciones</h3>
+                <h3 className="text-md font-black text-white uppercase tracking-tight">Stock Consolidado de Bloques Curados (SAP ERP)</h3>
                 <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">
-                  Visibilidad Total SAP | Segmentación f_bloq - f_bloq_m | Auditoría de Calles de Maduración
+                  Auditoría de Ruta de Proceso | Trazabilidad de Ubicaciones por Calles
                 </p>
               </div>
             </div>
             <div className="text-right">
-              <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest">Bloques Registrados</p>
+              <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest">Total en Inventario</p>
               <p className="text-2xl font-black text-indigo-400 font-mono">{curadoRows.length}</p>
             </div>
           </div>
@@ -489,16 +490,16 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                            <div className="p-2 bg-white/10 rounded-xl"><Layers className="w-6 h-6" /></div>
                            <div>
                               <h4 className="text-sm font-black uppercase tracking-widest">{group.label}</h4>
-                              <p className="text-[10px] font-bold opacity-60 uppercase mt-0.5">Gestión de Ruta de Proceso</p>
+                              <p className="text-[10px] font-bold opacity-60 uppercase mt-0.5">Control de Auditoría Técnica</p>
                            </div>
                         </div>
                         {group.stats.calles.length > 0 && (
                           <div className="flex items-center gap-2 bg-black/20 px-3 py-1.5 rounded-xl border border-white/5">
                              <MapPin className="w-3.5 h-3.5 text-white/70" />
-                             <span className="text-[10px] font-black uppercase tracking-widest">Calles Activas:</span>
+                             <span className="text-[10px] font-black uppercase tracking-widest text-indigo-100">Calles Identificadas:</span>
                              <div className="flex gap-1">
                                 {group.stats.calles.map(calle => (
-                                  <Badge key={calle} variant="outline" className="bg-white/10 border-white/20 text-white text-[9px] font-black px-2">{calle}</Badge>
+                                  <Badge key={calle} variant="outline" className="bg-white/10 border-white/20 text-white text-[9px] font-black px-2 uppercase">{calle}</Badge>
                                 ))}
                              </div>
                           </div>
@@ -507,11 +508,11 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                      
                      <div className="flex gap-8 items-center bg-black/10 p-3 rounded-xl border border-white/5">
                         <div className="text-center min-w-[100px]">
-                           <p className="text-[9px] font-black uppercase opacity-60">Total Bloques</p>
+                           <p className="text-[9px] font-black uppercase opacity-60">Piezas</p>
                            <p className="text-xl font-black font-mono">{group.stats.count}</p>
                         </div>
                         <div className="text-center min-w-[120px] border-l border-white/10">
-                           <p className="text-[9px] font-black uppercase opacity-60">Peso Acumulado</p>
+                           <p className="text-[9px] font-black uppercase opacity-60">Carga (Kg)</p>
                            <p className="text-xl font-black font-mono">{group.stats.weight.toLocaleString()} <span className="text-[10px]">Kg</span></p>
                         </div>
                         <div className="text-left px-4 border-l border-white/10 flex-1">
@@ -519,7 +520,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                            <div className="flex flex-wrap gap-2">
                               {Array.from(group.stats.apertureMap.entries()).map(([ap, count]) => (
                                 <Badge key={ap} variant="outline" className="bg-white/10 border-white/20 text-white text-[9px] font-black px-3 py-1">
-                                   {ap}: {count} piezas
+                                   {ap}: {count} un.
                                 </Badge>
                               ))}
                            </div>
@@ -532,43 +533,49 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                       <table className="w-full border-collapse text-center font-sans text-[10px]">
                         <thead className="bg-[#f1f5f9] sticky top-0 z-10 text-slate-500 uppercase font-black tracking-tight border-b border-gray-200">
                           <tr>
-                            <th className="px-4 py-4 border-r border-gray-100">ID Bloque</th>
-                            <th className="px-4 py-4 border-r border-gray-100">Fecha Prod.</th>
-                            <th className="px-4 py-4 border-r border-gray-100">Orden</th>
-                            <th className="px-4 py-4 border-r border-gray-100">Material</th>
-                            <th className="px-4 py-4 border-r border-gray-100 text-left">Descripción</th>
-                            <th className="px-4 py-4 border-r border-gray-100 bg-blue-50/50 text-blue-900">Dens.</th>
-                            <th className="px-4 py-4 border-r border-gray-100 bg-teal-50 text-teal-900">Apertura</th>
-                            <th className="px-4 py-4 border-r border-gray-100">Cód Bloque</th>
-                            <th className="px-4 py-4 border-r border-gray-100 text-orange-800 font-black">Peso (Kg)</th>
-                            <th className="px-4 py-4 border-r border-gray-100 text-indigo-700 bg-indigo-50/30">Estado Tras / Ubicación</th>
-                            <th className="px-4 py-4 border-r border-gray-100">Operador</th>
-                            <th className="px-4 py-4">Estado</th>
+                            <th className="px-3 py-3 border-r border-gray-100">ID bloque</th>
+                            <th className="px-3 py-3 border-r border-gray-100">fecha</th>
+                            <th className="px-3 py-3 border-r border-gray-100">ESTADO</th>
+                            <th className="px-3 py-3 border-r border-gray-100">orden</th>
+                            <th className="px-3 py-3 border-r border-gray-100">CodMaterial</th>
+                            <th className="px-4 py-3 border-r border-gray-100 text-left">NomMaterial</th>
+                            <th className="px-2 py-3 border-r border-gray-100">C.Proc</th>
+                            <th className="px-3 py-3 border-r border-gray-100 text-orange-800">peso</th>
+                            <th className="px-3 py-3 border-r border-gray-100">est.2</th>
+                            <th className="px-3 py-3 border-r border-gray-100">CodBloque</th>
+                            <th className="px-3 py-3 border-r border-gray-100">operador</th>
+                            <th className="px-3 py-3 border-r border-gray-100">Maquina</th>
+                            <th className="px-3 py-3 border-r border-gray-100 text-indigo-700 bg-indigo-50/30">estadoTras</th>
+                            <th className="px-3 py-3 border-r border-gray-100">Stock</th>
+                            <th className="px-3 py-3">Dens</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100 font-bold">
                           {group.rows.map((row, i) => {
-                            const estadoTras = String(row.Estado_Tras || row.ESTADO_TRAS || '—');
-                            const isCalle = estadoTras.toUpperCase().includes('CALLE_');
+                            const estTras = String(row.estadoTras || row.Estado_Tras || row.ESTADO_TRAS || '—');
+                            const isCalle = estTras.toUpperCase().includes('CALLE');
                             
                             return (
                               <tr key={i} className="hover:bg-gray-50/50 transition-colors">
-                                <td className="px-3 py-2 border-r border-gray-100 text-gray-400 font-mono">{String(row.Idbloque)}</td>
-                                <td className="px-3 py-2 border-r border-gray-100 text-gray-500 font-black">{String(row.fecha).split('T')[0]}</td>
-                                <td className="px-3 py-2 border-r border-gray-100 text-indigo-600 font-mono">{String(row.orden)}</td>
-                                <td className="px-3 py-2 border-r border-gray-100 font-mono text-slate-800">{String(row.CodMaterial)}</td>
-                                <td className="px-3 py-2 border-r border-gray-100 text-left uppercase text-slate-500 truncate max-w-[200px]" title={row.NomMaterial}>{String(row.NomMaterial)}</td>
-                                <td className="px-3 py-2 border-r border-gray-100 font-black text-blue-800 bg-blue-50/5">{String(row.densidad)}</td>
-                                <td className="px-3 py-2 border-r border-gray-100 font-black text-teal-700 bg-teal-50/20">{row.apertura || '—'}</td>
-                                <td className="px-3 py-2 border-r border-gray-100 font-mono text-purple-700">{String(row.CodBloque)}</td>
-                                <td className="px-3 py-2 border-r border-gray-100 bg-orange-50/5 font-mono text-orange-700 font-black">{formatNum(row.peso, 1)}</td>
-                                <td className="px-3 py-2 border-r border-gray-100">
-                                   <Badge variant={isCalle ? "default" : "outline"} className={cn("text-[9px] font-black uppercase tracking-widest", isCalle ? "bg-indigo-600 text-white" : "text-gray-400")}>
-                                      {estadoTras}
+                                <td className="px-2 py-2 border-r border-gray-100 text-gray-400 font-mono">{String(row.Idbloque)}</td>
+                                <td className="px-2 py-2 border-r border-gray-100 text-gray-500">{String(row.fecha).split('T')[0]}</td>
+                                <td className="px-2 py-2 border-r border-gray-100 uppercase text-[8px] text-gray-400">{String(row.ESTADO || row.estado || '—')}</td>
+                                <td className="px-2 py-2 border-r border-gray-100 text-indigo-600 font-mono">{String(row.orden)}</td>
+                                <td className="px-2 py-2 border-r border-gray-100 font-mono text-slate-800">{String(row.CodMaterial)}</td>
+                                <td className="px-3 py-2 border-r border-gray-100 text-left uppercase text-slate-500 truncate max-w-[150px]" title={row.NomMaterial}>{String(row.NomMaterial)}</td>
+                                <td className="px-1 py-2 border-r border-gray-100 text-gray-400">{String(row.corridaproceso || '1')}</td>
+                                <td className="px-2 py-2 border-r border-gray-100 bg-orange-50/5 font-mono text-orange-700 font-black">{formatNum(row.peso, 1)}</td>
+                                <td className="px-2 py-2 border-r border-gray-100 text-[8px] text-gray-400">{String(row.estado2 || 'CR')}</td>
+                                <td className="px-2 py-2 border-r border-gray-100 font-mono text-purple-700">{String(row.CodBloque)}</td>
+                                <td className="px-2 py-2 border-r border-gray-100 text-gray-400">{String(row.operador)}</td>
+                                <td className="px-2 py-2 border-r border-gray-100 font-black text-[9px] text-indigo-700 uppercase">{String(row.Maquina || '—')}</td>
+                                <td className="px-2 py-2 border-r border-gray-100">
+                                   <Badge variant={isCalle ? "default" : "outline"} className={cn("text-[8px] font-black uppercase tracking-widest", isCalle ? "bg-indigo-600 text-white" : "text-gray-400")}>
+                                      {estTras}
                                    </Badge>
                                 </td>
-                                <td className="px-3 py-2 border-r border-gray-100 text-gray-400">{String(row.operador)}</td>
-                                <td className="px-3 py-2"><Badge variant="outline" className="text-[9px] font-black uppercase bg-green-50 text-green-700 border-green-200">{String(row.estado)}</Badge></td>
+                                <td className="px-2 py-2 border-r border-gray-100 text-gray-900 font-mono">{formatNum(row.CantidadStock || 1)}</td>
+                                <td className="px-2 py-2 text-blue-700 font-black">{String(row.Densidad || row.densidad || '—')}</td>
                               </tr>
                             );
                           })}
