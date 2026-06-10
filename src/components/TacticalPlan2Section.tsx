@@ -283,7 +283,10 @@ export const TacticalPlan2Section: React.FC = () => {
               <CardTitle>Programación de Tiempos (Ensamblado)</CardTitle>
             </CardHeader>
             <CardContent>
-              <TiemposEnsambladoTabSection allowedLines={['LINEA 1', 'LINEA 2', 'LINEA 3', 'LINEA 5']} />
+              <TiemposEnsambladoTabSection 
+                allowedLines={['LINEA 1', 'LINEA 2', 'LINEA 3', 'LINEA 5']} 
+                isCompact={true}
+              />
             </CardContent>
           </Card>
         </TabsContent>

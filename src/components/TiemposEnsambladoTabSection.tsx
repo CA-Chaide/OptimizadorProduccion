@@ -44,9 +44,10 @@ interface TiempoEnsamblado {
 
 interface TiemposEnsambladoTabSectionProps {
   readonly allowedLines?: string[];
+  readonly isCompact?: boolean;
 }
 
-export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionProps> = ({ allowedLines }) => {
+export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionProps> = ({ allowedLines, isCompact = false }) => {
   const inspector = useRuntimeInspector('TiemposEnsambladoTab');
   const { addNotification } = useAppContext();
   const hasStarted = useRef(false);
@@ -229,33 +230,35 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
         
         <div className="flex flex-wrap items-center gap-3">
           {/* Filtro Responsable */}
-          <Popover open={isRespFilterOpen} onOpenChange={setIsRespFilterOpen}>
-            <PopoverTrigger asChild>
-              <Button variant="outline" size="sm" className="h-9 w-56 justify-between bg-white font-normal text-xs">
-                <div className="flex items-center gap-2 truncate">
-                  <UserCircle className="w-3.5 h-3.5 text-gray-400" />
-                  <span className="truncate">
-                    {selectedResponsables.length === 0 ? "Responsables" : `${selectedResponsables.length} responsables`}
-                  </span>
-                </div>
-                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-64 p-0" align="end">
-              <Command>
-                <CommandInput placeholder="Buscar responsable..." className="h-8 text-xs" />
-                <CommandEmpty>No encontrado.</CommandEmpty>
-                <CommandGroup className="max-h-64 overflow-y-auto">
-                  {responsablesDisponibles.map((resp) => (
-                    <CommandItem key={resp} value={resp} onSelect={() => toggleResponsable(resp)} className="text-xs">
-                      <Check className={cn("mr-2 h-3.5 w-3.5", selectedResponsables.includes(resp) ? "opacity-100" : "opacity-0")} />
-                      {resp}
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
-              </Command>
-            </PopoverContent>
-          </Popover>
+          {!isCompact && (
+            <Popover open={isRespFilterOpen} onOpenChange={setIsRespFilterOpen}>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="h-9 w-56 justify-between bg-white font-normal text-xs">
+                  <div className="flex items-center gap-2 truncate">
+                    <UserCircle className="w-3.5 h-3.5 text-gray-400" />
+                    <span className="truncate">
+                      {selectedResponsables.length === 0 ? "Responsables" : `${selectedResponsables.length} responsables`}
+                    </span>
+                  </div>
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-64 p-0" align="end">
+                <Command>
+                  <CommandInput placeholder="Buscar responsable..." className="h-8 text-xs" />
+                  <CommandEmpty>No encontrado.</CommandEmpty>
+                  <CommandGroup className="max-h-64 overflow-y-auto">
+                    {responsablesDisponibles.map((resp) => (
+                      <CommandItem key={resp} value={resp} onSelect={() => toggleResponsable(resp)} className="text-xs">
+                        <Check className={cn("mr-2 h-3.5 w-3.5", selectedResponsables.includes(resp) ? "opacity-100" : "opacity-0")} />
+                        {resp}
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </Command>
+              </PopoverContent>
+            </Popover>
+          )}
 
           {/* Filtro Línea */}
           <Popover open={isLineaFilterOpen} onOpenChange={setIsLineFilterOpen}>
@@ -348,15 +351,19 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
                     <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Línea</th>
                     <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Puesto Trabajo</th>
                     <th className="px-4 py-3 text-right text-[10px] font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50/30">Tiempo (min)</th>
-                    <th className="px-4 py-3 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider">Stock Act.</th>
-                    <th className="px-4 py-3 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider">Stock Seg.</th>
-                    <th className="px-4 py-3 text-center text-[10px] font-bold text-gray-500 uppercase tracking-wider">Aprov.</th>
-                    <th className="px-4 py-3 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider">Lote Mín.</th>
-                    <th className="px-4 py-3 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider">Lote Máx.</th>
-                    <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Responsable</th>
+                    {!isCompact && (
+                      <>
+                        <th className="px-4 py-3 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider">Stock Act.</th>
+                        <th className="px-4 py-3 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider">Stock Seg.</th>
+                        <th className="px-4 py-3 text-center text-[10px] font-bold text-gray-500 uppercase tracking-wider">Aprov.</th>
+                        <th className="px-4 py-3 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider">Lote Mín.</th>
+                        <th className="px-4 py-3 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider">Lote Máx.</th>
+                        <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Responsable</th>
+                      </>
+                    )}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-200">
+                <tbody className="divide-y divide-gray-100">
                   {displayedData.length > 0 ? displayedData.map((row, idx) => (
                     <tr key={`${row.CodMaterial}-${idx}`} className="hover:bg-gray-50 transition-colors">
                       <td className="px-4 py-3 whitespace-nowrap text-xs font-mono font-bold text-gray-900">{formatMaterial(row.CodMaterial)}</td>
@@ -365,20 +372,24 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
                       <td className="px-4 py-3 whitespace-nowrap text-xs font-bold text-right text-indigo-600 bg-indigo-50/10">
                         {Number(row.Tiempo_Min || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 })}
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-xs text-right text-gray-500">{row.StockActual}</td>
-                      <td className="px-4 py-3 whitespace-nowrap text-xs text-right text-gray-700 font-semibold">{row.StockSeguridad}</td>
-                      <td className="px-4 py-3 whitespace-nowrap text-center">
-                        <Badge variant="outline" className="text-[10px] font-bold bg-blue-50 text-blue-700">{row.ClaseAprovisionam}</Badge>
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-[10px] text-right text-gray-500">{row.TamLoteMin}</td>
-                      <td className="px-4 py-3 whitespace-nowrap text-[10px] text-right text-gray-500">{row.TamLoteMax || '-'}</td>
-                      <td className="px-4 py-3 whitespace-nowrap text-[10px] text-gray-600 truncate max-w-[150px]" title={row.NombRespControlProd}>
-                        {row.NombRespControlProd}
-                      </td>
+                      {!isCompact && (
+                        <>
+                          <td className="px-4 py-3 whitespace-nowrap text-xs text-right text-gray-500">{row.StockActual}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-xs text-right text-gray-700 font-semibold">{row.StockSeguridad}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-center">
+                            <Badge variant="outline" className="text-[10px] font-bold bg-blue-50 text-blue-700">{row.ClaseAprovisionam}</Badge>
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-[10px] text-right text-gray-500">{row.TamLoteMin}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-[10px] text-right text-gray-500">{row.TamLoteMax || '-'}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-[10px] text-gray-600 truncate max-w-[150px]" title={row.NombRespControlProd}>
+                            {row.NombRespControlProd}
+                          </td>
+                        </>
+                      )}
                     </tr>
                   )) : (
                     <tr>
-                      <td colSpan={10} className="px-6 py-12 text-center text-gray-400 italic">
+                      <td colSpan={isCompact ? 4 : 10} className="px-6 py-12 text-center text-gray-400 italic">
                         <div className="flex flex-col items-center justify-center gap-2">
                           <AlertCircle className="w-8 h-8 text-gray-300" />
                           <span>No se encontraron registros de tiempos.</span>
@@ -405,7 +416,7 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
                 <option value={100}>100</option>
               </select>
               <span className="text-gray-400">
-                {startIndex + 1} - {Math.min(endIndex, currentViewData.length)} de {currentViewData.length}
+                {startIndex + 1} - {Math.min(startIndex + rowsPerPage, currentViewData.length)} de {currentViewData.length}
               </span>
             </div>
 
