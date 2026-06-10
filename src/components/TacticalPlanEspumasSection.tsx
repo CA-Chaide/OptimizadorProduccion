@@ -20,7 +20,8 @@ import {
   GraduationCap,
   Search,
   History,
-  AlertCircle
+  AlertCircle,
+  ShoppingCart
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -46,7 +47,7 @@ import { es } from 'date-fns/locale';
 const DIAMETER_CM = 320;
 const CIRCUMFERENCE = Math.PI * DIAMETER_CM; // ~1005.31 cm
 const BASE_GAP_CM = 30;
-const MANIPULATION_FACTOR = 1.05; // +5% solo en distancia física
+const MANIPULATION_FACTOR = 1.05; // +5% sobre la distancia (Gap)
 const EFFECTIVE_GAP_CM = BASE_GAP_CM * MANIPULATION_FACTOR; // 31.5 cm
 const BLOCK_20M_CM = 2000;
 const SECONDS_PER_LOAD = 300; 
@@ -57,15 +58,15 @@ const RESPONSABLES_GYE = ["002", "038", "039"];
 
 const OPERATIVE_RESOURCES = {
   '1000': [
-    { code: 'CR04', name: 'Carrusel 4', t1: 10, t2: 8.5, p: 2.04, rend: 0.90 },
-    { code: 'CR03', name: 'Carrusel 3', t1: 10, t2: 8.5, p: 2.04, rend: 0.90 },
-    { code: 'CR01', name: 'Carrusel 1', t1: 4, t2: 8.5, p: 2.04, rend: 0.90 },
-    { code: 'CNC01', name: 'CNC Giotto', t1: 10, t2: 8.5, p: 2.04, rend: 0.90 },
+    { code: 'CR04', name: 'Carrusel 4', t1: 10, t2: 8.5 },
+    { code: 'CR03', name: 'Carrusel 3', t1: 10, t2: 8.5 },
+    { code: 'CR01', name: 'Carrusel 1 (HR-CAR01)', t1: 4, t2: 8.5 },
+    { code: 'CNC01', name: 'CNC Giotto', t1: 10, t2: 8.5 },
   ],
   '2000': [
-    { code: 'CR02', name: 'Fema', t1: 10, t2: 8.5, p: 2.04, rend: 0.70 },
-    { code: 'CR01', name: 'Carrusel 1 SCHMUZIGER', t1: 10, t2: 8.5, p: 2.04, rend: 0.70 },
-    { code: 'LA02', name: 'Repotenciado', t1: 10, t2: 8.5, p: 2.04, rend: 0.70 },
+    { code: 'CR02', name: 'Fema', t1: 10, t2: 8.5 },
+    { code: 'CR01', name: 'Carrusel 1 SCHMUZIGER', t1: 10, t2: 8.5 },
+    { code: 'LA02', name: 'Repotenciado', t1: 10, t2: 8.5 },
   ]
 };
 
@@ -221,13 +222,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const itemCentro = String(o.Centro || o.CENTRO || o.centro || '').trim();
       if (itemCentro !== centro) return false;
       
-      const itemAlm = String(o.ALMACEN || o.Almacen || '').trim();
+      const itemAlm = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
       if (centro === '1000' && itemAlm !== '1006' && itemAlm !== '') return false;
       if (centro === '2000' && itemAlm !== '2006' && itemAlm !== '') return false;
 
-      const itemResp = String(o.RESPCONTROLPROD || o.RespCtrlProd || '').trim();
+      const itemResp = String(o.RESPCONTROLPROD || o.RespControlProd || o.Resp_Control_Prod || '').trim();
       const validResps = centro === '1000' ? RESPONSABLES_QUITO : RESPONSABLES_GYE;
-      if (!validResps.includes(itemResp)) return false;
+      if (validResps.length > 0 && !validResps.includes(itemResp)) return false;
 
       const itemDateFull = String(o.FECHAINICIO || o.FECHA || '').trim();
       const itemDate = itemDateFull.includes('T') ? itemDateFull.split('T')[0] : itemDateFull;
@@ -248,9 +249,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const dates = new Set<string>();
     ordenes.forEach(o => {
       const centro = String(o.CENTRO || o.Centro || '').trim();
-      const resp = String(o.RESPCONTROLPROD || o.RespCtrlProd || '').trim();
+      const resp = String(o.RESPCONTROLPROD || o.RespControlProd || '').trim();
       const valid = centro === '1000' ? RESPONSABLES_QUITO : RESPONSABLES_GYE;
-      if (!valid.includes(resp)) return;
+      if (valid.length > 0 && !valid.includes(resp)) return;
       const d = String(o.FECHAINICIO || o.FECHA || '').trim();
       if (d && d !== 'null') dates.add(d.includes('T') ? d.split('T')[0] : d);
     });
@@ -275,6 +276,23 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     });
     return match ? getCellValue(match, ['PuestoTrabajo', 'PUESTO', 'CARGO']) : '—';
   };
+
+  // --- LOGICA DE RESUMEN OPERATIVO CONSOLIDADO ---
+  const machineStats = useMemo(() => {
+    const stats = new Map<string, { qty: number, hours: number }>();
+    [...provC1000, ...provC2000].forEach(o => {
+      const centro = String(o.CENTRO || o.Centro || '').trim();
+      const maquina = String(o.MAQUINA || o.Maquina || o.RECURSO || 'SIN MÁQUINA').trim().toUpperCase();
+      const key = `${centro}|${maquina}`;
+      const eng = calculateEngineering(o);
+      
+      if (!stats.has(key)) stats.set(key, { qty: 0, hours: 0 });
+      const s = stats.get(key)!;
+      s.qty += eng.qty;
+      s.hours += eng.operativeHours;
+    });
+    return stats;
+  }, [provC1000, provC2000]);
 
   if (!mounted) return null;
 
@@ -409,29 +427,46 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                   <div className="p-2 bg-green-600/10 rounded-xl text-green-600"><Activity className="w-5 h-5" /></div>
                   <div>
                     <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter text-left">Monitor de Operación: {selectedDate}</h3>
-                    <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest text-left">Cruce: Máquinas | Operadores | MTTO SAP | Citas Médicas</p>
+                    <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest text-left">Consolidación de Órdenes | Capacidad Real | Personal | MTTO</p>
                   </div>
                 </div>
                 <Card className="rounded-2xl border border-gray-100 shadow-lg overflow-hidden bg-white">
                   <div className="overflow-x-auto">
                     <table className="w-full border-collapse font-sans text-left">
-                      <thead className="bg-[#064e3b] text-white uppercase font-black tracking-widest text-[9px] sticky top-0 z-20">
+                      <thead className="bg-gray-100 text-slate-500 uppercase font-black tracking-widest text-[9px] sticky top-0 z-20 border-b border-gray-200">
                         <tr>
-                          <th className="px-5 py-4 border-r border-white/5">Turno</th>
-                          <th className="px-5 py-4 border-r border-white/5">MÁQUINA</th>
-                          <th className="px-5 py-4 border-r border-white/5">Código Operador</th>
-                          <th className="px-5 py-4 border-r border-white/5">Nombre Empleado</th>
-                          <th className="px-4 py-4 border-r border-white/5 text-center">_Habilidades (%)</th>
-                          <th className="px-5 py-4 border-r border-white/5 text-right bg-black/10">Horas Efectivas</th>
-                          <th className="px-5 py-4 border-r border-white/5 text-right bg-red-900/20">Tiempo MTTO</th>
-                          <th className="px-5 py-4 text-right bg-amber-900/20">Citas Médicas</th>
+                          <th className="px-2 py-4 border-r border-gray-200 text-center w-8">Planta</th>
+                          <th className="px-4 py-4 border-r border-gray-200 text-center w-14">Turno</th>
+                          <th className="px-4 py-4 border-r border-gray-200 min-w-[180px]">MÁQUINA</th>
+                          <th className="px-4 py-4 border-r border-gray-200 text-right w-20">Cantidad</th>
+                          <th className="px-4 py-4 border-r border-gray-200 text-right w-24">T. ocupacion</th>
+                          <th className="px-4 py-4 border-r border-gray-200">Código Operador</th>
+                          <th className="px-4 py-4 border-r border-gray-200">Nombre Empleado</th>
+                          <th className="px-4 py-4 border-r border-gray-200 text-center w-24">_Habilidades (%)</th>
+                          <th className="px-4 py-4 border-r border-gray-200 text-right w-28">Horas Efectivas</th>
+                          <th className="px-4 py-4 border-r border-gray-200 text-right w-28">Tiempo MTTO</th>
+                          <th className="px-4 py-4 text-right w-28">Citas Médicas</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-gray-100 text-[10px] font-bold">
-                        {(() => {
-                          const allRes = [...OPERATIVE_RESOURCES['1000'], ...OPERATIVE_RESOURCES['2000']];
-                          return allRes.map((res, idx) => {
+                      <tbody className="text-[10px] font-bold">
+                        {['1000', '2000'].map(centerId => {
+                          const predefined = (OPERATIVE_RESOURCES as any)[centerId] || [];
+                          const centerOrders = centerId === '1000' ? provC1000 : provC2000;
+                          
+                          // Consolidar máquinas dinámicas de las órdenes
+                          const orderMachineNames = Array.from(new Set(centerOrders.map(o => String(o.MAQUINA || o.Maquina || o.RECURSO || 'SIN MÁQUINA').trim().toUpperCase())));
+                          const allResources = [...predefined.map((p: any) => ({ ...p, isPredefined: true }))];
+                          
+                          orderMachineNames.forEach(omName => {
+                            if (!predefined.some((p: any) => p.code.toUpperCase() === omName)) {
+                              allResources.push({ code: omName, name: omName, t1: 10, t2: 8.5, isPredefined: false });
+                            }
+                          });
+
+                          return allResources.map((res, mIdx) => {
+                            const stats = machineStats.get(`${centerId}|${res.code.toUpperCase()}`) || { qty: 0, hours: 0 };
                             const op = habilidades.find(h => getCellValue(h, ['MaquinaSismac']).toUpperCase() === res.code.toUpperCase());
+                            
                             const mtto = mantenimientos.filter(m => {
                               const mDateRaw = String(m.FECHA_PRO || '').trim();
                               const mDate = mDateRaw.includes('T') ? mDateRaw.split('T')[0] : mDateRaw;
@@ -442,21 +477,39 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                             const hEfec = Math.max(0, hBase - hMtto);
 
                             return (
-                              <tr key={idx} className="hover:bg-gray-50 transition-colors">
-                                <td className="px-5 py-3 border-r border-gray-50 text-slate-400 font-mono text-center">{res.t1}h / {res.t2}h</td>
-                                <td className="px-5 py-3 border-r border-gray-100 text-slate-800 font-black uppercase">{res.code} - {res.name}</td>
-                                <td className="px-5 py-3 border-r border-gray-50 text-indigo-600 font-mono text-center">{op ? getCellValue(op, ['IDENTIFICADOR']) : '—'}</td>
-                                <td className="px-5 py-3 border-r border-gray-100 text-slate-700 uppercase">{op ? getCellValue(op, ['NOMBRE']) : <span className="text-red-400">SIN ASIGNACIÓN</span>}</td>
-                                <td className="px-4 py-3 border-r border-gray-50 text-center">
-                                  {op ? <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 text-[9px] font-black">{getCellValue(op, ['CALIFICACION'])}%</Badge> : '—'}
-                                </td>
-                                <td className="px-5 py-3 border-r border-gray-50 text-right font-black text-indigo-900 bg-indigo-50/10 font-mono">{hEfec.toFixed(1)}h</td>
-                                <td className="px-5 py-3 border-r border-gray-50 text-right font-black text-red-600 bg-red-50/10 font-mono">{hMtto > 0 ? `${hMtto}h` : '—'}</td>
-                                <td className="px-5 py-3 text-right font-black text-amber-600 bg-amber-50/10 font-mono">—</td>
-                              </tr>
+                              <React.Fragment key={`${centerId}-${res.code}`}>
+                                {/* Fila Día */}
+                                <tr className={cn("hover:bg-gray-50 border-b border-gray-100", centerId === '1000' ? "bg-yellow-50/20" : "bg-blue-50/20")}>
+                                  {mIdx === 0 && (
+                                    <td rowSpan={allResources.length * 2} className={cn("px-2 py-4 border-r border-gray-200 font-black text-center text-xs [writing-mode:vertical-lr] rotate-180", centerId === '1000' ? "bg-yellow-400 text-yellow-900" : "bg-slate-400 text-white")}>
+                                      CENTRO {centerId}
+                                    </td>
+                                  )}
+                                  <td className="px-4 py-2 border-r border-gray-200 text-gray-400 font-mono text-center">dia</td>
+                                  <td className="px-4 py-2 border-r border-gray-200 text-slate-800 font-black uppercase">{res.code} - {res.name}</td>
+                                  <td rowSpan={2} className="px-4 py-2 border-r border-gray-200 text-right font-mono text-indigo-700 bg-white/50">{stats.qty > 0 ? stats.qty.toLocaleString() : '—'}</td>
+                                  <td rowSpan={2} className="px-4 py-2 border-r border-gray-200 text-right font-mono text-orange-700 bg-white/50">{stats.hours > 0 ? `${stats.hours.toFixed(1)}h` : '—'}</td>
+                                  <td className="px-4 py-2 border-r border-gray-200 text-indigo-600 font-mono text-center">{op ? getCellValue(op, ['IDENTIFICADOR']) : '—'}</td>
+                                  <td className="px-4 py-2 border-r border-gray-200 text-slate-700 uppercase">{op ? getCellValue(op, ['NOMBRE']) : <span className="text-red-400 font-normal">SIN ASIGNACIÓN</span>}</td>
+                                  <td className="px-4 py-2 border-r border-gray-200 text-center">
+                                    {op ? <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 text-[9px] font-black">{getCellValue(op, ['CALIFICACION'])}%</Badge> : '—'}
+                                  </td>
+                                  <td rowSpan={2} className="px-4 py-2 border-r border-gray-200 text-right font-black text-indigo-900 bg-indigo-50/10 font-mono">{hEfec.toFixed(1)}h</td>
+                                  <td rowSpan={2} className="px-4 py-2 border-r border-gray-200 text-right font-black text-red-600 bg-red-50/10 font-mono">{hMtto > 0 ? `${hMtto}h` : '—'}</td>
+                                  <td rowSpan={2} className="px-4 py-2 text-right font-black text-amber-600 bg-amber-50/10 font-mono">—</td>
+                                </tr>
+                                {/* Fila Noche */}
+                                <tr className={cn("hover:bg-gray-50 border-b border-gray-100", centerId === '1000' ? "bg-yellow-50/20" : "bg-blue-50/20")}>
+                                  <td className="px-4 py-2 border-r border-gray-200 text-gray-400 font-mono text-center">noche</td>
+                                  <td className="px-4 py-2 border-r border-gray-200 text-slate-800 font-black uppercase">{res.code} - {res.name}</td>
+                                  <td className="px-4 py-2 border-r border-gray-200 text-center">—</td>
+                                  <td className="px-4 py-2 border-r border-gray-200 text-center">—</td>
+                                  <td className="px-4 py-2 border-r border-gray-200 text-center">—</td>
+                                </tr>
+                              </React.Fragment>
                             );
                           });
-                        })()}
+                        })}
                       </tbody>
                     </table>
                   </div>
