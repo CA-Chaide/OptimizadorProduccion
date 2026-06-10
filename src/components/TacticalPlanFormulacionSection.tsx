@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -17,7 +18,8 @@ import {
   Database,
   History,
   Layers,
-  MapPin
+  MapPin,
+  Info
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -255,7 +257,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     return Array.from(map.entries()).sort();
   }, [unifiedSummaryData]);
 
-  // RESTAURACIÓN DE LA SEGMENTACIÓN SOLICITADA: F_BLOQ (CALLE) / F_BLOQ_M (BCALL)
+  // SEGMENTACIÓN SOLICITADA: f_bloq (CALLE) vs f_bloq_m (BCALL)
   const curadoGroupsSummary = useMemo(() => {
     const fBloqRows: any[] = [];
     const fBloqMRows: any[] = [];
@@ -270,7 +272,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       } else if (estTras.includes('CALLE')) {
         fBloqRows.push(enriched);
       } else {
-        // Fallback si no tiene calle explícita, usar lógica de Stirling/Manual previa
+        // Fallback si no tiene etiqueta explícita
         const maquinaRaw = String(row.Maquina || '').toUpperCase();
         if (maquinaRaw.includes('BLOQUE_M')) fBloqMRows.push(enriched);
         else fBloqRows.push(enriched);
@@ -297,8 +299,8 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     };
 
     return [
-      { id: 'f_bloq', label: 'F_BLOQ (RUTA CALLE - STIRLING)', rows: fBloqRows, stats: getStats(fBloqRows), color: 'bg-indigo-700' },
-      { id: 'f_bloq_m', label: 'F_BLOQ_M (RUTA BCALL - MANUAL)', rows: fBloqMRows, stats: getStats(fBloqMRows), color: 'bg-orange-700' }
+      { id: 'f_bloq', label: 'f_bloq (RUTA CALLE - STIRLING)', rows: fBloqRows, stats: getStats(fBloqRows), color: 'bg-indigo-700' },
+      { id: 'f_bloq_m', label: 'f_bloq_m (RUTA BCALL - MANUAL)', rows: fBloqMRows, stats: getStats(fBloqMRows), color: 'bg-orange-700' }
     ];
   }, [curadoRows]);
 
@@ -548,8 +550,8 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                               <td className="px-2 py-2 border-r border-gray-100 font-mono text-purple-700">{String(row.CodBloque)}</td>
                               <td className="px-2 py-2 border-r border-gray-100 text-gray-400">{String(row.operador)}</td>
                               <td className="px-2 py-2 border-r border-gray-100 font-black text-[9px] text-indigo-700 uppercase">{String(row.Maquina || '—')}</td>
-                              <td className="px-2 py-2 border-r border-gray-100">
-                                 <Badge variant="outline" className={cn("text-[8px] font-black uppercase tracking-widest", (row.estadoTras || '').includes('CALLE') ? "bg-indigo-600 text-white" : "text-gray-400")}>
+                              <td className="px-2 py-2 border-r border-gray-100 text-center">
+                                 <Badge variant="outline" className={cn("text-[8px] font-black uppercase tracking-widest", (String(row.estadoTras || '').includes('CALLE')) ? "bg-indigo-600 text-white" : "text-gray-400")}>
                                     {String(row.estadoTras || '—')}
                                  </Badge>
                               </td>
@@ -567,7 +569,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           )}
         </TabsContent>
 
-        <TabsContent value="grupos">
+        <TabsContent value="grupos" className="animate-in fade-in duration-300">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 text-left">
             {grupos.map(g => (
               <Card key={g.codigo_grupo} className="relative overflow-hidden group hover:shadow-md transition-all border border-gray-100 rounded-2xl bg-white p-6">
@@ -580,7 +582,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           </div>
         </TabsContent>
 
-        <TabsContent value="restricciones">
+        <TabsContent value="restricciones" className="animate-in fade-in duration-300">
           <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
             <table className="w-full border-collapse text-center">
               <thead className="bg-[#bde0fe] text-[10px] font-black uppercase text-slate-800 border-b border-gray-100">
@@ -605,7 +607,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           </Card>
         </TabsContent>
 
-        <TabsContent value="ordenes" className="space-y-10">
+        <TabsContent value="ordenes" className="space-y-10 animate-in fade-in duration-300">
           {[ 
             { t: 'Planta 1000 - Quito', d: provC1000, id: '1000', c: 'text-green-700', b: 'bg-green-600' }, 
             { t: 'Planta 2000 - Guayaquil', d: provC2000, id: '2000', c: 'text-indigo-700', b: 'bg-indigo-600' } 
@@ -633,7 +635,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                         <th className="px-3 py-4">ALM.</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-50 text-[10px]">
+                    <tbody className="divide-y divide-gray-50 text-[10px] font-bold">
                       {center.d.map((o, i) => {
                         const info = extractMaterialInfo(o);
                         const maquina = String(o.MAQUINA || o.Maquina || o.RECURSO || '—').trim();
@@ -662,34 +664,39 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           ))}
         </TabsContent>
 
-        <TabsContent value="tiempos">
-          <Card className="rounded-2xl border border-gray-100 shadow-md overflow-hidden bg-white">
-            <div className="overflow-x-auto max-h-[500px]">
-              <table className="w-full border-collapse text-[11px] font-bold text-center">
-                <thead className="bg-[#1e293b] text-white sticky top-0 z-10 uppercase font-black tracking-widest text-[9px]">
-                  <tr>
-                    <th className="px-5 py-4 border-r border-white/5 text-left">Material</th>
-                    <th className="px-5 py-4 border-r border-white/5 text-left">Descripción Técnica</th>
-                    <th className="px-4 py-4 border-r border-white/5">Línea</th>
-                    <th className="px-4 py-4 text-teal-400">Estándar (Min)</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {tiemposEnsamblado.map((t, i) => {
-                    const info = extractMaterialInfo(t);
-                    return (
-                      <tr key={i} className="hover:bg-gray-50/50 transition-colors">
-                        <td className="px-4 py-3 font-mono text-primary border-r border-gray-50 text-left">{info.code}</td>
-                        <td className="px-4 py-3 text-left border-r border-gray-50 text-gray-500 uppercase truncate max-w-[280px]">{info.desc}</td>
-                        <td className="px-4 py-3 border-r border-gray-100 font-bold text-gray-400 uppercase">{t.Linea || t.PuestoTrabajoLinea || '—'}</td>
-                        <td className="px-4 py-3 font-mono text-teal-600 bg-teal-50/5">{(t.Tiempo_Min || t.Tiempo || 0).toFixed(4)}</td>
+        <TabsContent value="tiempos" className="animate-in fade-in duration-300 space-y-10">
+          {[ { t: 'Quito 1000', d: tiemposEnsamblado.filter(t => String(t.Centro || t.centro || '').trim()==='1000') }, { t: 'Guayaquil 2000', d: tiemposEnsamblado.filter(t => String(t.Centro || t.centro || '').trim()==='2000') } ].map((center, idx) => (
+            <div key={idx} className="space-y-4">
+              <h3 className="text-[11px] font-black uppercase text-gray-400 text-left tracking-widest">Catálogo Tiempos - {center.t}</h3>
+              <Card className="rounded-2xl border border-gray-100 shadow-md overflow-hidden bg-white">
+                <div className="overflow-x-auto max-h-[500px]">
+                  <table className="w-full border-collapse text-[11px] font-bold text-center">
+                    <thead className="bg-[#1e293b] text-white sticky top-0 z-10 uppercase font-black tracking-widest text-[9px]">
+                      <tr>
+                        <th className="px-5 py-4 border-r border-white/5 text-left">Material</th>
+                        <th className="px-5 py-4 border-r border-white/5 text-left">Descripción Técnica</th>
+                        <th className="px-4 py-4 border-r border-white/5">Línea</th>
+                        <th className="px-4 py-4 text-teal-400">Estándar (Min)</th>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {center.d.map((t, i) => {
+                        const info = extractMaterialInfo(t);
+                        return (
+                          <tr key={i} className="hover:bg-gray-50/50 transition-colors">
+                            <td className="px-4 py-3 font-mono text-primary border-r border-gray-50 text-left">{info.code}</td>
+                            <td className="px-4 py-3 text-left border-r border-gray-50 text-gray-500 uppercase truncate max-w-[300px]">{info.desc}</td>
+                            <td className="px-4 py-3 border-r border-gray-100 font-bold text-gray-400 uppercase">{t.Linea || t.PuestoTrabajoLinea || '—'}</td>
+                            <td className="px-4 py-3 font-mono text-teal-600 bg-teal-50/5">{(t.Tiempo_Min || t.Tiempo || 0).toFixed(4)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
             </div>
-          </Card>
+          ))}
         </TabsContent>
       </Tabs>
 
