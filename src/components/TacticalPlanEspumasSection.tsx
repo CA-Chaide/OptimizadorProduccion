@@ -496,6 +496,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <th className="px-2 py-4 border-r border-gray-50">ESP.</th>
                         <th className="px-3 py-4 border-r border-gray-100 font-black">Cant.</th>
                         <th className="px-3 py-4 border-r border-gray-100 font-black text-indigo-700 bg-indigo-50/20">Máquina</th>
+                        <th className="px-2 py-4 border-r border-gray-50 bg-blue-50/50 text-blue-900">T. INDIV. (min)</th>
                         <th className="px-2 py-4 border-r border-gray-50 bg-purple-50/50 text-purple-900">SUBBL.</th>
                         <th className="px-2 py-4 border-r border-gray-50 bg-orange-50/50 font-black">BLOQUES 20M</th>
                         <th className="px-3 py-4 border-r border-gray-50 text-red-700 bg-red-50/50 font-black">CARGAS</th>
@@ -520,6 +521,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                             <td className="px-2 py-2 border-r border-gray-50 text-gray-400 font-mono">{eng.esp}</td>
                             <td className="px-3 py-2 border-r border-gray-100 font-black text-gray-900 font-mono">{eng.qty.toLocaleString()}</td>
                             <td className="px-3 py-2 border-r border-gray-100 font-black text-indigo-700 bg-indigo-50/5 uppercase">{String(o.MAQUINA || o.RECURSO || '—')}</td>
+                            <td className="px-3 py-2 border-r border-gray-50 bg-blue-50/10 font-mono text-blue-700">{(eng.hours * 60 / (eng.qty || 1)).toFixed(2)}</td>
                             <td className="px-2 py-2 border-r border-gray-50 bg-purple-50/10 text-purple-700">{eng.subblocks.toFixed(1)}</td>
                             <td className="px-2 py-2 border-r border-gray-50 bg-orange-50/10 font-black text-orange-800">{eng.blocks20m.toFixed(1)}</td>
                             <td className="px-3 py-2 border-r border-gray-50 bg-red-50/20 font-black text-red-600">{String(eng.loads)}</td>
