@@ -17,7 +17,9 @@ import {
   Database,
   PlayCircle,
   Info,
-  History
+  History,
+  TrendingUp,
+  Box
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -36,7 +38,7 @@ import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 import { cn } from '@/lib/utils';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, parseISO, addMonths, subMonths } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, parseISO, addMonths, subMonths, subDays, isWithinInterval } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 // --- CONSTANTES OPERATIVAS ---
@@ -58,7 +60,7 @@ const formatNum = (val: any, decimals: number = 0): string => {
 
 export const TacticalPlanFormulacionSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanFormulacion');
-  const { addNotification, constraints } = useAppContext();
+  const { addNotification } = useAppContext();
 
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState('resumen');
@@ -70,7 +72,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState<string>('all');
   const [viewDate, setViewDate] = useState<Date | null>(null);
 
-  // Estados para Tiempos de Curado (Basado en estructura real)
+  // Estados para Tiempos de Curado
   const [curadoRows, setCuradoRows] = useState<any[]>([]);
   const [totalCurado, setTotalCurado] = useState(0);
   const [isLoadingCurado, setIsLoadingCurado] = useState(false);
@@ -78,6 +80,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   useEffect(() => { 
     setMounted(true); 
     setViewDate(new Date());
+    setSelectedDate(format(new Date(), 'yyyy-MM-dd'));
   }, []);
 
   const fetchData = async () => {
@@ -113,11 +116,12 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   const fetchCurado = async () => {
     setIsLoadingCurado(true);
     try {
-      const res = await serviciosService.getTiemposCuradoBloqueFormulado(1, 5000);
+      // Cargamos un bloque amplio de datos para el filtro de 8 días
+      const res = await serviciosService.getTiemposCuradoBloqueFormulado(1, 10000);
       const data = res.data || [];
       setCuradoRows(Array.isArray(data) ? data : []);
       setTotalCurado(res.totalRegistros || data.length || 0);
-      inspector.captureVariable('curadoData', data);
+      inspector.captureVariable('curadoDataRaw', data);
     } catch (error) {
       console.error('Error cargando tiempos de curado:', error);
     } finally {
@@ -215,9 +219,8 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
 
   const calculateUnifiedSummary = (data1000: any[], data2000: any[]) => {
     const groupsMap = new Map<string, { 
-      fecha: string; dens: string; tipo: string; apertura: string;
+      fecha: string; maquina: string; dens: string; tipo: string; apertura: string;
       bloques1000: number; bloques2000: number; totalBloques: number;
-      bloquesStock: number; bloquesCurado: number; bloquesProceso: number;
       planReposicion: number;
     }>();
 
@@ -225,8 +228,9 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       data.forEach(o => {
         const dateRaw = String(o.FECHAINICIO || o.FECHA || 'N/A').trim();
         const fecha = dateRaw.includes('T') ? dateRaw.split('T')[0] : dateRaw;
+        const maquina = String(o.MAQUINA || o.RECURSO || 'SIN MÁQUINA').trim().toUpperCase();
         const info = extractMaterialInfo(o);
-        const key = `${fecha}|${info.dens}|${info.tipo}|${info.apertura}`;
+        const key = `${fecha}|${maquina}|${info.dens}|${info.tipo}|${info.apertura}`;
         const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
         const ancho = parseFloat(info.ancho) || 0;
         const esp = parseFloat(info.esp) || 0;
@@ -235,7 +239,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         const itemBloques = (qty * esp * ancho) / (usefulHeight * BLOCK_LENGTH_METERS * 100);
 
         if (!groupsMap.has(key)) {
-          groupsMap.set(key, { fecha, dens: info.dens, tipo: info.tipo, apertura: info.apertura, bloques1000: 0, bloques2000: 0, totalBloques: 0, bloquesStock: 0, bloquesCurado: 0, bloquesProceso: 0, planReposicion: 0 });
+          groupsMap.set(key, { fecha, maquina, dens: info.dens, tipo: info.tipo, apertura: info.apertura, bloques1000: 0, bloques2000: 0, totalBloques: 0, planReposicion: 0 });
         }
         const entry = groupsMap.get(key)!;
         if (centerId === '1000') entry.bloques1000 += itemBloques;
@@ -248,7 +252,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     process(data1000, '1000');
     process(data2000, '2000');
 
-    return Array.from(groupsMap.values()).sort((a, b) => a.fecha.localeCompare(b.fecha) || a.dens.localeCompare(b.dens));
+    return Array.from(groupsMap.values()).sort((a, b) => a.fecha.localeCompare(b.fecha) || a.maquina.localeCompare(b.maquina) || a.dens.localeCompare(b.dens));
   };
 
   const unifiedSummaryData = useMemo(() => calculateUnifiedSummary(provC1000, provC2000), [provC1000, provC2000]);
@@ -274,6 +278,35 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     }, base);
   }, [unifiedSummaryData]);
 
+  // --- LÓGICA DE CURADO: FILTRO 8 DÍAS ATRÁS ---
+  const filteredCurado = useMemo(() => {
+    if (selectedDate === 'all' || !mounted) return curadoRows;
+    
+    try {
+      const target = parseISO(selectedDate);
+      const limit = subDays(target, 8);
+      
+      return curadoRows.filter(row => {
+        if (!row.fecha) return false;
+        const rowDate = parseISO(String(row.fecha).split('T')[0]);
+        // Solo registros que estén entre Hace 8 Días y Hoy (ventana de maduración)
+        return isWithinInterval(rowDate, { start: limit, end: target });
+      });
+    } catch (e) {
+      return curadoRows;
+    }
+  }, [curadoRows, selectedDate, mounted]);
+
+  const curadoByMachine = useMemo(() => {
+    const map = new Map<string, any[]>();
+    filteredCurado.forEach(row => {
+      const m = String(row.Maquina || 'SIN MÁQUINA').trim().toUpperCase();
+      if (!map.has(m)) map.set(m, []);
+      map.get(m)!.push(row);
+    });
+    return map;
+  }, [filteredCurado]);
+
   if (!mounted) return null;
 
   if (isLoading) return (
@@ -290,7 +323,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           <div className="p-2 bg-primary/10 rounded-xl"><FlaskConical className="w-6 h-6 text-primary" /></div>
           <div>
             <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Plan Táctico Formulación</h2>
-            <p className="text-xs text-gray-500 font-medium">Control Maestro de Bloques (Límite: {MAX_DAILY_BLOCKS} Bloques/Día)</p>
+            <p className="text-xs text-gray-500 font-medium">Control Maestro de Bloques | Ciclos de Curado: 8 Días</p>
           </div>
         </div>
       </div>
@@ -299,10 +332,10 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         <TabsList className="grid grid-cols-6 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
           {[ 
             { v: 'resumen', l: 'Capacidad y Carga', i: LayoutDashboard }, 
+            { v: 'curado', l: 'Curado (8 Días)', i: History },
             { v: 'grupos', l: 'Grupos', i: Users }, 
             { v: 'restricciones', l: 'Parámetros', i: Lock }, 
             { v: 'ordenes', l: 'Provisionales', i: Package }, 
-            { v: 'curado', l: 'Tiempos Curado', i: History },
             { v: 'tiempos', l: 'Catálogo Tiempos', i: Clock }
           ].map(tab => (
             <TabsTrigger key={tab.v} value={tab.v} className="gap-2 text-[9px] font-bold uppercase transition-all data-[state=active]:bg-white data-[state=active]:shadow-sm">
@@ -366,7 +399,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <Activity className="w-4 h-4 text-primary" />
-                  <span className="text-xs font-bold uppercase text-gray-600">Estado de Carga Diaria</span>
+                  <span className="text-xs font-bold uppercase text-gray-600">Estado de Carga Diaria Consolidada</span>
                 </div>
                 <div className="text-right">
                   {(() => {
@@ -378,7 +411,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                         <span className="text-xs font-bold text-gray-400"> / {MAX_DAILY_BLOCKS} Bloques</span>
                         <div className="mt-1">
                            <Badge className={cn("font-black text-[9px]", utilization <= 100 ? "bg-green-500" : "bg-red-500")}>
-                            {utilization <= 100 ? "CAPACIDAD ÓPTIMA" : "SOBRECARGA CRÍTICA"}
+                            {utilization <= 100 ? "DENTRO DE CAPACIDAD" : "SOBRECARGA DETECTADA"}
                           </Badge>
                         </div>
                       </>
@@ -392,7 +425,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
 
           <div className="space-y-4">
             <h3 className="text-[11px] font-bold uppercase flex items-center gap-2 px-1 tracking-wider text-left text-primary">
-              <div className="w-2 h-2 rounded-full bg-primary" /> Resumen Maestro de Producción Unificado
+              <div className="w-2.5 h-2.5 rounded-full bg-primary" /> Distribución Maestro de Producción por Máquina
             </h3>
             <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
               <div className="overflow-x-auto max-h-[500px]">
@@ -400,54 +433,101 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                   <thead className="bg-[#bde0fe] sticky top-0 z-10 text-[9px] font-black uppercase text-slate-800 border-b border-gray-100">
                     <tr>
                       <th className="px-4 py-4 border-r border-gray-100">Fecha</th>
+                      <th className="px-4 py-4 border-r border-gray-100 text-indigo-700 bg-indigo-50/20">MÁQUINA</th>
                       <th className="px-4 py-4 border-r border-gray-100">Densidad</th>
                       <th className="px-4 py-4 border-r border-gray-100 text-primary">Tipo</th>
                       <th className="px-4 py-4 border-r border-gray-100 bg-blue-50/50 text-blue-800">Apertura</th>
-                      <th className="px-4 py-4 border-r border-gray-100 text-green-700 bg-green-50/30">Bloques (1000)</th>
-                      <th className="px-4 py-4 border-r border-gray-100 text-indigo-700 bg-indigo-50/30">Bloques (2000)</th>
-                      <th className="px-4 py-4 border-r border-gray-100 text-orange-800 font-black bg-orange-50/30">Total Bruto</th>
-                      <th className="px-4 py-4 border-r border-gray-100 bg-slate-100 text-slate-600">STOCK</th>
-                      <th className="px-4 py-4 border-r border-gray-100 bg-amber-50 text-amber-600">CURADO</th>
-                      <th className="px-4 py-4 border-r border-gray-100 bg-blue-50 text-blue-900">PROCESO</th>
-                      <th className="px-4 py-4 bg-emerald-50 text-emerald-800 font-black">REPOSICIÓN</th>
+                      <th className="px-4 py-4 border-r border-gray-100 text-green-700 bg-green-50/30">Carga Q (1000)</th>
+                      <th className="px-4 py-4 border-r border-gray-100 text-indigo-700 bg-indigo-50/30">Carga G (2000)</th>
+                      <th className="px-4 py-4 border-r border-gray-100 text-orange-800 font-black bg-orange-50/30">Total Bloques</th>
+                      <th className="px-4 py-4 bg-emerald-50 text-emerald-800 font-black">Plan Reposición</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50 text-[10px]">
                     {unifiedSummaryData.map((row, i) => (
                       <tr key={i} className="hover:bg-gray-50/80 transition-colors">
                         <td className="px-4 py-3 font-medium text-gray-400 border-r border-gray-50">{row.fecha}</td>
+                        <td className="px-4 py-3 font-black text-indigo-700 border-r border-gray-50 uppercase bg-indigo-50/5">{row.maquina}</td>
                         <td className="px-4 py-3 font-bold text-gray-700 border-r border-gray-50">{row.dens}</td>
                         <td className="px-4 py-3 font-black text-primary border-r border-gray-50 uppercase">{row.tipo}</td>
                         <td className="px-4 py-3 font-bold text-blue-700 border-r border-gray-50 bg-blue-50/5">{row.apertura}</td>
                         <td className="px-4 py-3 font-mono font-bold text-green-700 border-r border-gray-50 bg-green-50/10">{formatNum(row.bloques1000, 1)}</td>
                         <td className="px-4 py-3 font-mono font-bold text-indigo-700 border-r border-gray-50 bg-indigo-50/10">{formatNum(row.bloques2000, 1)}</td>
                         <td className="px-4 py-3 font-mono font-black text-orange-800 border-r border-gray-50 bg-orange-50/10">{formatNum(row.totalBloques, 1)}</td>
-                        <td className="px-4 py-3 font-mono text-slate-400 border-r border-gray-50 bg-slate-50/20">{formatNum(row.bloquesStock)}</td>
-                        <td className="px-4 py-3 font-mono text-amber-400 border-r border-gray-50 bg-amber-50/20">{formatNum(row.bloquesCurado)}</td>
-                        <td className="px-4 py-3 font-mono text-blue-400 border-r border-gray-50 bg-blue-50/20">{formatNum(row.bloquesProceso)}</td>
                         <td className="px-4 py-3 font-mono font-black text-emerald-600 bg-emerald-50/30">{String(row.planReposicion)}</td>
                       </tr>
                     ))}
                   </tbody>
-                  <tfoot className="bg-gray-800 text-white font-bold text-[10px] sticky bottom-0">
-                    {Object.entries(summaryTotals.byAperture).sort().map(([ap, total]) => (
-                      <tr key={ap} className="bg-indigo-900/40">
-                        <td colSpan={10} className="px-4 py-2 text-right uppercase text-indigo-200 tracking-widest text-[9px]">Subtotal Apertura {ap}:</td>
-                        <td className="px-4 py-2 font-mono text-indigo-200 text-center">{String(total)}</td>
-                      </tr>
-                    ))}
-                    <tr className="bg-slate-900">
-                      <td colSpan={4} className="px-4 py-3 text-right uppercase tracking-widest">Total Maestro Consolidado:</td>
-                      <td className="px-4 py-3 font-mono text-green-300">{formatNum(summaryTotals.bloques1000, 1)}</td>
-                      <td className="px-4 py-3 font-mono text-indigo-300">{formatNum(summaryTotals.bloques2000, 1)}</td>
-                      <td className="px-4 py-3 font-mono text-orange-300">{formatNum(summaryTotals.totalBloques, 1)}</td>
-                      <td colSpan={3} className="border-r border-gray-700"></td>
-                      <td className="px-4 py-3 font-mono text-emerald-300 text-center">{String(summaryTotals.planReposicion)}</td>
-                    </tr>
-                  </tfoot>
                 </table>
               </div>
             </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="curado" className="space-y-6 animate-in fade-in duration-300">
+          <div className="flex items-center justify-between bg-indigo-50 p-4 rounded-2xl border border-indigo-100">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-indigo-600/10 rounded-xl text-indigo-600"><History className="w-5 h-5" /></div>
+              <div>
+                <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter text-left">Monitor de Curado Segmentado por Máquina</h3>
+                <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-0.5 text-left">
+                  {selectedDate === 'all' ? 'Historial Completo' : `Ventana de 8 Días desde: ${selectedDate}`}
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-4">
+              <div className="text-right">
+                <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest">En Ventana</p>
+                <p className="text-lg font-black text-indigo-700">{filteredCurado.length}</p>
+              </div>
+              <Badge variant="outline" className="bg-white border-indigo-200 text-indigo-700 font-black text-[10px]">{totalCurado} Total DB</Badge>
+            </div>
+          </div>
+
+          <div className="space-y-8">
+            {Array.from(curadoByMachine.entries()).map(([maquina, rows]) => (
+              <div key={maquina} className="space-y-3">
+                <h4 className="text-[10px] font-black uppercase text-gray-400 flex items-center gap-2 px-1 tracking-widest">
+                  <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full" /> MÁQUINA: {maquina}
+                </h4>
+                <Card className="rounded-2xl border border-gray-100 shadow-md overflow-hidden bg-white">
+                  <div className="overflow-x-auto max-h-[400px]">
+                    <table className="w-full border-collapse text-center font-sans text-[10px]">
+                      <thead className="bg-[#f8fafc] sticky top-0 z-10 text-slate-800 uppercase font-black tracking-tight border-b border-gray-100">
+                        <tr>
+                          <th className="px-4 py-4 border-r border-gray-100">ID Bloque</th>
+                          <th className="px-4 py-4 border-r border-gray-100">Fecha Prod.</th>
+                          <th className="px-4 py-4 border-r border-gray-100">Orden</th>
+                          <th className="px-4 py-4 border-r border-gray-100">Material</th>
+                          <th className="px-4 py-4 border-r border-gray-100 text-left">Descripción</th>
+                          <th className="px-4 py-4 border-r border-gray-100 bg-blue-50/50 text-blue-900">Dens.</th>
+                          <th className="px-4 py-4 border-r border-gray-100">Cód Bloque</th>
+                          <th className="px-4 py-4 border-r border-gray-100 text-orange-800 font-black">Peso</th>
+                          <th className="px-4 py-4 border-r border-gray-100">Operador</th>
+                          <th className="px-4 py-4">Estado</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100 font-bold">
+                        {rows.map((row, i) => (
+                          <tr key={i} className="hover:bg-gray-50/50 transition-colors">
+                            <td className="px-3 py-2 border-r border-gray-100 text-gray-400 font-mono">{String(row.Idbloque)}</td>
+                            <td className="px-3 py-2 border-r border-gray-100 text-gray-500 font-black">{String(row.fecha).split('T')[0]}</td>
+                            <td className="px-3 py-2 border-r border-gray-100 text-indigo-600 font-mono">{String(row.orden)}</td>
+                            <td className="px-3 py-2 border-r border-gray-100 font-mono text-slate-800">{String(row.CodMaterial)}</td>
+                            <td className="px-3 py-2 border-r border-gray-100 text-left uppercase text-slate-500 truncate max-w-[200px]" title={row.NomMaterial}>{String(row.NomMaterial)}</td>
+                            <td className="px-3 py-2 border-r border-gray-100 font-black text-blue-800 bg-blue-50/5">{String(row.densidad)}</td>
+                            <td className="px-3 py-2 border-r border-gray-100 font-mono text-purple-700">{String(row.CodBloque)}</td>
+                            <td className="px-3 py-2 border-r border-gray-100 bg-orange-50/5 font-mono text-orange-700 font-black">{formatNum(row.peso, 1)}</td>
+                            <td className="px-3 py-2 border-r border-gray-100 text-gray-400">{String(row.operador)}</td>
+                            <td className="px-3 py-2"><Badge variant="outline" className="text-[9px] font-black uppercase bg-green-50 text-green-700 border-green-200">{String(row.estado)}</Badge></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+              </div>
+            ))}
           </div>
         </TabsContent>
 
@@ -542,66 +622,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
               </Card>
             </div>
           ))}
-        </TabsContent>
-
-        <TabsContent value="curado" className="space-y-6 animate-in fade-in duration-300">
-          <div className="flex items-center justify-between bg-indigo-50 p-4 rounded-2xl border border-indigo-100">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-indigo-600/10 rounded-xl text-indigo-600"><History className="w-5 h-5" /></div>
-              <div>
-                <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter text-left">Trazabilidad de Curado de Bloques</h3>
-                <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-0.5 text-left">Estado de maduración y pesaje por bloque formulado</p>
-              </div>
-            </div>
-            <Badge variant="outline" className="bg-white border-indigo-200 text-indigo-700 font-black text-[10px]">{totalCurado} Registros Totales</Badge>
-          </div>
-
-          <Card className="rounded-2xl border border-gray-100 shadow-md overflow-hidden bg-white">
-            <div className="overflow-x-auto max-h-[600px]">
-              <table className="w-full border-collapse text-center font-sans text-[10px]">
-                <thead className="bg-[#bde0fe] sticky top-0 z-10 text-slate-800 uppercase font-black tracking-tight border-b border-gray-100">
-                  <tr>
-                    <th className="px-4 py-4 border-r border-gray-100">ID Bloque</th>
-                    <th className="px-4 py-4 border-r border-gray-100">Fecha</th>
-                    <th className="px-4 py-4 border-r border-gray-100">Orden</th>
-                    <th className="px-4 py-4 border-r border-gray-100">Material</th>
-                    <th className="px-4 py-4 border-r border-gray-100 text-left">Descripción</th>
-                    <th className="px-4 py-4 border-r border-gray-100 bg-blue-50/50 text-blue-900">Dens.</th>
-                    <th className="px-4 py-4 border-r border-gray-100">Cód Bloque</th>
-                    <th className="px-4 py-4 border-r border-gray-100">Proceso</th>
-                    <th className="px-4 py-4 border-r border-gray-100 text-orange-800 font-black">Peso</th>
-                    <th className="px-4 py-4 border-r border-gray-100">Operador</th>
-                    <th className="px-4 py-4 border-r border-gray-100">Máquina</th>
-                    <th className="px-4 py-4">Estado</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 font-bold">
-                  {isLoadingCurado ? (
-                    <tr><td colSpan={12} className="py-20 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-indigo-600" /></td></tr>
-                  ) : curadoRows.length === 0 ? (
-                    <tr><td colSpan={12} className="py-20 text-gray-300 font-black uppercase tracking-widest text-center">No hay registros de curado disponibles</td></tr>
-                  ) : (
-                    curadoRows.map((row, i) => (
-                      <tr key={i} className="hover:bg-gray-50/50 transition-colors">
-                        <td className="px-3 py-2 border-r border-gray-100 text-gray-400 font-mono">{String(row.Idbloque)}</td>
-                        <td className="px-3 py-2 border-r border-gray-100 text-gray-500">{String(row.fecha)}</td>
-                        <td className="px-3 py-2 border-r border-gray-100 text-indigo-600 font-mono">{String(row.orden)}</td>
-                        <td className="px-3 py-2 border-r border-gray-100 font-mono text-slate-800">{String(row.CodMaterial)}</td>
-                        <td className="px-3 py-2 border-r border-gray-100 text-left uppercase text-slate-500 truncate max-w-[200px]" title={row.NomMaterial}>{String(row.NomMaterial)}</td>
-                        <td className="px-3 py-2 border-r border-gray-100 font-black text-blue-800 bg-blue-50/5">{String(row.densidad)}</td>
-                        <td className="px-3 py-2 border-r border-gray-100 font-mono text-purple-700">{String(row.CodBloque)}</td>
-                        <td className="px-3 py-2 border-r border-gray-100 text-[9px] text-gray-400">{String(row.corridaproceso)}</td>
-                        <td className="px-3 py-2 border-r border-gray-100 bg-orange-50/5 font-mono text-orange-700 font-black">{formatNum(row.peso, 1)}</td>
-                        <td className="px-3 py-2 border-r border-gray-100 text-gray-400">{String(row.operador)}</td>
-                        <td className="px-3 py-2 border-r border-gray-100 font-black text-indigo-700 uppercase">{String(row.Maquina)}</td>
-                        <td className="px-3 py-2"><Badge variant="outline" className="text-[9px] font-black uppercase bg-green-50 text-green-700 border-green-200">{String(row.estado)}</Badge></td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </Card>
         </TabsContent>
 
         <TabsContent value="tiempos">
