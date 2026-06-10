@@ -100,7 +100,7 @@ export const TacticalPlan2Section: React.FC = () => {
       </div>
       
       <Tabs defaultValue="grupos" className="w-full">
-        <TabsList className="grid w-full grid-cols-7 mb-8">
+        <TabsList className="grid w-full grid-cols-8 mb-8">
           <TabsTrigger value="grupos" className="flex items-center gap-2">
             <Users className="w-4 h-4" />
             Grupos
@@ -128,6 +128,10 @@ export const TacticalPlan2Section: React.FC = () => {
           <TabsTrigger value="fert" className="flex items-center gap-2">
             <ClipboardList className="w-4 h-4" />
             Fert
+          </TabsTrigger>
+          <TabsTrigger value="prog_tiempos" className="flex items-center gap-2">
+            <Clock className="w-4 h-4" />
+            Prog Tiempos
           </TabsTrigger>
         </TabsList>
 
@@ -269,6 +273,17 @@ export const TacticalPlan2Section: React.FC = () => {
             </CardHeader>
             <CardContent>
               <OrdenesFertTabSection />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="prog_tiempos">
+          <Card>
+            <CardHeader>
+              <CardTitle>Programación de Tiempos (Ensamblado)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <TiemposEnsambladoTabSection />
             </CardContent>
           </Card>
         </TabsContent>
