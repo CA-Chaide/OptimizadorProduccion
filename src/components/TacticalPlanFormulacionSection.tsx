@@ -277,35 +277,48 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     }, base);
   }, [unifiedSummaryData]);
 
-  // --- LÓGICA DE CURADO: FILTRO 10 DÍAS ATRÁS SEGÚN RUTA ---
+  // --- LÓGICA DE CURADO: FILTRO 10 DÍAS ATRÁS SEGÚN RUTA Y OBJETO ---
   const filteredCurado = useMemo(() => {
-    if (selectedDate === 'all' || !mounted) return curadoRows;
+    if (!mounted) return [];
     
-    try {
-      const target = parseISO(selectedDate);
-      const limit = subDays(target, 10); // Ventana de 10 días solicitada
-      
-      return curadoRows.filter(row => {
-        if (!row.fecha) return false;
-        const rowDate = parseISO(String(row.fecha).split('T')[0]);
-        return isWithinInterval(rowDate, { start: limit, end: target });
-      });
-    } catch (e) {
-      return curadoRows;
+    let target = new Date();
+    if (selectedDate !== 'all') {
+      try {
+        target = parseISO(selectedDate);
+      } catch (e) {
+        target = new Date();
+      }
     }
+    
+    const limit = subDays(target, 10); // Ventana de 10 días de ingresos
+    
+    return curadoRows.filter(row => {
+      if (!row.fecha) return false;
+      const rowDate = parseISO(String(row.fecha).split('T')[0]);
+      return isWithinInterval(rowDate, { start: limit, end: target });
+    });
   }, [curadoRows, selectedDate, mounted]);
 
-  const curadoByRoute = useMemo(() => {
+  const curadoByGroup = useMemo(() => {
     const map = new Map<string, any[]>();
     filteredCurado.forEach(row => {
       const maquinaRaw = String(row.Maquina || 'SIN RUTA').trim().toUpperCase();
-      let ruta = 'OTROS RECURSOS';
-      if (maquinaRaw.includes('BLOQUE_M')) ruta = 'RUTA: BLOQUE_M (PROCESO MANUAL)';
-      else if (maquinaRaw.includes('BLOQUE_ST')) ruta = 'RUTA: BLOQUE_ST (STIRLING)';
-      else if (maquinaRaw !== 'SIN RUTA') ruta = `RUTA: ${maquinaRaw}`;
+      
+      // Clasificación por objetos f_bloq (automático/stirling) y f_bloq_m (manual)
+      let groupKey = 'OTROS RECURSOS';
+      if (maquinaRaw.includes('BLOQUE_M')) groupKey = 'f_bloq_m (PROCESO MANUAL)';
+      else if (maquinaRaw.includes('BLOQUE_ST')) groupKey = 'f_bloq (SISTEMA STIRLING)';
+      else if (maquinaRaw !== 'SIN RUTA') groupKey = `OBJETO: ${maquinaRaw}`;
 
-      if (!map.has(ruta)) map.set(ruta, []);
-      map.get(ruta)!.push(row);
+      if (!map.has(groupKey)) map.set(groupKey, []);
+      
+      // Extraer apertura técnica para la visualización del stock curado
+      const info = extractMaterialInfo({ 
+        MATERIAL: row.NomMaterial || row.CodMaterial || '', 
+        CATEGORIA: row.NomMaterial || '' 
+      });
+      
+      map.get(groupKey)!.push({ ...row, apertura: info.apertura });
     });
     return map;
   }, [filteredCurado]);
@@ -326,7 +339,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           <div className="p-2 bg-primary/10 rounded-xl"><FlaskConical className="w-6 h-6 text-primary" /></div>
           <div>
             <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Plan Táctico Formulación</h2>
-            <p className="text-xs text-gray-500 font-medium">Control Maestro de Bloques | Auditoría de Curado (10 Días)</p>
+            <p className="text-xs text-gray-500 font-medium">Control Maestro de Bloques | Auditoría f_bloq / f_bloq_m (10 Días)</p>
           </div>
         </div>
       </div>
@@ -472,26 +485,26 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
             <div className="flex items-center gap-3 text-left">
               <div className="p-2 bg-indigo-600/10 rounded-xl text-indigo-600"><History className="w-5 h-5" /></div>
               <div>
-                <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">Monitor de Curado por Ruta Técnica</h3>
+                <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">Stock de Bloques Curados (Últimos 10 Días)</h3>
                 <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">
-                  {selectedDate === 'all' ? 'Historial Completo' : `Ventana de Maduración (10 Días) desde: ${selectedDate}`}
+                  Segmentación por Objetos Técnicos: f_bloq (Stirling) y f_bloq_m (Manual)
                 </p>
               </div>
             </div>
             <div className="flex gap-4">
               <div className="text-right">
-                <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest">Bloques en Curado</p>
+                <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest">Registros Ventana</p>
                 <p className="text-lg font-black text-indigo-700">{filteredCurado.length}</p>
               </div>
-              <Badge variant="outline" className="bg-white border-indigo-200 text-indigo-700 font-black text-[10px]">{totalCurado} Total SAP</Badge>
+              <Badge variant="outline" className="bg-white border-indigo-200 text-indigo-700 font-black text-[10px] uppercase">{totalCurado} Histórico SAP</Badge>
             </div>
           </div>
 
           <div className="space-y-8">
-            {Array.from(curadoByRoute.entries()).map(([ruta, rows]) => (
-              <div key={ruta} className="space-y-3">
+            {Array.from(curadoByGroup.entries()).map(([grupo, rows]) => (
+              <div key={grupo} className="space-y-3">
                 <h4 className="text-[10px] font-black uppercase text-gray-400 flex items-center gap-2 px-1 tracking-widest">
-                  <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full" /> {ruta}
+                  <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full" /> {grupo}
                 </h4>
                 <Card className="rounded-2xl border border-gray-100 shadow-md overflow-hidden bg-white">
                   <div className="overflow-x-auto max-h-[400px]">
@@ -504,6 +517,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                           <th className="px-4 py-4 border-r border-gray-100">Material</th>
                           <th className="px-4 py-4 border-r border-gray-100 text-left">Descripción</th>
                           <th className="px-4 py-4 border-r border-gray-100 bg-blue-50/50 text-blue-900">Dens.</th>
+                          <th className="px-4 py-4 border-r border-gray-100 bg-teal-50 text-teal-900">Apertura</th>
                           <th className="px-4 py-4 border-r border-gray-100">Cód Bloque</th>
                           <th className="px-4 py-4 border-r border-gray-100 text-orange-800 font-black">Peso (Kg)</th>
                           <th className="px-4 py-4 border-r border-gray-100">Operador</th>
@@ -519,6 +533,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                             <td className="px-3 py-2 border-r border-gray-100 font-mono text-slate-800">{String(row.CodMaterial)}</td>
                             <td className="px-3 py-2 border-r border-gray-100 text-left uppercase text-slate-500 truncate max-w-[200px]" title={row.NomMaterial}>{String(row.NomMaterial)}</td>
                             <td className="px-3 py-2 border-r border-gray-100 font-black text-blue-800 bg-blue-50/5">{String(row.densidad)}</td>
+                            <td className="px-3 py-2 border-r border-gray-100 font-black text-teal-700 bg-teal-50/20">{row.apertura || '—'}</td>
                             <td className="px-3 py-2 border-r border-gray-100 font-mono text-purple-700">{String(row.CodBloque)}</td>
                             <td className="px-3 py-2 border-r border-gray-100 bg-orange-50/5 font-mono text-orange-700 font-black">{formatNum(row.peso, 1)}</td>
                             <td className="px-3 py-2 border-r border-gray-100 text-gray-400">{String(row.operador)}</td>
