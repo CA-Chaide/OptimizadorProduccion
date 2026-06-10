@@ -187,9 +187,12 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const sbPerLoad = Math.floor(CIRCUMFERENCE / (ancho + EFFECTIVE_GAP_CM));
     const loads = sbPerLoad > 0 ? Math.ceil(subblocks / sbPerLoad) : 0;
 
-    const hours = ((loads * SECONDS_PER_LOAD) + (qty * SECONDS_PER_UNIT)) / 3600;
+    const loadingTimeSec = loads * SECONDS_PER_LOAD;
+    const unloadingTimeSec = qty * SECONDS_PER_UNIT;
+    const totalTimeSec = loadingTimeSec + unloadingTimeSec;
+    const hours = totalTimeSec / 3600;
 
-    return { ...info, totalH, subblocks, sbPerLoad, blocks20m, loads, hours, qty };
+    return { ...info, totalH, subblocks, sbPerLoad, blocks20m, loads, hours, qty, loadingTimeSec, unloadingTimeSec };
   };
 
   const filterData = (data: any[], centro: string) => {
@@ -508,6 +511,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <th className="px-3 py-4 border-r border-gray-100 font-black text-indigo-700 bg-indigo-50/20">Máquina</th>
                         <th className="px-3 py-4 border-r border-gray-100 bg-blue-50/20 text-blue-900">T. INDIV. (min)</th>
                         <th className="px-3 py-4 border-r border-gray-100 bg-amber-50/50 text-amber-900">T. TOTAL (H)</th>
+                        <th className="px-3 py-4 border-r border-gray-100 bg-green-50/50 text-green-900">T. C/D (min)</th>
                         <th className="px-2 py-4 border-r border-gray-50 bg-purple-50/50 text-purple-900">SUBBL.</th>
                         <th className="px-2 py-4 border-r border-gray-50 bg-orange-50/50 font-black">BLOQUES 20M</th>
                         <th className="px-3 py-4 border-r border-gray-50 text-red-700 bg-red-50/50 font-black">CARGAS</th>
@@ -520,6 +524,11 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         const eng = calculateEngineering(o);
                         const dRaw = String(o.FECHAINICIO || o.FECHA || '—').trim();
                         const date = dRaw.includes('T') ? dRaw.split('T')[0] : dRaw;
+                        
+                        // Desglose de Carga y Descarga en minutos
+                        const loadMin = (eng.loadingTimeSec / 60).toFixed(1);
+                        const unloadMin = (eng.unloadingTimeSec / 60).toFixed(1);
+                        
                         return (
                           <tr key={i} className="hover:bg-gray-50/50">
                             <td className="px-3 py-2 text-slate-400 border-r border-gray-50">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
@@ -534,6 +543,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                             <td className="px-3 py-2 border-r border-gray-100 font-black text-indigo-700 bg-indigo-50/5 uppercase">{String(o.MAQUINA || o.RECURSO || '—')}</td>
                             <td className="px-3 py-2 border-r border-gray-100 bg-blue-50/10 font-mono text-blue-700 text-center">{(eng.hours * 60 / (eng.qty || 1)).toFixed(2)}</td>
                             <td className="px-3 py-2 border-r border-gray-100 bg-amber-50/10 font-mono text-amber-700 text-center">{eng.hours.toFixed(2)}</td>
+                            <td className="px-3 py-2 border-r border-gray-100 bg-green-50/10 font-mono text-green-700 text-center" title={`${loadMin}m Carga + ${unloadMin}m Descarga`}>{loadMin} + {unloadMin}</td>
                             <td className="px-2 py-2 border-r border-gray-50 bg-purple-50/10 text-purple-700">{eng.subblocks.toFixed(1)}</td>
                             <td className="px-2 py-2 border-r border-gray-50 bg-orange-50/10 font-black text-orange-800">{eng.blocks20m.toFixed(1)}</td>
                             <td className="px-3 py-2 border-r border-gray-50 bg-red-50/20 font-black text-red-600">{String(eng.loads)}</td>
