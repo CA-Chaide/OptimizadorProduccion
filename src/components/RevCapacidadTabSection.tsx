@@ -11,10 +11,11 @@ import {
   Home, 
   Calendar as CalendarIcon, 
   Download,
-  AlertCircle 
+  AlertCircle,
+  Clock
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import * as XLSX from 'xlsx';
 
 interface SummaryRow {
@@ -58,6 +59,12 @@ export const RevCapacidadTabSection: React.FC = () => {
   
   const [programmingDate, setProgrammingDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [provisionalDate, setProvisionalDate] = useState<string>(new Date().toISOString().split('T')[0]);
+
+  // Nuevos estados para horas de turno
+  const [horasTurno1, setHorasTurno1] = useState<number>(8);
+  const [horasTurno2, setHorasTurno2] = useState<number>(8);
+
+  const hourOptions = Array.from({ length: 9 }, (_, i) => i + 4);
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
@@ -146,7 +153,7 @@ export const RevCapacidadTabSection: React.FC = () => {
     provisionalOrders.forEach(o => {
       const orderCenter = String(o.Centro || '').trim();
       if (normalizeDateISO(o.FECHAINICIO || o.fecha_inicio) === targetDateISO && orderCenter === selectedCenter) {
-        const key = `${o.LINEA_MAPPED}|${normalizeMaterialCode(o.MATERIAL || o.CodMaterial)}`;
+        const key = `${o.LINEA_MAPPED}|${normalizeMaterialCode(o.MATERIAL || o.CodMaterial || o.Material)}`;
         const cant = Number(o.CANTIDAD || 0) || 0;
         map.set(key, (map.get(key) || 0) + cant);
       }
@@ -253,16 +260,46 @@ export const RevCapacidadTabSection: React.FC = () => {
           ))}
         </TabsList>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-gray-50 border rounded-xl shadow-sm mb-6">
+        {/* Panel de Filtros */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 bg-gray-50 border rounded-xl shadow-sm mb-6">
+          {/* Día Programación */}
           <div className="flex items-center gap-3 bg-white border rounded-md px-3 py-2 h-11">
             <label className="text-[10px] font-bold text-gray-400 uppercase">Día Programación:</label>
             <input type="date" value={programmingDate} onChange={e => setProgrammingDate(e.target.value)} className="text-xs border-none focus:ring-0 font-medium text-indigo-700 outline-none flex-1" />
             <CalendarIcon className="w-4 h-4 text-gray-400" />
           </div>
+
+          {/* Fecha Previsionales */}
           <div className="flex items-center gap-3 bg-white border rounded-md px-3 py-2 h-11">
             <label className="text-[10px] font-bold text-gray-400 uppercase">Fecha Previsionales:</label>
             <input type="date" value={provisionalDate} onChange={e => setProvisionalDate(e.target.value)} className="text-xs border-none focus:ring-0 font-medium text-indigo-700 outline-none flex-1" />
             <CalendarIcon className="w-4 h-4 text-gray-400" />
+          </div>
+
+          {/* Horas Turno 1 */}
+          <div className="flex items-center gap-3 bg-white border rounded-md px-3 py-2 h-11">
+            <label className="text-[10px] font-bold text-gray-400 uppercase">Horas Turno 1:</label>
+            <select 
+              value={horasTurno1} 
+              onChange={e => setHorasTurno1(Number(e.target.value))}
+              className="text-xs border-none bg-transparent focus:ring-0 font-bold text-indigo-700 outline-none flex-1"
+            >
+              {hourOptions.map(h => <option key={`t1-${h}`} value={h}>{h}</option>)}
+            </select>
+            <Clock className="w-4 h-4 text-gray-400" />
+          </div>
+
+          {/* Horas Turno 2 */}
+          <div className="flex items-center gap-3 bg-white border rounded-md px-3 py-2 h-11">
+            <label className="text-[10px] font-bold text-gray-400 uppercase">Horas Turno 2:</label>
+            <select 
+              value={horasTurno2} 
+              onChange={e => setHorasTurno2(Number(e.target.value))}
+              className="text-xs border-none bg-transparent focus:ring-0 font-bold text-indigo-700 outline-none flex-1"
+            >
+              {hourOptions.map(h => <option key={`t2-${h}`} value={h}>{h}</option>)}
+            </select>
+            <Clock className="w-4 h-4 text-gray-400" />
           </div>
         </div>
 
