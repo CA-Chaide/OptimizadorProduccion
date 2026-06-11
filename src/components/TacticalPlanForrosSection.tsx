@@ -273,7 +273,14 @@ export const TacticalPlanForrosSection: React.FC = () => {
       if (name === 'RESPCTRLPROD' || name === 'ALMACEN' || name === 'ALMACÉN') {
         const key = name === 'ALMACÉN' ? 'ALMACEN' : name;
         if (!filters[key]) filters[key] = [];
-        filters[key].push(r.valor_restriccion.trim());
+        
+        const val = r.valor_restriccion.trim();
+        // SOPORTE PARA CÓDIGOS SEPARADOS POR & (Ej: 002&009&010)
+        if (val.includes('&')) {
+          filters[key].push(...val.split('&').map(s => s.trim()));
+        } else {
+          filters[key].push(val);
+        }
       }
     });
     return filters;
@@ -620,14 +627,19 @@ export const TacticalPlanForrosSection: React.FC = () => {
     let result = [...mantenimientosData];
 
     // Filter by RespCtrlProd from Forros group restrictions
-    const allowedResps = externalFilters['RESPCTRLPROD'];
-    if (allowedResps && allowedResps.length > 0) {
+    const allowedResps = (externalFilters['RESPCTRLPROD'] || []).map(r => r.padStart(3, '0'));
+    
+    if (allowedResps.length > 0) {
       result = result.filter(m => {
         // Find the responsibility column in the maintenance data (e.g. RespControlProd)
-        const respKey = Object.keys(m).find(k => k.toUpperCase().replace(/_/g, '') === 'RESPCONTROLPROD' || k.toUpperCase() === 'RESPONSABLE' || k.toUpperCase() === 'RESPCTRLPROD');
+        const respKey = Object.keys(m).find(k => {
+          const uk = k.toUpperCase().replace(/_/g, '');
+          return uk === 'RESPCONTROLPROD' || uk === 'RESPCTRLPROD' || uk === 'RESPONSABLE';
+        });
+
         if (!respKey) return true; 
         
-        const val = String(m[respKey] || '').trim();
+        const val = String(m[respKey] || '').trim().padStart(3, '0');
         return allowedResps.includes(val);
       });
     }
