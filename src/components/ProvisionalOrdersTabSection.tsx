@@ -5,7 +5,7 @@ import { serviciosService } from '@/services/servicios.service';
 import { grupoService } from '@/services/grupo.service';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
-import { Package, Loader2, Home, Search, X } from 'lucide-react';
+import { Package, Loader2, Home, Search, X, Filter, Warehouse } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -103,11 +103,14 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
   const currentCenterOrders = useMemo(() => {
     const term = searchTerm.toLowerCase().trim();
     return orders.filter(order => {
+      // FILTRO 1: Almacenes específicos (Hardcoded logic)
       const almacen = String(order.Almacen || '').trim();
       if (almacen !== '1001' && almacen !== '2001') return false;
 
+      // FILTRO 2: Centro seleccionado en la UI
       if (String(order.Centro || '').trim() !== selectedCenter) return false;
 
+      // FILTRO 3: Búsqueda por texto
       if (term) {
         return (
           String(order.ORDENPREVISIONAL || '').toLowerCase().includes(term) ||
@@ -176,13 +179,35 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
             <TabsTrigger 
               key={center} 
               value={center}
-              className="data-[state=active]:bg-white data-[state=active]:text-indigo-700 data-[state=active]:shadow-sm px-4 py-2 text-xs font-bold uppercase tracking-wider"
+              className="data-[state=active]:bg-white data-[state=active]:text-indigo-700 data-[state=active]:shadow-sm px-6 py-2 text-xs font-bold uppercase tracking-wider"
             >
               <Home className="w-3 h-3 mr-2" />
               Centro {center}
             </TabsTrigger>
           ))}
         </TabsList>
+
+        {/* --- Sección de Filtros Activos --- */}
+        <div className="flex flex-wrap gap-2 items-center mb-4 px-1">
+          <span className="text-[10px] font-bold text-gray-400 uppercase flex items-center gap-1">
+            <Filter className="w-3 h-3" /> Filtros Aplicados:
+          </span>
+          <Badge variant="secondary" className="bg-indigo-50 text-indigo-700 text-[10px] border-indigo-100 font-bold">
+            CENTRO: {selectedCenter}
+          </Badge>
+          <Badge variant="secondary" className="bg-blue-50 text-blue-700 text-[10px] border-blue-100 flex items-center gap-1 font-bold">
+            <Warehouse className="w-2.5 h-3" /> ALMACENES: 1001, 2001
+          </Badge>
+          {searchTerm && (
+            <Badge variant="secondary" className="bg-amber-50 text-amber-700 text-[10px] border-amber-100 font-bold flex items-center gap-1">
+              BÚSQUEDA: "{searchTerm}"
+              <X className="w-2.5 h-2.5 cursor-pointer" onClick={() => setSearchTerm('')} />
+            </Badge>
+          )}
+          <span className="text-[10px] text-gray-400 ml-auto">
+            Mostrando <b>{currentCenterOrders.length}</b> órdenes de un total de {orders.filter(o => o.Centro === selectedCenter).length} en el centro.
+          </span>
+        </div>
 
         <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
           <div className="overflow-x-auto">
@@ -218,7 +243,7 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
                 )) : (
                   <tr>
                     <td colSpan={10} className="px-6 py-12 text-center text-gray-400 italic">
-                      No se encontraron órdenes para el centro {selectedCenter}.
+                      No se encontraron órdenes para el centro {selectedCenter} con los criterios de almacén (1001/2001) y búsqueda actuales.
                     </td>
                   </tr>
                 )}
