@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -12,14 +13,12 @@ import {
   Calendar as CalendarIcon, 
   Download,
   AlertCircle,
-  Hash,
   ArrowRightLeft,
   Search
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 import * as XLSX from 'xlsx';
 
 interface ProposedPlanRow {
@@ -92,6 +91,7 @@ export const PlanPropuestoTabSection: React.FC = () => {
       setAvailableCenters(centers);
       if (centers.length > 0 && !selectedCenter) setSelectedCenter(centers[0]);
 
+      // Cargar Tiempos de Ensamblado (Misma fuente que Prog Tiempos)
       let allTiempos: any[] = [];
       let page = 1;
       let hasMore = true;
@@ -102,8 +102,34 @@ export const PlanPropuestoTabSection: React.FC = () => {
         if (raw.length < 5000) hasMore = false; else page++;
       }
       setTechnicalData(allTiempos);
-      setFertOrders(Array.isArray(fertRes?.data) ? fertRes.data : []);
-      setProvisionalOrders(Array.isArray(prevRes?.data) ? prevRes.data : []);
+
+      // Cargar y mapear FERT (Misma lógica que Prog Tiempos)
+      const rawFert = Array.isArray(fertRes?.data) ? fertRes.data : [];
+      const mappedFert = rawFert.map((o: any) => {
+        const cat = String(o.CATEGORIA || '').toUpperCase();
+        let calc = '';
+        if (cat.includes('L1')) calc = 'LINEA 1';
+        else if (cat.includes('L2')) calc = 'LINEA 2';
+        else if (cat.includes('L3')) calc = 'LINEA 3';
+        else if (cat.includes('L5') || cat.includes('B-B')) calc = 'LINEA 5';
+        else calc = String(o.LINEA || '').trim().toUpperCase();
+        return { ...o, LINEA_MAPPED: calc };
+      });
+      setFertOrders(mappedFert);
+
+      // Cargar y mapear PREVISIONALES (Misma lógica que Prog Tiempos)
+      const rawPrev = Array.isArray(prevRes?.data) ? prevRes.data : [];
+      const mappedPrev = rawPrev.map((o: any) => {
+        const cat = String(o.CATEGORIA || '').toUpperCase();
+        let calc = '';
+        if (cat.includes('L1')) calc = 'LINEA 1';
+        else if (cat.includes('L2')) calc = 'LINEA 2';
+        else if (cat.includes('L3')) calc = 'LINEA 3';
+        else if (cat.includes('L5') || cat.includes('B-B')) calc = 'LINEA 5';
+        else calc = String(o.LINEA || '').trim().toUpperCase();
+        return { ...o, LINEA_MAPPED: calc };
+      });
+      setProvisionalOrders(mappedPrev);
 
     } catch (err) {
       addNotification('error', `Error al cargar datos: ${(err as Error).message}`);
@@ -116,21 +142,46 @@ export const PlanPropuestoTabSection: React.FC = () => {
     loadData();
   }, [loadData]);
 
-  // ALGORITMO DE OPTIMIZACIÓN
+  // MAPAS DE AGREGACIÓN DE DEMANDA (IDÉNTICOS A PROG TIEMPOS)
+  const fertSumMap = useMemo(() => {
+    const map = new Map<string, number>();
+    const targetDateISO = normalizeDateISO(programmingDate);
+    if (!targetDateISO || !selectedCenter) return map;
+
+    fertOrders.forEach(o => {
+      if (normalizeDateISO(o.FECHA || o.fecha) === targetDateISO && String(o.CENTRO || '').trim() === selectedCenter) {
+        const key = `${o.LINEA_MAPPED}|${normalizeMaterialCode(o.MATERIAL || o.CodMaterial)}`;
+        map.set(key, (map.get(key) || 0) + Number(o.CANTPENDIENTE || 0));
+      }
+    });
+    return map;
+  }, [fertOrders, programmingDate, selectedCenter]);
+
+  const prevSumMap = useMemo(() => {
+    const map = new Map<string, number>();
+    const targetDateISO = normalizeDateISO(provisionalDate);
+    if (!targetDateISO || !selectedCenter) return map;
+
+    provisionalOrders.forEach(o => {
+      if (normalizeDateISO(o.FECHAINICIO || o.fecha_inicio) === targetDateISO && String(o.Centro || '').trim() === selectedCenter) {
+        const key = `${o.LINEA_MAPPED}|${normalizeMaterialCode(o.MATERIAL || o.CodMaterial || o.Material)}`;
+        map.set(key, (map.get(key) || 0) + Number(o.CANTIDAD || 0));
+      }
+    });
+    return map;
+  }, [provisionalOrders, provisionalDate, selectedCenter]);
+
+  // ALGORITMO DE OPTIMIZACIÓN BASADO EXCLUSIVAMENTE EN DATOS TÉCNICOS Y DEMANDA AGREGADA
   const proposedPlan = useMemo((): ProposedPlanRow[] => {
     if (!technicalData.length || !selectedCenter) return [];
 
-    const targetDateFERT = normalizeDateISO(programmingDate);
-    const targetDatePREV = normalizeDateISO(provisionalDate);
-    
-    // 1. Obtener materiales y demandas base por línea
     const materialDemands = new Map<string, { material: string, descripcion: string, linea: string, qty: number, tUnit: number }>();
     const lineLoad = new Map<string, { currentHours: number, targetHours: number }>();
 
     // Filtrar técnicos por centro
     const centerTechnical = technicalData.filter(d => String(d.Centro || '').trim() === selectedCenter);
     
-    // Identificar el puesto de referencia para cada línea (el que define el balanceo)
+    // Identificar el puesto de referencia para cada línea
     const lineRefWorkstation: Record<string, string> = {
       'LINEA 1': 'Armado',
       'LINEA 2': 'Armado',
@@ -138,32 +189,23 @@ export const PlanPropuestoTabSection: React.FC = () => {
       'LINEA 5': 'Armado'
     };
 
+    // Iterar sobre los materiales de la pestaña técnica
     centerTechnical.forEach(row => {
       const linea = String(row.Linea || '').trim().toUpperCase();
       const puesto = String(row.PuestoTrabajo || '').trim();
       const material = normalizeMaterialCode(row.CodMaterial);
       
-      // Solo nos interesa el puesto de referencia para calcular el factor de escala
+      // Solo nos interesa el puesto de referencia para el cálculo de capacidad
       if (puesto !== lineRefWorkstation[linea]) return;
 
       const matKey = `${linea}|${material}`;
       
-      // Sumar demanda FERT
-      const fertMatch = fertOrders.find(o => 
-        normalizeDateISO(o.FECHA || o.fecha) === targetDateFERT && 
-        String(o.CENTRO || '').trim() === selectedCenter &&
-        normalizeMaterialCode(o.MATERIAL || o.CodMaterial) === material
-      );
-      
-      // Sumar demanda PREV
-      const prevMatch = provisionalOrders.find(o => 
-        normalizeDateISO(o.FECHAINICIO || o.fecha_inicio) === targetDatePREV && 
-        String(o.Centro || '').trim() === selectedCenter &&
-        normalizeMaterialCode(o.CodMaterial || o.MATERIAL) === material
-      );
+      // Obtener demanda agregada (FERT + PREV)
+      const qFab = fertSumMap.get(matKey) || 0;
+      const qPrev = prevSumMap.get(matKey) || 0;
+      const totalQty = qFab + qPrev;
 
-      const qty = (Number(fertMatch?.CANTPENDIENTE || 0)) + (Number(prevMatch?.CANTIDAD || 0));
-      if (qty === 0) return;
+      if (totalQty <= 0) return;
 
       const tUnit = Number(row.Tiempo_Min || 0);
       let rend = 1;
@@ -172,13 +214,13 @@ export const PlanPropuestoTabSection: React.FC = () => {
       else if (linea.includes('3')) rend = rendLinea3;
       else if (linea.includes('5')) rend = rendLinea5;
 
-      const hours = ((qty * tUnit) / 60) * rend;
+      const hours = ((totalQty * tUnit) / 60) * rend;
 
       materialDemands.set(matKey, {
         material,
-        descripcion: fertMatch?.NOMBRE || prevMatch?.NOMBRE || `Material ${material}`,
+        descripcion: row.Material || row.NombreMaterial || `Material ${material}`,
         linea,
-        qty,
+        qty: totalQty,
         tUnit
       });
 
@@ -189,7 +231,7 @@ export const PlanPropuestoTabSection: React.FC = () => {
       lineLoad.set(linea, current);
     });
 
-    // 2. Aplicar iteración de balanceo
+    // 2. Aplicar iteración de balanceo: Cantidad PROPUESTA = Cantidad Original * (Horas Objetivo / Horas Actuales)
     const results: ProposedPlanRow[] = [];
 
     materialDemands.forEach((data, key) => {
@@ -221,7 +263,7 @@ export const PlanPropuestoTabSection: React.FC = () => {
     });
 
     return results.sort((a, b) => a.linea.localeCompare(b.linea) || a.material.localeCompare(b.material));
-  }, [technicalData, fertOrders, provisionalOrders, selectedCenter, programmingDate, provisionalDate, horasTurno1, rendLinea1, rendLinea2, rendLinea3, rendLinea5]);
+  }, [technicalData, fertSumMap, prevSumMap, selectedCenter, programmingDate, provisionalDate, horasTurno1, rendLinea1, rendLinea2, rendLinea3, rendLinea5]);
 
   const filteredResults = useMemo(() => {
     const q = searchTerm.toLowerCase().trim();
@@ -242,7 +284,7 @@ export const PlanPropuestoTabSection: React.FC = () => {
       'Cant. Original': r.cantidadOriginal,
       'Cant. PROPUESTA': r.cantidadPropuesta,
       'Diferencia (±)': r.diferencia,
-      'Tiempo Estimado (h)': r.tiempoTotalPropuesto.toFixed(2)
+      'Tiempo Estimado (h)': Number(r.tiempoTotalPropuesto.toFixed(2))
     }));
 
     const ws = XLSX.utils.json_to_sheet(dataToExport);
@@ -258,15 +300,15 @@ export const PlanPropuestoTabSection: React.FC = () => {
           <CheckCircle2 className="w-6 h-6 text-green-600" />
           <div>
             <h3 className="text-xl font-semibold text-gray-800">Propuesta de Producción Óptima</h3>
-            <p className="text-xs text-gray-500">Cantidades ajustadas para cubrir los puestos objetivo del turno</p>
+            <p className="text-xs text-gray-500">Basado estrictamente en la matriz técnica y demanda agregada</p>
           </div>
         </div>
         <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={handleExport} disabled={filteredResults.length === 0}>
                 <Download className="w-4 h-4 mr-2" /> Exportar Plan
             </Button>
-            <Button variant="outline" size="sm" onClick={loadData}>
-                <ArrowRightLeft className="w-4 h-4 mr-2" /> Recalcular Todo
+            <Button variant="outline" size="sm" onClick={() => { setFertOrders([]); setProvisionalOrders([]); loadData(); }}>
+                <ArrowRightLeft className="w-4 h-4 mr-2" /> Recalcular
             </Button>
         </div>
       </div>
@@ -338,25 +380,29 @@ export const PlanPropuestoTabSection: React.FC = () => {
                 {isLoading ? (
                   <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-500"><Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" /> Calculando propuesta óptima...</td></tr>
                 ) : filteredResults.length > 0 ? (() => {
+                  const items: React.ReactNode[] = [];
                   const lines = [...new Set(filteredResults.map(r => r.linea))];
-                  return lines.map(lineName => {
+                  lines.forEach(lineName => {
                     const lineRows = filteredResults.filter(r => r.linea === lineName);
-                    return lineRows.map((row, idx) => (
-                      <tr key={`${lineName}-${row.material}-${idx}`} className="hover:bg-gray-50">
-                        {idx === 0 && <td rowSpan={lineRows.length} className="px-4 py-3 font-bold text-gray-900 border-r align-top bg-gray-50/10">{lineName}</td>}
-                        <td className="px-4 py-3 font-mono font-medium text-gray-700">{row.material}</td>
-                        <td className="px-4 py-3 text-gray-600 max-w-xs truncate" title={row.descripcion}>{row.descripcion}</td>
-                        <td className="px-4 py-3 text-right text-gray-400 line-through">{row.cantidadOriginal}</td>
-                        <td className="px-4 py-3 text-right font-bold text-indigo-700 bg-indigo-50/5">{row.cantidadPropuesta.toLocaleString()}</td>
-                        <td className={`px-4 py-3 text-right font-medium ${row.diferencia > 0 ? 'text-green-600' : row.diferencia < 0 ? 'text-red-600' : 'text-gray-400'}`}>
-                          {row.diferencia > 0 ? `+${row.diferencia}` : row.diferencia}
-                        </td>
-                        <td className="px-4 py-3 text-right font-mono font-bold text-indigo-800 bg-indigo-50/5">{row.tiempoTotalPropuesto.toFixed(2)}h</td>
-                      </tr>
-                    ));
+                    lineRows.forEach((row, idx) => {
+                      items.push(
+                        <tr key={`${lineName}-${row.material}-${idx}`} className="hover:bg-gray-50">
+                          {idx === 0 && <td rowSpan={lineRows.length} className="px-4 py-3 font-bold text-gray-900 border-r align-top bg-gray-50/10">{lineName}</td>}
+                          <td className="px-4 py-3 font-mono font-medium text-gray-700">{row.material}</td>
+                          <td className="px-4 py-3 text-gray-600 max-w-xs truncate" title={row.descripcion}>{row.descripcion}</td>
+                          <td className="px-4 py-3 text-right text-gray-400 line-through">{row.cantidadOriginal.toLocaleString()}</td>
+                          <td className="px-4 py-3 text-right font-bold text-indigo-700 bg-indigo-50/5">{row.cantidadPropuesta.toLocaleString()}</td>
+                          <td className={`px-4 py-3 text-right font-medium ${row.diferencia > 0 ? 'text-green-600' : row.diferencia < 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                            {row.diferencia > 0 ? `+${row.diferencia.toLocaleString()}` : row.diferencia.toLocaleString()}
+                          </td>
+                          <td className="px-4 py-3 text-right font-mono font-bold text-indigo-800 bg-indigo-50/5">{row.tiempoTotalPropuesto.toFixed(2)}h</td>
+                        </tr>
+                      );
+                    });
                   });
+                  return items;
                 })() : (
-                  <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-400 italic">No hay demanda activa para las fechas seleccionadas en este centro.</td></tr>
+                  <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-400 italic">No hay demanda activa que coincida con la matriz técnica para este centro y fechas.</td></tr>
                 )}
               </tbody>
               {filteredResults.length > 0 && (
@@ -372,13 +418,6 @@ export const PlanPropuestoTabSection: React.FC = () => {
               )}
             </table>
           </div>
-        </div>
-
-        <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg flex gap-3">
-          <AlertCircle className="w-5 h-5 text-blue-600 shrink-0" />
-          <p className="text-xs text-blue-800 leading-relaxed">
-            <b>Lógica de Optimización:</b> Las cantidades propuestas se calculan aplicando un factor de ajuste lineal sobre el mix de demanda actual. El objetivo es que la sumatoria de tiempos por línea se aproxime al 100% de la capacidad definida por los <b>Puestos Objetivo</b> multiplicados por las <b>Horas de Turno</b>. Si la demanda original excede o no alcanza el objetivo, el sistema sugiere el ajuste proporcional necesario.
-          </p>
         </div>
       </Tabs>
     </div>
