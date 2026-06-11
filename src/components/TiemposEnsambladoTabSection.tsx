@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
@@ -365,6 +366,9 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
                     <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Línea</th>
                     <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Puesto Trabajo</th>
                     <th className="px-4 py-3 text-right text-[10px] font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50/30">Tiempo (min)</th>
+                    {isCompact && (
+                      <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">ord_Fab</th>
+                    )}
                     {!isCompact && (
                       <>
                         <th className="px-4 py-3 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider">Stock Act.</th>
@@ -386,6 +390,15 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
                       <td className="px-4 py-3 whitespace-nowrap text-xs font-bold text-right text-indigo-600 bg-indigo-50/10">
                         {Number(row.Tiempo_Min || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 })}
                       </td>
+                      {isCompact && (
+                        <td className="px-4 py-2 whitespace-nowrap">
+                          <input 
+                            type="text" 
+                            className="w-24 px-2 py-1 text-xs border rounded bg-white focus:ring-1 focus:ring-indigo-500"
+                            placeholder="Ingrese orden..."
+                          />
+                        </td>
+                      )}
                       {!isCompact && (
                         <>
                           <td className="px-4 py-3 whitespace-nowrap text-xs text-right text-gray-500">{row.StockActual}</td>
@@ -403,7 +416,7 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
                     </tr>
                   )) : (
                     <tr>
-                      <td colSpan={isCompact ? 4 : 10} className="px-6 py-12 text-center text-gray-400 italic">
+                      <td colSpan={isCompact ? 5 : 10} className="px-6 py-12 text-center text-gray-400 italic">
                         <div className="flex flex-col items-center justify-center gap-2">
                           <AlertCircle className="w-8 h-8 text-gray-300" />
                           <span>No se encontraron registros de tiempos.</span>
