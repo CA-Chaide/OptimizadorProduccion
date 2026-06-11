@@ -166,12 +166,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     if (upperCol.includes('FECHA')) {
       const parts = safeParseDateParts(value);
       if (parts) {
-        const date = new Date(Number(parts.y), Number(parts.m) - 1, Number(parts.d));
-        date.setDate(date.getDate() + 1);
-        const dy = date.getFullYear();
-        const dm = String(date.getMonth() + 1).padStart(2, '0');
-        const dd = String(date.getDate()).padStart(2, '0');
-        return `${dd}/${dm}/${dy}`;
+        return `${parts.d}/${parts.m}/${parts.y}`;
       }
       return String(value);
     }
@@ -335,12 +330,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
   }, [addNotification]);
 
-  // CATEGORIAS DE PUESTO DE TRABAJO UNICOS (Filtrado de 'MARCOSUIO')
   const uniqueWorkstations = useMemo(() => {
     const wsSet = new Set<string>();
     tiemposProduccion.forEach(t => {
       const ws = String(t.PuestoTrabajo || '').trim();
-      // Filtrar MARCOSUIO y otros valores inválidos
       if (ws && ws !== 'null' && ws.toUpperCase() !== 'MARCOSUIO') {
         wsSet.add(ws);
       }
@@ -354,7 +347,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
       uniqueWorkstations.forEach(ws => {
         const wsNorm = ws.replace(/[\s-]/g, '_').toUpperCase();
         
-        // Búsqueda de personas en restricciones usando el nombre del puesto
         const peopleRes = forrosRestricciones.find(r => {
           const rName = r.nombre_restriccion.toUpperCase();
           return (rName.includes('PERSONAS') || rName.includes('CANTIDAD_PERSONAS')) && 
@@ -626,12 +618,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const filteredMantenimientosFull = useMemo(() => {
     let result = [...mantenimientosData];
 
-    // Filter by RespCtrlProd from Forros group restrictions
     const allowedResps = (externalFilters['RESPCTRLPROD'] || []).map(r => r.padStart(3, '0'));
     
     if (allowedResps.length > 0) {
       result = result.filter(m => {
-        // Find the responsibility column in the maintenance data (e.g. RespControlProd)
         const respKey = Object.keys(m).find(k => {
           const uk = k.toUpperCase().replace(/_/g, '');
           return uk === 'RESPCONTROLPROD' || uk === 'RESPCTRLPROD' || uk === 'RESPONSABLE';
@@ -645,8 +635,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
 
     result.sort((a, b) => {
-      const dateA = new Date(a.FECHA_INICIO || a.FECHA || 0).getTime();
-      const dateB = new Date(b.FECHA_INICIO || b.FECHA || 0).getTime();
+      const dateA = new Date(a.FECHA_PRO || a.FECHA_INICIO || a.FECHA || 0).getTime();
+      const dateB = new Date(b.FECHA_PRO || b.FECHA_INICIO || b.FECHA || 0).getTime();
       return dateA - dateB;
     });
 
@@ -1072,7 +1062,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       <th className="px-6 py-4 text-right text-xs font-black text-indigo-600 uppercase tracking-widest">Capacidad Neta (h)</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100">
+                  <tbody className="divide-y divide-100">
                     {uniqueWorkstations.map((ws) => {
                       const config = workstationConfigs[ws] || { machine: ws, shifts: 1, people: 1 };
                       const totalNetHours = totalHorasNetas * config.people;
@@ -1214,7 +1204,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                   <CardTitle>Mantenimientos Preventivos Programados</CardTitle>
-                  <CardDescription>Información oficial del servidor sobre paros técnicos programados filtrado por RespCtrlProd de Forros.</CardDescription>
+                  <CardDescription>Paros técnicos organizados por fecha de programación (FECHA_PRO) y filtrados para el área de Forros.</CardDescription>
                 </div>
                 <Button variant="outline" size="sm" onClick={fetchMantenimientos} disabled={isLoadingMantenimientos}>
                   <RefreshCw className={cn("h-4 w-4 mr-2", isLoadingMantenimientos && "animate-spin")} />
@@ -1232,29 +1222,67 @@ export const TacticalPlanForrosSection: React.FC = () => {
                           {maintColumns.map((col) => (
                             <th
                               key={`maint-col-${col}`}
-                              className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase whitespace-nowrap"
+                              className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase whitespace-nowrap"
                             >
                               {col}
                             </th>
                           ))}
                         </tr>
                       </thead>
-                      <tbody className="bg-white">
+                      <tbody className="bg-white divide-y divide-gray-100">
                         {isLoadingMantenimientos ? (
                           <tr><td colSpan={maintColumns.length || 6} className="py-24 text-center"><Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" /></td></tr>
                         ) : paginatedMantenimientos.length > 0 ? (
                           paginatedMantenimientos.map((row, idx) => (
-                            <tr key={`maint-row-${idx}`} className="border-b hover:bg-gray-50 transition-colors">
-                              {maintColumns.map((col) => (
-                                <td
-                                  key={`${idx}-${col}`}
-                                  className="px-4 py-3 text-xs text-gray-700"
-                                >
-                                  {typeof row[col] === 'object' 
-                                    ? JSON.stringify(row[col]) 
-                                    : String(row[col] ?? '-')}
-                                </td>
-                              ))}
+                            <tr key={`maint-row-${idx}`} className="hover:bg-blue-50/20 transition-colors">
+                              {maintColumns.map((col) => {
+                                const value = row[col];
+                                const upperCol = col.toUpperCase().replace(/_/g, '');
+                                
+                                // Formateo de fechas
+                                if (upperCol.includes('FECHA')) {
+                                  return (
+                                    <td key={`${idx}-${col}`} className="px-4 py-3 text-xs font-mono text-blue-700 whitespace-nowrap">
+                                      {formatValueForDisplay(col, value)}
+                                    </td>
+                                  );
+                                }
+                                
+                                // Formateo de estados con Badges
+                                if (upperCol === 'ESTADO' || upperCol === 'STATUS') {
+                                  const val = String(value || '').toUpperCase();
+                                  const isEjecutado = val.includes('EJEC') || val.includes('OK') || val.includes('TERMINADO');
+                                  const isProgramado = val.includes('PROG');
+                                  
+                                  return (
+                                    <td key={`${idx}-${col}`} className="px-4 py-3">
+                                      <Badge variant="outline" className={cn(
+                                        "font-bold text-[10px] px-2 py-0.5",
+                                        isEjecutado ? "bg-green-50 text-green-700 border-green-200" :
+                                        isProgramado ? "bg-blue-50 text-blue-700 border-blue-200" :
+                                        "bg-amber-50 text-amber-700 border-amber-200"
+                                      )}>
+                                        {val || 'PROGRAMADO'}
+                                      </Badge>
+                                    </td>
+                                  );
+                                }
+
+                                // Equipo o Máquina
+                                if (upperCol.includes('EQUIPO') || upperCol.includes('MAQUINA')) {
+                                  return (
+                                    <td key={`${idx}-${col}`} className="px-4 py-3 text-xs font-bold text-gray-900">
+                                      {String(value ?? '—')}
+                                    </td>
+                                  );
+                                }
+                                
+                                return (
+                                  <td key={`${idx}-${col}`} className="px-4 py-3 text-xs text-gray-600">
+                                    {typeof value === 'object' ? JSON.stringify(value) : String(value ?? '—')}
+                                  </td>
+                                );
+                              })}
                             </tr>
                           ))
                         ) : (
@@ -1272,8 +1300,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 {/* Pagination Controls */}
                 {maintTotalPages > 1 && (
                   <div className="flex justify-between items-center mt-6">
-                    <div className="text-sm text-gray-600">
-                      Mostrando página {maintCurrentPage} de {maintTotalPages} ({filteredMantenimientosFull.length} registros filtrados)
+                    <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">
+                      Mostrando página {maintCurrentPage} de {maintTotalPages} ({filteredMantenimientosFull.length} registros filtrados por FECHA_PRO)
                     </div>
 
                     <div className="flex gap-2 items-center">
@@ -1282,7 +1310,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                         size="sm"
                         onClick={() => setMaintCurrentPage(1)}
                         disabled={maintCurrentPage === 1 || isLoadingMantenimientos}
-                        className="h-8"
+                        className="h-8 w-8 p-0"
                       >
                         <ChevronsLeft className="h-4 w-4" />
                       </Button>
@@ -1292,7 +1320,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                         size="sm"
                         onClick={() => setMaintCurrentPage(prev => Math.max(1, prev - 1))}
                         disabled={maintCurrentPage === 1 || isLoadingMantenimientos}
-                        className="h-8"
+                        className="h-8 w-8 p-0"
                       >
                         <ChevronLeft className="h-4 w-4" />
                       </Button>
@@ -1304,7 +1332,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                           max={maintTotalPages}
                           value={maintCurrentPage}
                           onChange={(e) => setMaintCurrentPage(parseInt(e.target.value) || 1)}
-                          className="w-16 h-8 text-center text-xs"
+                          className="w-14 h-8 text-center text-xs font-bold"
                         />
                       </div>
 
@@ -1313,7 +1341,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                         size="sm"
                         onClick={() => setMaintCurrentPage(prev => Math.min(maintTotalPages, prev + 1))}
                         disabled={maintCurrentPage === maintTotalPages || isLoadingMantenimientos}
-                        className="h-8"
+                        className="h-8 w-8 p-0"
                       >
                         <ChevronRight className="h-4 w-4" />
                       </Button>
@@ -1323,7 +1351,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                         size="sm"
                         onClick={() => setMaintCurrentPage(maintTotalPages)}
                         disabled={maintCurrentPage === maintTotalPages || isLoadingMantenimientos}
-                        className="h-8"
+                        className="h-8 w-8 p-0"
                       >
                         <ChevronsRight className="h-4 w-4" />
                       </Button>
