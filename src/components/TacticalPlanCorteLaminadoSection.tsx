@@ -173,7 +173,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     });
   }, [ordenes, selectedDate]);
 
-  // CÁLCULO AUTOMÁTICO DE RESUMEN
   const handleProcessResumen = useCallback(async (ordersToProcess: any[]) => {
     if (ordersToProcess.length === 0) {
       setUnifiedNeeds([]);
@@ -232,7 +231,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     }
   }, [inspector]);
 
-  // Efecto para disparar el cálculo automático al cambiar de tab o de filtros
   useEffect(() => {
     if (activeTab === 'resumen' && filteredOrders.length > 0 && !isProcessingResumen) {
       const signature = `${selectedDate}|${filteredOrders.length}|${filteredOrders[0]?.ORDENPREVISIONAL || ''}`;
@@ -397,13 +395,13 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               <table className="w-full border-collapse text-center font-sans text-[11px]">
                 <thead className="bg-[#f8fafc] text-slate-400 border-b border-gray-100 uppercase font-black tracking-widest text-[9px]">
                   <tr>
-                    <th className="px-5 py-4 border-r border-gray-50">Orden</th>
-                    <th className="px-5 py-4 border-r border-gray-50">Fecha</th>
+                    <th className="px-5 py-4 border-r border-gray-50">Orden Previsional</th>
+                    <th className="px-5 py-4 border-r border-gray-50">Fecha Inicio</th>
                     <th className="px-5 py-4 border-r border-gray-50">Material</th>
-                    <th className="px-5 py-4 border-r border-gray-100 text-left">Descripción</th>
-                    <th className="px-5 py-4 border-r border-gray-50">Cant.</th>
-                    <th className="px-5 py-4 border-r border-gray-50">Resp.</th>
-                    <th className="px-5 py-4 border-r border-gray-50">Máquina</th>
+                    <th className="px-5 py-4 border-r border-gray-100 text-left">Descripción del Producto</th>
+                    <th className="px-5 py-4 border-r border-gray-50">Cant. Prog.</th>
+                    <th className="px-5 py-4 border-r border-gray-50">Responsable</th>
+                    <th className="px-5 py-4 border-r border-gray-50">Máquina / Recurso</th>
                     <th className="px-5 py-4">Almacén</th>
                   </tr>
                 </thead>
@@ -412,20 +410,26 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     <tr><td colSpan={8} className="py-20 text-gray-200 font-black uppercase tracking-widest text-center">No hay registros para este filtro</td></tr>
                   ) : (
                     filteredOrders.map((o, i) => {
-                      const mat = String(o.MATERIAL || '').match(/^(\d+)/)?.[1]?.slice(-8) || '—';
-                      const desc = String(o.MATERIAL || '').replace(/^\d+\s*/, '') || '—';
+                      const matCode = String(o.MATERIAL || '').match(/^(\d+)/)?.[1]?.slice(-8) || '—';
+                      const description = String(o.MATERIAL || '').replace(/^\d+\s*/, '') || o.NOMBRE || '—';
                       return (
                         <tr key={i} className="hover:bg-gray-50 transition-colors">
                           <td className="px-4 py-3 font-bold text-slate-800 border-r border-gray-50">{o.ORDENPREVISIONAL || '—'}</td>
                           <td className="px-4 py-3 border-r border-gray-50 font-mono text-[9px] text-gray-400">{o.FECHAINICIO || '—'}</td>
-                          <td className="px-4 py-3 font-mono font-black text-red-500 border-r border-gray-50 tracking-tighter">{mat}</td>
-                          <td className="px-4 py-3 text-left border-r border-gray-100 truncate max-w-[280px] text-slate-600 font-bold uppercase">{desc}</td>
-                          <td className="px-4 py-3 font-black text-slate-900 border-r border-gray-50">{Number(o.CANTIDAD || 0).toLocaleString()}</td>
+                          <td className="px-4 py-3 font-mono font-black text-red-500 border-r border-gray-50 tracking-tighter">{matCode}</td>
+                          <td className="px-4 py-3 text-left border-r border-gray-100 text-slate-600 font-bold uppercase leading-tight">
+                            {description}
+                          </td>
+                          <td className="px-4 py-3 font-black text-slate-900 border-r border-gray-50 font-mono">
+                            {Number(o.CANTIDAD || 0).toLocaleString()}
+                          </td>
                           <td className="px-4 py-3 border-r border-gray-50">
                             <Badge variant="outline" className="text-[10px] font-black bg-blue-50 text-blue-700 border-blue-100">{String(o.RESPCONTROLPROD || '—')}</Badge>
                           </td>
-                          <td className="px-4 py-3 font-bold text-gray-400 border-r border-gray-50 text-[10px]">{String(o.MAQUINA || o.Maquina || o.RECURSO || '—')}</td>
-                          <td className="px-4 py-3 font-bold text-gray-300 text-[10px]">{o.Almacen || '—'}</td>
+                          <td className="px-4 py-3 font-bold text-slate-400 border-r border-gray-50 text-[10px] uppercase">
+                            {String(o.MAQUINA || o.Maquina || o.RECURSO || '—')}
+                          </td>
+                          <td className="px-4 py-3 font-bold text-gray-300 text-[10px]">{o.Almacen || o.ALMACEN || '—'}</td>
                         </tr>
                       );
                     })
@@ -504,7 +508,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   </tbody>
                   <tfoot className="bg-slate-900 text-white font-black uppercase text-[10px] sticky bottom-0">
                     <tr>
-                      <td colSpan={3} className="px-6 py-4 text-right tracking-widest text-slate-400">Total Consolidado del Período:</td>
+                      <td colSpan={3} className="px-6 py-4 text-right tracking-widest text-slate-400">Total Consolidado del Períío:</td>
                       <td className="px-6 py-4 text-right font-mono text-orange-300">{totalsUnified.kg.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</td>
                       <td className="px-6 py-4 text-right font-mono text-orange-300">{totalsUnified.un.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
                     </tr>
@@ -545,7 +549,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               <div className="border border-gray-200 rounded-2xl overflow-hidden bg-white shadow-md">
                 <div className="overflow-x-auto max-h-[550px]">
                   <table className="w-full border-collapse font-sans text-[10px]">
-                    <thead className="bg-[#bde0fe] text-slate-800 uppercase font-black tracking-tight sticky top-0 z-20 border-b border-blue-200">
+                    <thead className="bg-[#bde0fe] text-slate-800 uppercase font-black tracking-tight sticky top-0 z-10 border-b border-blue-200">
                       <tr>
                         <th className="px-3 py-3 border-r border-blue-100 text-center w-14">NV</th>
                         <th className="px-3 py-3 border-r border-blue-100 w-16">CT</th>
