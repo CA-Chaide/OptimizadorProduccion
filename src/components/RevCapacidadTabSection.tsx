@@ -12,7 +12,8 @@ import {
   Calendar as CalendarIcon, 
   Download,
   AlertCircle,
-  Clock
+  Clock,
+  TrendingUp
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -29,9 +30,6 @@ interface SummaryRow {
   totalTiempo: number;
 }
 
-/**
- * Normaliza una cadena de fecha a formato YYYY-MM-DD
- */
 const normalizeDateISO = (dateStr: any): string | null => {
   if (!dateStr) return null;
   const s = String(dateStr).trim();
@@ -60,9 +58,14 @@ export const RevCapacidadTabSection: React.FC = () => {
   const [programmingDate, setProgrammingDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [provisionalDate, setProvisionalDate] = useState<string>(new Date().toISOString().split('T')[0]);
 
-  // Nuevos estados para horas de turno (4 a 12 horas)
   const [horasTurno1, setHorasTurno1] = useState<number>(8);
   const [horasTurno2, setHorasTurno2] = useState<number>(8);
+
+  // Estados para Rendimiento de Líneas
+  const [rendLinea1, setRendLinea1] = useState<number>(1.05);
+  const [rendLinea2, setRendLinea2] = useState<number>(1.08);
+  const [rendLinea3, setRendLinea3] = useState<number>(1.05);
+  const [rendLinea5, setRendLinea5] = useState<number>(1.05);
 
   const hourOptions = Array.from({ length: 9 }, (_, i) => i + 4);
 
@@ -79,7 +82,6 @@ export const RevCapacidadTabSection: React.FC = () => {
       setAvailableCenters(centersFromGroups);
       if (centersFromGroups.length > 0 && !selectedCenter) setSelectedCenter(centersFromGroups[0]);
 
-      // Cargar Tiempos Técnicos
       let allTiempos: any[] = [];
       let page = 1;
       let hasMore = true;
@@ -91,8 +93,8 @@ export const RevCapacidadTabSection: React.FC = () => {
       }
       setTechnicalData(allTiempos);
 
-      // Mapear FERT
-      const mappedFert = (Array.isArray(fertRes?.data) ? fertRes.data : []).map((o: any) => {
+      const rawFert = Array.isArray(fertRes?.data) ? fertRes.data : [];
+      const mappedFert = rawFert.map((o: any) => {
         const cat = String(o.CATEGORIA || '').toUpperCase();
         let calc = '';
         if (cat.includes('L1')) calc = 'LINEA 1';
@@ -104,8 +106,8 @@ export const RevCapacidadTabSection: React.FC = () => {
       });
       setFertOrders(mappedFert);
 
-      // Mapear Previsionales
-      const mappedPrev = (Array.isArray(prevRes?.data) ? prevRes.data : []).map((o: any) => {
+      const rawPrev = Array.isArray(prevRes?.data) ? prevRes.data : [];
+      const mappedPrev = rawPrev.map((o: any) => {
         const cat = String(o.CATEGORIA || '').toUpperCase();
         let calc = '';
         if (cat.includes('L1')) calc = 'LINEA 1';
@@ -118,7 +120,7 @@ export const RevCapacidadTabSection: React.FC = () => {
       setProvisionalOrders(mappedPrev);
 
     } catch (err) {
-      addNotification('error', `Error al cargar datos para revisión: ${(err as Error).message}`);
+      addNotification('error', `Error al cargar datos: ${(err as Error).message}`);
     } finally {
       setIsLoading(false);
     }
@@ -128,18 +130,15 @@ export const RevCapacidadTabSection: React.FC = () => {
     loadData();
   }, [loadData]);
 
-  // Mapas de suma para optimizar - FILTRADO POR CENTRO
   const fertSumMap = useMemo(() => {
     const map = new Map<string, number>();
     const targetDateISO = normalizeDateISO(programmingDate);
     if (!targetDateISO || !selectedCenter) return map;
 
     fertOrders.forEach(o => {
-      const orderCenter = String(o.CENTRO || '').trim();
-      if (normalizeDateISO(o.FECHA || o.fecha) === targetDateISO && orderCenter === selectedCenter) {
+      if (normalizeDateISO(o.FECHA || o.fecha) === targetDateISO && String(o.CENTRO || '').trim() === selectedCenter) {
         const key = `${o.LINEA_MAPPED}|${normalizeMaterialCode(o.MATERIAL || o.CodMaterial)}`;
-        const pend = Number(o.CANTPENDIENTE || 0) || 0;
-        map.set(key, (map.get(key) || 0) + pend);
+        map.set(key, (map.get(key) || 0) + Number(o.CANTPENDIENTE || 0));
       }
     });
     return map;
@@ -151,17 +150,14 @@ export const RevCapacidadTabSection: React.FC = () => {
     if (!targetDateISO || !selectedCenter) return map;
 
     provisionalOrders.forEach(o => {
-      const orderCenter = String(o.Centro || '').trim();
-      if (normalizeDateISO(o.FECHAINICIO || o.fecha_inicio) === targetDateISO && orderCenter === selectedCenter) {
+      if (normalizeDateISO(o.FECHAINICIO || o.fecha_inicio) === targetDateISO && String(o.Centro || '').trim() === selectedCenter) {
         const key = `${o.LINEA_MAPPED}|${normalizeMaterialCode(o.MATERIAL || o.CodMaterial || o.Material)}`;
-        const cant = Number(o.CANTIDAD || 0) || 0;
-        map.set(key, (map.get(key) || 0) + cant);
+        map.set(key, (map.get(key) || 0) + Number(o.CANTIDAD || 0));
       }
     });
     return map;
   }, [provisionalOrders, provisionalDate, selectedCenter]);
 
-  // Agregación de Resumen
   const summaryData = useMemo((): SummaryRow[] => {
     const map = new Map<string, SummaryRow>();
     const base = technicalData.filter(d => String(d.Centro || '').trim() === selectedCenter);
@@ -219,29 +215,6 @@ export const RevCapacidadTabSection: React.FC = () => {
     }), { cantFab: 0, cantPrev: 0, timeFab: 0, timePrev: 0, totalCant: 0, totalTime: 0 });
   }, [summaryData]);
 
-  const handleExport = () => {
-    if (summaryData.length === 0) return;
-    const ws = XLSX.utils.json_to_sheet(summaryData.map(r => ({
-      'Línea': r.linea, 'Puesto Trabajo': r.puesto,
-      'Cant ordFab': r.cantOrdFab, 'Cant ordPrev': r.cantOrdPrev,
-      'Tiempo ordFab': r.tiempoOrdFab.toFixed(2), 'Tiempo ordPrev': r.tiempoOrdPrev.toFixed(2),
-      'Total Cantidad': r.totalCantidad, 'Total Tiempo (h)': r.totalTiempo.toFixed(2),
-      'No. Puestos': (r.totalTiempo / horasTurno1).toFixed(2)
-    })));
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Resumen Capacidad");
-    XLSX.writeFile(wb, `Resumen_Capacidad_${selectedCenter}.xlsx`);
-  };
-
-  if (isLoading && technicalData.length === 0) {
-    return (
-      <div className="flex flex-col items-center py-20">
-        <Loader2 className="animate-spin h-8 w-8 text-indigo-600" />
-        <span>Calculando resumen...</span>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -249,144 +222,150 @@ export const RevCapacidadTabSection: React.FC = () => {
           <Activity className="w-6 h-6 text-indigo-600" />
           <h3 className="text-xl font-semibold text-gray-800">Resumen de Capacidad por Puesto</h3>
         </div>
-        <Button variant="outline" size="sm" onClick={handleExport} disabled={summaryData.length === 0}>
-          <Download className="w-4 h-4 mr-2" /> 
-          Exportar
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={() => {
+            const ws = XLSX.utils.json_to_sheet(summaryData.map(r => ({
+              'Línea': r.linea, 'Puesto Trabajo': r.puesto,
+              'Cant ordFab': r.cantOrdFab, 'Cant ordPrev': r.cantOrdPrev,
+              'Total Tiempo (h)': r.totalTiempo.toFixed(2),
+              'No. Puestos': (r.totalTiempo / horasTurno1).toFixed(2)
+            })));
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Resumen");
+            XLSX.writeFile(wb, `Capacidad_${selectedCenter}.xlsx`);
+          }} 
+          disabled={summaryData.length === 0}
+        >
+          <Download className="w-4 h-4 mr-2" /> Exportar
         </Button>
       </div>
 
       <Tabs value={selectedCenter} onValueChange={(val) => setSelectedCenter(val)} className="w-full">
         <TabsList className="flex h-auto bg-gray-100/50 p-1 mb-4">
           {availableCenters.map(center => (
-            <TabsTrigger 
-              key={center} 
-              value={center}
-              className="data-[state=active]:bg-white data-[state=active]:text-indigo-700 data-[state=active]:shadow-sm px-6 py-2 text-xs font-bold uppercase tracking-wider"
-            >
-              <Home className="w-3 h-3 mr-2" />
-              Centro {center}
+            <TabsTrigger key={center} value={center} className="px-6 py-2 text-xs font-bold uppercase tracking-wider data-[state=active]:bg-white data-[state=active]:text-indigo-700">
+              <Home className="w-3 h-3 mr-2" /> Centro {center}
             </TabsTrigger>
           ))}
         </TabsList>
 
-        {/* Panel de Filtros */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 bg-gray-50 border rounded-xl shadow-sm mb-6">
-          {/* Día Programación */}
-          <div className="flex items-center gap-3 bg-white border rounded-md px-3 py-2 h-11">
-            <label className="text-[10px] font-bold text-gray-400 uppercase">Día Programación:</label>
-            <input 
-              type="date" 
-              value={programmingDate} 
-              onChange={e => setProgrammingDate(e.target.value)} 
-              className="text-xs border-none focus:ring-0 font-medium text-indigo-700 outline-none flex-1" 
-            />
-            <CalendarIcon className="w-4 h-4 text-gray-400" />
+          {/* Fila 1: Fechas y Horas */}
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Día Programación:</label>
+            <div className="flex items-center gap-2 bg-white border rounded-md px-3 py-2 h-10">
+              <input type="date" value={programmingDate} onChange={e => setProgrammingDate(e.target.value)} className="text-xs border-none flex-1 outline-none text-indigo-700 font-medium" />
+              <CalendarIcon className="w-4 h-4 text-gray-300" />
+            </div>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Fecha Previsionales:</label>
+            <div className="flex items-center gap-2 bg-white border rounded-md px-3 py-2 h-10">
+              <input type="date" value={provisionalDate} onChange={e => setProvisionalDate(e.target.value)} className="text-xs border-none flex-1 outline-none text-indigo-700 font-medium" />
+              <CalendarIcon className="w-4 h-4 text-gray-300" />
+            </div>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Horas Turno 1:</label>
+            <div className="flex items-center gap-2 bg-white border rounded-md px-3 py-2 h-10">
+              <select value={horasTurno1} onChange={e => setHorasTurno1(Number(e.target.value))} className="text-xs border-none flex-1 outline-none font-bold text-indigo-700">
+                {hourOptions.map(h => <option key={`t1-${h}`} value={h}>{h}</option>)}
+              </select>
+              <Clock className="w-4 h-4 text-gray-300" />
+            </div>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Horas Turno 2:</label>
+            <div className="flex items-center gap-2 bg-white border rounded-md px-3 py-2 h-10">
+              <select value={horasTurno2} onChange={e => setHorasTurno2(Number(e.target.value))} className="text-xs border-none flex-1 outline-none font-bold text-indigo-700">
+                {hourOptions.map(h => <option key={`t2-${h}`} value={h}>{h}</option>)}
+              </select>
+              <Clock className="w-4 h-4 text-gray-300" />
+            </div>
           </div>
 
-          {/* Fecha Previsionales */}
-          <div className="flex items-center gap-3 bg-white border rounded-md px-3 py-2 h-11">
-            <label className="text-[10px] font-bold text-gray-400 uppercase">Fecha Previsionales:</label>
-            <input 
-              type="date" 
-              value={provisionalDate} 
-              onChange={e => setProvisionalDate(e.target.value)} 
-              className="text-xs border-none focus:ring-0 font-medium text-indigo-700 outline-none flex-1" 
-            />
-            <CalendarIcon className="w-4 h-4 text-gray-400" />
+          {/* Fila 2: Rendimientos */}
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Rend Linea 1:</label>
+            <div className="flex items-center gap-2 bg-white border rounded-md px-3 py-2 h-10">
+              <input type="number" step="0.01" value={rendLinea1} onChange={e => setRendLinea1(Number(e.target.value))} className="text-xs border-none flex-1 outline-none text-indigo-700 font-bold" />
+              <TrendingUp className="w-4 h-4 text-gray-300" />
+            </div>
           </div>
-
-          {/* Horas Turno 1 */}
-          <div className="flex items-center gap-3 bg-white border rounded-md px-3 py-2 h-11">
-            <label className="text-[10px] font-bold text-gray-400 uppercase">Horas Turno 1:</label>
-            <select 
-              value={horasTurno1} 
-              onChange={e => setHorasTurno1(Number(e.target.value))}
-              className="text-xs border-none bg-transparent focus:ring-0 font-bold text-indigo-700 outline-none flex-1"
-            >
-              {hourOptions.map(h => <option key={`t1-${h}`} value={h}>{h}</option>)}
-            </select>
-            <Clock className="w-4 h-4 text-gray-400" />
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Rend Linea 2:</label>
+            <div className="flex items-center gap-2 bg-white border rounded-md px-3 py-2 h-10">
+              <input type="number" step="0.01" value={rendLinea2} onChange={e => setRendLinea2(Number(e.target.value))} className="text-xs border-none flex-1 outline-none text-indigo-700 font-bold" />
+              <TrendingUp className="w-4 h-4 text-gray-300" />
+            </div>
           </div>
-
-          {/* Horas Turno 2 */}
-          <div className="flex items-center gap-3 bg-white border rounded-md px-3 py-2 h-11">
-            <label className="text-[10px] font-bold text-gray-400 uppercase">Horas Turno 2:</label>
-            <select 
-              value={horasTurno2} 
-              onChange={e => setHorasTurno2(Number(e.target.value))}
-              className="text-xs border-none bg-transparent focus:ring-0 font-bold text-indigo-700 outline-none flex-1"
-            >
-              {hourOptions.map(h => <option key={`t2-${h}`} value={h}>{h}</option>)}
-            </select>
-            <Clock className="w-4 h-4 text-gray-400" />
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Rend Linea 3:</label>
+            <div className="flex items-center gap-2 bg-white border rounded-md px-3 py-2 h-10">
+              <input type="number" step="0.01" value={rendLinea3} onChange={e => setRendLinea3(Number(e.target.value))} className="text-xs border-none flex-1 outline-none text-indigo-700 font-bold" />
+              <TrendingUp className="w-4 h-4 text-gray-300" />
+            </div>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Rend Linea 5:</label>
+            <div className="flex items-center gap-2 bg-white border rounded-md px-3 py-2 h-10">
+              <input type="number" step="0.01" value={rendLinea5} onChange={e => setRendLinea5(Number(e.target.value))} className="text-xs border-none flex-1 outline-none text-indigo-700 font-bold" />
+              <TrendingUp className="w-4 h-4 text-gray-300" />
+            </div>
           </div>
         </div>
 
         <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200 border-collapse">
-              <thead className="bg-gray-50">
-                <tr className="text-[11px] font-bold text-gray-600 uppercase tracking-wider">
+            <table className="min-w-full text-xs divide-y divide-gray-200 border-collapse">
+              <thead className="bg-gray-50 uppercase text-[10px] font-bold text-gray-500">
+                <tr>
                   <th className="px-4 py-3 text-left border">Línea</th>
                   <th className="px-4 py-3 text-left border">Puesto Trabajo</th>
                   <th className="px-4 py-3 text-right border">Cant ordFab</th>
                   <th className="px-4 py-3 text-right border">Cant ordPrev</th>
-                  <th className="px-4 py-3 text-right border text-indigo-700">Tiempo ordFab</th>
-                  <th className="px-4 py-3 text-right border text-indigo-700">Tiempo ordPrev</th>
-                  <th className="px-4 py-3 text-right border bg-indigo-50/30">Total Cantidad</th>
+                  <th className="px-4 py-3 text-right border bg-indigo-50/30">Total Cant</th>
                   <th className="px-4 py-3 text-right border bg-indigo-50/30">Total Tiempo (h)</th>
                   <th className="px-4 py-3 text-right border text-blue-700 bg-blue-50/30">No. Puestos</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200 text-xs">
+              <tbody className="divide-y divide-gray-200">
                 {summaryData.length > 0 ? (() => {
-                  const rows: React.ReactNode[] = [];
+                  const items: React.ReactNode[] = [];
                   const lines = [...new Set(summaryData.map(r => r.linea))];
-                  
                   lines.forEach(lineName => {
-                    const lineRows = summaryData.filter(r => r.linea === lineName);
-                    lineRows.forEach((r, idx) => {
-                      rows.push(
-                        <tr key={`${lineName}-${idx}`} className="hover:bg-gray-50 transition-colors">
-                          {idx === 0 && (
-                            <td rowSpan={lineRows.length} className="px-4 py-3 font-bold text-gray-900 border align-top bg-gray-50/30">
-                              {lineName}
-                            </td>
-                          )}
+                    const rows = summaryData.filter(r => r.linea === lineName);
+                    rows.forEach((r, idx) => {
+                      items.push(
+                        <tr key={`${lineName}-${idx}`} className="hover:bg-gray-50">
+                          {idx === 0 && <td rowSpan={rows.length} className="px-4 py-3 font-bold text-gray-900 border align-top bg-gray-50/30">{lineName}</td>}
                           <td className="px-4 py-3 font-medium text-gray-700 border">{r.puesto}</td>
                           <td className="px-4 py-3 text-right font-mono border">{r.cantOrdFab.toLocaleString()}</td>
                           <td className="px-4 py-3 text-right font-mono border">{r.cantOrdPrev.toLocaleString()}</td>
-                          <td className="px-4 py-3 text-right font-mono border text-indigo-600">{r.tiempoOrdFab.toFixed(2)}</td>
-                          <td className="px-4 py-3 text-right font-mono border text-indigo-600">{r.tiempoOrdPrev.toFixed(2)}</td>
-                          <td className="px-4 py-3 text-right font-bold border bg-indigo-50/10">{r.totalCantidad.toLocaleString()}</td>
-                          <td className="px-4 py-3 text-right font-bold border bg-indigo-50/10">{r.totalTiempo.toFixed(2)}</td>
-                          <td className="px-4 py-3 text-right font-bold border text-blue-700 bg-blue-50/10">
+                          <td className="px-4 py-3 text-right font-bold border bg-indigo-50/5">{r.totalCantidad.toLocaleString()}</td>
+                          <td className="px-4 py-3 text-right font-bold border bg-indigo-50/5">{r.totalTiempo.toFixed(2)}</td>
+                          <td className="px-4 py-3 text-right font-bold border text-blue-700 bg-blue-50/5">
                             {(r.totalTiempo / horasTurno1).toFixed(2)}
                           </td>
                         </tr>
                       );
                     });
                   });
-                  return rows;
+                  return items;
                 })() : (
-                  <tr>
-                    <td colSpan={9} className="px-6 py-12 text-center text-gray-400 italic">
-                      <AlertCircle className="w-8 h-8 mx-auto mb-2 opacity-20" />
-                      Sin datos para los criterios seleccionados.
-                    </td>
-                  </tr>
+                  <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-400 italic">Sin datos disponibles.</td></tr>
                 )}
               </tbody>
               {summaryData.length > 0 && (
-                <tfoot className="bg-gray-800 text-white font-bold text-xs">
+                <tfoot className="bg-gray-800 text-white font-bold text-[11px]">
                   <tr>
                     <td colSpan={2} className="px-4 py-3 text-right uppercase border-r border-gray-700">Total General:</td>
                     <td className="px-4 py-3 text-right font-mono border-r border-gray-700">{grandTotals.cantFab.toLocaleString()}</td>
                     <td className="px-4 py-3 text-right font-mono border-r border-gray-700">{grandTotals.cantPrev.toLocaleString()}</td>
-                    <td className="px-4 py-3 text-right font-mono border-r border-gray-700 text-indigo-200">{grandTotals.timeFab.toFixed(2)}</td>
-                    <td className="px-4 py-3 text-right font-mono border-r border-gray-700 text-indigo-200">{grandTotals.timePrev.toFixed(2)}</td>
-                    <td className="px-4 py-3 text-right font-mono border-r border-gray-700 text-emerald-300">{grandTotals.totalCant.toLocaleString()}</td>
-                    <td className="px-4 py-3 text-right font-mono border-r border-gray-700 text-emerald-300">{grandTotals.totalTime.toFixed(2)}</td>
+                    <td className="px-4 py-3 text-right font-mono border-r border-gray-700 text-indigo-300">{grandTotals.totalCant.toLocaleString()}</td>
+                    <td className="px-4 py-3 text-right font-mono border-r border-gray-700 text-indigo-300">{grandTotals.totalTime.toFixed(2)}</td>
                     <td className="px-4 py-3 text-right font-mono text-blue-300">
                       {(grandTotals.totalTime / horasTurno1).toFixed(2)}
                     </td>
