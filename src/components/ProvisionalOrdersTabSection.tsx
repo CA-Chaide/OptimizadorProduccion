@@ -16,6 +16,7 @@ interface ProvisionalOrder {
   MATERIAL: string;
   NOMBRE: string;
   CATEGORIA: string;
+  LINEA?: string;
   CANTIDAD: number;
   UNIDAD: string;
   FECHAINICIO: string;
@@ -93,7 +94,8 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
           String(order.ORDENPREVISIONAL || '').toLowerCase().includes(term) ||
           String(order.CodMaterial || order.MATERIAL || '').toLowerCase().includes(term) ||
           String(order.NOMBRE || '').toLowerCase().includes(term) ||
-          String(order.CATEGORIA || '').toLowerCase().includes(term)
+          String(order.CATEGORIA || '').toLowerCase().includes(term) ||
+          String(order.LINEA || '').toLowerCase().includes(term)
         );
       }
       return true;
@@ -170,6 +172,7 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
                 <tr>
                   <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Orden</th>
                   <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Categoría</th>
+                  <th className="px-6 py-3 text-left text-[10px] font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50/30">LÍNEA</th>
                   <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Material</th>
                   <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Nombre</th>
                   <th className="px-6 py-3 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider">Cantidad</th>
@@ -184,6 +187,7 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
                   <tr key={`${order.ORDENPREVISIONAL}-${idx}`} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-indigo-600 font-mono">{order.ORDENPREVISIONAL}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-600 font-medium">{order.CATEGORIA || '-'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-[10px] font-bold text-indigo-700 bg-indigo-50/10">{order.LINEA || '-'}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-600">{formatMaterial(order.CodMaterial || order.MATERIAL)}</td>
                     <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate" title={order.NOMBRE}>{order.NOMBRE}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-right text-indigo-600">{(Number(order.CANTIDAD) || 0).toLocaleString()}</td>
@@ -194,7 +198,7 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
                   </tr>
                 )) : (
                   <tr>
-                    <td colSpan={9} className="px-6 py-12 text-center text-gray-400 italic">
+                    <td colSpan={10} className="px-6 py-12 text-center text-gray-400 italic">
                       No se encontraron órdenes para el centro {selectedCenter}.
                     </td>
                   </tr>
