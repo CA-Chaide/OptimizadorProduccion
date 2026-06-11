@@ -20,7 +20,8 @@ import {
   TrendingUp,
   Info,
   Box,
-  Check
+  Check,
+  Database
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -102,23 +103,15 @@ const getPesoPorRollo = (materialCode: string, descripcion: string): number => {
   return 35; 
 };
 
-// Parser técnico para extraer dimensiones de la descripción de SAP
 const parseDimensions = (desc: string) => {
   const d = desc.toUpperCase();
-  
-  // 1. Densidad (ej: D22, D18)
   const densMatch = d.match(/D(\d+)/);
   const densidad = densMatch ? `d${densMatch[1]}` : '—';
-  
-  // 2. Ancho x Espesor (ej: 214x1.2 o 214*1.2)
   const dimMatch = d.match(/(\d+(?:\.\d+)?)\s*[xX*]\s*(\d+(?:\.\d+)?)/);
   const ancho = dimMatch ? parseFloat(dimMatch[1]) : 0;
   const espesor = dimMatch ? parseFloat(dimMatch[2]) : 0;
-  
-  // 3. Largo (mtrs) (ej: 100M o 100 M)
   const largoMatch = d.match(/(\d+)\s*M/);
-  const largoMtrs = largoMatch ? parseInt(largoMatch[1]) : 100; // Por defecto 100m si no se encuentra
-  
+  const largoMtrs = largoMatch ? parseInt(largoMatch[1]) : 100;
   return { densidad, ancho, espesor, largoMtrs };
 };
 
@@ -204,7 +197,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     }
     
     setIsProcessingResumen(true);
-    // Agrupación inteligente: Consolidar por código de material único antes de explosionar
     const materialGroups = new Map<string, { totalQty: number }>();
     ordersToProcess.forEach(order => {
       const matRaw = String(order.MATERIAL || order.CodMaterial || '').trim();
@@ -291,7 +283,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     }
   }, [inspector]);
 
-  // Gatillo automático para iniciar explosión al cambiar filtros o tab
   useEffect(() => {
     if (activeTab === 'resumen' && filteredOrders.length > 0 && !isProcessingResumen) {
       const signature = `${selectedDate}|${filteredOrders.length}|${filteredOrders[0]?.ORDENPREVISIONAL || ''}`;
@@ -465,9 +456,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     <th className="px-6 py-5 border-r border-gray-50">Orden</th>
                     <th className="px-6 py-5 border-r border-gray-50">Fecha Inicio</th>
                     <th className="px-6 py-5 border-r border-gray-50">Código FERT</th>
-                    <th className="px-6 py-5 border-r border-gray-100 text-left">Descripción Técnica del Producto</th>
+                    <th className="px-6 py-5 border-r border-gray-100 text-left">Descripción del Producto</th>
                     <th className="px-6 py-5 border-r border-gray-50">Cantidad</th>
-                    <th className="px-6 py-5 border-r border-gray-50">RESP</th>
+                    <th className="px-6 py-5 border-r border-gray-50">Responsable</th>
                     <th className="px-6 py-5 border-r border-gray-50">Máquina</th>
                     <th className="px-6 py-5">Almacén</th>
                   </tr>
@@ -550,14 +541,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                <h3 className="text-xs font-black uppercase flex items-center gap-2 tracking-widest text-slate-800">
                  <div className="w-2.5 h-2.5 rounded-full bg-red-600 animate-pulse" /> Consolidado Técnico de Necesidades
                </h3>
-               <Button 
-                onClick={() => handleProcessResumen(filteredOrders)} 
-                disabled={isProcessingResumen} 
-                variant="outline" 
-                className="rounded-xl h-9 px-6 text-[10px] font-black uppercase tracking-widest border-slate-200 hover:bg-slate-50"
-               >
-                 <Activity className="w-3.5 h-3.5 mr-2" /> Forzar Recálculo
-               </Button>
             </div>
 
             <div className="border border-gray-100 rounded-[2.5rem] shadow-2xl overflow-hidden bg-white">
@@ -568,7 +551,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                       <th className="px-8 py-4 border-r border-black/5 text-left w-32">Densidad</th>
                       <th className="px-8 py-4 border-r border-black/5 text-center w-32">Largo (mtrs)</th>
                       <th className="px-8 py-4 border-r border-black/5 text-center w-32">Ancho</th>
-                      <th className="px-8 py-4 border-r border-black/5 text-center w-32">espesor</th>
+                      <th className="px-8 py-4 border-r border-black/5 text-center w-32">Espesor</th>
                       <th className="px-8 py-4 border-r border-black/5 text-right bg-black/5 w-40">Necesidad (Kg)</th>
                       <th className="px-8 py-4 text-right bg-black/5 w-40">Equivalente (Un)</th>
                     </tr>
