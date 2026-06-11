@@ -20,7 +20,8 @@ import {
   UserCheck,
   TrendingUp,
   Info,
-  Box
+  Box,
+  AlertCircle
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -174,8 +175,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   }, [ordenes, selectedDate]);
 
   /**
-   * handleProcessResumen (OPTIMIZADO)
-   * Agrupa órdenes por material para reducir llamadas a API y procesa en paralelo.
+   * handleProcessResumen (MOTOR DE CÁLCULO OPTIMIZADO)
    */
   const handleProcessResumen = useCallback(async (ordersToProcess: any[]) => {
     if (ordersToProcess.length === 0) {
@@ -185,10 +185,12 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     
     setIsProcessingResumen(true);
     
-    // 1. Agrupar órdenes por material para minimizar llamadas API
+    // 1. Agrupar órdenes por material único para reducir llamadas a la API
     const materialGroups = new Map<string, { totalQty: number, refOrder: any }>();
     ordersToProcess.forEach(order => {
-      const matCode = String(order.MATERIAL || order.CodMaterial || '').match(/^(\d+)/)?.[1] || '';
+      const matRaw = String(order.MATERIAL || order.CodMaterial || '').trim();
+      const match = matRaw.match(/^(\d+)/);
+      const matCode = match ? match[1] : matRaw;
       if (!matCode) return;
       
       const existing = materialGroups.get(matCode);
@@ -205,7 +207,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     setResumenProgress({ current: 0, total: uniqueMaterials.length });
     
     const consolidatedMap = new Map<string, UnifiedNeedRow>();
-    const CONCURRENCY_LIMIT = 10; // Procesar de 10 en 10 materiales
+    const CONCURRENCY_LIMIT = 10; 
 
     try {
       for (let i = 0; i < uniqueMaterials.length; i += CONCURRENCY_LIMIT) {
@@ -221,11 +223,15 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             
             if (Array.isArray(rawData)) {
               rawData
-                .filter(row => getProp(row, 'CENTRO') !== '2000' && getProp(row, 'DESCRIPCION_COMPONENTE').toUpperCase().includes('LAMINA CILINDRICA'))
+                .filter(row => {
+                  const descComp = getProp(row, 'DESCRIPCION_COMPONENTE').toUpperCase();
+                  const centroComp = getProp(row, 'CENTRO');
+                  return centroComp !== '2000' && descComp.includes('LAMINA CILINDRICA');
+                })
                 .forEach(comp => {
                   const code = getProp(comp, 'COMPONENTE').slice(-8);
                   const desc = getProp(comp, 'DESCRIPCION_COMPONENTE').toUpperCase();
-                  const cantAcum = getNumProp(comp, 'CANTIDAD_ACUMULADA');
+                  const cantAcum = getNumProp(comp, 'CANTIDAD_ACUMULADA') || getNumProp(comp, 'CANTIDAD_UNITARIA');
                   const kgTotal = totalQtyForMaterial * cantAcum;
                   
                   if (consolidatedMap.has(code)) {
@@ -260,19 +266,18 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       })).sort((a, b) => b.consumoKg - a.consumoKg);
       
       setUnifiedNeeds(finalArray);
-      inspector.captureVariable('unifiedNeedsConsolidated', finalArray);
+      inspector.captureVariable('unifiedNeedsLaminado', finalArray);
     } catch (err) {
       console.error('Error procesando resumen:', err);
-      addNotification('error', 'Error crítico al procesar el resumen de necesidades.');
     } finally { 
       setIsProcessingResumen(false); 
     }
-  }, [inspector, addNotification]);
+  }, [inspector]);
 
-  // Efecto de cálculo automático al cambiar de tab o de filtros
+  // Gatillo automático para el cálculo técnico
   useEffect(() => {
     if (activeTab === 'resumen' && filteredOrders.length > 0 && !isProcessingResumen) {
-      // Generar una firma de los datos actuales para evitar bucles
+      // Firma única basada en fecha, cantidad de órdenes e identificadores
       const signature = `${selectedDate}|${filteredOrders.length}|${filteredOrders[0]?.ORDENPREVISIONAL || ''}`;
       if (signature !== processedSignature) {
         handleProcessResumen(filteredOrders);
@@ -325,7 +330,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           COMPONENTE: getProp(row, 'COMPONENTE'),
           DESCRIPCION_COMPONENTE: getProp(row, 'DESCRIPCION_COMPONENTE'),
           CANTIDAD_UNITARIA: getNumProp(row, 'CANTIDAD_UNITARIA'),
-          CANTIDAD_ACUMULADA: getNumProp(row, 'CANTIDAD_ACUMULADA')
+          CANTIDAD_ACUMULADA: getNumProp(row, 'CANTIDAD_ACUMULADA') || getNumProp(row, 'CANTIDAD_UNITARIA')
         })));
       }
     } catch (err) { 
@@ -348,9 +353,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="flex flex-col items-center justify-center p-20 gap-4">
+      <div className="flex flex-col items-center justify-center p-20 gap-4 text-center">
         <Loader2 className="w-10 h-10 animate-spin text-red-600" />
-        <p className="text-xs font-bold text-gray-400 uppercase tracking-widest animate-pulse">Sincronizando Módulo de Laminado...</p>
+        <p className="text-xs font-bold text-gray-400 uppercase tracking-widest animate-pulse">Cargando Módulo de Laminado...</p>
       </div>
     );
   }
@@ -359,117 +364,123 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
       <div className="flex items-center justify-between pb-4 border-b border-gray-100">
         <div className="flex items-center space-x-3 text-left">
-          <div className="p-2 bg-red-600/10 rounded-xl"><Scissors className="w-6 h-6 text-red-600" /></div>
+          <div className="p-2 bg-red-600/10 rounded-xl shadow-inner"><Scissors className="w-6 h-6 text-red-600" /></div>
           <div>
-            <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Programación Táctica Laminado</h2>
-            <p className="text-xs text-gray-500 font-medium">Gestión Táctica de Láminas y Auditoría de Materiales</p>
+            <h2 className="text-xl font-black text-gray-800 uppercase tracking-tighter">Programación Táctica Laminado</h2>
+            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Explosión Técnica SAP | Gestión de Rollos y Auditoría Multinivel</p>
           </div>
         </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-4 h-10 bg-gray-100/50 p-1 rounded-xl border border-gray-200 mb-6">
+        <TabsList className="grid grid-cols-4 h-11 bg-gray-100/50 p-1.5 rounded-2xl border border-gray-200 mb-8">
           {[ 
             { v: 'ordenes', l: 'Órdenes Provisionales', i: Package }, 
             { v: 'resumen', l: 'Resumen Necesidades', i: LayoutDashboard },
-            { v: 'listaMateriales', l: 'Lista Materiales (BOOM)', i: ClipboardList },
+            { v: 'listaMateriales', l: 'Auditoría BOM', i: ClipboardList },
             { v: 'tiempos', l: 'Tiempos Ensamblado', i: Clock }
           ].map(tab => (
-            <TabsTrigger key={tab.v} value={tab.v} className="gap-2 text-[9px] font-black uppercase transition-all data-[state=active]:bg-white data-[state=active]:shadow-md data-[state=active]:text-red-600">
-              <tab.i className="w-3.5 h-3.5" /> {tab.l}
+            <TabsTrigger key={tab.v} value={tab.v} className="gap-2 text-[10px] font-black uppercase transition-all data-[state=active]:bg-white data-[state=active]:shadow-lg data-[state=active]:text-red-600 rounded-xl">
+              <tab.i className="w-4 h-4" /> {tab.l}
             </TabsTrigger>
           ))}
         </TabsList>
 
-        <TabsContent value="ordenes" className="space-y-4 animate-in fade-in duration-300">
-          <div className="flex items-center justify-between bg-gray-50 p-3 rounded-2xl border border-gray-100 shadow-sm">
-            <div className="flex items-center gap-4 text-left">
-              <div className="p-2 bg-red-500/10 rounded-xl text-red-600"><UserCheck className="w-4 h-4" /></div>
-              <div>
-                <p className="text-[9px] font-black uppercase text-gray-400 tracking-widest">Responsables Críticos</p>
-                <div className="flex gap-1.5 mt-0.5">
-                  {RESPONSABLES_VALIDOS.map(c => <Badge key={c} variant="outline" className="text-[9px] font-black bg-white border-gray-200">{c}</Badge>)}
+        <TabsContent value="ordenes" className="space-y-6 animate-in fade-in duration-300">
+          <div className="flex items-center justify-between bg-white p-4 rounded-3xl border border-gray-100 shadow-xl">
+            <div className="flex items-center gap-6 text-left">
+              <div className="flex flex-col">
+                <p className="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1.5 flex items-center gap-2">
+                  <UserCheck className="w-3 h-3" /> Responsables Críticos
+                </p>
+                <div className="flex gap-2">
+                  {RESPONSABLES_VALIDOS.map(c => <Badge key={c} variant="outline" className="text-[10px] font-black bg-slate-50 border-slate-200 px-3 py-0.5 rounded-lg">{c}</Badge>)}
                 </div>
               </div>
             </div>
-            <Popover>
-              <PopoverTrigger asChild>
-                <button className="h-9 px-4 rounded-xl border border-gray-200 bg-white hover:border-red-500/50 flex items-center gap-2 font-bold text-[10px] uppercase shadow-sm transition-all">
-                  <Filter className="w-3 h-3 text-red-500" /> {selectedDate === 'all' ? 'Plan Maestro' : selectedDate}
-                </button>
-              </PopoverTrigger>
-              <PopoverContent className="w-64 p-0 border-none shadow-2xl rounded-2xl overflow-hidden mt-2" align="end">
-                <div className="bg-white p-4 font-sans text-left" style={{ minHeight: '320px' }}>
-                  {viewDate && (
-                    <>
-                      <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-xs font-black text-gray-800 capitalize">{format(viewDate, 'MMMM yyyy', { locale: es })}</h3>
-                        <div className="flex gap-1">
-                          <Button variant="ghost" size="icon" onClick={() => setViewDate(subMonths(viewDate, 1))} className="h-7 w-7"><ChevronLeft className="w-4 h-4" /></Button>
-                          <Button variant="ghost" size="icon" onClick={() => setViewDate(addMonths(viewDate, 1))} className="h-7 w-7"><ChevronRight className="w-4 h-4" /></Button>
+            
+            <div className="flex items-center gap-3">
+               <Popover>
+                <PopoverTrigger asChild>
+                  <button className="h-10 px-5 rounded-2xl border border-gray-200 bg-white hover:border-red-500/50 flex items-center gap-3 font-black text-[11px] uppercase shadow-sm transition-all">
+                    <Filter className="w-4 h-4 text-red-500" /> 
+                    {selectedDate === 'all' ? 'Plan Maestro' : selectedDate}
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-64 p-0 border-none shadow-2xl rounded-2xl overflow-hidden mt-3" align="end">
+                  <div className="bg-white p-5 font-sans text-left">
+                    {viewDate && (
+                      <>
+                        <div className="flex items-center justify-between mb-5">
+                          <h3 className="text-xs font-black text-slate-800 capitalize">{format(viewDate, 'MMMM yyyy', { locale: es })}</h3>
+                          <div className="flex gap-1 bg-slate-50 p-1 rounded-xl">
+                            <Button variant="ghost" size="icon" onClick={() => setViewDate(subMonths(viewDate, 1))} className="h-8 w-8 hover:bg-white hover:shadow-sm"><ChevronLeft className="w-4 h-4" /></Button>
+                            <Button variant="ghost" size="icon" onClick={() => setViewDate(addMonths(viewDate, 1))} className="h-8 w-8 hover:bg-white hover:shadow-sm"><ChevronRight className="w-4 h-4" /></Button>
+                          </div>
                         </div>
-                      </div>
-                      <div className="grid grid-cols-7 gap-y-1 text-center mb-3">
-                        {['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO'].map(d => <div key={d} className="text-[9px] font-bold text-gray-300 py-1">{d}</div>)}
-                        {calendarDays.map((day, idx) => {
-                          if (!day) return <div key={idx} />;
-                          const dStr = format(day, 'yyyy-MM-dd');
-                          const sel = selectedDate === dStr;
-                          return (
-                            <button key={dStr} onClick={() => setSelectedDate(sel ? 'all' : dStr)} className={cn("relative h-8 w-8 mx-auto rounded-xl flex items-center justify-center transition-all", sel ? "bg-red-600 text-white" : "hover:bg-gray-100")}>
-                              <span className={cn("text-xs font-bold", !datesWithOrders.has(dStr) && !sel ? "text-gray-200" : "")}>{format(day, 'd')}</span>
-                              {datesWithOrders.has(dStr) && !sel && <div className="absolute bottom-1 w-1 h-1 bg-red-400 rounded-full" />}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </>
-                  )}
-                </div>
-              </PopoverContent>
-            </Popover>
+                        <div className="grid grid-cols-7 gap-y-1.5 text-center mb-4">
+                          {['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO'].map(d => <div key={d} className="text-[10px] font-black text-slate-300 py-1">{d}</div>)}
+                          {calendarDays.map((day, idx) => {
+                            if (!day) return <div key={idx} />;
+                            const dStr = format(day, 'yyyy-MM-dd');
+                            const sel = selectedDate === dStr;
+                            return (
+                              <button key={dStr} onClick={() => setSelectedDate(sel ? 'all' : dStr)} className={cn("relative h-8 w-8 mx-auto rounded-xl flex items-center justify-center transition-all", sel ? "bg-red-600 text-white shadow-md shadow-red-200" : "hover:bg-slate-50")}>
+                                <span className={cn("text-xs font-black", !datesWithOrders.has(dStr) && !sel ? "text-slate-200" : "text-slate-700")}>{format(day, 'd')}</span>
+                                {datesWithOrders.has(dStr) && !sel && <div className="absolute bottom-1.5 w-1 h-1 bg-red-400 rounded-full" />}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </>
+                    )}
+                    <Button variant="ghost" size="sm" className="w-full text-[10px] font-black uppercase text-red-600 h-9 mt-1 rounded-xl hover:bg-red-50 tracking-widest" onClick={() => setSelectedDate('all')}>Ver Todo el Plan</Button>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
           </div>
 
-          <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
+          <div className="border border-gray-100 rounded-3xl shadow-xl overflow-hidden bg-white">
             <div className="overflow-x-auto">
-              <table className="w-full border-collapse text-center font-sans text-[11px]">
+              <table className="w-full border-collapse font-sans text-[11px] text-center">
                 <thead className="bg-[#f8fafc] text-slate-400 border-b border-gray-100 uppercase font-black tracking-widest text-[9px]">
                   <tr>
-                    <th className="px-5 py-4 border-r border-gray-50">Orden Previsional</th>
-                    <th className="px-5 py-4 border-r border-gray-50">Fecha Inicio</th>
-                    <th className="px-5 py-4 border-r border-gray-50">Material</th>
-                    <th className="px-5 py-4 border-r border-gray-100 text-left">Descripción del Producto</th>
-                    <th className="px-5 py-4 border-r border-gray-50">Cant. Prog.</th>
-                    <th className="px-5 py-4 border-r border-gray-50">Responsable</th>
-                    <th className="px-5 py-4 border-r border-gray-50">Máquina / Recurso</th>
-                    <th className="px-5 py-4">Almacén</th>
+                    <th className="px-6 py-5 border-r border-gray-50">Orden</th>
+                    <th className="px-6 py-5 border-r border-gray-50">Fecha Inicio</th>
+                    <th className="px-6 py-5 border-r border-gray-50">Código FERT</th>
+                    <th className="px-6 py-5 border-r border-gray-100 text-left">Descripción Técnica del Producto</th>
+                    <th className="px-6 py-5 border-r border-gray-50">Cantidad</th>
+                    <th className="px-6 py-5 border-r border-gray-50">RESP</th>
+                    <th className="px-6 py-5 border-r border-gray-50">Máquina</th>
+                    <th className="px-6 py-5">Almacén</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-50">
+                <tbody className="divide-y divide-gray-50 font-bold">
                   {filteredOrders.length === 0 ? (
-                    <tr><td colSpan={8} className="py-20 text-gray-200 font-black uppercase tracking-widest text-center">No hay registros para este filtro</td></tr>
+                    <tr><td colSpan={8} className="py-24 text-slate-200 font-black uppercase tracking-widest text-center">Sin registros para el filtro seleccionado</td></tr>
                   ) : (
                     filteredOrders.map((o, i) => {
                       const matCode = String(o.MATERIAL || '').match(/^(\d+)/)?.[1]?.slice(-8) || '—';
                       const description = String(o.MATERIAL || '').replace(/^\d+\s*/, '') || o.NOMBRE || '—';
                       return (
-                        <tr key={i} className="hover:bg-gray-50 transition-colors">
-                          <td className="px-4 py-3 font-bold text-slate-800 border-r border-gray-50">{o.ORDENPREVISIONAL || '—'}</td>
-                          <td className="px-4 py-3 border-r border-gray-50 font-mono text-[9px] text-gray-400">{o.FECHAINICIO || '—'}</td>
-                          <td className="px-4 py-3 font-mono font-black text-red-500 border-r border-gray-50 tracking-tighter">{matCode}</td>
-                          <td className="px-4 py-3 text-left border-r border-gray-100 text-slate-600 font-bold uppercase leading-tight">
+                        <tr key={i} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="px-6 py-4 font-black text-slate-800 border-r border-gray-50">{o.ORDENPREVISIONAL || '—'}</td>
+                          <td className="px-6 py-4 border-r border-gray-50 font-mono text-[9px] text-slate-400">{o.FECHAINICIO || '—'}</td>
+                          <td className="px-6 py-4 font-mono font-black text-red-600 border-r border-gray-50 tracking-tighter text-sm">{matCode}</td>
+                          <td className="px-6 py-4 text-left border-r border-gray-100 text-slate-600 font-black uppercase leading-tight max-w-[350px]">
                             {description}
                           </td>
-                          <td className="px-4 py-3 font-black text-slate-900 border-r border-gray-50 font-mono">
+                          <td className="px-6 py-4 font-black text-slate-900 border-r border-gray-50 font-mono text-sm">
                             {Number(o.CANTIDAD || 0).toLocaleString()}
                           </td>
-                          <td className="px-4 py-3 border-r border-gray-50">
+                          <td className="px-6 py-4 border-r border-gray-50">
                             <Badge variant="outline" className="text-[10px] font-black bg-blue-50 text-blue-700 border-blue-100">{String(o.RESPCONTROLPROD || '—')}</Badge>
                           </td>
-                          <td className="px-4 py-3 font-bold text-slate-400 border-r border-gray-50 text-[10px] uppercase">
+                          <td className="px-6 py-4 font-bold text-slate-400 border-r border-gray-50 text-[10px] uppercase">
                             {String(o.MAQUINA || o.Maquina || o.RECURSO || '—')}
                           </td>
-                          <td className="px-4 py-3 font-bold text-gray-300 text-[10px]">{o.Almacen || o.ALMACEN || '—'}</td>
+                          <td className="px-6 py-4 font-bold text-slate-200 text-[10px]">{o.Almacen || o.ALMACEN || '—'}</td>
                         </tr>
                       );
                     })
@@ -477,199 +488,226 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 </tbody>
               </table>
             </div>
-          </Card>
+          </div>
         </TabsContent>
 
-        <TabsContent value="resumen" className="space-y-6 animate-in fade-in duration-300">
-          <div className="flex flex-col md:flex-row items-end justify-between gap-4">
-             <div className="flex items-center gap-4">
-                <div className="bg-[#7f1d1d] text-white p-3 rounded-xl shadow-lg min-w-[160px] text-center border-b-4 border-black/20">
-                    <p className="text-[10px] font-black uppercase tracking-widest opacity-80 mb-1">Consumo Diario (Kg)</p>
-                    <p className="text-xl font-black font-mono">{totalsUnified.kg.toLocaleString(undefined, { maximumFractionDigits: 1 })}</p>
+        <TabsContent value="resumen" className="space-y-8 animate-in fade-in duration-300">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+             <Card className="p-5 border-none shadow-xl bg-[#0f172a] text-white flex flex-col items-center justify-center border-b-4 border-black/20">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">Total Consumo Diario</p>
+                <p className="text-3xl font-black font-mono text-indigo-400">{totalsUnified.kg.toLocaleString(undefined, { maximumFractionDigits: 1 })}</p>
+                <p className="text-[10px] font-black text-slate-400 uppercase mt-1.5">Kilogramos (KG)</p>
+             </Card>
+             
+             <Card className="p-5 border-none shadow-xl bg-[#0f172a] text-white flex flex-col items-center justify-center border-b-4 border-black/20">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">Estimación Logística</p>
+                <p className="text-3xl font-black font-mono text-emerald-400">{totalsUnified.un.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+                <p className="text-[10px] font-black text-slate-400 uppercase mt-1.5">Rollos Totales (UN)</p>
+             </Card>
+
+             <Card className="p-5 border-none shadow-xl bg-white border border-gray-100 flex flex-col items-center justify-center col-span-2">
+                <div className="flex items-center gap-3 mb-2">
+                   <div className="p-2 bg-red-100 rounded-xl text-red-600"><TrendingUp className="w-4 h-4" /></div>
+                   <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Estado de la Auditoría</p>
                 </div>
-                <div className="bg-[#7f1d1d] text-white p-3 rounded-xl shadow-lg min-w-[160px] text-center border-b-4 border-black/20">
-                    <p className="text-[10px] font-black uppercase tracking-widest opacity-80 mb-1">Total Rollos (Un)</p>
-                    <p className="text-xl font-black font-mono">{totalsUnified.un.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
-                </div>
-             </div>
-             <div className="flex gap-2">
-               {isProcessingResumen ? (
-                 <div className="flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-xl text-[10px] font-black uppercase text-gray-400">
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Procesando Auditoría Técnica...
-                 </div>
-               ) : (
-                 <Button onClick={() => handleProcessResumen(filteredOrders)} className="bg-slate-900 hover:bg-black text-white rounded-xl h-11 px-8 text-[10px] font-black uppercase tracking-widest shadow-xl transition-all">
-                   <Activity className="w-4 h-4 mr-2" />
-                   Recalcular Necesidades
-                 </Button>
-               )}
-             </div>
+                {isProcessingResumen ? (
+                  <div className="space-y-3 w-full px-6">
+                    <div className="flex justify-between text-[10px] font-black uppercase text-indigo-600">
+                      <span>Procesando...</span>
+                      <span>{resumenProgress.current} / {resumenProgress.total}</span>
+                    </div>
+                    <Progress value={(resumenProgress.current / resumenProgress.total) * 100} className="h-2.5 bg-indigo-50" />
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center">
+                    <p className="text-sm font-black text-slate-700 uppercase tracking-tighter">Explosión Técnica Completada</p>
+                    <p className="text-[10px] font-bold text-emerald-600 uppercase mt-1 flex items-center gap-1.5">
+                      <Check className="w-3 h-3" /> Datos sincronizados con SAP
+                    </p>
+                  </div>
+                )}
+             </Card>
           </div>
 
-          {isProcessingResumen && (
-            <div className="space-y-3 bg-indigo-50/50 p-5 rounded-2xl border border-indigo-100">
-              <div className="flex justify-between items-center text-[10px] font-black text-indigo-600 uppercase tracking-widest text-left">
-                <span className="flex items-center gap-2"><Activity className="w-3 h-3" /> Procesando Auditoría de SAP (Agrupada)...</span>
-                <span>{resumenProgress.current} / {resumenProgress.total} Materiales Únicos</span>
-              </div>
-              <Progress value={(resumenProgress.current / resumenProgress.total) * 100} className="h-2 bg-indigo-100" />
+          <div className="space-y-4">
+            <div className="flex items-center justify-between px-2">
+               <h3 className="text-xs font-black uppercase flex items-center gap-2 tracking-widest text-slate-800">
+                 <div className="w-2.5 h-2.5 rounded-full bg-red-600 animate-pulse" /> Consolidado Técnico de Necesidades
+               </h3>
+               <Button 
+                onClick={() => handleProcessResumen(filteredOrders)} 
+                disabled={isProcessingResumen} 
+                variant="outline" 
+                className="rounded-xl h-9 px-6 text-[10px] font-black uppercase tracking-widest border-slate-200 hover:bg-slate-50"
+               >
+                 <Activity className="w-3.5 h-3.5 mr-2" /> Forzar Recálculo
+               </Button>
             </div>
-          )}
 
-          {!isProcessingResumen && unifiedNeeds.length > 0 ? (
-            <div className="border border-gray-100 rounded-2xl shadow-xl overflow-hidden bg-white">
-              <div className="overflow-x-auto max-h-[600px]">
+            <div className="border border-gray-100 rounded-[2.5rem] shadow-2xl overflow-hidden bg-white">
+              <div className="overflow-x-auto max-h-[600px] relative">
                 <table className="w-full border-collapse font-sans text-[11px] text-center">
                   <thead className="sticky top-0 z-20">
-                    <tr className="bg-[#bde0fe] text-slate-800 uppercase font-black tracking-tight text-[10px]">
-                      <th className="px-6 py-4 border-r border-gray-100 text-left w-32">Material</th>
-                      <th className="px-6 py-4 border-r border-gray-100 text-left">Descripción</th>
-                      <th className="px-6 py-4 border-r border-gray-100 w-40 text-center">peso / rollo (Kg)</th>
-                      <th className="px-6 py-4 border-r border-gray-100 w-48 text-right bg-orange-100/50">Consumo Actual OF [Kg]</th>
-                      <th className="px-6 py-4 w-48 text-right bg-orange-100/50">Consumo Actual OF [Un]</th>
+                    <tr className="bg-[#0f172a] text-white uppercase font-black tracking-widest text-[9px]">
+                      <th className="px-8 py-5 border-r border-white/5 text-left w-40">Componente</th>
+                      <th className="px-8 py-5 border-r border-white/5 text-left">Descripción del Material</th>
+                      <th className="px-6 py-5 border-r border-white/5 w-40 text-center bg-white/5">Peso / Rollo (Kg)</th>
+                      <th className="px-8 py-5 border-r border-white/5 w-48 text-right bg-indigo-500/10">Necesidad (Kg)</th>
+                      <th className="px-8 py-5 w-48 text-right bg-emerald-500/10">Equivalente (Un)</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100 font-bold">
-                    {unifiedNeeds.map((row, idx) => (
-                      <tr key={idx} className="hover:bg-gray-50/80 transition-colors">
-                        <td className="px-6 py-3 border-r border-gray-100 font-mono text-indigo-600 text-left bg-blue-50/5">{row.material}</td>
-                        <td className="px-6 py-3 border-r border-gray-100 text-left text-slate-500 uppercase font-bold truncate max-w-[300px]" title={row.descripcion}>{row.descripcion}</td>
-                        <td className="px-6 py-3 border-r border-gray-100 font-mono text-green-700 text-center bg-green-50/5">
-                          {String(row.pesoRollo)}
-                        </td>
-                        <td className="px-6 py-3 border-r border-gray-100 font-mono text-slate-800 bg-orange-50/10 text-right">
-                          {row.consumoKg.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </td>
-                        <td className="px-6 py-3 font-mono text-red-600 bg-orange-50/10 text-right">
-                          {row.consumoUn.toLocaleString(undefined, { maximumFractionDigits: 1 })}
-                        </td>
-                      </tr>
-                    ))}
+                  <tbody className="divide-y divide-gray-100">
+                    {unifiedNeeds.length === 0 && !isProcessingResumen ? (
+                       <tr><td colSpan={5} className="py-24 text-center text-slate-300 font-black uppercase tracking-widest opacity-40">No hay datos calculados</td></tr>
+                    ) : (
+                      unifiedNeeds.map((row, idx) => (
+                        <tr key={idx} className="hover:bg-slate-50/80 transition-all group">
+                          <td className="px-8 py-4 border-r border-gray-100 font-mono text-indigo-600 text-left bg-slate-50/50 font-black">{row.material}</td>
+                          <td className="px-8 py-4 border-r border-gray-100 text-left text-slate-700 uppercase font-black tracking-tight">
+                            {row.descripcion}
+                          </td>
+                          <td className="px-6 py-4 border-r border-gray-100 font-mono text-slate-400 text-center group-hover:text-slate-900 transition-colors">
+                            {String(row.pesoRollo)}
+                          </td>
+                          <td className="px-8 py-4 border-r border-gray-100 font-mono text-slate-900 bg-indigo-50/30 text-right font-black text-sm">
+                            {row.consumoKg.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+                          <td className="px-8 py-4 font-mono text-emerald-600 bg-emerald-50/30 text-right font-black text-sm">
+                            {row.consumoUn.toLocaleString(undefined, { maximumFractionDigits: 1 })}
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
-                  <tfoot className="bg-slate-900 text-white font-black uppercase text-[10px] sticky bottom-0">
-                    <tr>
-                      <td colSpan={3} className="px-6 py-4 text-right tracking-widest text-slate-400">Total Consolidado del Período:</td>
-                      <td className="px-6 py-4 text-right font-mono text-orange-300">{totalsUnified.kg.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</td>
-                      <td className="px-6 py-4 text-right font-mono text-orange-300">{totalsUnified.un.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                    </tr>
-                  </tfoot>
+                  {unifiedNeeds.length > 0 && (
+                    <tfoot className="bg-slate-900 text-white font-black uppercase text-[10px] sticky bottom-0">
+                      <tr>
+                        <td colSpan={3} className="px-8 py-5 text-right tracking-widest text-slate-500">Consolidado Total del Período:</td>
+                        <td className="px-8 py-5 text-right font-mono text-indigo-300 text-sm">{totalsUnified.kg.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} KG</td>
+                        <td className="px-8 py-5 text-right font-mono text-emerald-300 text-sm">{totalsUnified.un.toLocaleString(undefined, { maximumFractionDigits: 0 })} UN</td>
+                      </tr>
+                    </tfoot>
+                  )}
                 </table>
               </div>
             </div>
-          ) : !isProcessingResumen && (
-            <div className="py-24 text-center bg-gray-50/30 rounded-3xl border-2 border-dashed border-gray-100">
-              <Database className="w-16 h-16 text-indigo-100 mx-auto" />
-              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-4">Calculando necesidades técnicas automáticas...</p>
-            </div>
-          )}
+          </div>
+
+          <div className="px-6 py-4 bg-blue-50 border border-blue-100 rounded-3xl flex items-center gap-4">
+             <div className="p-2 bg-blue-500 text-white rounded-xl"><Info className="w-5 h-5" /></div>
+             <div>
+                <p className="text-[10px] font-black text-blue-800 uppercase tracking-widest">Nota Técnica de Cálculo</p>
+                <p className="text-[10px] text-blue-600 font-bold uppercase mt-0.5">La explosión técnica identifica componentes de tipo "LÁMINA CILÍNDRICA" y aplica conversiones basadas en densidades D12-D50 para determinar el tonelaje y conteo de rollos.</p>
+             </div>
+          </div>
         </TabsContent>
 
-        <TabsContent value="listaMateriales" className="space-y-4 animate-in fade-in duration-300">
-          <div className="flex items-center justify-between bg-gray-100/50 p-4 rounded-2xl border border-gray-200">
-             <div className="flex items-center gap-3">
-               <div className="p-2 bg-indigo-600/10 rounded-xl text-indigo-600"><ClipboardList className="w-5 h-5" /></div>
+        <TabsContent value="listaMateriales" className="space-y-6 animate-in fade-in duration-300">
+          <div className="flex items-center justify-between bg-white p-5 rounded-3xl border border-gray-100 shadow-xl">
+             <div className="flex items-center gap-4">
+               <div className="p-3 bg-indigo-600/10 rounded-2xl text-indigo-600"><ClipboardList className="w-6 h-6" /></div>
                <div>
-                 <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter text-left">Auditoría Estructural de Materiales (BOM)</h3>
-                 <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-0.5 text-left">Filtrado por: LÁMINA CILÍNDRICA | Excluye: Centro 2000</p>
+                 <h3 className="text-sm font-black text-slate-800 uppercase tracking-tighter">Auditoría Estructural BOM</h3>
+                 <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest mt-1">Niveles de Explosión SAP | Auditoría Multinivel Directa</p>
                </div>
              </div>
-             <form onSubmit={handleSearchBOM} className="flex gap-2">
-               <div className="relative">
-                 <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-gray-400" />
-                 <input type="text" placeholder="FERT Principal..." value={fertBusqueda} onChange={e => setFertBusqueda(e.target.value)} className="pl-9 pr-3 py-2 bg-white border border-gray-200 rounded-lg text-xs font-bold w-48 focus:ring-2 focus:ring-red-500/20" />
+             <form onSubmit={handleSearchBOM} className="flex gap-3">
+               <div className="relative group">
+                 <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-300 group-hover:text-red-500 transition-colors" />
+                 <input type="text" placeholder="Código FERT..." value={fertBusqueda} onChange={e => setFertBusqueda(e.target.value)} className="pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-black w-56 focus:ring-4 focus:ring-red-500/10 focus:bg-white transition-all outline-none" />
                </div>
-               <Button type="submit" disabled={isSearchingBOM} className="bg-slate-900 text-white rounded-lg h-9 px-6 text-[10px] font-black uppercase tracking-widest shadow-lg">
-                 {isSearchingBOM ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Auditar'}
+               <Button type="submit" disabled={isSearchingBOM} className="bg-slate-900 text-white rounded-2xl h-10 px-8 text-[10px] font-black uppercase tracking-widest shadow-xl hover:bg-black transition-all">
+                 {isSearchingBOM ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Auditar'}
                </Button>
              </form>
           </div>
 
           {!isSearchingBOM && bomRows.length > 0 ? (
             <div className="space-y-4">
-              <div className="border border-gray-200 rounded-2xl overflow-hidden bg-white shadow-md">
+              <div className="border border-gray-200 rounded-3xl overflow-hidden bg-white shadow-xl">
                 <div className="overflow-x-auto max-h-[550px]">
                   <table className="w-full border-collapse font-sans text-[10px]">
-                    <thead className="bg-[#bde0fe] text-slate-800 uppercase font-black tracking-tight sticky top-0 z-10 border-b border-blue-200">
+                    <thead className="bg-[#f8fafc] text-slate-400 uppercase font-black tracking-widest sticky top-0 z-10 border-b border-slate-100">
                       <tr>
-                        <th className="px-3 py-3 border-r border-blue-100 text-center w-14">NV</th>
-                        <th className="px-3 py-3 border-r border-blue-100 w-16">CT</th>
-                        <th className="px-3 py-3 border-r border-blue-100">FERT Principal</th>
-                        <th className="px-3 py-3 border-r border-blue-100">Material Padre</th>
-                        <th className="px-3 py-3 border-r border-blue-100">Componente</th>
-                        <th className="px-3 py-3 border-r border-blue-100 text-left">Descripción Componente</th>
-                        <th className="px-3 py-3 border-r border-blue-100 text-right w-24">Cant. Unit.</th>
-                        <th className="px-3 py-3 text-right w-24">Cant. Acum.</th>
+                        <th className="px-5 py-4 border-r border-slate-50 text-center w-16">NV</th>
+                        <th className="px-5 py-4 border-r border-slate-50">FERT Principal</th>
+                        <th className="px-5 py-4 border-r border-slate-50">Material Padre</th>
+                        <th className="px-5 py-4 border-r border-slate-50">Componente</th>
+                        <th className="px-5 py-4 border-r border-slate-100 text-left">Descripción del Componente</th>
+                        <th className="px-5 py-4 border-r border-slate-50 text-right w-28">Cant. Unit.</th>
+                        <th className="px-5 py-4 text-right w-28">Cant. Acum.</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100 font-bold">
+                    <tbody className="divide-y divide-gray-50 font-bold">
                       {paginatedBomRows.map((row, idx) => {
                         const level = parseInt(row.NIVEL);
                         return (
-                          <tr key={idx} className="hover:bg-blue-50/30 transition-colors">
-                            <td className="px-3 py-2 border-r border-gray-100 text-center text-slate-400 font-mono text-[9px]">{ ".".repeat(level) }{level}</td>
-                            <td className="px-3 py-2 border-r border-gray-100 text-gray-400 text-center">{row.CENTRO}</td>
-                            <td className="px-3 py-2 border-r border-gray-100 font-mono text-indigo-600 tracking-tighter">{row.FERT_PRINCIPAL}</td>
-                            <td className="px-3 py-2 border-r border-gray-100 font-mono text-gray-400 tracking-tighter">{row.MATERIAL_PADRE}</td>
-                            <td className="px-3 py-2 border-r border-gray-100 font-mono text-slate-700 tracking-tighter">{row.COMPONENTE}</td>
-                            <td className="px-3 py-2 border-r border-gray-100 text-left uppercase font-black text-slate-600">{row.DESCRIPCION_COMPONENTE}</td>
-                            <td className="px-3 py-2 border-r border-gray-100 text-right font-mono text-slate-500">{row.CANTIDAD_UNITARIA.toFixed(3)}</td>
-                            <td className="px-3 py-2 text-right font-mono text-slate-800">{row.CANTIDAD_ACUMULADA.toFixed(3)}</td>
+                          <tr key={idx} className="hover:bg-blue-50/20 transition-colors">
+                            <td className={cn(
+                              "px-5 py-3 border-r border-gray-100 text-center font-mono text-[10px]",
+                              level === 1 ? "bg-red-50 text-red-600" : "text-slate-300"
+                            )}>{ ".".repeat(level) }{level}</td>
+                            <td className="px-5 py-3 border-r border-gray-100 font-mono text-indigo-600 tracking-tighter">{row.FERT_PRINCIPAL}</td>
+                            <td className="px-5 py-3 border-r border-gray-100 font-mono text-slate-400 tracking-tighter">{row.MATERIAL_PADRE}</td>
+                            <td className="px-5 py-3 border-r border-gray-100 font-mono text-slate-700 tracking-tighter text-sm">{row.COMPONENTE}</td>
+                            <td className="px-5 py-3 border-r border-gray-100 text-left uppercase font-black text-slate-600 tracking-tight leading-tight">{row.DESCRIPCION_COMPONENTE}</td>
+                            <td className="px-5 py-3 border-r border-gray-100 text-right font-mono text-slate-400">{row.CANTIDAD_UNITARIA.toFixed(3)}</td>
+                            <td className="px-5 py-3 text-right font-mono text-slate-900 bg-slate-50/50">{row.CANTIDAD_ACUMULADA.toFixed(3)}</td>
                           </tr>
                         );
                       })}
                     </tbody>
-                    <tfoot className="bg-gray-800 text-white font-black uppercase text-[10px] sticky bottom-0">
-                      <tr>
-                        <td colSpan={6} className="px-3 py-3 text-right tracking-widest text-slate-400">Total General:</td>
-                        <td className="px-3 py-3 text-right font-mono text-blue-300">{bomRows.reduce((s, r) => s + r.CANTIDAD_UNITARIA, 0).toFixed(3)}</td>
-                        <td className="px-3 py-3 text-right font-mono text-blue-300">{bomRows.reduce((s, r) => s + r.CANTIDAD_ACUMULADA, 0).toFixed(3)}</td>
-                      </tr>
-                    </tfoot>
                   </table>
                 </div>
               </div>
+
+              <div className="flex items-center justify-between px-2">
+                 <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Mostrando {paginatedBomRows.length} de {bomRows.length} registros</p>
+                 <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setBomPage(prev => Math.max(1, prev - 1))} disabled={bomPage === 1} className="rounded-xl">Anterior</Button>
+                    <Button variant="outline" size="sm" onClick={() => setBomPage(prev => Math.min(Math.ceil(bomRows.length / bomRowsPerPage), prev + 1))} disabled={bomPage * bomRowsPerPage >= bomRows.length} className="rounded-xl">Siguiente</Button>
+                 </div>
+              </div>
             </div>
           ) : !isSearchingBOM && (
-            <div className="py-24 text-center bg-gray-50/30 rounded-3xl border-2 border-dashed border-gray-100">
+            <div className="py-24 text-center bg-gray-50/30 rounded-[3rem] border-2 border-dashed border-gray-100">
               <Database className="w-16 h-16 text-indigo-100 mx-auto" />
-              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-4">Ingrese un código FERT para auditar su estructura técnica</p>
+              <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest mt-6">Ingrese un código FERT de Colchón o Panel para auditar su estructura técnica</p>
             </div>
           )}
         </TabsContent>
 
         <TabsContent value="tiempos" className="animate-in fade-in duration-300">
-           <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
+           <Card className="rounded-3xl border border-gray-100 shadow-xl overflow-hidden bg-white">
             <div className="overflow-x-auto max-h-[700px]">
               <table className="w-full border-collapse text-center">
                 <thead className="bg-[#1e293b] text-white sticky top-0 z-10 text-[10px] font-black uppercase tracking-tight border-b border-white/5">
                   <tr>
-                    <th className="px-5 py-4 border-r border-white/5 text-left">Material</th>
-                    <th className="px-5 py-4 border-r border-white/5 text-left">Descripción Técnica</th>
-                    <th className="px-5 py-4 border-r border-white/5">Puesto Trabajo</th>
-                    <th className="px-5 py-4 border-r border-white/5">Línea</th>
-                    <th className="px-5 py-4 border-r border-white/5 text-teal-400">T. Estándar (Min)</th>
-                    <th className="px-5 py-4">Stock Actual</th>
-                    <th className="px-5 py-4">Seguridad</th>
+                    <th className="px-6 py-5 border-r border-white/5 text-left">Material</th>
+                    <th className="px-6 py-5 border-r border-white/5 text-left">Descripción Técnica</th>
+                    <th className="px-6 py-5 border-r border-white/5">Línea</th>
+                    <th className="px-6 py-5 border-r border-white/5 text-teal-400">T. Estándar (Min)</th>
+                    <th className="px-6 py-5">Stock Actual</th>
+                    <th className="px-6 py-5">Seguridad</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100 text-[11px] font-bold">
+                <tbody className="divide-y divide-gray-100 text-[11px] font-black">
                   {tiemposEnsamblado.length === 0 ? (
-                    <tr><td colSpan={7} className="py-24 text-gray-300 font-black uppercase tracking-widest opacity-30 text-center">No hay registros cargados</td></tr>
+                    <tr><td colSpan={7} className="py-24 text-slate-200 font-black uppercase tracking-widest opacity-40 text-center">Cargando base de tiempos...</td></tr>
                   ) : (
                     tiemposEnsamblado.map((t, i) => {
                       const matCode = String(t.CodMaterial || '').match(/^(\d+)/)?.[1]?.slice(-8) || '—';
                       const desc = String(t.Material || t.Descripcion || '—').toUpperCase();
                       return (
-                        <tr key={i} className="hover:bg-gray-50 transition-colors">
-                          <td className="px-4 py-4 font-mono text-indigo-600 border-r border-dashed border-gray-100 text-left">{matCode}</td>
-                          <td className="px-4 py-4 text-left border-r border-dashed border-gray-100 text-gray-600 truncate max-w-[280px]">{desc}</td>
-                          <td className="px-4 py-4 border-r border-dashed border-gray-100 font-black text-gray-400 uppercase text-[9px]">{t.PuestoTrabajo || '—'}</td>
-                          <td className="px-4 py-4 border-r border-dashed border-gray-100 font-black text-slate-400 uppercase text-[9px]">{t.Linea || '—'}</td>
-                          <td className="px-4 py-4 font-mono text-teal-600 border-r border-dashed border-gray-100 bg-teal-50/10">
+                        <tr key={i} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="px-6 py-4 font-mono text-indigo-600 border-r border-dashed border-gray-100 text-left text-sm">{matCode}</td>
+                          <td className="px-6 py-4 text-left border-r border-dashed border-gray-100 text-slate-600 uppercase leading-tight max-w-[300px] truncate">{desc}</td>
+                          <td className="px-6 py-4 border-r border-dashed border-gray-100 font-black text-slate-400 uppercase text-[9px]">{t.Linea || '—'}</td>
+                          <td className="px-6 py-4 font-mono text-teal-600 border-r border-dashed border-gray-100 bg-teal-50/10 text-sm">
                             {Number(t.Tiempo || 0).toFixed(4)}
                           </td>
-                          <td className="px-4 py-4 text-gray-400 font-mono border-r border-dashed border-gray-100">{(t.StockActual || 0).toLocaleString()}</td>
-                          <td className="px-4 py-4 text-gray-900 font-mono font-black">{(t.StockSeguridad || 0).toLocaleString()}</td>
+                          <td className="px-6 py-4 text-slate-400 font-mono border-r border-dashed border-gray-100">{(t.StockActual || 0).toLocaleString()}</td>
+                          <td className="px-6 py-4 text-slate-900 font-mono font-black">{(t.StockSeguridad || 0).toLocaleString()}</td>
                         </tr>
                       );
                     })
