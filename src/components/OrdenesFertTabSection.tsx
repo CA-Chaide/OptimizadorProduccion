@@ -88,13 +88,26 @@ export const OrdenesFertTabSection: React.FC = () => {
       const firstPageRes = await serviciosService.getOrdenesFert(1, 10000);
       const rawData: any[] = Array.isArray(firstPageRes?.data) ? firstPageRes.data : [];
       
-      let orders: OrdenFert[] = rawData.map(o => ({
-        ...o,
-        SECTOR: (o.SECTOR || o.Sector || o.sector || o.SECTORDESC || '').trim().toUpperCase(),
-        ETIQUETA: (o.ETIQUETA || o.Etiqueta || o.etiqueta || '').trim(),
-        CATEGORIA: String(o.CATEGORIA || '').trim().toUpperCase(),
-        LINEA: (o.LINEA || o.Linea || o.linea || '').trim().toUpperCase()
-      })).filter(o => {
+      let orders: OrdenFert[] = rawData.map(o => {
+        const cat = String(o.CATEGORIA || o.Categoria || '').toUpperCase();
+        let calculatedLinea = '';
+        
+        // Lógica de llenado de columna LINEA según CATEGORIA
+        if (cat.includes('L1')) calculatedLinea = 'LINEA 1';
+        else if (cat.includes('L2')) calculatedLinea = 'LINEA 2';
+        else if (cat.includes('L3')) calculatedLinea = 'LINEA 3';
+        else if (cat.includes('L5')) calculatedLinea = 'LINEA 5';
+        else if (cat.includes('B-B')) calculatedLinea = 'LINEA 5';
+        else calculatedLinea = (o.LINEA || o.Linea || o.linea || '').trim().toUpperCase();
+
+        return {
+          ...o,
+          SECTOR: (o.SECTOR || o.Sector || o.sector || o.SECTORDESC || '').trim().toUpperCase(),
+          ETIQUETA: (o.ETIQUETA || o.Etiqueta || o.etiqueta || '').trim(),
+          CATEGORIA: cat,
+          LINEA: calculatedLinea
+        };
+      }).filter(o => {
         const s = String(o.SECTOR).trim().toUpperCase();
         return s === "01 COLCHONES" || s === "02 BASES";
       });
@@ -247,7 +260,7 @@ export const OrdenesFertTabSection: React.FC = () => {
                     <td className="px-3 py-2 text-gray-600 truncate max-w-[120px]" title={o.SECTOR}>{o.SECTOR || '-'}</td>
                     <td className="px-3 py-2 text-gray-600 truncate max-w-[150px]" title={o.ETIQUETA}>{o.ETIQUETA || '-'}</td>
                     <td className="px-3 py-2 text-gray-600 truncate max-w-[100px]">{o.CATEGORIA || '-'}</td>
-                    <td className="px-3 py-2 text-gray-600 truncate max-w-[100px]">{o.LINEA || '-'}</td>
+                    <td className="px-3 py-2 font-bold text-indigo-700 bg-indigo-50/10">{o.LINEA || '-'}</td>
                     <td className="px-3 py-2 font-mono text-gray-600">{o.MAQUINA || '-'}</td>
                     <td className="px-3 py-2 font-mono text-gray-900 font-bold">{o.MATERIAL}</td>
                     <td className="px-3 py-2 text-gray-500">{o.FECHA}</td>
