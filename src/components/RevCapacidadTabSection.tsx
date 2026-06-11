@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -13,10 +14,13 @@ import {
   Download,
   AlertCircle,
   Clock,
-  TrendingUp
+  TrendingUp,
+  Target,
+  ArrowRightLeft
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from '@/components/ui/badge';
 import * as XLSX from 'xlsx';
 
 interface SummaryRow {
@@ -28,6 +32,7 @@ interface SummaryRow {
   tiempoOrdPrev: number;
   totalCantidad: number;
   totalTiempo: number;
+  puestosObjetivo: number; // Valor de restricción predefinida
 }
 
 const normalizeDateISO = (dateStr: any): string | null => {
@@ -44,6 +49,18 @@ const normalizeMaterialCode = (code: string | number): string => {
   return String(code || '').trim().slice(-8);
 };
 
+// RESTRICCIONES PREDEFINIDAS (El "Target" del juego)
+const RESTRICCIONES_PUESTOS: Record<string, number> = {
+  'LINEA 1|Armado': 12,
+  'LINEA 1|Cerrado L1': 6,
+  'LINEA 2|Armado': 6,
+  'LINEA 2|Cerrado1 L2': 4,
+  'LINEA 2|Cerrado2 L2': 4,
+  'LINEA 3|Armado': 2,
+  'LINEA 3|Cerrado L3': 1,
+  'LINEA 5|Armado': 2,
+};
+
 export const RevCapacidadTabSection: React.FC = () => {
   const inspector = useRuntimeInspector('RevCapacidadTab');
   const { addNotification } = useAppContext();
@@ -52,7 +69,7 @@ export const RevCapacidadTabSection: React.FC = () => {
   const [fertOrders, setFertOrders] = useState<any[]>([]);
   const [provisionalOrders, setProvisionalOrders] = useState<any[]>([]);
   const [availableCenters, setAvailableCenters] = useState<string[]>([]);
-  const [selectedCenter, setSelectedCenter] = useState<string>("");
+  const [selectedCenter, setSelectedCenter] = useState<string>("1000");
   const [isLoading, setIsLoading] = useState<boolean>(false);
   
   const [programmingDate, setProgrammingDate] = useState<string>(new Date().toISOString().split('T')[0]);
@@ -61,7 +78,6 @@ export const RevCapacidadTabSection: React.FC = () => {
   const [horasTurno1, setHorasTurno1] = useState<number>(8);
   const [horasTurno2, setHorasTurno2] = useState<number>(8);
 
-  // Estados para Rendimiento de Líneas
   const [rendLinea1, setRendLinea1] = useState<number>(1.05);
   const [rendLinea2, setRendLinea2] = useState<number>(1.08);
   const [rendLinea3, setRendLinea3] = useState<number>(1.05);
@@ -124,7 +140,7 @@ export const RevCapacidadTabSection: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [addNotification, selectedCenter]);
+  }, [addNotification, selectedCenter, allData.length]);
 
   useEffect(() => {
     loadData();
@@ -179,7 +195,8 @@ export const RevCapacidadTabSection: React.FC = () => {
           linea: line, puesto, 
           cantOrdFab: 0, cantOrdPrev: 0, 
           tiempoOrdFab: 0, tiempoOrdPrev: 0,
-          totalCantidad: 0, totalTiempo: 0
+          totalCantidad: 0, totalTiempo: 0,
+          puestosObjetivo: RESTRICCIONES_PUESTOS[key] || 0
         });
       }
 
@@ -188,7 +205,6 @@ export const RevCapacidadTabSection: React.FC = () => {
       const qPrev = prevSumMap.get(matKey) || 0;
       const tUnit = Number(row.Tiempo_Min || 0);
 
-      // Determinación del factor de rendimiento para esta línea
       let rendFactor = 1;
       if (line.includes('LINEA 1')) rendFactor = rendLinea1;
       else if (line.includes('LINEA 2')) rendFactor = rendLinea2;
@@ -197,12 +213,10 @@ export const RevCapacidadTabSection: React.FC = () => {
 
       if (qFab > 0) {
         entry.cantOrdFab += qFab;
-        // Aplicar factor de rendimiento al tiempo de órden de fabricación
         entry.tiempoOrdFab += ((qFab * tUnit) / 60) * rendFactor;
       }
       if (qPrev > 0) {
         entry.cantOrdPrev += qPrev;
-        // Aplicar factor de rendimiento al tiempo de órden previsional
         entry.tiempoOrdPrev += ((qPrev * tUnit) / 60) * rendFactor;
       }
       
@@ -221,34 +235,45 @@ export const RevCapacidadTabSection: React.FC = () => {
       timePrev: acc.timePrev + r.tiempoOrdPrev,
       totalCant: acc.totalCant + r.totalCantidad,
       totalTime: acc.totalTime + r.totalTiempo,
-    }), { cantFab: 0, cantPrev: 0, timeFab: 0, timePrev: 0, totalCant: 0, totalTime: 0 });
-  }, [summaryData]);
+      totalPuestos: acc.totalTime / horasTurno1,
+      totalObjetivo: acc.totalPuestos + r.puestosObjetivo
+    }), { cantFab: 0, cantPrev: 0, timeFab: 0, timePrev: 0, totalCant: 0, totalTime: 0, totalPuestos: 0, totalObjetivo: 0 });
+  }, [summaryData, horasTurno1]);
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center space-x-3">
           <Activity className="w-6 h-6 text-indigo-600" />
-          <h3 className="text-xl font-semibold text-gray-800">Resumen de Capacidad por Puesto</h3>
+          <div>
+            <h3 className="text-xl font-semibold text-gray-800">Resumen de Capacidad y Balanceo</h3>
+            <p className="text-xs text-gray-500">Cálculo de puestos necesarios vs capacidad instalada</p>
+          </div>
         </div>
-        <Button 
-          variant="outline" 
-          size="sm" 
-          onClick={() => {
-            const ws = XLSX.utils.json_to_sheet(summaryData.map(r => ({
-              'Línea': r.linea, 'Puesto Trabajo': r.puesto,
-              'Cant ordFab': r.cantOrdFab, 'Cant ordPrev': r.cantOrdPrev,
-              'Total Tiempo (h)': r.totalTiempo.toFixed(2),
-              'No. Puestos': (r.totalTiempo / horasTurno1).toFixed(2)
-            })));
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, "Resumen");
-            XLSX.writeFile(wb, `Capacidad_${selectedCenter}.xlsx`);
-          }} 
-          disabled={summaryData.length === 0}
-        >
-          <Download className="w-4 h-4 mr-2" /> Exportar
-        </Button>
+        <div className="flex gap-2">
+            <Button variant="outline" size="sm" className="bg-blue-50 text-blue-700 border-blue-200">
+                <ArrowRightLeft className="w-4 h-4 mr-2" /> Equilibrar Cantidades
+            </Button>
+            <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => {
+                    const ws = XLSX.utils.json_to_sheet(summaryData.map(r => ({
+                    'Línea': r.linea, 'Puesto Trabajo': r.puesto,
+                    'Cant ordFab': r.cantOrdFab, 'Cant ordPrev': r.cantOrdPrev,
+                    'Total Tiempo (h)': r.totalTiempo.toFixed(2),
+                    'No. Puestos': (r.totalTiempo / horasTurno1).toFixed(2),
+                    'Puestos Objetivo': r.puestosObjetivo
+                    })));
+                    const wb = XLSX.utils.book_new();
+                    XLSX.utils.book_append_sheet(wb, ws, "Resumen");
+                    XLSX.writeFile(wb, `Capacidad_${selectedCenter}.xlsx`);
+                }} 
+                disabled={summaryData.length === 0}
+                >
+                <Download className="w-4 h-4 mr-2" /> Exportar
+            </Button>
+        </div>
       </div>
 
       <Tabs value={selectedCenter} onValueChange={(val) => setSelectedCenter(val)} className="w-full">
@@ -260,69 +285,43 @@ export const RevCapacidadTabSection: React.FC = () => {
           ))}
         </TabsList>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 bg-gray-50 border rounded-xl shadow-sm mb-6">
-          {/* Fila 1: Fechas y Horas */}
+        {/* Panel de Filtros Expandido */}
+        <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-8 gap-4 p-4 bg-gray-50 border rounded-xl shadow-sm mb-6">
           <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Día Programación:</label>
-            <div className="flex items-center gap-2 bg-white border rounded-md px-3 py-2 h-10">
-              <input type="date" value={programmingDate} onChange={e => setProgrammingDate(e.target.value)} className="text-xs border-none flex-1 outline-none text-indigo-700 font-medium" />
-              <CalendarIcon className="w-4 h-4 text-gray-300" />
-            </div>
+            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Día Prog:</label>
+            <input type="date" value={programmingDate} onChange={e => setProgrammingDate(e.target.value)} className="text-xs border rounded-md px-2 py-2 outline-none text-indigo-700 font-medium h-9" />
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Fecha Previsionales:</label>
-            <div className="flex items-center gap-2 bg-white border rounded-md px-3 py-2 h-10">
-              <input type="date" value={provisionalDate} onChange={e => setProvisionalDate(e.target.value)} className="text-xs border-none flex-1 outline-none text-indigo-700 font-medium" />
-              <CalendarIcon className="w-4 h-4 text-gray-300" />
-            </div>
+            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Fecha Prev:</label>
+            <input type="date" value={provisionalDate} onChange={e => setProvisionalDate(e.target.value)} className="text-xs border rounded-md px-2 py-2 outline-none text-indigo-700 font-medium h-9" />
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Horas Turno 1:</label>
-            <div className="flex items-center gap-2 bg-white border rounded-md px-3 py-2 h-10">
-              <select value={horasTurno1} onChange={e => setHorasTurno1(Number(e.target.value))} className="text-xs border-none flex-1 outline-none font-bold text-indigo-700">
-                {hourOptions.map(h => <option key={`t1-${h}`} value={h}>{h}</option>)}
-              </select>
-              <Clock className="w-4 h-4 text-gray-300" />
-            </div>
+            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Horas T1:</label>
+            <select value={horasTurno1} onChange={e => setHorasTurno1(Number(e.target.value))} className="text-xs border rounded-md px-2 py-1 h-9 font-bold text-indigo-700">
+              {hourOptions.map(h => <option key={`t1-${h}`} value={h}>{h}</option>)}
+            </select>
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Horas Turno 2:</label>
-            <div className="flex items-center gap-2 bg-white border rounded-md px-3 py-2 h-10">
-              <select value={horasTurno2} onChange={e => setHorasTurno2(Number(e.target.value))} className="text-xs border-none flex-1 outline-none font-bold text-indigo-700">
-                {hourOptions.map(h => <option key={`t2-${h}`} value={h}>{h}</option>)}
-              </select>
-              <Clock className="w-4 h-4 text-gray-300" />
-            </div>
-          </div>
-
-          {/* Fila 2: Rendimientos */}
-          <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Rend Linea 1:</label>
-            <div className="flex items-center gap-2 bg-white border rounded-md px-3 py-2 h-10">
-              <input type="number" step="0.01" value={rendLinea1} onChange={e => setRendLinea1(Number(e.target.value))} className="text-xs border-none flex-1 outline-none text-indigo-700 font-bold" />
-              <TrendingUp className="w-4 h-4 text-gray-300" />
-            </div>
+            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Horas T2:</label>
+            <select value={horasTurno2} onChange={e => setHorasTurno2(Number(e.target.value))} className="text-xs border rounded-md px-2 py-1 h-9 font-bold text-indigo-700">
+              {hourOptions.map(h => <option key={`t2-${h}`} value={h}>{h}</option>)}
+            </select>
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Rend Linea 2:</label>
-            <div className="flex items-center gap-2 bg-white border rounded-md px-3 py-2 h-10">
-              <input type="number" step="0.01" value={rendLinea2} onChange={e => setRendLinea2(Number(e.target.value))} className="text-xs border-none flex-1 outline-none text-indigo-700 font-bold" />
-              <TrendingUp className="w-4 h-4 text-gray-300" />
-            </div>
+            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Rend L1:</label>
+            <input type="number" step="0.01" value={rendLinea1} onChange={e => setRendLinea1(Number(e.target.value))} className="text-xs border rounded-md px-2 py-1 h-9 font-bold text-indigo-700" />
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Rend Linea 3:</label>
-            <div className="flex items-center gap-2 bg-white border rounded-md px-3 py-2 h-10">
-              <input type="number" step="0.01" value={rendLinea3} onChange={e => setRendLinea3(Number(e.target.value))} className="text-xs border-none flex-1 outline-none text-indigo-700 font-bold" />
-              <TrendingUp className="w-4 h-4 text-gray-300" />
-            </div>
+            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Rend L2:</label>
+            <input type="number" step="0.01" value={rendLinea2} onChange={e => setRendLinea2(Number(e.target.value))} className="text-xs border rounded-md px-2 py-1 h-9 font-bold text-indigo-700" />
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Rend Linea 5:</label>
-            <div className="flex items-center gap-2 bg-white border rounded-md px-3 py-2 h-10">
-              <input type="number" step="0.01" value={rendLinea5} onChange={e => setRendLinea5(Number(e.target.value))} className="text-xs border-none flex-1 outline-none text-indigo-700 font-bold" />
-              <TrendingUp className="w-4 h-4 text-gray-300" />
-            </div>
+            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Rend L3:</label>
+            <input type="number" step="0.01" value={rendLinea3} onChange={e => setRendLinea3(Number(e.target.value))} className="text-xs border rounded-md px-2 py-1 h-9 font-bold text-indigo-700" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Rend L5:</label>
+            <input type="number" step="0.01" value={rendLinea5} onChange={e => setRendLinea5(Number(e.target.value))} className="text-xs border rounded-md px-2 py-1 h-9 font-bold text-indigo-700" />
           </div>
         </div>
 
@@ -338,6 +337,8 @@ export const RevCapacidadTabSection: React.FC = () => {
                   <th className="px-4 py-3 text-right border bg-indigo-50/30">Total Cant</th>
                   <th className="px-4 py-3 text-right border bg-indigo-50/30">Total Tiempo (h)</th>
                   <th className="px-4 py-3 text-right border text-blue-700 bg-blue-50/30">No. Puestos</th>
+                  <th className="px-4 py-3 text-right border text-indigo-700 bg-indigo-50/30">Puestos Objetivo</th>
+                  <th className="px-4 py-3 text-right border">Diferencia (±)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
@@ -347,8 +348,11 @@ export const RevCapacidadTabSection: React.FC = () => {
                   lines.forEach(lineName => {
                     const rows = summaryData.filter(r => r.linea === lineName);
                     rows.forEach((r, idx) => {
+                      const calculatedPuestos = Number((r.totalTiempo / horasTurno1).toFixed(2));
+                      const delta = r.puestosObjetivo - calculatedPuestos;
+                      
                       items.push(
-                        <tr key={`${lineName}-${idx}`} className="hover:bg-gray-50">
+                        <tr key={`${lineName}-${idx}`} className="hover:bg-gray-50 group">
                           {idx === 0 && <td rowSpan={rows.length} className="px-4 py-3 font-bold text-gray-900 border align-top bg-gray-50/30">{lineName}</td>}
                           <td className="px-4 py-3 font-medium text-gray-700 border">{r.puesto}</td>
                           <td className="px-4 py-3 text-right font-mono border">{r.cantOrdFab.toLocaleString()}</td>
@@ -356,7 +360,18 @@ export const RevCapacidadTabSection: React.FC = () => {
                           <td className="px-4 py-3 text-right font-bold border bg-indigo-50/5">{r.totalCantidad.toLocaleString()}</td>
                           <td className="px-4 py-3 text-right font-bold border bg-indigo-50/5">{r.totalTiempo.toFixed(2)}</td>
                           <td className="px-4 py-3 text-right font-bold border text-blue-700 bg-blue-50/5">
-                            {(r.totalTiempo / horasTurno1).toFixed(2)}
+                            {calculatedPuestos}
+                          </td>
+                          <td className="px-4 py-3 text-right font-bold border text-indigo-700 bg-indigo-50/10">
+                            <span className="inline-flex items-center gap-1">
+                                <Target className="w-3 h-3 opacity-50" /> {r.puestosObjetivo}
+                            </span>
+                          </td>
+                          <td className={cn(
+                            "px-4 py-3 text-right font-bold border",
+                            delta < 0 ? "text-red-600 bg-red-50" : delta > 0 ? "text-green-600 bg-green-50" : "text-gray-400"
+                          )}>
+                            {delta > 0 ? `+${delta.toFixed(2)}` : delta.toFixed(2)}
                           </td>
                         </tr>
                       );
@@ -364,7 +379,7 @@ export const RevCapacidadTabSection: React.FC = () => {
                   });
                   return items;
                 })() : (
-                  <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-400 italic">Sin datos disponibles.</td></tr>
+                  <tr><td colSpan={9} className="px-6 py-12 text-center text-gray-400 italic">Sin datos disponibles.</td></tr>
                 )}
               </tbody>
               {summaryData.length > 0 && (
@@ -375,8 +390,14 @@ export const RevCapacidadTabSection: React.FC = () => {
                     <td className="px-4 py-3 text-right font-mono border-r border-gray-700">{grandTotals.cantPrev.toLocaleString()}</td>
                     <td className="px-4 py-3 text-right font-mono border-r border-gray-700 text-indigo-300">{grandTotals.totalCant.toLocaleString()}</td>
                     <td className="px-4 py-3 text-right font-mono border-r border-gray-700 text-indigo-300">{grandTotals.totalTime.toFixed(2)}</td>
-                    <td className="px-4 py-3 text-right font-mono text-blue-300">
+                    <td className="px-4 py-3 text-right font-mono text-blue-300 border-r border-gray-700">
                       {(grandTotals.totalTime / horasTurno1).toFixed(2)}
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono text-indigo-300 border-r border-gray-700">
+                        {summaryData.reduce((sum, r) => sum + r.puestosObjetivo, 0)}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                        {(summaryData.reduce((sum, r) => sum + r.puestosObjetivo, 0) - (grandTotals.totalTime / horasTurno1)).toFixed(2)}
                     </td>
                   </tr>
                 </tfoot>
