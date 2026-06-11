@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { 
   Scissors, 
   Package, 
@@ -201,7 +201,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     setResumenProgress({ current: 0, total: uniqueMaterials.length });
     
     const consolidatedMap = new Map<string, UnifiedNeedRow>();
-    const CONCURRENCY_LIMIT = 10; 
+    const CONCURRENCY_LIMIT = 5; // Reducido para evitar errores de red por saturación
 
     try {
       for (let i = 0; i < uniqueMaterials.length; i += CONCURRENCY_LIMIT) {
@@ -240,7 +240,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 });
             }
           } catch (e) {
-            console.error(`Error explotando material ${matCode}:`, e);
+            // Manejo de error silencioso para un material específico, permitiendo que el proceso continúe
+            console.warn(`[Laminado] Error procesando material ${matCode}:`, (e as Error).message);
           }
         }));
         setResumenProgress(prev => ({ ...prev, current: Math.min(i + CONCURRENCY_LIMIT, uniqueMaterials.length) }));
@@ -660,7 +661,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     <th className="px-6 py-5 border-r border-white/5 text-left">Material</th>
                     <th className="px-6 py-5 border-r border-white/5 text-left">Descripción Técnica</th>
                     <th className="px-6 py-5 border-r border-white/5">Línea</th>
-                    <th className="px-6 py-5 border-r border-white/5 text-teal-400">T. Estándar (Min)</th>
+                    <th className="px-6 py-5 border-r border-white/5 text-teal-400">Estándar (Min)</th>
                     <th className="px-6 py-5">Stock Actual</th>
                     <th className="px-6 py-5">Seguridad</th>
                   </tr>
