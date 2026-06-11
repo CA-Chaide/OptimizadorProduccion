@@ -617,9 +617,20 @@ export const TacticalPlanForrosSection: React.FC = () => {
   };
 
   const filteredMantenimientosFull = useMemo(() => {
-    // Para esta pestaña según el nuevo requerimiento mostramos la info directa de ListarMantenimientoPreventivosProgramados
-    // Se mantiene ordenado cronológicamente
     let result = [...mantenimientosData];
+
+    // Filter by RespCtrlProd from Forros group restrictions
+    const allowedResps = externalFilters['RESPCTRLPROD'];
+    if (allowedResps && allowedResps.length > 0) {
+      result = result.filter(m => {
+        // Find the responsibility column in the maintenance data (e.g. RespControlProd)
+        const respKey = Object.keys(m).find(k => k.toUpperCase().replace(/_/g, '') === 'RESPCONTROLPROD' || k.toUpperCase() === 'RESPONSABLE' || k.toUpperCase() === 'RESPCTRLPROD');
+        if (!respKey) return true; 
+        
+        const val = String(m[respKey] || '').trim();
+        return allowedResps.includes(val);
+      });
+    }
 
     result.sort((a, b) => {
       const dateA = new Date(a.FECHA_INICIO || a.FECHA || 0).getTime();
@@ -628,7 +639,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     });
 
     return result;
-  }, [mantenimientosData]);
+  }, [mantenimientosData, externalFilters]);
 
   const maintTotalPages = Math.max(1, Math.ceil(filteredMantenimientosFull.length / MAINT_ROWS_PER_PAGE));
   const paginatedMantenimientos = useMemo(() => {
@@ -1191,7 +1202,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                   <CardTitle>Mantenimientos Preventivos Programados</CardTitle>
-                  <CardDescription>Información oficial del servidor sobre paros técnicos programados por equipo (ListarMantenimientoPreventivosProgramados).</CardDescription>
+                  <CardDescription>Información oficial del servidor sobre paros técnicos programados filtrado por RespCtrlProd de Forros.</CardDescription>
                 </div>
                 <Button variant="outline" size="sm" onClick={fetchMantenimientos} disabled={isLoadingMantenimientos}>
                   <RefreshCw className={cn("h-4 w-4 mr-2", isLoadingMantenimientos && "animate-spin")} />
@@ -1237,7 +1248,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                         ) : (
                           <tr>
                             <td colSpan={maintColumns.length || 6} className="text-center py-20 text-gray-500 italic">
-                              No hay registros de mantenimientos preventivos.
+                              No hay registros de mantenimientos preventivos programados para esta área.
                             </td>
                           </tr>
                         )}
@@ -1250,7 +1261,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 {maintTotalPages > 1 && (
                   <div className="flex justify-between items-center mt-6">
                     <div className="text-sm text-gray-600">
-                      Mostrando página {maintCurrentPage} de {maintTotalPages} ({filteredMantenimientosFull.length} registros totales)
+                      Mostrando página {maintCurrentPage} de {maintTotalPages} ({filteredMantenimientosFull.length} registros filtrados)
                     </div>
 
                     <div className="flex gap-2 items-center">
