@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
@@ -482,6 +481,8 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
                     <>
                       <th className="px-4 py-3 text-right text-[10px] font-bold text-emerald-700 uppercase tracking-wider bg-emerald-50/30">Cant ordFab</th>
                       <th className="px-4 py-3 text-right text-[10px] font-bold text-amber-700 uppercase tracking-wider bg-amber-50/30">Cant ordPrev</th>
+                      <th className="px-4 py-3 text-right text-[10px] font-bold text-emerald-800 uppercase tracking-wider bg-emerald-100/20">Tiempo ordFab</th>
+                      <th className="px-4 py-3 text-right text-[10px] font-bold text-amber-800 uppercase tracking-wider bg-amber-100/20">Tiempo ordPrev</th>
                     </>
                   )}
                   {!isCompact && (
@@ -521,6 +522,12 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
                           <td className="px-4 py-3 whitespace-nowrap text-xs font-bold text-right text-amber-700 bg-amber-50/5">
                             {cantOrdPrev > 0 ? cantOrdPrev.toLocaleString() : '0'}
                           </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-xs font-bold text-right text-emerald-800 bg-emerald-100/10">
+                            0
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-xs font-bold text-right text-amber-800 bg-amber-100/10">
+                            0
+                          </td>
                         </>
                       )}
                       {!isCompact && (
@@ -541,7 +548,7 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
                   );
                 }) : (
                   <tr>
-                    <td colSpan={isCompact ? 6 : 10} className="px-6 py-12 text-center text-gray-400 italic">
+                    <td colSpan={isCompact ? 8 : 10} className="px-6 py-12 text-center text-gray-400 italic">
                       <div className="flex flex-col items-center justify-center gap-2">
                         <AlertCircle className="w-8 h-8 text-gray-300" />
                         <span>No se encontraron registros técnicos para el centro seleccionado.</span>
@@ -558,7 +565,7 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
               <span className="font-medium text-gray-500 uppercase">Ver:</span>
               <select
                 value={rowsPerPage}
-                onChange={(e) => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }}
+                onChange={(e) => { setRowsPerPage(Number(e.target.value)); setPage(1); }}
                 className="border rounded p-1 bg-white"
               >
                 <option value={10}>10</option>
