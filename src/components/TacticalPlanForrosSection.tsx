@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -371,7 +372,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     if (Object.keys(externalFilters).length === 0 || !todayDate || !targetDate) return;
     setIsLoadingDaily(true);
     try {
-      const response = await serviciosService.OrdenesProvisionalesPaginados(1, 10000);
+      const response = await serviciosService.OrdenesProvisionalesAlphaPaginados(1, 10000);
       if (response && response.data) {
         const filtered = response.data.filter((order: any) => {
           const matchesExternal = Object.entries(externalFilters).every(([key, allowed]) => {
@@ -616,14 +617,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
   };
 
   const filteredMantenimientosFull = useMemo(() => {
-    const allowedResp = externalFilters['RESPCONTROLPROD'] || [];
-    let result = mantenimientosData.filter(item => {
-      if (allowedResp.length > 0) {
-        const itemResp = String(item['RESP_CONTROL_PROD'] || item['RespCtrlProd'] || item['Responsable'] || '').trim();
-        if (itemResp && !allowedResp.includes(itemResp)) return false;
-      }
-      return true;
-    });
+    // Para esta pestaña según el nuevo requerimiento mostramos la info directa de ListarMantenimientoPreventivosProgramados
+    // Se mantiene ordenado cronológicamente
+    let result = [...mantenimientosData];
 
     result.sort((a, b) => {
       const dateA = new Date(a.FECHA_INICIO || a.FECHA || 0).getTime();
@@ -632,7 +628,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     });
 
     return result;
-  }, [mantenimientosData, externalFilters]);
+  }, [mantenimientosData]);
 
   const maintTotalPages = Math.max(1, Math.ceil(filteredMantenimientosFull.length / MAINT_ROWS_PER_PAGE));
   const paginatedMantenimientos = useMemo(() => {
@@ -1194,8 +1190,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
             <CardHeader>
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                  <CardTitle>Mantenimientos Preventivos Programados (Gestión Original)</CardTitle>
-                  <CardDescription>Visualización oficial de paros técnicos programados por equipo.</CardDescription>
+                  <CardTitle>Mantenimientos Preventivos Programados</CardTitle>
+                  <CardDescription>Información oficial del servidor sobre paros técnicos programados por equipo (ListarMantenimientoPreventivosProgramados).</CardDescription>
                 </div>
                 <Button variant="outline" size="sm" onClick={fetchMantenimientos} disabled={isLoadingMantenimientos}>
                   <RefreshCw className={cn("h-4 w-4 mr-2", isLoadingMantenimientos && "animate-spin")} />
@@ -1241,7 +1237,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                         ) : (
                           <tr>
                             <td colSpan={maintColumns.length || 6} className="text-center py-20 text-gray-500 italic">
-                              No hay mantenimientos programados para el área de Forros.
+                              No hay registros de mantenimientos preventivos.
                             </td>
                           </tr>
                         )}
@@ -1254,7 +1250,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 {maintTotalPages > 1 && (
                   <div className="flex justify-between items-center mt-6">
                     <div className="text-sm text-gray-600">
-                      Mostrando página {maintCurrentPage} de {maintTotalPages} ({filteredMantenimientosFull.length} registros filtrados)
+                      Mostrando página {maintCurrentPage} de {maintTotalPages} ({filteredMantenimientosFull.length} registros totales)
                     </div>
 
                     <div className="flex gap-2 items-center">

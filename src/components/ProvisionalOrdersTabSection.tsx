@@ -94,7 +94,7 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
     if (isLoading) return;
     try {
       setIsLoading(true);
-      const response = await serviciosService.OrdenesProvisionalesPaginados(1, 10000);
+      const response = await serviciosService.OrdenesProvisionalesAlphaPaginados(1, 10000);
       let fetchedData = response.data || [];
       
       // Inyección de dato de prueba solicitado por el usuario
