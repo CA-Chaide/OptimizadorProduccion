@@ -5,7 +5,7 @@ import { serviciosService } from '@/services/servicios.service';
 import { grupoService } from '@/services/grupo.service';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
-import { Clock, Loader2, Search, Home, AlertCircle, UserCircle, Check, ChevronsUpDown, X, LayoutGrid } from 'lucide-react';
+import { Clock, Loader2, Search, Home, AlertCircle, UserCircle, Check, ChevronsUpDown, X, LayoutGrid, Calendar as CalendarIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -63,6 +63,7 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedResponsables, setSelectedResponsables] = useState<string[]>([]);
   const [selectedLineas, setSelectedLineas] = useState<string[]>([]);
+  const [programmingDate, setProgrammingDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   
   const [isRespFilterOpen, setIsRespFilterOpen] = useState(false);
@@ -207,6 +208,21 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
         </div>
         
         <div className="flex flex-wrap items-center gap-3">
+          {/* Nuevo filtro de fecha "Día programación" - solo visible en modo compacto */}
+          {isCompact && (
+            <div className="flex items-center gap-2 bg-white border border-gray-300 rounded-md px-3 py-1.5 h-9">
+              <label htmlFor="prog-date" className="text-[10px] font-bold text-gray-400 uppercase whitespace-nowrap">Día programación:</label>
+              <input
+                id="prog-date"
+                type="date"
+                value={programmingDate}
+                onChange={(e) => setProgrammingDate(e.target.value)}
+                className="text-xs border-none bg-transparent focus:ring-0 font-medium text-indigo-700 outline-none"
+              />
+              <CalendarIcon className="w-3.5 h-3.5 text-gray-400" />
+            </div>
+          )}
+
           {!isCompact && (
             <Popover open={isRespFilterOpen} onOpenChange={setIsRespFilterOpen}>
               <PopoverTrigger asChild>
