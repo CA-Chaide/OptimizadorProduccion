@@ -104,45 +104,45 @@ export const TacticalPlan2Section: React.FC = () => {
       </div>
       
       <Tabs defaultValue="grupos" className="w-full">
-        <TabsList className="grid w-full grid-cols-10 mb-8">
-          <TabsTrigger value="grupos" className="flex items-center gap-2">
-            <Users className="w-4 h-4" />
+        <TabsList className="flex flex-wrap h-auto w-full justify-start bg-gray-100/50 p-1 mb-8 gap-1 rounded-xl border border-gray-200 shadow-sm">
+          <TabsTrigger value="grupos" className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold uppercase tracking-tight transition-all data-[state=active]:bg-white data-[state=active]:text-indigo-700 data-[state=active]:shadow-sm rounded-lg">
+            <Users className="w-3.5 h-3.5" />
             Grupos
           </TabsTrigger>
-          <TabsTrigger value="restricciones" className="flex items-center gap-2">
-            <Lock className="w-4 h-4" />
+          <TabsTrigger value="restricciones" className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold uppercase tracking-tight transition-all data-[state=active]:bg-white data-[state=active]:text-indigo-700 data-[state=active]:shadow-sm rounded-lg">
+            <Lock className="w-3.5 h-3.5" />
             Restricciones
           </TabsTrigger>
-          <TabsTrigger value="habilidades" className="flex items-center gap-2">
-            <UserCheck className="w-4 h-4" />
+          <TabsTrigger value="habilidades" className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold uppercase tracking-tight transition-all data-[state=active]:bg-white data-[state=active]:text-indigo-700 data-[state=active]:shadow-sm rounded-lg">
+            <UserCheck className="w-3.5 h-3.5" />
             Habilidades
           </TabsTrigger>
-          <TabsTrigger value="tiempos" className="flex items-center gap-2">
-            <Clock className="w-4 h-4" />
+          <TabsTrigger value="tiempos" className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold uppercase tracking-tight transition-all data-[state=active]:bg-white data-[state=active]:text-indigo-700 data-[state=active]:shadow-sm rounded-lg">
+            <Clock className="w-3.5 h-3.5" />
             Tiempos
           </TabsTrigger>
-          <TabsTrigger value="presupuesto_semanal" className="flex items-center gap-2">
-            <CalendarRange className="w-4 h-4" />
+          <TabsTrigger value="presupuesto_semanal" className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold uppercase tracking-tight transition-all data-[state=active]:bg-white data-[state=active]:text-indigo-700 data-[state=active]:shadow-sm rounded-lg">
+            <CalendarRange className="w-3.5 h-3.5" />
             Presupuesto
           </TabsTrigger>
-          <TabsTrigger value="ordenes" className="flex items-center gap-2">
-            <Package className="w-4 h-4" />
+          <TabsTrigger value="ordenes" className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold uppercase tracking-tight transition-all data-[state=active]:bg-white data-[state=active]:text-indigo-700 data-[state=active]:shadow-sm rounded-lg">
+            <Package className="w-3.5 h-3.5" />
             Previsionales
           </TabsTrigger>
-          <TabsTrigger value="fert" className="flex items-center gap-2">
-            <ClipboardList className="w-4 h-4" />
+          <TabsTrigger value="fert" className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold uppercase tracking-tight transition-all data-[state=active]:bg-white data-[state=active]:text-indigo-700 data-[state=active]:shadow-sm rounded-lg">
+            <ClipboardList className="w-3.5 h-3.5" />
             Fert
           </TabsTrigger>
-          <TabsTrigger value="prog_tiempos" className="flex items-center gap-2">
-            <Clock className="w-4 h-4" />
+          <TabsTrigger value="prog_tiempos" className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold uppercase tracking-tight transition-all data-[state=active]:bg-white data-[state=active]:text-indigo-700 data-[state=active]:shadow-sm rounded-lg">
+            <Clock className="w-3.5 h-3.5" />
             Prog Tiempos
           </TabsTrigger>
-          <TabsTrigger value="rev_capacidad" className="flex items-center gap-2">
-            <Activity className="w-4 h-4" />
+          <TabsTrigger value="rev_capacidad" className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold uppercase tracking-tight transition-all data-[state=active]:bg-white data-[state=active]:text-indigo-700 data-[state=active]:shadow-sm rounded-lg">
+            <Activity className="w-3.5 h-3.5" />
             Rev Capacidad
           </TabsTrigger>
-          <TabsTrigger value="plan_propuesto" className="flex items-center gap-2 font-bold text-indigo-700">
-            <CheckCircle2 className="w-4 h-4" />
+          <TabsTrigger value="plan_propuesto" className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold uppercase tracking-tight transition-all data-[state=active]:bg-indigo-600 data-[state=active]:text-white data-[state=active]:shadow-md rounded-lg border border-indigo-200">
+            <CheckCircle2 className="w-3.5 h-3.5" />
             Plan Propuesto
           </TabsTrigger>
         </TabsList>
@@ -175,8 +175,8 @@ export const TacticalPlan2Section: React.FC = () => {
                             <TableCell>{centro?.nombre || '-'}</TableCell>
                             <TableCell className="font-medium">{g.nombre_grupo}</TableCell>
                             <TableCell className="text-center">
-                              <Badge variant={g.estado === 'A' ? 'default' : 'destructive'} className={g.estado === 'A' ? 'bg-green-600' : ''}>
-                                {g.estado === 'A' ? 'Activo' : 'Inactivo'}
+                              <Badge variant={g.status === 'A' ? 'default' : 'destructive'} className={g.status === 'A' ? 'bg-green-600' : ''}>
+                                {g.status === 'A' ? 'Activo' : 'Inactivo'}
                               </Badge>
                             </TableCell>
                           </TableRow>
