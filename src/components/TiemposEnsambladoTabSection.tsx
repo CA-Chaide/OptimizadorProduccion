@@ -83,6 +83,7 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
 
   const [allData, setAllData] = useState<TiempoEnsamblado[]>([]);
   const [fertOrders, setFertOrders] = useState<any[]>([]);
+  const [provisionalOrders, setProvisionalOrders] = useState<any[]>([]);
   const [availableCenters, setAvailableCenters] = useState<string[]>([]);
   const [selectedCenter, setSelectedCenter] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState('');
@@ -110,7 +111,7 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
       setAvailableCenters(centersFromGroups);
       if (centersFromGroups.length > 0 && !selectedCenter) setSelectedCenter(centersFromGroups[0]);
 
-      // Cargar datos de Tiempos si no hay nada en el estado
+      // Cargar datos de Tiempos
       if (allData.length === 0) {
         let allTiempos: TiempoEnsamblado[] = [];
         let page = 1;
@@ -134,11 +135,15 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
         inspector.captureVariable('tiempos_raw_count', allTiempos.length);
       }
 
-      // Cargar datos FERT siempre en modo compacto
+      // Cargar datos FERT y PROVISIONALES siempre en modo compacto
       if (isCompact) {
-        const fertResponse = await serviciosService.getOrdenesFert(1, 10000);
+        const [fertResponse, prevResponse] = await Promise.all([
+          serviciosService.getOrdenesFert(1, 10000),
+          serviciosService.OrdenesProvisionalesAlphaPaginados(1, 10000)
+        ]);
+
+        // Procesar FERT
         const rawFert = Array.isArray(fertResponse?.data) ? fertResponse.data : [];
-        
         const mappedFert = rawFert.map((o: any) => {
           const cat = String(o.CATEGORIA || '').toUpperCase();
           let calculatedLinea = '';
@@ -152,7 +157,25 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
           return { ...o, LINEA_MAPPED: calculatedLinea };
         });
         setFertOrders(mappedFert);
+
+        // Procesar PREVISIONALES
+        const rawPrev = Array.isArray(prevResponse?.data) ? prevResponse.data : [];
+        const mappedPrev = rawPrev.map((o: any) => {
+          const cat = String(o.CATEGORIA || '').toUpperCase();
+          let calculatedLinea = '';
+          if (cat.includes('L1')) calculatedLinea = 'LINEA 1';
+          else if (cat.includes('L2')) calculatedLinea = 'LINEA 2';
+          else if (cat.includes('L3')) calculatedLinea = 'LINEA 3';
+          else if (cat.includes('L5')) calculatedLinea = 'LINEA 5';
+          else if (cat.includes('B-B')) calculatedLinea = 'LINEA 5';
+          else calculatedLinea = String(o.LINEA || '').trim().toUpperCase();
+
+          return { ...o, LINEA_MAPPED: calculatedLinea };
+        });
+        setProvisionalOrders(mappedPrev);
+        
         inspector.captureVariable('fert_raw_count', mappedFert.length);
+        inspector.captureVariable('prev_raw_count', mappedPrev.length);
       }
       
     } catch (err) {
@@ -214,6 +237,30 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
 
     return map;
   }, [isCompact, fertOrders, programmingDate]);
+
+  // Mapa de suma de Cantidad por (Fecha, Línea, Material) para PREVISIONALES
+  const provisionalSumMap = useMemo(() => {
+    const map = new Map<string, number>();
+    if (!isCompact || !provisionalOrders.length || !provisionalDate) return map;
+
+    const targetDateISO = normalizeDateISO(provisionalDate);
+    if (!targetDateISO) return map;
+
+    provisionalOrders.forEach(o => {
+      const prevDateISO = normalizeDateISO(o.FECHAINICIO || o.fecha_inicio);
+      
+      if (prevDateISO === targetDateISO) {
+        const linea = String(o.LINEA_MAPPED || '').trim().toUpperCase();
+        const material = normalizeMaterialCode(o.MATERIAL || o.CodMaterial || o.Material);
+        const key = `${linea}|${material}`;
+        
+        const cant = Number(o.CANTIDAD || o.Cantidad || 0) || 0;
+        map.set(key, (map.get(key) || 0) + cant);
+      }
+    });
+
+    return map;
+  }, [isCompact, provisionalOrders, provisionalDate]);
 
   const responsablesDisponibles = useMemo(() => {
     return [...new Set(baseData.map(row => String(row.NombRespControlProd || '').trim()))].filter(Boolean).sort();
@@ -341,33 +388,35 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
             </Popover>
           )}
 
-          <Popover open={isLineaFilterOpen} onOpenChange={setIsLineFilterOpen}>
-            <PopoverTrigger asChild>
-              <Button variant="outline" size="sm" className="h-9 w-48 justify-between bg-white font-normal text-xs">
-                <div className="flex items-center gap-2 truncate">
-                  <LayoutGrid className="w-3.5 h-3.5 text-gray-400" />
-                  <span className="truncate">
-                    {selectedLineas.length === 0 ? "Líneas" : `${selectedLineas.length} líneas`}
-                  </span>
-                </div>
-                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-56 p-0" align="end">
-              <Command>
-                <CommandInput placeholder="Buscar línea..." className="h-8 text-xs" />
-                <CommandEmpty>No encontrada.</CommandEmpty>
-                <CommandGroup className="max-h-64 overflow-y-auto">
-                  {lineasDisponibles.map((linea) => (
-                    <CommandItem key={linea} value={linea} onSelect={() => toggleLinea(linea)} className="text-xs">
-                      <Check className={cn("mr-2 h-3.5 w-3.5", selectedLineas.includes(linea) ? "opacity-100" : "opacity-0")} />
-                      {linea}
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
-              </Command>
-            </PopoverContent>
-          </Popover>
+          {!isCompact && (
+            <Popover open={isLineaFilterOpen} onOpenChange={setIsLineFilterOpen}>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="h-9 w-48 justify-between bg-white font-normal text-xs">
+                  <div className="flex items-center gap-2 truncate">
+                    <LayoutGrid className="w-3.5 h-3.5 text-gray-400" />
+                    <span className="truncate">
+                      {selectedLineas.length === 0 ? "Líneas" : `${selectedLineas.length} líneas`}
+                    </span>
+                  </div>
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-56 p-0" align="end">
+                <Command>
+                  <CommandInput placeholder="Buscar línea..." className="h-8 text-xs" />
+                  <CommandEmpty>No encontrada.</CommandEmpty>
+                  <CommandGroup className="max-h-64 overflow-y-auto">
+                    {lineasDisponibles.map((linea) => (
+                      <CommandItem key={linea} value={linea} onSelect={() => toggleLinea(linea)} className="text-xs">
+                        <Check className={cn("mr-2 h-3.5 w-3.5", selectedLineas.includes(linea) ? "opacity-100" : "opacity-0")} />
+                        {linea}
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </Command>
+              </PopoverContent>
+            </Popover>
+          )}
 
           <div className="relative w-64">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
@@ -379,7 +428,7 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
               onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
             />
           </div>
-          <Button variant="outline" size="sm" onClick={() => { hasStarted.current = false; setFertOrders([]); setAllData([]); loadData(); }}>
+          <Button variant="outline" size="sm" onClick={() => { hasStarted.current = false; setFertOrders([]); setProvisionalOrders([]); setAllData([]); loadData(); }}>
             Actualizar
           </Button>
         </div>
@@ -452,7 +501,9 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
                   const line = String(row.Linea || '').trim().toUpperCase();
                   const material = normalizeMaterialCode(row.CodMaterial);
                   const key = `${line}|${material}`;
+                  
                   const cantOrdFab = fertSumMap.get(key) || 0;
+                  const cantOrdPrev = provisionalSumMap.get(key) || 0;
 
                   return (
                     <tr key={`${row.CodMaterial}-${idx}`} className="hover:bg-gray-50 transition-colors">
@@ -467,7 +518,9 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
                           <td className="px-4 py-3 whitespace-nowrap text-xs font-bold text-right text-emerald-700 bg-emerald-50/5">
                             {cantOrdFab > 0 ? cantOrdFab.toLocaleString() : '0'}
                           </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-xs font-bold text-right text-amber-700 bg-amber-50/5">0</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-xs font-bold text-right text-amber-700 bg-amber-50/5">
+                            {cantOrdPrev > 0 ? cantOrdPrev.toLocaleString() : '0'}
+                          </td>
                         </>
                       )}
                       {!isCompact && (
