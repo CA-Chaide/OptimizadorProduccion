@@ -188,13 +188,22 @@ export const RevCapacidadTabSection: React.FC = () => {
       const qPrev = prevSumMap.get(matKey) || 0;
       const tUnit = Number(row.Tiempo_Min || 0);
 
+      // Determinación del factor de rendimiento para esta línea
+      let rendFactor = 1;
+      if (line.includes('LINEA 1')) rendFactor = rendLinea1;
+      else if (line.includes('LINEA 2')) rendFactor = rendLinea2;
+      else if (line.includes('LINEA 3')) rendFactor = rendLinea3;
+      else if (line.includes('LINEA 5')) rendFactor = rendLinea5;
+
       if (qFab > 0) {
         entry.cantOrdFab += qFab;
-        entry.tiempoOrdFab += (qFab * tUnit) / 60;
+        // Aplicar factor de rendimiento al tiempo de órden de fabricación
+        entry.tiempoOrdFab += ((qFab * tUnit) / 60) * rendFactor;
       }
       if (qPrev > 0) {
         entry.cantOrdPrev += qPrev;
-        entry.tiempoOrdPrev += (qPrev * tUnit) / 60;
+        // Aplicar factor de rendimiento al tiempo de órden previsional
+        entry.tiempoOrdPrev += ((qPrev * tUnit) / 60) * rendFactor;
       }
       
       entry.totalCantidad = entry.cantOrdFab + entry.cantOrdPrev;
@@ -202,7 +211,7 @@ export const RevCapacidadTabSection: React.FC = () => {
     });
 
     return Array.from(map.values()).sort((a, b) => a.linea.localeCompare(b.linea) || a.puesto.localeCompare(b.puesto));
-  }, [technicalData, selectedCenter, fertSumMap, prevSumMap]);
+  }, [technicalData, selectedCenter, fertSumMap, prevSumMap, rendLinea1, rendLinea2, rendLinea3, rendLinea5]);
 
   const grandTotals = useMemo(() => {
     return summaryData.reduce((acc, r) => ({
