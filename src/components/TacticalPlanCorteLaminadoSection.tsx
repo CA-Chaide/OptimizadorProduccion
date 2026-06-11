@@ -173,6 +173,10 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     });
   }, [ordenes, selectedDate]);
 
+  /**
+   * handleProcessResumen (OPTIMIZADO)
+   * Agrupa órdenes por material para reducir llamadas a API y procesa en paralelo.
+   */
   const handleProcessResumen = useCallback(async (ordersToProcess: any[]) => {
     if (ordersToProcess.length === 0) {
       setUnifiedNeeds([]);
@@ -180,43 +184,74 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     }
     
     setIsProcessingResumen(true);
-    setResumenProgress({ current: 0, total: ordersToProcess.length });
+    
+    // 1. Agrupar órdenes por material para minimizar llamadas API
+    const materialGroups = new Map<string, { totalQty: number, refOrder: any }>();
+    ordersToProcess.forEach(order => {
+      const matCode = String(order.MATERIAL || order.CodMaterial || '').match(/^(\d+)/)?.[1] || '';
+      if (!matCode) return;
+      
+      const existing = materialGroups.get(matCode);
+      const orderQty = safeNum(order.CANTPROGRAMADA || order.CANTIDAD || 0);
+      
+      if (existing) {
+        existing.totalQty += orderQty;
+      } else {
+        materialGroups.set(matCode, { totalQty: orderQty, refOrder: order });
+      }
+    });
+
+    const uniqueMaterials = Array.from(materialGroups.entries());
+    setResumenProgress({ current: 0, total: uniqueMaterials.length });
+    
     const consolidatedMap = new Map<string, UnifiedNeedRow>();
+    const CONCURRENCY_LIMIT = 10; // Procesar de 10 en 10 materiales
 
     try {
-      for (let i = 0; i < ordersToProcess.length; i++) {
-        const order = ordersToProcess[i];
-        const matCode = String(order.MATERIAL || order.CodMaterial || '').match(/^(\d+)/)?.[1] || '';
-        const fullCode = matCode.padStart(18, '0');
-        const orderQty = safeNum(order.CANTPROGRAMADA || order.CANTIDAD || 0);
+      for (let i = 0; i < uniqueMaterials.length; i += CONCURRENCY_LIMIT) {
+        const batch = uniqueMaterials.slice(i, i + CONCURRENCY_LIMIT);
+        
+        await Promise.all(batch.map(async ([matCode, data]) => {
+          const fullCode = matCode.padStart(18, '0');
+          const totalQtyForMaterial = data.totalQty;
 
-        try {
-          const response = await serviciosService.getMaestroMaterialesExplosion("1000", fullCode, 1, 500);
-          const rawData = response?.data?.data || response?.data || [];
-          if (Array.isArray(rawData)) {
-            rawData.filter(row => getProp(row, 'CENTRO') !== '2000' && getProp(row, 'DESCRIPCION_COMPONENTE').toUpperCase().includes('LAMINA CILINDRICA')).forEach(comp => {
-              const code = getProp(comp, 'COMPONENTE').slice(-8);
-              const desc = getProp(comp, 'DESCRIPCION_COMPONENTE').toUpperCase();
-              const cantAcum = getNumProp(comp, 'CANTIDAD_ACUMULADA');
-              const kgTotal = orderQty * cantAcum;
-              
-              if (consolidatedMap.has(code)) {
-                const ex = consolidatedMap.get(code)!;
-                ex.consumoKg += kgTotal;
-              } else {
-                const pRollo = getPesoPorRollo(code, desc);
-                consolidatedMap.set(code, {
-                  material: code,
-                  descripcion: desc,
-                  consumoKg: kgTotal,
-                  consumoUn: 0,
-                  pesoRollo: pRollo
+          try {
+            const response = await serviciosService.getMaestroMaterialesExplosion("1000", fullCode, 1, 500);
+            const rawData = response?.data?.data || response?.data || [];
+            
+            if (Array.isArray(rawData)) {
+              rawData
+                .filter(row => getProp(row, 'CENTRO') !== '2000' && getProp(row, 'DESCRIPCION_COMPONENTE').toUpperCase().includes('LAMINA CILINDRICA'))
+                .forEach(comp => {
+                  const code = getProp(comp, 'COMPONENTE').slice(-8);
+                  const desc = getProp(comp, 'DESCRIPCION_COMPONENTE').toUpperCase();
+                  const cantAcum = getNumProp(comp, 'CANTIDAD_ACUMULADA');
+                  const kgTotal = totalQtyForMaterial * cantAcum;
+                  
+                  if (consolidatedMap.has(code)) {
+                    const ex = consolidatedMap.get(code)!;
+                    ex.consumoKg += kgTotal;
+                  } else {
+                    const pRollo = getPesoPorRollo(code, desc);
+                    consolidatedMap.set(code, {
+                      material: code,
+                      descripcion: desc,
+                      consumoKg: kgTotal,
+                      consumoUn: 0,
+                      pesoRollo: pRollo
+                    });
+                  }
                 });
-              }
-            });
+            }
+          } catch (e) {
+            console.error(`Error explotando material ${matCode}:`, e);
           }
-        } catch (e) {}
-        setResumenProgress(prev => ({ ...prev, current: i + 1 }));
+        }));
+
+        setResumenProgress(prev => ({ 
+          ...prev, 
+          current: Math.min(i + CONCURRENCY_LIMIT, uniqueMaterials.length) 
+        }));
       }
       
       const finalArray = Array.from(consolidatedMap.values()).map(row => ({
@@ -226,13 +261,18 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       
       setUnifiedNeeds(finalArray);
       inspector.captureVariable('unifiedNeedsConsolidated', finalArray);
+    } catch (err) {
+      console.error('Error procesando resumen:', err);
+      addNotification('error', 'Error crítico al procesar el resumen de necesidades.');
     } finally { 
       setIsProcessingResumen(false); 
     }
-  }, [inspector]);
+  }, [inspector, addNotification]);
 
+  // Efecto de cálculo automático al cambiar de tab o de filtros
   useEffect(() => {
     if (activeTab === 'resumen' && filteredOrders.length > 0 && !isProcessingResumen) {
+      // Generar una firma de los datos actuales para evitar bucles
       const signature = `${selectedDate}|${filteredOrders.length}|${filteredOrders[0]?.ORDENPREVISIONAL || ''}`;
       if (signature !== processedSignature) {
         handleProcessResumen(filteredOrders);
@@ -469,8 +509,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           {isProcessingResumen && (
             <div className="space-y-3 bg-indigo-50/50 p-5 rounded-2xl border border-indigo-100">
               <div className="flex justify-between items-center text-[10px] font-black text-indigo-600 uppercase tracking-widest text-left">
-                <span className="flex items-center gap-2"><Activity className="w-3 h-3" /> Procesando Auditoría de SAP...</span>
-                <span>{resumenProgress.current} / {resumenProgress.total} Órdenes</span>
+                <span className="flex items-center gap-2"><Activity className="w-3 h-3" /> Procesando Auditoría de SAP (Agrupada)...</span>
+                <span>{resumenProgress.current} / {resumenProgress.total} Materiales Únicos</span>
               </div>
               <Progress value={(resumenProgress.current / resumenProgress.total) * 100} className="h-2 bg-indigo-100" />
             </div>
@@ -508,7 +548,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   </tbody>
                   <tfoot className="bg-slate-900 text-white font-black uppercase text-[10px] sticky bottom-0">
                     <tr>
-                      <td colSpan={3} className="px-6 py-4 text-right tracking-widest text-slate-400">Total Consolidado del Períío:</td>
+                      <td colSpan={3} className="px-6 py-4 text-right tracking-widest text-slate-400">Total Consolidado del Período:</td>
                       <td className="px-6 py-4 text-right font-mono text-orange-300">{totalsUnified.kg.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</td>
                       <td className="px-6 py-4 text-right font-mono text-orange-300">{totalsUnified.un.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
                     </tr>
@@ -517,7 +557,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               </div>
             </div>
           ) : !isProcessingResumen && (
-            <div className="py-24 text-center bg-gray-50/50 rounded-3xl border-2 border-dashed border-gray-100">
+            <div className="py-24 text-center bg-gray-50/30 rounded-3xl border-2 border-dashed border-gray-100">
               <Database className="w-16 h-16 text-indigo-100 mx-auto" />
               <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-4">Calculando necesidades técnicas automáticas...</p>
             </div>
@@ -617,11 +657,11 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     <tr><td colSpan={7} className="py-24 text-gray-300 font-black uppercase tracking-widest opacity-30 text-center">No hay registros cargados</td></tr>
                   ) : (
                     tiemposEnsamblado.map((t, i) => {
-                      const code = String(t.CodMaterial || '').slice(-8);
+                      const matCode = String(t.CodMaterial || '').match(/^(\d+)/)?.[1]?.slice(-8) || '—';
                       const desc = String(t.Material || t.Descripcion || '—').toUpperCase();
                       return (
                         <tr key={i} className="hover:bg-gray-50 transition-colors">
-                          <td className="px-4 py-4 font-mono text-indigo-600 border-r border-dashed border-gray-100 text-left">{code}</td>
+                          <td className="px-4 py-4 font-mono text-indigo-600 border-r border-dashed border-gray-100 text-left">{matCode}</td>
                           <td className="px-4 py-4 text-left border-r border-dashed border-gray-100 text-gray-600 truncate max-w-[280px]">{desc}</td>
                           <td className="px-4 py-4 border-r border-dashed border-gray-100 font-black text-gray-400 uppercase text-[9px]">{t.PuestoTrabajo || '—'}</td>
                           <td className="px-4 py-4 border-r border-dashed border-gray-100 font-black text-slate-400 uppercase text-[9px]">{t.Linea || '—'}</td>
