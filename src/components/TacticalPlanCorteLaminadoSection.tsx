@@ -21,7 +21,8 @@ import {
   TrendingUp,
   Info,
   Box,
-  AlertCircle
+  AlertCircle,
+  Check
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -87,7 +88,6 @@ const getNumProp = (obj: any, key: string): number => {
 const getPesoPorRollo = (materialCode: string, descripcion: string): number => {
   const desc = descripcion.toUpperCase();
   const code = materialCode.toUpperCase();
-
   if (desc.includes('D12') || code.includes('D12')) return 12;
   if (desc.includes('D18') || code.includes('D18')) return 18;
   if (desc.includes('D20') || code.includes('D20')) return 20;
@@ -97,7 +97,6 @@ const getPesoPorRollo = (materialCode: string, descripcion: string): number => {
   if (desc.includes('D35') || code.includes('D35')) return 35;
   if (desc.includes('D40') || code.includes('D40')) return 40;
   if (desc.includes('D50') || code.includes('D50')) return 50;
-  
   return 35; 
 };
 
@@ -174,9 +173,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     });
   }, [ordenes, selectedDate]);
 
-  /**
-   * handleProcessResumen (MOTOR DE CÁLCULO OPTIMIZADO)
-   */
   const handleProcessResumen = useCallback(async (ordersToProcess: any[]) => {
     if (ordersToProcess.length === 0) {
       setUnifiedNeeds([]);
@@ -184,8 +180,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     }
     
     setIsProcessingResumen(true);
-    
-    // 1. Agrupar órdenes por material único para reducir llamadas a la API
     const materialGroups = new Map<string, { totalQty: number, refOrder: any }>();
     ordersToProcess.forEach(order => {
       const matRaw = String(order.MATERIAL || order.CodMaterial || '').trim();
@@ -212,15 +206,12 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     try {
       for (let i = 0; i < uniqueMaterials.length; i += CONCURRENCY_LIMIT) {
         const batch = uniqueMaterials.slice(i, i + CONCURRENCY_LIMIT);
-        
         await Promise.all(batch.map(async ([matCode, data]) => {
           const fullCode = matCode.padStart(18, '0');
           const totalQtyForMaterial = data.totalQty;
-
           try {
             const response = await serviciosService.getMaestroMaterialesExplosion("1000", fullCode, 1, 500);
             const rawData = response?.data?.data || response?.data || [];
-            
             if (Array.isArray(rawData)) {
               rawData
                 .filter(row => {
@@ -233,7 +224,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   const desc = getProp(comp, 'DESCRIPCION_COMPONENTE').toUpperCase();
                   const cantAcum = getNumProp(comp, 'CANTIDAD_ACUMULADA') || getNumProp(comp, 'CANTIDAD_UNITARIA');
                   const kgTotal = totalQtyForMaterial * cantAcum;
-                  
                   if (consolidatedMap.has(code)) {
                     const ex = consolidatedMap.get(code)!;
                     ex.consumoKg += kgTotal;
@@ -253,18 +243,12 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             console.error(`Error explotando material ${matCode}:`, e);
           }
         }));
-
-        setResumenProgress(prev => ({ 
-          ...prev, 
-          current: Math.min(i + CONCURRENCY_LIMIT, uniqueMaterials.length) 
-        }));
+        setResumenProgress(prev => ({ ...prev, current: Math.min(i + CONCURRENCY_LIMIT, uniqueMaterials.length) }));
       }
-      
       const finalArray = Array.from(consolidatedMap.values()).map(row => ({
         ...row,
         consumoUn: row.pesoRollo > 0 ? row.consumoKg / row.pesoRollo : 0
       })).sort((a, b) => b.consumoKg - a.consumoKg);
-      
       setUnifiedNeeds(finalArray);
       inspector.captureVariable('unifiedNeedsLaminado', finalArray);
     } catch (err) {
@@ -274,10 +258,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     }
   }, [inspector]);
 
-  // Gatillo automático para el cálculo técnico
   useEffect(() => {
     if (activeTab === 'resumen' && filteredOrders.length > 0 && !isProcessingResumen) {
-      // Firma única basada en fecha, cantidad de órdenes e identificadores
       const signature = `${selectedDate}|${filteredOrders.length}|${filteredOrders[0]?.ORDENPREVISIONAL || ''}`;
       if (signature !== processedSignature) {
         handleProcessResumen(filteredOrders);
@@ -591,14 +573,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 </table>
               </div>
             </div>
-          </div>
-
-          <div className="px-6 py-4 bg-blue-50 border border-blue-100 rounded-3xl flex items-center gap-4">
-             <div className="p-2 bg-blue-500 text-white rounded-xl"><Info className="w-5 h-5" /></div>
-             <div>
-                <p className="text-[10px] font-black text-blue-800 uppercase tracking-widest">Nota Técnica de Cálculo</p>
-                <p className="text-[10px] text-blue-600 font-bold uppercase mt-0.5">La explosión técnica identifica componentes de tipo "LÁMINA CILÍNDRICA" y aplica conversiones basadas en densidades D12-D50 para determinar el tonelaje y conteo de rollos.</p>
-             </div>
           </div>
         </TabsContent>
 
