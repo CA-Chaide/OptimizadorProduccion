@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
@@ -58,6 +59,7 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
   const hasStarted = useRef(false);
 
   const [allData, setAllData] = useState<TiempoEnsamblado[]>([]);
+  const [fertOrders, setFertOrders] = useState<any[]>([]);
   const [availableCenters, setAvailableCenters] = useState<string[]>([]);
   const [selectedCenter, setSelectedCenter] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState('');
@@ -72,6 +74,10 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(20);
 
+  const normalizeMaterialCode = (code: string | number): string => {
+    return String(code || '').trim().slice(-8);
+  };
+
   const loadData = useCallback(async () => {
     setIsLoading(true);
     try {
@@ -80,6 +86,7 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
       setAvailableCenters(centersFromGroups);
       if (centersFromGroups.length > 0 && !selectedCenter) setSelectedCenter(centersFromGroups[0]);
 
+      // Cargar datos de Tiempos
       let allTiempos: TiempoEnsamblado[] = [];
       let page = 1;
       let hasMore = true;
@@ -98,15 +105,36 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
         }
         if (page > 50) break; 
       }
-      
       setAllData(allTiempos);
+
+      // Cargar datos FERT si estamos en modo compacto (Prog Tiempos)
+      if (isCompact) {
+        const fertResponse = await serviciosService.getOrdenesFert(1, 10000);
+        const rawFert = Array.isArray(fertResponse?.data) ? fertResponse.data : [];
+        
+        // Mapear líneas en datos FERT para coincidir con Tiempos
+        const mappedFert = rawFert.map((o: any) => {
+          const cat = String(o.CATEGORIA || '').toUpperCase();
+          let calculatedLinea = '';
+          if (cat.includes('L1')) calculatedLinea = 'LINEA 1';
+          else if (cat.includes('L2')) calculatedLinea = 'LINEA 2';
+          else if (cat.includes('L3')) calculatedLinea = 'LINEA 3';
+          else if (cat.includes('L5')) calculatedLinea = 'LINEA 5';
+          else if (cat.includes('B-B')) calculatedLinea = 'LINEA 5';
+          else calculatedLinea = String(o.LINEA || '').trim().toUpperCase();
+
+          return { ...o, LINEA_MAPPED: calculatedLinea };
+        });
+        setFertOrders(mappedFert);
+      }
+      
       inspector.captureVariable('tiempos_raw_count', allTiempos.length);
     } catch (err) {
-      addNotification('error', `Error al cargar tiempos de ensamblado: ${(err as Error).message}`);
+      addNotification('error', `Error al cargar datos: ${(err as Error).message}`);
     } finally {
       setIsLoading(false);
     }
-  }, [addNotification, inspector, selectedCenter]);
+  }, [addNotification, inspector, selectedCenter, isCompact]);
 
   useEffect(() => {
     if (!hasStarted.current) {
@@ -136,6 +164,29 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
     
     return base;
   }, [allData, selectedCenter, allowedLines, allowedWorkstations]);
+
+  // Mapa de suma de Cant Pendiente por (Fecha, Línea, Material)
+  const fertSumMap = useMemo(() => {
+    const map = new Map<string, number>();
+    if (!isCompact || !fertOrders.length || !programmingDate) return map;
+
+    // Formatear programmingDate (YYYY-MM-DD) a DD/MM/YYYY
+    const [y, m, d] = programmingDate.split('-');
+    const targetDate = `${d}/${m}/${y}`;
+
+    fertOrders.forEach(o => {
+      if (String(o.FECHA) === targetDate) {
+        const linea = String(o.LINEA_MAPPED || '').trim().toUpperCase();
+        const material = normalizeMaterialCode(o.MATERIAL);
+        const key = `${linea}|${material}`;
+        
+        const pend = Number(o.CANTPENDIENTE) || 0;
+        map.set(key, (map.get(key) || 0) + pend);
+      }
+    });
+
+    return map;
+  }, [isCompact, fertOrders, programmingDate]);
 
   const responsablesDisponibles = useMemo(() => {
     return [...new Set(baseData.map(row => String(row.NombRespControlProd || '').trim()))].filter(Boolean).sort();
@@ -191,7 +242,7 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
     return (
       <div className="flex flex-col justify-center items-center py-20 bg-white rounded-lg border border-dashed">
         <Loader2 className="h-10 w-10 animate-spin text-indigo-500" />
-        <span className="mt-4 text-gray-600 font-medium">Cargando tiempos técnicos...</span>
+        <span className="mt-4 text-gray-600 font-medium">Cargando datos técnicos...</span>
       </div>
     );
   }
@@ -208,7 +259,6 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
         </div>
         
         <div className="flex flex-wrap items-center gap-3">
-          {/* Nuevo filtro de fecha "Día programación" - solo visible en modo compacto */}
           {isCompact && (
             <div className="flex items-center gap-2 bg-white border border-gray-300 rounded-md px-3 py-1.5 h-9">
               <label htmlFor="prog-date" className="text-[10px] font-bold text-gray-400 uppercase whitespace-nowrap">Día programación:</label>
@@ -216,7 +266,10 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
                 id="prog-date"
                 type="date"
                 value={programmingDate}
-                onChange={(e) => setProgrammingDate(e.target.value)}
+                onChange={(e) => {
+                    setProgrammingDate(e.target.value);
+                    setCurrentPage(1);
+                }}
                 className="text-xs border-none bg-transparent focus:ring-0 font-medium text-indigo-700 outline-none"
               />
               <CalendarIcon className="w-3.5 h-3.5 text-gray-400" />
@@ -319,7 +372,7 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
       )}
 
       <Tabs value={selectedCenter} onValueChange={(val) => { setSelectedCenter(val); setCurrentPage(1); setSelectedResponsables([]); setSelectedLineas([]); }} className="w-full">
-        <TabsList className="flex flex-wrap h-auto bg-gray-100/50 p-1 mb-4">
+        <TabsList className="flex h-auto bg-gray-100/50 p-1 mb-4">
           {availableCenters.map(center => (
             <TabsTrigger 
               key={center} 
@@ -360,36 +413,45 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {displayedData.length > 0 ? displayedData.map((row, idx) => (
-                  <tr key={`${row.CodMaterial}-${idx}`} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-3 whitespace-nowrap text-xs font-mono font-bold text-gray-900">{formatMaterial(row.CodMaterial)}</td>
-                    <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-600">{row.Linea}</td>
-                    <td className="px-4 py-3 whitespace-nowrap text-[10px] text-gray-500 font-medium">{row.PuestoTrabajo}</td>
-                    <td className="px-4 py-3 whitespace-nowrap text-xs font-bold text-right text-indigo-600 bg-indigo-50/10">
-                      {Number(row.Tiempo_Min || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 })}
-                    </td>
-                    {isCompact && (
-                      <>
-                        <td className="px-4 py-3 whitespace-nowrap text-xs font-bold text-right text-emerald-600 bg-emerald-50/5">0</td>
-                        <td className="px-4 py-3 whitespace-nowrap text-xs font-bold text-right text-amber-600 bg-amber-50/5">0</td>
-                      </>
-                    )}
-                    {!isCompact && (
-                      <>
-                        <td className="px-4 py-3 whitespace-nowrap text-xs text-right text-gray-500">{row.StockActual}</td>
-                        <td className="px-4 py-3 whitespace-nowrap text-xs text-right text-gray-700 font-semibold">{row.StockSeguridad}</td>
-                        <td className="px-4 py-3 whitespace-nowrap text-center">
-                          <Badge variant="outline" className="text-[10px] font-bold bg-blue-50 text-blue-700">{row.ClaseAprovisionam}</Badge>
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-[10px] text-right text-gray-500">{row.TamLoteMin}</td>
-                        <td className="px-4 py-3 whitespace-nowrap text-[10px] text-right text-gray-500">{row.TamLoteMax || '-'}</td>
-                        <td className="px-4 py-3 whitespace-nowrap text-[10px] text-gray-600 truncate max-w-[150px]" title={row.NombRespControlProd}>
-                          {row.NombRespControlProd}
-                        </td>
-                      </>
-                    )}
-                  </tr>
-                )) : (
+                {displayedData.length > 0 ? displayedData.map((row, idx) => {
+                  const line = String(row.Linea || '').trim().toUpperCase();
+                  const material = normalizeMaterialCode(row.CodMaterial);
+                  const key = `${line}|${material}`;
+                  const cantOrdFab = fertSumMap.get(key) || 0;
+
+                  return (
+                    <tr key={`${row.CodMaterial}-${idx}`} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-4 py-3 whitespace-nowrap text-sm font-mono font-bold text-gray-900">{formatMaterial(row.CodMaterial)}</td>
+                      <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-600">{row.Linea}</td>
+                      <td className="px-4 py-3 whitespace-nowrap text-[10px] text-gray-500 font-medium">{row.PuestoTrabajo}</td>
+                      <td className="px-4 py-3 whitespace-nowrap text-xs font-bold text-right text-indigo-600 bg-indigo-50/10">
+                        {Number(row.Tiempo_Min || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 })}
+                      </td>
+                      {isCompact && (
+                        <>
+                          <td className="px-4 py-3 whitespace-nowrap text-xs font-bold text-right text-emerald-700 bg-emerald-50/5">
+                            {cantOrdFab > 0 ? cantOrdFab.toLocaleString() : '0'}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-xs font-bold text-right text-amber-700 bg-amber-50/5">0</td>
+                        </>
+                      )}
+                      {!isCompact && (
+                        <>
+                          <td className="px-4 py-3 whitespace-nowrap text-xs text-right text-gray-500">{row.StockActual}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-xs text-right text-gray-700 font-semibold">{row.StockSeguridad}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-center">
+                            <Badge variant="outline" className="text-[10px] font-bold bg-blue-50 text-blue-700">{row.ClaseAprovisionam}</Badge>
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-[10px] text-right text-gray-500">{row.TamLoteMin}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-[10px] text-right text-gray-500">{row.TamLoteMax || '-'}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-[10px] text-gray-600 truncate max-w-[150px]" title={row.NombRespControlProd}>
+                            {row.NombRespControlProd}
+                          </td>
+                        </>
+                      )}
+                    </tr>
+                  );
+                }) : (
                   <tr>
                     <td colSpan={isCompact ? 6 : 10} className="px-6 py-12 text-center text-gray-400 italic">
                       <div className="flex flex-col items-center justify-center gap-2">
