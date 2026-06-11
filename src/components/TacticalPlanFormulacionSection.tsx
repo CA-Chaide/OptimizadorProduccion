@@ -18,8 +18,7 @@ import {
   Database,
   History,
   Layers,
-  MapPin,
-  Info
+  MapPin
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -274,7 +273,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     const fBloqMRows: any[] = [];
     
     curadoRows.forEach(row => {
-      const maquinaVal = getProp(row, ['Maquina']).toUpperCase();
+      const maquinaVal = getProp(row, ['Maquina', 'MAQUINA']).toUpperCase();
       const estadoTrasVal = getProp(row, ['estadoTras', 'Estado_Tras']).toUpperCase();
       
       const info = extractMaterialInfo({ MATERIAL: row.NomMaterial || row.CodMaterial || '', CATEGORIA: row.NomMaterial || '' });
@@ -287,11 +286,15 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
 
       const enriched = { ...row, apertura: info.apertura, densityFixed: densityVal };
       
-      // Segmentación técnica: Maquina F_BLOQ && estadoTras CALLE vs Maquina F_BLOQ_M && estadoTras BCALL
-      if (maquinaVal.includes('F_BLOQ_M') && estadoTrasVal.includes('BCALL')) {
-        fBloqMRows.push(enriched);
-      } else if (maquinaVal.includes('F_BLOQ') && !maquinaVal.includes('F_BLOQ_M') && estadoTrasVal.includes('CALLE')) {
+      // Segmentación Técnica Maestra: 
+      // F_BLOQ (Ruta CALLE) vs F_BLOQ_M (Ruta BCALL)
+      const isStirling = maquinaVal.includes('F_BLOQ') && !maquinaVal.includes('F_BLOQ_M') && estadoTrasVal.includes('CALLE');
+      const isManual = maquinaVal.includes('F_BLOQ_M') && estadoTrasVal.includes('BCALL');
+
+      if (isStirling) {
         fBloqRows.push(enriched);
+      } else if (isManual) {
+        fBloqMRows.push(enriched);
       }
     });
 
@@ -315,8 +318,8 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     };
 
     return [
-      { id: 'f_bloq', label: 'F_BLOQ (RUTA CALLE - STIRLING)', rows: fBloqRows, stats: getStats(fBloqRows), color: 'bg-indigo-700' },
-      { id: 'f_bloq_m', label: 'F_BLOQ_M (RUTA BCALL - MANUAL)', rows: fBloqMRows, stats: getStats(fBloqMRows), color: 'bg-orange-700' }
+      { id: 'f_bloq', label: 'F_BLOQ (RUTA CALLE - SISTEMA STIRLING)', rows: fBloqRows, stats: getStats(fBloqRows), color: 'bg-indigo-900' },
+      { id: 'f_bloq_m', label: 'F_BLOQ_M (RUTA BCALL - PROCESO MANUAL)', rows: fBloqMRows, stats: getStats(fBloqMRows), color: 'bg-slate-800' }
     ];
   }, [curadoRows]);
 
@@ -459,16 +462,16 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="curado" className="space-y-12 animate-in fade-in duration-300">
-          <div className="flex items-center justify-between bg-gray-900 p-5 rounded-2xl border border-white/10 shadow-2xl">
+          <div className="flex items-center justify-between bg-[#0f172a] p-5 rounded-2xl border border-white/10 shadow-2xl">
             <div className="flex items-center gap-4 text-left">
               <div className="p-3 bg-indigo-500/20 rounded-2xl text-indigo-400"><History className="w-6 h-6" /></div>
               <div>
                 <h3 className="text-md font-black text-white uppercase tracking-tight">Monitor Maestro de Bloques Curados</h3>
-                <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">Segmentación Logística: CALLE (F_BLOQ) vs BCALL (F_BLOQ_M)</p>
+                <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">Sincronización Directa SAP | Trazabilidad por Ubicación Logística</p>
               </div>
             </div>
             <div className="text-right">
-              <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest">Total Inventario SAP</p>
+              <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest">Total Inventario Planta</p>
               <p className="text-2xl font-black text-indigo-400 font-mono">{curadoRows.length}</p>
             </div>
           </div>
@@ -488,7 +491,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                            <div className="p-2 bg-white/10 rounded-xl"><Layers className="w-6 h-6" /></div>
                            <div>
                               <h4 className="text-sm font-black uppercase tracking-widest">{group.label}</h4>
-                              <p className="text-[10px] font-bold opacity-60 uppercase">Consolidación de Auditoría Técnica</p>
+                              <p className="text-[10px] font-bold opacity-60 uppercase">Auditoría Técnica de Stock</p>
                            </div>
                         </div>
                         {group.stats.calles.length > 0 && (
@@ -507,15 +510,15 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                      
                      <div className="flex gap-8 items-center bg-black/10 p-3 rounded-xl border border-white/5">
                         <div className="text-center min-w-[100px]">
-                           <p className="text-[9px] font-black uppercase opacity-60">Bloques</p>
+                           <p className="text-[9px] font-black uppercase opacity-60">Piezas</p>
                            <p className="text-xl font-black font-mono">{group.stats.count}</p>
                         </div>
                         <div className="text-center min-w-[120px] border-l border-white/10">
-                           <p className="text-[9px] font-black uppercase opacity-60">Peso (Kg)</p>
+                           <p className="text-[9px] font-black uppercase opacity-60">Tonelaje (Kg)</p>
                            <p className="text-xl font-black font-mono">{group.stats.weight.toLocaleString()}</p>
                         </div>
                         <div className="text-left px-4 border-l border-white/10 flex-1">
-                           <p className="text-[9px] font-black uppercase opacity-60 mb-1">Disponibilidad Aperturas</p>
+                           <p className="text-[9px] font-black uppercase opacity-60 mb-1">Aperturas Disponibles</p>
                            <div className="flex flex-wrap gap-2">
                               {Array.from(group.stats.apertureMap.entries()).map(([ap, count]) => (
                                 <Badge key={ap} variant="outline" className="bg-white/10 border-white/20 text-white text-[9px] font-black px-3 py-1">
@@ -715,13 +718,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           ))}
         </TabsContent>
       </Tabs>
-
-      <div className="px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl flex items-center gap-2">
-        <Info className="w-4 h-4 text-blue-600" />
-        <p className="text-[9px] font-black text-blue-700 uppercase tracking-widest">
-          Nota: Auditoría íntegra basada en el método de explosión jerárquica multinivel de SAP.
-        </p>
-      </div>
     </div>
   );
 };
