@@ -75,7 +75,6 @@ export const OrdenesFertTabSection: React.FC = () => {
     setIsLoading(true);
     
     try {
-      // 1. Cargar Grupos y Centros
       const groupsRes = await grupoService.getAll();
       const groupsData = Array.isArray(groupsRes?.data) ? groupsRes.data : [];
       setGroups(groupsData);
@@ -83,7 +82,6 @@ export const OrdenesFertTabSection: React.FC = () => {
       const centersFromGroups = [...new Set(groupsData.map((g: any) => String(g.centro).trim()))].sort();
       setAvailableCenters(centersFromGroups);
 
-      // 2. Cargar Órdenes Fert
       operationTracker.updateOperation(opId, 'running', 'Recuperando órdenes FERT...');
       const firstPageRes = await serviciosService.getOrdenesFert(1, 10000);
       const rawData: any[] = Array.isArray(firstPageRes?.data) ? firstPageRes.data : [];
@@ -92,7 +90,7 @@ export const OrdenesFertTabSection: React.FC = () => {
         const cat = String(o.CATEGORIA || o.Categoria || '').toUpperCase();
         let calculatedLinea = '';
         
-        // Lógica de llenado de columna LINEA según CATEGORIA
+        // Lógica de llenado de columna LINEA según PATRONES en CATEGORIA
         if (cat.includes('L1')) calculatedLinea = 'LINEA 1';
         else if (cat.includes('L2')) calculatedLinea = 'LINEA 2';
         else if (cat.includes('L3')) calculatedLinea = 'LINEA 3';
@@ -114,7 +112,6 @@ export const OrdenesFertTabSection: React.FC = () => {
 
       setAllRawOrders(orders);
 
-      // 3. Cargar Restricciones
       const restRes = await restriccionService.getAll();
       setRestrictions(restRes?.data || []);
 
@@ -145,21 +142,16 @@ export const OrdenesFertTabSection: React.FC = () => {
     return rest.valor_restriccion.split(/[,&]/).map((v: string) => v.trim()).filter(Boolean);
   };
 
-  // Agrupación por Centro
   const filteredDataByCenter = useMemo(() => {
     const grouped: Record<string, OrdenFert[]> = {};
-    
     availableCenters.forEach(centerId => {
       let centerOrders = allRawOrders.filter(o => String(o.CENTRO || '').trim() === centerId);
-
       const allowedResps = getResponsablesPorCentro(centerId);
       if (allowedResps.length > 0) {
         centerOrders = centerOrders.filter(o => allowedResps.includes(String(o.RESPCTRLPROD).trim()));
       }
-
       grouped[centerId] = centerOrders;
     });
-
     return grouped;
   }, [allRawOrders, availableCenters, groups, restrictions]);
 
@@ -243,7 +235,7 @@ export const OrdenesFertTabSection: React.FC = () => {
                   <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[120px]">Sector</th>
                   <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[150px]">Etiqueta</th>
                   <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[100px]">Categoría</th>
-                  <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[100px]">Línea</th>
+                  <th className="px-3 py-3 text-left text-[10px] font-bold text-indigo-700 uppercase tracking-wider min-w-[120px] bg-indigo-50/30">LÍNEA</th>
                   <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[120px]">Máquina</th>
                   <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[100px]">Material</th>
                   <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[120px]">Fecha</th>

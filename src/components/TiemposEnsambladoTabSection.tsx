@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
@@ -69,20 +68,17 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
   const [isRespFilterOpen, setIsRespFilterOpen] = useState(false);
   const [isLineaFilterOpen, setIsLineFilterOpen] = useState(false);
   
-  // Paginación de visualización (UI)
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(20);
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
     try {
-      // 1. Obtener centros oficiales de los grupos
       const groupsRes = await grupoService.getAll();
       const centersFromGroups = [...new Set((groupsRes?.data || []).map((g: any) => String(g.centro).trim()))].sort();
       setAvailableCenters(centersFromGroups);
       if (centersFromGroups.length > 0 && !selectedCenter) setSelectedCenter(centersFromGroups[0]);
 
-      // 2. Cargar datos de tiempos (Paginado exhaustivo para traer TODO el backend)
       let allTiempos: TiempoEnsamblado[] = [];
       let page = 1;
       let hasMore = true;
@@ -93,24 +89,17 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
         const rawData = Array.isArray(response?.data) ? response.data : [];
         allTiempos = [...allTiempos, ...rawData];
         
-        // Determinar si hay más páginas basado en la respuesta
         const total = response.totalRegistros || response.totalRecords || 0;
         if (allTiempos.length >= total || rawData.length < pageSize || total === 0) {
           hasMore = false;
         } else {
           page++;
         }
-        
-        // Límite de seguridad para evitar bucles infinitos
         if (page > 50) break; 
       }
       
       setAllData(allTiempos);
       inspector.captureVariable('tiempos_raw_count', allTiempos.length);
-      
-      if (allTiempos.length > 0) {
-        console.log(`[TiemposEnsamblado] Se cargaron ${allTiempos.length} registros en total.`);
-      }
     } catch (err) {
       addNotification('error', `Error al cargar tiempos de ensamblado: ${(err as Error).message}`);
     } finally {
@@ -125,11 +114,9 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
     }
   }, [loadData]);
 
-  // Filtrado base por Centro, Líneas Permitidas y Puestos Permitidos
   const baseData = useMemo(() => {
     let base = allData.filter(row => String(row.Centro || '').trim() === selectedCenter);
     
-    // Filtro estricto si hay allowedLines (Caso Prog Tiempos)
     if (allowedLines && allowedLines.length > 0) {
       const allowedUpper = allowedLines.map(l => l.toUpperCase());
       base = base.filter(row => {
@@ -138,7 +125,6 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
       });
     }
 
-    // Filtro estricto de Puestos de Trabajo (Caso Prog Tiempos)
     if (allowedWorkstations && allowedWorkstations.length > 0) {
       const allowedNormalized = allowedWorkstations.map(w => String(w).toUpperCase().replace(/\s+/g, ''));
       base = base.filter(row => {
@@ -150,39 +136,24 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
     return base;
   }, [allData, selectedCenter, allowedLines, allowedWorkstations]);
 
-  // Lista de responsables únicos para los datos base
   const responsablesDisponibles = useMemo(() => {
-    const unique = [...new Set(baseData.map(row => String(row.NombRespControlProd || '').trim()))]
-      .filter(Boolean)
-      .sort();
-    return unique;
+    return [...new Set(baseData.map(row => String(row.NombRespControlProd || '').trim()))].filter(Boolean).sort();
   }, [baseData]);
 
-  // Lista de líneas únicas para los datos base
   const lineasDisponibles = useMemo(() => {
-    const unique = [...new Set(baseData.map(row => String(row.Linea || '').trim()))]
-      .filter(Boolean)
-      .sort();
-    return unique;
+    return [...new Set(baseData.map(row => String(row.Linea || '').trim()))].filter(Boolean).sort();
   }, [baseData]);
 
-  // Filtrado final por Responsables, Líneas (UI) y Búsqueda
   const currentViewData = useMemo(() => {
     let result = baseData;
-
-    // Filtro de Responsables (Múltiple)
     if (selectedResponsables.length > 0) {
       result = result.filter(row => selectedResponsables.includes(String(row.NombRespControlProd || '').trim()));
     }
-
-    // Filtro de Líneas (Múltiple)
     if (selectedLineas.length > 0) {
       result = result.filter(row => selectedLineas.includes(String(row.Linea || '').trim()));
     }
-
     const term = searchTerm.toLowerCase().trim();
     if (!term) return result;
-
     return result.filter(row => 
       String(row.CodMaterial || '').toLowerCase().includes(term) ||
       String(row.Linea || '').toLowerCase().includes(term) ||
@@ -199,20 +170,12 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
   const formatMaterial = (mat: string) => String(mat || '').replace(/^0+/, '');
 
   const toggleResponsable = (resp: string) => {
-    setSelectedResponsables(prev => 
-      prev.includes(resp) 
-        ? prev.filter(r => r !== resp) 
-        : [...prev, resp]
-    );
+    setSelectedResponsables(prev => prev.includes(resp) ? prev.filter(r => r !== resp) : [...prev, resp]);
     setCurrentPage(1);
   };
 
   const toggleLinea = (linea: string) => {
-    setSelectedLineas(prev => 
-      prev.includes(linea) 
-        ? prev.filter(l => l !== linea) 
-        : [...prev, linea]
-    );
+    setSelectedLineas(prev => prev.includes(linea) ? prev.filter(l => l !== linea) : [...prev, linea]);
     setCurrentPage(1);
   };
 
@@ -227,7 +190,7 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
     return (
       <div className="flex flex-col justify-center items-center py-20 bg-white rounded-lg border border-dashed">
         <Loader2 className="h-10 w-10 animate-spin text-indigo-500" />
-        <span className="mt-4 text-gray-600 font-medium">Cargando tiempos técnicos (exhaustivo)...</span>
+        <span className="mt-4 text-gray-600 font-medium">Cargando tiempos técnicos...</span>
       </div>
     );
   }
@@ -244,7 +207,6 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
         </div>
         
         <div className="flex flex-wrap items-center gap-3">
-          {/* Filtro Responsable */}
           {!isCompact && (
             <Popover open={isRespFilterOpen} onOpenChange={setIsRespFilterOpen}>
               <PopoverTrigger asChild>
@@ -275,7 +237,6 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
             </Popover>
           )}
 
-          {/* Filtro Línea */}
           <Popover open={isLineaFilterOpen} onOpenChange={setIsLineFilterOpen}>
             <PopoverTrigger asChild>
               <Button variant="outline" size="sm" className="h-9 w-48 justify-between bg-white font-normal text-xs">
@@ -320,7 +281,6 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
         </div>
       </div>
 
-      {/* Chips de Filtros Activos */}
       {(selectedResponsables.length > 0 || selectedLineas.length > 0 || searchTerm) && (
         <div className="flex flex-wrap gap-2 items-center">
           <span className="text-[10px] font-bold text-gray-400 uppercase mr-2">Filtros:</span>
@@ -357,76 +317,74 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
         </TabsList>
 
         <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
-          <div className="overflow-x-auto" style={{ transform: 'rotateX(180deg)' }}>
-            <div style={{ transform: 'rotateX(180deg)' }}>
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Material</th>
-                    <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Línea</th>
-                    <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Puesto Trabajo</th>
-                    <th className="px-4 py-3 text-right text-[10px] font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50/30">Tiempo (min)</th>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Material</th>
+                  <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Línea</th>
+                  <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Puesto Trabajo</th>
+                  <th className="px-4 py-3 text-right text-[10px] font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50/30">Tiempo (min)</th>
+                  {isCompact && (
+                    <th className="px-4 py-3 text-left text-[10px] font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50/30">Cant ordFab</th>
+                  )}
+                  {!isCompact && (
+                    <>
+                      <th className="px-4 py-3 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider">Stock Act.</th>
+                      <th className="px-4 py-3 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider">Stock Seg.</th>
+                      <th className="px-4 py-3 text-center text-[10px] font-bold text-gray-500 uppercase tracking-wider">Aprov.</th>
+                      <th className="px-4 py-3 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider">Lote Mín.</th>
+                      <th className="px-4 py-3 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider">Lote Máx.</th>
+                      <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Responsable</th>
+                    </>
+                  )}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {displayedData.length > 0 ? displayedData.map((row, idx) => (
+                  <tr key={`${row.CodMaterial}-${idx}`} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-4 py-3 whitespace-nowrap text-xs font-mono font-bold text-gray-900">{formatMaterial(row.CodMaterial)}</td>
+                    <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-600">{row.Linea}</td>
+                    <td className="px-4 py-3 whitespace-nowrap text-[10px] text-gray-500 font-medium">{row.PuestoTrabajo}</td>
+                    <td className="px-4 py-3 whitespace-nowrap text-xs font-bold text-right text-indigo-600 bg-indigo-50/10">
+                      {Number(row.Tiempo_Min || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 })}
+                    </td>
                     {isCompact && (
-                      <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">ord_Fab</th>
+                      <td className="px-4 py-2 whitespace-nowrap">
+                        <input 
+                          type="text" 
+                          className="w-24 px-2 py-1 text-xs border rounded bg-white focus:ring-1 focus:ring-indigo-500"
+                          placeholder="Ingrese orden..."
+                        />
+                      </td>
                     )}
                     {!isCompact && (
                       <>
-                        <th className="px-4 py-3 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider">Stock Act.</th>
-                        <th className="px-4 py-3 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider">Stock Seg.</th>
-                        <th className="px-4 py-3 text-center text-[10px] font-bold text-gray-500 uppercase tracking-wider">Aprov.</th>
-                        <th className="px-4 py-3 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider">Lote Mín.</th>
-                        <th className="px-4 py-3 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider">Lote Máx.</th>
-                        <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Responsable</th>
+                        <td className="px-4 py-3 whitespace-nowrap text-xs text-right text-gray-500">{row.StockActual}</td>
+                        <td className="px-4 py-3 whitespace-nowrap text-xs text-right text-gray-700 font-semibold">{row.StockSeguridad}</td>
+                        <td className="px-4 py-3 whitespace-nowrap text-center">
+                          <Badge variant="outline" className="text-[10px] font-bold bg-blue-50 text-blue-700">{row.ClaseAprovisionam}</Badge>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-[10px] text-right text-gray-500">{row.TamLoteMin}</td>
+                        <td className="px-4 py-3 whitespace-nowrap text-[10px] text-right text-gray-500">{row.TamLoteMax || '-'}</td>
+                        <td className="px-4 py-3 whitespace-nowrap text-[10px] text-gray-600 truncate max-w-[150px]" title={row.NombRespControlProd}>
+                          {row.NombRespControlProd}
+                        </td>
                       </>
                     )}
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {displayedData.length > 0 ? displayedData.map((row, idx) => (
-                    <tr key={`${row.CodMaterial}-${idx}`} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-4 py-3 whitespace-nowrap text-xs font-mono font-bold text-gray-900">{formatMaterial(row.CodMaterial)}</td>
-                      <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-600">{row.Linea}</td>
-                      <td className="px-4 py-3 whitespace-nowrap text-[10px] text-gray-500 font-medium">{row.PuestoTrabajo}</td>
-                      <td className="px-4 py-3 whitespace-nowrap text-xs font-bold text-right text-indigo-600 bg-indigo-50/10">
-                        {Number(row.Tiempo_Min || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 })}
-                      </td>
-                      {isCompact && (
-                        <td className="px-4 py-2 whitespace-nowrap">
-                          <input 
-                            type="text" 
-                            className="w-24 px-2 py-1 text-xs border rounded bg-white focus:ring-1 focus:ring-indigo-500"
-                            placeholder="Ingrese orden..."
-                          />
-                        </td>
-                      )}
-                      {!isCompact && (
-                        <>
-                          <td className="px-4 py-3 whitespace-nowrap text-xs text-right text-gray-500">{row.StockActual}</td>
-                          <td className="px-4 py-3 whitespace-nowrap text-xs text-right text-gray-700 font-semibold">{row.StockSeguridad}</td>
-                          <td className="px-4 py-3 whitespace-nowrap text-center">
-                            <Badge variant="outline" className="text-[10px] font-bold bg-blue-50 text-blue-700">{row.ClaseAprovisionam}</Badge>
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-[10px] text-right text-gray-500">{row.TamLoteMin}</td>
-                          <td className="px-4 py-3 whitespace-nowrap text-[10px] text-right text-gray-500">{row.TamLoteMax || '-'}</td>
-                          <td className="px-4 py-3 whitespace-nowrap text-[10px] text-gray-600 truncate max-w-[150px]" title={row.NombRespControlProd}>
-                            {row.NombRespControlProd}
-                          </td>
-                        </>
-                      )}
-                    </tr>
-                  )) : (
-                    <tr>
-                      <td colSpan={isCompact ? 5 : 10} className="px-6 py-12 text-center text-gray-400 italic">
-                        <div className="flex flex-col items-center justify-center gap-2">
-                          <AlertCircle className="w-8 h-8 text-gray-300" />
-                          <span>No se encontraron registros de tiempos.</span>
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+                )) : (
+                  <tr>
+                    <td colSpan={isCompact ? 5 : 10} className="px-6 py-12 text-center text-gray-400 italic">
+                      <div className="flex flex-col items-center justify-center gap-2">
+                        <AlertCircle className="w-8 h-8 text-gray-300" />
+                        <span>No se encontraron registros de tiempos.</span>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
 
           <div className="bg-gray-50 px-6 py-4 border-t flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -449,7 +407,7 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
 
             <div className="flex items-center gap-2">
               <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>Anterior</Button>
-              <div className="px-4 py-1 bg-white border rounded text-xs font-bold text-indigo-600 min-w-[80px] text-center">{currentPage} / {totalPagesLocal}</div>
+              <div className="px-4 py-1 bg-white border rounded text-sm font-bold text-indigo-600 min-w-[80px] text-center">{currentPage} / {totalPagesLocal}</div>
               <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => Math.min(totalPagesLocal, p + 1))} disabled={currentPage === totalPagesLocal}>Siguiente</Button>
             </div>
           </div>
