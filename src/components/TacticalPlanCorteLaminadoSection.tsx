@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   Scissors, 
   Package, 
@@ -13,7 +13,6 @@ import {
   ChevronRight, 
   ChevronsLeft, 
   ChevronsRight,
-  Database,
   Filter,
   Activity,
   PlayCircle,
@@ -21,7 +20,6 @@ import {
   TrendingUp,
   Info,
   Box,
-  AlertCircle,
   Check
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
@@ -59,6 +57,10 @@ interface RawBOMRow {
 interface UnifiedNeedRow {
   material: string;
   descripcion: string;
+  densidad: string;
+  largoMtrs: number;
+  ancho: number;
+  espesor: number;
   consumoKg: number;
   consumoUn: number; 
   pesoRollo: number;
@@ -100,6 +102,26 @@ const getPesoPorRollo = (materialCode: string, descripcion: string): number => {
   return 35; 
 };
 
+// Parser técnico para extraer dimensiones de la descripción de SAP
+const parseDimensions = (desc: string) => {
+  const d = desc.toUpperCase();
+  
+  // 1. Densidad (ej: D22, D18)
+  const densMatch = d.match(/D(\d+)/);
+  const densidad = densMatch ? `d${densMatch[1]}` : '—';
+  
+  // 2. Ancho x Espesor (ej: 214x1.2 o 214*1.2)
+  const dimMatch = d.match(/(\d+(?:\.\d+)?)\s*[xX*]\s*(\d+(?:\.\d+)?)/);
+  const ancho = dimMatch ? parseFloat(dimMatch[1]) : 0;
+  const espesor = dimMatch ? parseFloat(dimMatch[2]) : 0;
+  
+  // 3. Largo (mtrs) (ej: 100M o 100 M)
+  const largoMatch = d.match(/(\d+)\s*M/);
+  const largoMtrs = largoMatch ? parseInt(largoMatch[1]) : 100; // Por defecto 100m si no se encuentra
+  
+  return { densidad, ancho, espesor, largoMtrs };
+};
+
 export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanLaminado');
   const { addNotification } = useAppContext();
@@ -128,7 +150,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
   useEffect(() => {
     setMounted(true);
-    setViewDate(new Date());
+    const now = new Date();
+    setViewDate(now);
+    setSelectedDate(now.toISOString().split('T')[0]);
     
     const init = async () => {
       try {
@@ -180,7 +204,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     }
     
     setIsProcessingResumen(true);
-    const materialGroups = new Map<string, { totalQty: number, refOrder: any }>();
+    // Agrupación inteligente: Consolidar por código de material único antes de explosionar
+    const materialGroups = new Map<string, { totalQty: number }>();
     ordersToProcess.forEach(order => {
       const matRaw = String(order.MATERIAL || order.CodMaterial || '').trim();
       const match = matRaw.match(/^(\d+)/);
@@ -193,7 +218,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       if (existing) {
         existing.totalQty += orderQty;
       } else {
-        materialGroups.set(matCode, { totalQty: orderQty, refOrder: order });
+        materialGroups.set(matCode, { totalQty: orderQty });
       }
     });
 
@@ -201,7 +226,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     setResumenProgress({ current: 0, total: uniqueMaterials.length });
     
     const consolidatedMap = new Map<string, UnifiedNeedRow>();
-    const CONCURRENCY_LIMIT = 5; // Reducido para evitar errores de red por saturación
+    const CONCURRENCY_LIMIT = 5; 
 
     try {
       for (let i = 0; i < uniqueMaterials.length; i += CONCURRENCY_LIMIT) {
@@ -224,14 +249,22 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   const desc = getProp(comp, 'DESCRIPCION_COMPONENTE').toUpperCase();
                   const cantAcum = getNumProp(comp, 'CANTIDAD_ACUMULADA') || getNumProp(comp, 'CANTIDAD_UNITARIA');
                   const kgTotal = totalQtyForMaterial * cantAcum;
-                  if (consolidatedMap.has(code)) {
-                    const ex = consolidatedMap.get(code)!;
+                  
+                  const dims = parseDimensions(desc);
+                  const key = `${dims.densidad}|${dims.largoMtrs}|${dims.ancho}|${dims.espesor}`;
+
+                  if (consolidatedMap.has(key)) {
+                    const ex = consolidatedMap.get(key)!;
                     ex.consumoKg += kgTotal;
                   } else {
                     const pRollo = getPesoPorRollo(code, desc);
-                    consolidatedMap.set(code, {
+                    consolidatedMap.set(key, {
                       material: code,
                       descripcion: desc,
+                      densidad: dims.densidad,
+                      largoMtrs: dims.largoMtrs,
+                      ancho: dims.ancho,
+                      espesor: dims.espesor,
                       consumoKg: kgTotal,
                       consumoUn: 0,
                       pesoRollo: pRollo
@@ -240,7 +273,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 });
             }
           } catch (e) {
-            // Manejo de error silencioso para un material específico, permitiendo que el proceso continúe
             console.warn(`[Laminado] Error procesando material ${matCode}:`, (e as Error).message);
           }
         }));
@@ -259,6 +291,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     }
   }, [inspector]);
 
+  // Gatillo automático para iniciar explosión al cambiar filtros o tab
   useEffect(() => {
     if (activeTab === 'resumen' && filteredOrders.length > 0 && !isProcessingResumen) {
       const signature = `${selectedDate}|${filteredOrders.length}|${filteredOrders[0]?.ORDENPREVISIONAL || ''}`;
@@ -426,7 +459,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
           <div className="border border-gray-100 rounded-3xl shadow-xl overflow-hidden bg-white">
             <div className="overflow-x-auto">
-              <table className="w-full border-collapse font-sans text-[11px] text-center">
+              <table className="min-w-full border-collapse font-sans text-[11px] text-center">
                 <thead className="bg-[#f8fafc] text-slate-400 border-b border-gray-100 uppercase font-black tracking-widest text-[9px]">
                   <tr>
                     <th className="px-6 py-5 border-r border-gray-50">Orden</th>
@@ -531,26 +564,32 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               <div className="overflow-x-auto max-h-[600px] relative">
                 <table className="w-full border-collapse font-sans text-[11px] text-center">
                   <thead className="sticky top-0 z-20">
-                    <tr className="bg-[#0f172a] text-white uppercase font-black tracking-widest text-[9px]">
-                      <th className="px-8 py-5 border-r border-white/5 text-left w-40">Componente</th>
-                      <th className="px-8 py-5 border-r border-white/5 text-left">Descripción del Material</th>
-                      <th className="px-6 py-5 border-r border-white/5 w-40 text-center bg-white/5">Peso / Rollo (Kg)</th>
-                      <th className="px-8 py-5 border-r border-white/5 w-48 text-right bg-indigo-500/10">Necesidad (Kg)</th>
-                      <th className="px-8 py-5 w-48 text-right bg-emerald-500/10">Equivalente (Un)</th>
+                    <tr className="bg-yellow-400 text-black uppercase font-black tracking-tighter text-[11px] border-b border-black/10">
+                      <th className="px-8 py-4 border-r border-black/5 text-left w-32">Densidad</th>
+                      <th className="px-8 py-4 border-r border-black/5 text-center w-32">Largo (mtrs)</th>
+                      <th className="px-8 py-4 border-r border-black/5 text-center w-32">Ancho</th>
+                      <th className="px-8 py-4 border-r border-black/5 text-center w-32">espesor</th>
+                      <th className="px-8 py-4 border-r border-black/5 text-right bg-black/5 w-40">Necesidad (Kg)</th>
+                      <th className="px-8 py-4 text-right bg-black/5 w-40">Equivalente (Un)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {unifiedNeeds.length === 0 && !isProcessingResumen ? (
-                       <tr><td colSpan={5} className="py-24 text-center text-slate-300 font-black uppercase tracking-widest opacity-40">No hay datos calculados</td></tr>
+                       <tr><td colSpan={6} className="py-24 text-center text-slate-300 font-black uppercase tracking-widest opacity-40">No hay datos calculados</td></tr>
                     ) : (
                       unifiedNeeds.map((row, idx) => (
                         <tr key={idx} className="hover:bg-slate-50/80 transition-all group">
-                          <td className="px-8 py-4 border-r border-gray-100 font-mono text-indigo-600 text-left bg-slate-50/50 font-black">{row.material}</td>
-                          <td className="px-8 py-4 border-r border-gray-100 text-left text-slate-700 uppercase font-black tracking-tight">
-                            {row.descripcion}
+                          <td className="px-8 py-4 border-r border-gray-100 font-mono text-indigo-600 text-left bg-slate-50/50 font-black">
+                            {row.densidad}
                           </td>
-                          <td className="px-6 py-4 border-r border-gray-100 font-mono text-slate-400 text-center group-hover:text-slate-900 transition-colors">
-                            {String(row.pesoRollo)}
+                          <td className="px-8 py-4 border-r border-gray-100 text-center text-slate-700 font-black">
+                            {row.largoMtrs}
+                          </td>
+                          <td className="px-8 py-4 border-r border-gray-100 text-center text-slate-700 font-black">
+                            {row.ancho}
+                          </td>
+                          <td className="px-8 py-4 border-r border-gray-100 text-center text-slate-700 font-black">
+                            {row.espesor.toFixed(1)}
                           </td>
                           <td className="px-8 py-4 border-r border-gray-100 font-mono text-slate-900 bg-indigo-50/30 text-right font-black text-sm">
                             {row.consumoKg.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -565,7 +604,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   {unifiedNeeds.length > 0 && (
                     <tfoot className="bg-slate-900 text-white font-black uppercase text-[10px] sticky bottom-0">
                       <tr>
-                        <td colSpan={3} className="px-8 py-5 text-right tracking-widest text-slate-500">Consolidado Total del Período:</td>
+                        <td colSpan={4} className="px-8 py-5 text-right tracking-widest text-slate-500">Consolidado Total del Período:</td>
                         <td className="px-8 py-5 text-right font-mono text-indigo-300 text-sm">{totalsUnified.kg.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} KG</td>
                         <td className="px-8 py-5 text-right font-mono text-emerald-300 text-sm">{totalsUnified.un.toLocaleString(undefined, { maximumFractionDigits: 0 })} UN</td>
                       </tr>
@@ -674,7 +713,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                       const matCode = String(t.CodMaterial || '').match(/^(\d+)/)?.[1]?.slice(-8) || '—';
                       const desc = String(t.Material || t.Descripcion || '—').toUpperCase();
                       return (
-                        <tr key={i} className="hover:bg-slate-50/50 transition-colors">
+                        <tr key={i} className="hover:bg-slate-50/5 transition-colors">
                           <td className="px-6 py-4 font-mono text-indigo-600 border-r border-dashed border-gray-100 text-left text-sm">{matCode}</td>
                           <td className="px-6 py-4 text-left border-r border-dashed border-gray-100 text-slate-600 uppercase leading-tight max-w-[300px] truncate">{desc}</td>
                           <td className="px-6 py-4 border-r border-dashed border-gray-100 font-black text-slate-400 uppercase text-[9px]">{t.Linea || '—'}</td>
