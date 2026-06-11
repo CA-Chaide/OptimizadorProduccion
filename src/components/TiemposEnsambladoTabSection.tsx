@@ -89,6 +89,7 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
   const [selectedResponsables, setSelectedResponsables] = useState<string[]>([]);
   const [selectedLineas, setSelectedLineas] = useState<string[]>([]);
   const [programmingDate, setProgrammingDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [provisionalDate, setProvisionalDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   
   const [isRespFilterOpen, setIsRespFilterOpen] = useState(false);
@@ -133,8 +134,8 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
         inspector.captureVariable('tiempos_raw_count', allTiempos.length);
       }
 
-      // Cargar datos FERT si estamos en modo compacto y no los tenemos
-      if (isCompact && fertOrders.length === 0) {
+      // Cargar datos FERT siempre en modo compacto
+      if (isCompact) {
         const fertResponse = await serviciosService.getOrdenesFert(1, 10000);
         const rawFert = Array.isArray(fertResponse?.data) ? fertResponse.data : [];
         
@@ -159,15 +160,14 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
     } finally {
       setIsLoading(false);
     }
-  }, [addNotification, inspector, selectedCenter, isCompact, allData.length, fertOrders.length]);
+  }, [addNotification, inspector, selectedCenter, isCompact, allData.length]);
 
   useEffect(() => {
-    // Si isCompact es true y no hay fertOrders, forzar recarga aunque hasStarted sea true
-    if (!hasStarted.current || (isCompact && fertOrders.length === 0)) {
+    if (!hasStarted.current || isCompact) {
       hasStarted.current = true;
       loadData();
     }
-  }, [loadData, isCompact, fertOrders.length]);
+  }, [loadData, isCompact]);
 
   const baseData = useMemo(() => {
     let base = allData.filter(row => String(row.Centro || '').trim() === selectedCenter);
@@ -191,7 +191,7 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
     return base;
   }, [allData, selectedCenter, allowedLines, allowedWorkstations]);
 
-  // Mapa de suma de Cant Pendiente por (Fecha, Línea, Material)
+  // Mapa de suma de Cant Pendiente por (Fecha, Línea, Material) para FERT
   const fertSumMap = useMemo(() => {
     const map = new Map<string, number>();
     if (!isCompact || !fertOrders.length || !programmingDate) return map;
@@ -278,20 +278,37 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
         
         <div className="flex flex-wrap items-center gap-3">
           {isCompact && (
-            <div className="flex items-center gap-2 bg-white border border-gray-300 rounded-md px-3 py-1.5 h-9">
-              <label htmlFor="prog-date" className="text-[10px] font-bold text-gray-400 uppercase whitespace-nowrap">Día programación:</label>
-              <input
-                id="prog-date"
-                type="date"
-                value={programmingDate}
-                onChange={(e) => {
-                    setProgrammingDate(e.target.value);
-                    setCurrentPage(1);
-                }}
-                className="text-xs border-none bg-transparent focus:ring-0 font-medium text-indigo-700 outline-none"
-              />
-              <CalendarIcon className="w-3.5 h-3.5 text-gray-400" />
-            </div>
+            <>
+              <div className="flex items-center gap-2 bg-white border border-gray-300 rounded-md px-3 py-1.5 h-9">
+                <label htmlFor="prog-date" className="text-[10px] font-bold text-gray-400 uppercase whitespace-nowrap">Día programación:</label>
+                <input
+                  id="prog-date"
+                  type="date"
+                  value={programmingDate}
+                  onChange={(e) => {
+                      setProgrammingDate(e.target.value);
+                      setCurrentPage(1);
+                  }}
+                  className="text-xs border-none bg-transparent focus:ring-0 font-medium text-indigo-700 outline-none"
+                />
+                <CalendarIcon className="w-3.5 h-3.5 text-gray-400" />
+              </div>
+
+              <div className="flex items-center gap-2 bg-white border border-gray-300 rounded-md px-3 py-1.5 h-9">
+                <label htmlFor="prev-date" className="text-[10px] font-bold text-gray-400 uppercase whitespace-nowrap">Fecha previsionales:</label>
+                <input
+                  id="prev-date"
+                  type="date"
+                  value={provisionalDate}
+                  onChange={(e) => {
+                      setProvisionalDate(e.target.value);
+                      setCurrentPage(1);
+                  }}
+                  className="text-xs border-none bg-transparent focus:ring-0 font-medium text-indigo-700 outline-none"
+                />
+                <CalendarIcon className="w-3.5 h-3.5 text-gray-400" />
+              </div>
+            </>
           )}
 
           {!isCompact && (

@@ -430,4 +430,22 @@ export const serviciosService = {
   },
 
 
+
+  //Este método desaparecerá en el futuro
+  async OrdenesProvisionalesAlphaPaginados(page: number, rowsPerPage: number): Promise<BodyResponse<any>> {
+    const response = await fetch(API_URL + "/OrdenesProvisionalesAlphaPaginadas", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ page: page, rowsPerPage: rowsPerPage }),
+    });
+    if (!response.ok) {
+      const errorBody = await response
+        .json()
+        .catch(() => ({ message: "Error desconocido" }));
+      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+    }
+    return response.json();
+  },
+
+
 };

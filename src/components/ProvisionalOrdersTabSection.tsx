@@ -56,7 +56,7 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
       
       const [groupsRes, pageResponse] = await Promise.all([
         grupoService.getAll(),
-        serviciosService.OrdenesProvisionalesPaginados(1, 10000)
+        serviciosService.OrdenesProvisionalesAlphaPaginados(1, 10000)
       ]);
 
       const centersFromGroups = [...new Set((groupsRes?.data || []).map((g: any) => String(g.centro).trim()))].sort();
