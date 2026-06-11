@@ -18,7 +18,8 @@ import {
   Database,
   History,
   Layers,
-  MapPin
+  MapPin,
+  Info
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -168,16 +169,11 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
 
     const dimensions: any = { dens: '—', ancho: '—', largo: '—', esp: '—', apertura: '—', tipo: '—' };
     
-    // Extracción de densidad mejorada
-    const techPattern = catStr.match(/D(\d+)([a-zA-Z]+)/i);
+    // Extracción de densidad mejorada (Regex Fallback)
+    const techPattern = catStr.match(/D(\d+)([a-zA-Z]*)/i) || desc.match(/D-?(\d+)([a-zA-Z]*)/i);
     if (techPattern) {
       dimensions.dens = techPattern[1]; 
-      dimensions.tipo = techPattern[2].toUpperCase(); 
-    } else {
-      const densMatch = desc.match(/D-?(\d+)/i);
-      if (densMatch) dimensions.dens = densMatch[1];
-      const tipoMatch = desc.match(/D-?\d+([a-zA-Z]+)/i);
-      if (tipoMatch) dimensions.tipo = tipoMatch[1].toUpperCase();
+      dimensions.tipo = (techPattern[2] || '').toUpperCase(); 
     }
 
     const dimMatch = desc.match(/(\d+(?:\.\d+)?)\s*[xX*]\s*(\d+(?:\.\d+)?)(?:\s*[xX*]\s*(\d+(?:\.\d+)?))?/);
@@ -286,8 +282,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
 
       const enriched = { ...row, apertura: info.apertura, densityFixed: densityVal };
       
-      // Segmentación Técnica Maestra: 
-      // F_BLOQ (Ruta CALLE) vs F_BLOQ_M (Ruta BCALL)
+      // Segmentación Técnica Maestra por Matriz Maquina-Estado
       const isStirling = maquinaVal.includes('F_BLOQ') && !maquinaVal.includes('F_BLOQ_M') && estadoTrasVal.includes('CALLE');
       const isManual = maquinaVal.includes('F_BLOQ_M') && estadoTrasVal.includes('BCALL');
 
@@ -302,19 +297,11 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       const count = rows.length;
       const weight = rows.reduce((s, r) => s + safeNum(r.peso || r.PESO), 0);
       const apertureMap = new Map<string, number>();
-      const callesSet = new Set<string>();
-
       rows.forEach(r => {
         const ap = r.apertura || '—';
         apertureMap.set(ap, (apertureMap.get(ap) || 0) + 1);
-        const estTras = getProp(r, ['estadoTras', 'Estado_Tras']).toUpperCase();
-        if (estTras.includes('CALLE')) {
-          const match = estTras.match(/(?:B)?CALLE[\s_]*\d+/);
-          if (match) callesSet.add(match[0]);
-        }
       });
-
-      return { count, weight, apertureMap, calles: Array.from(callesSet).sort() };
+      return { count, weight, apertureMap };
     };
 
     return [
@@ -494,18 +481,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                               <p className="text-[10px] font-bold opacity-60 uppercase">Auditoría Técnica de Stock</p>
                            </div>
                         </div>
-                        {group.stats.calles.length > 0 && (
-                          <div className="flex items-center gap-2 bg-black/20 px-3 py-1.5 rounded-xl border border-white/5">
-                             <MapPin className="w-3.5 h-3.5 text-white/70" />
-                             <span className="text-[10px] font-black uppercase tracking-widest text-indigo-100">Ubicaciones Activas:</span>
-                             <div className="flex gap-1">
-                                {group.stats.calles.slice(0, 5).map(calle => (
-                                  <Badge key={calle} variant="outline" className="bg-white/10 border-white/20 text-white text-[9px] font-black px-2 uppercase">{calle}</Badge>
-                                ))}
-                                {group.stats.calles.length > 5 && <span className="text-[8px] font-black opacity-50">+{group.stats.calles.length - 5}</span>}
-                             </div>
-                          </div>
-                        )}
                      </div>
                      
                      <div className="flex gap-8 items-center bg-black/10 p-3 rounded-xl border border-white/5">
@@ -541,15 +516,15 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                             <th className="px-3 py-3 border-r border-gray-100">orden</th>
                             <th className="px-3 py-3 border-r border-gray-100">CodMaterial</th>
                             <th className="px-4 py-3 border-r border-gray-100 text-left">NomMaterial</th>
-                            <th className="px-2 py-3 border-r border-gray-100">C.Proc</th>
+                            <th className="px-2 py-3 border-r border-gray-100">corridaproceso</th>
                             <th className="px-3 py-3 border-r border-gray-100 text-orange-800">peso</th>
-                            <th className="px-3 py-3 border-r border-gray-100">est.2</th>
+                            <th className="px-3 py-3 border-r border-gray-100">estado2</th>
                             <th className="px-3 py-3 border-r border-gray-100">CodBloque</th>
                             <th className="px-3 py-3 border-r border-gray-100">operador</th>
                             <th className="px-3 py-3 border-r border-gray-100 text-indigo-700">Maquina</th>
                             <th className="px-3 py-3 border-r border-gray-100 text-indigo-700 bg-indigo-50/30">estadoTras</th>
-                            <th className="px-3 py-3 border-r border-gray-100">Stock</th>
-                            <th className="px-3 py-3 border-r border-gray-100">Densidad</th>
+                            <th className="px-3 py-3 border-r border-gray-100">CantidadStock</th>
+                            <th className="px-3 py-3 border-r border-gray-100 text-blue-700">Densidad</th>
                             <th className="px-3 py-3 bg-blue-50 text-blue-900">Apertura</th>
                           </tr>
                         </thead>
@@ -568,11 +543,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                               <td className="px-2 py-2 border-r border-gray-100 font-mono text-purple-700">{String(row.CodBloque || row.COD_BLOQUE)}</td>
                               <td className="px-2 py-2 border-r border-gray-100 text-gray-400">{String(row.operador || row.OPERADOR)}</td>
                               <td className="px-2 py-2 border-r border-gray-100 font-black text-[9px] text-indigo-700 uppercase">{String(row.Maquina || row.MAQUINA || '—')}</td>
-                              <td className="px-2 py-2 border-r border-gray-100 text-center">
-                                 <Badge variant="outline" className={cn("text-[8px] font-black uppercase tracking-widest", (String(row.estadoTras || row.Estado_Tras || '').includes('CALLE')) ? "bg-indigo-600 text-white" : "text-gray-400")}>
-                                    {String(row.estadoTras || row.Estado_Tras || '—')}
-                                 </Badge>
-                              </td>
+                              <td className="px-2 py-2 border-r border-gray-100 text-center uppercase">{String(row.estadoTras || row.Estado_Tras || '—')}</td>
                               <td className="px-2 py-2 border-r border-gray-100 text-gray-900 font-mono">{formatNum(row.CantidadStock || row.CANTIDAD_STOCK || 1)}</td>
                               <td className="px-2 py-2 border-r border-gray-100 text-blue-700 font-black">{String(row.densityFixed || '—')}</td>
                               <td className="px-2 py-2 text-indigo-900 font-black bg-blue-50/50">{String(row.apertura || '—')}</td>
@@ -633,7 +604,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           ].map((center, idx) => (
             <div key={idx} className="space-y-4">
               <h3 className={cn("text-[11px] font-bold uppercase flex items-center gap-2 px-1 text-left", center.c)}>
-                <div className={cn("w-2 h-2 rounded-full", center.b)} /> {center.t} ({center.d.length} órdenes)
+                <div className={cn("w-2.5 h-2.5 rounded-full", center.b)} /> {center.t} ({center.d.length} órdenes)
               </h3>
               <Card className="rounded-2xl border border-gray-100 shadow-md overflow-hidden bg-white">
                 <div className="overflow-x-auto max-h-[500px]">
@@ -657,7 +628,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                     <tbody className="divide-y divide-gray-50 text-[10px] font-bold">
                       {center.d.map((o, i) => {
                         const info = extractMaterialInfo(o);
-                        const maquina = String(o.MAQUINA || o.Maquina || o.RECURSO || '—').trim();
+                        const maquina = String(o.MAQUINA || o.RECURSO || '—').trim();
                         return (
                           <tr key={i} className="hover:bg-gray-50/50 transition-colors">
                             <td className="px-3 py-2 text-gray-500 border-r border-gray-100">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
@@ -694,8 +665,8 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                       <tr>
                         <th className="px-5 py-4 border-r border-white/5 text-left">Material</th>
                         <th className="px-5 py-4 border-r border-white/5 text-left">Descripción Técnica</th>
-                        <th className="px-4 py-4 border-r border-white/5">Línea</th>
-                        <th className="px-4 py-4 text-teal-400">Estándar (Min)</th>
+                        <th className="px-5 py-4 border-r border-white/5">Línea</th>
+                        <th className="px-5 py-4 text-teal-400">Estándar (Min)</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
@@ -703,10 +674,10 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                         const info = extractMaterialInfo(t);
                         return (
                           <tr key={i} className="hover:bg-gray-50/50 transition-colors">
-                            <td className="px-4 py-3 font-mono text-primary border-r border-gray-50 text-left">{info.code}</td>
-                            <td className="px-4 py-3 text-left border-r border-gray-50 text-gray-500 uppercase truncate max-w-[300px]">{info.desc}</td>
-                            <td className="px-4 py-3 border-r border-gray-100 font-bold text-gray-400 uppercase">{t.Linea || t.PuestoTrabajoLinea || '—'}</td>
-                            <td className="px-4 py-3 font-mono text-teal-600 bg-teal-50/10">{(t.Tiempo_Min || t.Tiempo || 0).toFixed(4)}</td>
+                            <td className="px-4 py-3 font-mono text-indigo-600 border-r border-gray-50 text-left">{info.code}</td>
+                            <td className="px-4 py-3 text-left border-r border-gray-50 text-gray-600 truncate max-w-[300px] uppercase">{String(t.Material || t.Descripcion || '—')}</td>
+                            <td className="px-4 py-3 border-r border-gray-100 text-gray-400 uppercase">{String(t.Linea || '—')}</td>
+                            <td className="px-4 py-3 font-mono text-teal-600 bg-teal-50/10">{Number(t.Tiempo || 0).toFixed(2)}</td>
                           </tr>
                         );
                       })}
