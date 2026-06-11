@@ -49,6 +49,29 @@ interface TiemposEnsambladoTabSectionProps {
   readonly isCompact?: boolean;
 }
 
+/**
+ * Normaliza una cadena de fecha a formato YYYY-MM-DD
+ * Soporta DD/MM/YYYY y YYYY-MM-DD
+ */
+const normalizeDateISO = (dateStr: any): string | null => {
+  if (!dateStr) return null;
+  const s = String(dateStr).trim();
+  
+  // Caso: DD/MM/YYYY
+  let match = s.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})/);
+  if (match) {
+    return `${match[3]}-${match[2].padStart(2, '0')}-${match[1].padStart(2, '0')}`;
+  }
+  
+  // Caso: YYYY-MM-DD
+  match = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (match) {
+    return `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`;
+  }
+  
+  return null;
+};
+
 export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionProps> = ({ 
   allowedLines, 
   allowedWorkstations,
@@ -86,33 +109,35 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
       setAvailableCenters(centersFromGroups);
       if (centersFromGroups.length > 0 && !selectedCenter) setSelectedCenter(centersFromGroups[0]);
 
-      // Cargar datos de Tiempos
-      let allTiempos: TiempoEnsamblado[] = [];
-      let page = 1;
-      let hasMore = true;
-      const pageSize = 10000;
+      // Cargar datos de Tiempos si no hay nada en el estado
+      if (allData.length === 0) {
+        let allTiempos: TiempoEnsamblado[] = [];
+        let page = 1;
+        let hasMore = true;
+        const pageSize = 10000;
 
-      while (hasMore) {
-        const response = await serviciosService.getTiemposEnsamblado(page, pageSize);
-        const rawData = Array.isArray(response?.data) ? response.data : [];
-        allTiempos = [...allTiempos, ...rawData];
-        
-        const total = response.totalRegistros || response.totalRecords || 0;
-        if (allTiempos.length >= total || rawData.length < pageSize || total === 0) {
-          hasMore = false;
-        } else {
-          page++;
+        while (hasMore) {
+          const response = await serviciosService.getTiemposEnsamblado(page, pageSize);
+          const rawData = Array.isArray(response?.data) ? response.data : [];
+          allTiempos = [...allTiempos, ...rawData];
+          
+          const total = response.totalRegistros || response.totalRecords || 0;
+          if (allTiempos.length >= total || rawData.length < pageSize || total === 0) {
+            hasMore = false;
+          } else {
+            page++;
+          }
+          if (page > 50) break; 
         }
-        if (page > 50) break; 
+        setAllData(allTiempos);
+        inspector.captureVariable('tiempos_raw_count', allTiempos.length);
       }
-      setAllData(allTiempos);
 
-      // Cargar datos FERT si estamos en modo compacto (Prog Tiempos)
-      if (isCompact) {
+      // Cargar datos FERT si estamos en modo compacto y no los tenemos
+      if (isCompact && fertOrders.length === 0) {
         const fertResponse = await serviciosService.getOrdenesFert(1, 10000);
         const rawFert = Array.isArray(fertResponse?.data) ? fertResponse.data : [];
         
-        // Mapear líneas en datos FERT para coincidir con Tiempos
         const mappedFert = rawFert.map((o: any) => {
           const cat = String(o.CATEGORIA || '').toUpperCase();
           let calculatedLinea = '';
@@ -126,22 +151,23 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
           return { ...o, LINEA_MAPPED: calculatedLinea };
         });
         setFertOrders(mappedFert);
+        inspector.captureVariable('fert_raw_count', mappedFert.length);
       }
       
-      inspector.captureVariable('tiempos_raw_count', allTiempos.length);
     } catch (err) {
-      addNotification('error', `Error al cargar datos: ${(err as Error).message}`);
+      addNotification('error', `Error al cargar datos técnicos: ${(err as Error).message}`);
     } finally {
       setIsLoading(false);
     }
-  }, [addNotification, inspector, selectedCenter, isCompact]);
+  }, [addNotification, inspector, selectedCenter, isCompact, allData.length, fertOrders.length]);
 
   useEffect(() => {
-    if (!hasStarted.current) {
+    // Si isCompact es true y no hay fertOrders, forzar recarga aunque hasStarted sea true
+    if (!hasStarted.current || (isCompact && fertOrders.length === 0)) {
       hasStarted.current = true;
       loadData();
     }
-  }, [loadData]);
+  }, [loadData, isCompact, fertOrders.length]);
 
   const baseData = useMemo(() => {
     let base = allData.filter(row => String(row.Centro || '').trim() === selectedCenter);
@@ -170,17 +196,18 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
     const map = new Map<string, number>();
     if (!isCompact || !fertOrders.length || !programmingDate) return map;
 
-    // Formatear programmingDate (YYYY-MM-DD) a DD/MM/YYYY
-    const [y, m, d] = programmingDate.split('-');
-    const targetDate = `${d}/${m}/${y}`;
+    const targetDateISO = normalizeDateISO(programmingDate);
+    if (!targetDateISO) return map;
 
     fertOrders.forEach(o => {
-      if (String(o.FECHA) === targetDate) {
+      const fertDateISO = normalizeDateISO(o.FECHA || o.fecha);
+      
+      if (fertDateISO === targetDateISO) {
         const linea = String(o.LINEA_MAPPED || '').trim().toUpperCase();
-        const material = normalizeMaterialCode(o.MATERIAL);
+        const material = normalizeMaterialCode(o.MATERIAL || o.Material || o.CodMaterial);
         const key = `${linea}|${material}`;
         
-        const pend = Number(o.CANTPENDIENTE) || 0;
+        const pend = Number(o.CANTPENDIENTE || o.CantPendiente || 0) || 0;
         map.set(key, (map.get(key) || 0) + pend);
       }
     });
@@ -237,15 +264,6 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
     setSearchTerm('');
     setCurrentPage(1);
   };
-
-  if (isLoading && allData.length === 0) {
-    return (
-      <div className="flex flex-col justify-center items-center py-20 bg-white rounded-lg border border-dashed">
-        <Loader2 className="h-10 w-10 animate-spin text-indigo-500" />
-        <span className="mt-4 text-gray-600 font-medium">Cargando datos técnicos...</span>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">
@@ -344,7 +362,7 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
               onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
             />
           </div>
-          <Button variant="outline" size="sm" onClick={() => { hasStarted.current = false; loadData(); }}>
+          <Button variant="outline" size="sm" onClick={() => { hasStarted.current = false; setFertOrders([]); setAllData([]); loadData(); }}>
             Actualizar
           </Button>
         </div>
@@ -456,7 +474,7 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
                     <td colSpan={isCompact ? 6 : 10} className="px-6 py-12 text-center text-gray-400 italic">
                       <div className="flex flex-col items-center justify-center gap-2">
                         <AlertCircle className="w-8 h-8 text-gray-300" />
-                        <span>No se encontraron registros de tiempos.</span>
+                        <span>No se encontraron registros técnicos para el centro seleccionado.</span>
                       </div>
                     </td>
                   </tr>
