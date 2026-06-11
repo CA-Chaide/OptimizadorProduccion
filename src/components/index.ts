@@ -29,6 +29,7 @@ export * from './InventoryNeedsSection';
 export * from './TacticalPlanMueblesSection';
 export * from './NeedsCalculationC2000Section';
 export * from './PresupuestoProdSemanalTabSection';
+export * from './RevCapacidadTabSection';
 
 // Widgets y paneles
 export { default as FloatingChatWidget } from './FloatingChatWidget';

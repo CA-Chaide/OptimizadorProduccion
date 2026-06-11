@@ -12,7 +12,8 @@ import {
   ClipboardList, 
   UserCheck, 
   Clock, 
-  CalendarRange 
+  CalendarRange,
+  Activity
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -23,6 +24,7 @@ import { OrdenesFertTabSection } from './OrdenesFertTabSection';
 import { HabilidadesOpTabSection } from './HabilidadesOpTabSection';
 import { TiemposEnsambladoTabSection } from './TiemposEnsambladoTabSection';
 import { PresupuestoProdSemanalTabSection } from './PresupuestoProdSemanalTabSection';
+import { RevCapacidadTabSection } from './RevCapacidadTabSection';
 import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
 import type { Grupo, Restriccion } from '@/types/interfaces';
@@ -100,7 +102,7 @@ export const TacticalPlan2Section: React.FC = () => {
       </div>
       
       <Tabs defaultValue="grupos" className="w-full">
-        <TabsList className="grid w-full grid-cols-8 mb-8">
+        <TabsList className="grid w-full grid-cols-9 mb-8">
           <TabsTrigger value="grupos" className="flex items-center gap-2">
             <Users className="w-4 h-4" />
             Grupos
@@ -132,6 +134,10 @@ export const TacticalPlan2Section: React.FC = () => {
           <TabsTrigger value="prog_tiempos" className="flex items-center gap-2">
             <Clock className="w-4 h-4" />
             Prog Tiempos
+          </TabsTrigger>
+          <TabsTrigger value="rev_capacidad" className="flex items-center gap-2">
+            <Activity className="w-4 h-4" />
+            Rev Capacidad
           </TabsTrigger>
         </TabsList>
 
@@ -288,6 +294,18 @@ export const TacticalPlan2Section: React.FC = () => {
                 allowedWorkstations={['Armado', 'Cerrado L1', 'Cerrado1 L2', 'Cerrado2 L2', 'Cerrado L3']}
                 isCompact={true}
               />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="rev_capacidad">
+          <Card>
+            <CardHeader>
+              <CardTitle>Revisión de Capacidad</CardTitle>
+              <CardDescription>Resumen agregado de carga por puesto de trabajo.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <RevCapacidadTabSection />
             </CardContent>
           </Card>
         </TabsContent>
