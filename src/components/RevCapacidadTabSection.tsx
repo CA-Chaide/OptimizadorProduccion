@@ -121,36 +121,40 @@ export const RevCapacidadTabSection: React.FC = () => {
     loadData();
   }, [loadData]);
 
-  // Mapas de suma para optimizar
+  // Mapas de suma para optimizar - FILTRADO POR CENTRO
   const fertSumMap = useMemo(() => {
     const map = new Map<string, number>();
     const targetDateISO = normalizeDateISO(programmingDate);
-    if (!targetDateISO) return map;
+    if (!targetDateISO || !selectedCenter) return map;
 
     fertOrders.forEach(o => {
-      if (normalizeDateISO(o.FECHA || o.fecha) === targetDateISO) {
+      const orderCenter = String(o.CENTRO || '').trim();
+      // FILTRO: Fecha Y Centro
+      if (normalizeDateISO(o.FECHA || o.fecha) === targetDateISO && orderCenter === selectedCenter) {
         const key = `${o.LINEA_MAPPED}|${normalizeMaterialCode(o.MATERIAL || o.CodMaterial)}`;
         const pend = Number(o.CANTPENDIENTE || 0) || 0;
         map.set(key, (map.get(key) || 0) + pend);
       }
     });
     return map;
-  }, [fertOrders, programmingDate]);
+  }, [fertOrders, programmingDate, selectedCenter]);
 
   const prevSumMap = useMemo(() => {
     const map = new Map<string, number>();
     const targetDateISO = normalizeDateISO(provisionalDate);
-    if (!targetDateISO) return map;
+    if (!targetDateISO || !selectedCenter) return map;
 
     provisionalOrders.forEach(o => {
-      if (normalizeDateISO(o.FECHAINICIO || o.fecha_inicio) === targetDateISO) {
+      const orderCenter = String(o.Centro || '').trim();
+      // FILTRO: Fecha Y Centro
+      if (normalizeDateISO(o.FECHAINICIO || o.fecha_inicio) === targetDateISO && orderCenter === selectedCenter) {
         const key = `${o.LINEA_MAPPED}|${normalizeMaterialCode(o.MATERIAL || o.CodMaterial)}`;
         const cant = Number(o.CANTIDAD || 0) || 0;
         map.set(key, (map.get(key) || 0) + cant);
       }
     });
     return map;
-  }, [provisionalOrders, provisionalDate]);
+  }, [provisionalOrders, provisionalDate, selectedCenter]);
 
   // Agregación de Resumen
   const summaryData = useMemo((): SummaryRow[] => {

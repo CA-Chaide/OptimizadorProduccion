@@ -213,18 +213,20 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
     return base;
   }, [allData, selectedCenter, allowedLines, allowedWorkstations]);
 
-  // Mapa de suma de Cant Pendiente por (Fecha, Línea, Material) para FERT
+  // Mapa de suma de Cant Pendiente por (Fecha, Línea, Material) para FERT - FILTRADO POR CENTRO
   const fertSumMap = useMemo(() => {
     const map = new Map<string, number>();
-    if (!isCompact || !fertOrders.length || !programmingDate) return map;
+    if (!isCompact || !fertOrders.length || !programmingDate || !selectedCenter) return map;
 
     const targetDateISO = normalizeDateISO(programmingDate);
     if (!targetDateISO) return map;
 
     fertOrders.forEach(o => {
       const fertDateISO = normalizeDateISO(o.FECHA || o.fecha);
+      const orderCenter = String(o.CENTRO || '').trim();
       
-      if (fertDateISO === targetDateISO) {
+      // FILTRO: Fecha coincidente Y Centro coincidente con la sub-pestaña activa
+      if (fertDateISO === targetDateISO && orderCenter === selectedCenter) {
         const linea = String(o.LINEA_MAPPED || '').trim().toUpperCase();
         const material = normalizeMaterialCode(o.MATERIAL || o.Material || o.CodMaterial);
         const key = `${linea}|${material}`;
@@ -235,20 +237,22 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
     });
 
     return map;
-  }, [isCompact, fertOrders, programmingDate]);
+  }, [isCompact, fertOrders, programmingDate, selectedCenter]);
 
-  // Mapa de suma de Cantidad por (Fecha, Línea, Material) para PREVISIONALES
+  // Mapa de suma de Cantidad por (Fecha, Línea, Material) para PREVISIONALES - FILTRADO POR CENTRO
   const provisionalSumMap = useMemo(() => {
     const map = new Map<string, number>();
-    if (!isCompact || !provisionalOrders.length || !provisionalDate) return map;
+    if (!isCompact || !provisionalOrders.length || !provisionalDate || !selectedCenter) return map;
 
     const targetDateISO = normalizeDateISO(provisionalDate);
     if (!targetDateISO) return map;
 
     provisionalOrders.forEach(o => {
       const prevDateISO = normalizeDateISO(o.FECHAINICIO || o.fecha_inicio);
+      const orderCenter = String(o.Centro || '').trim();
       
-      if (prevDateISO === targetDateISO) {
+      // FILTRO: Fecha coincidente Y Centro coincidente con la sub-pestaña activa
+      if (prevDateISO === targetDateISO && orderCenter === selectedCenter) {
         const linea = String(o.LINEA_MAPPED || '').trim().toUpperCase();
         const material = normalizeMaterialCode(o.MATERIAL || o.CodMaterial || o.Material);
         const key = `${linea}|${material}`;
@@ -259,7 +263,7 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
     });
 
     return map;
-  }, [isCompact, provisionalOrders, provisionalDate]);
+  }, [isCompact, provisionalOrders, provisionalDate, selectedCenter]);
 
   const responsablesDisponibles = useMemo(() => {
     return [...new Set(baseData.map(row => String(row.NombRespControlProd || '').trim()))].filter(Boolean).sort();
