@@ -5,7 +5,7 @@ import { serviciosService } from '@/services/servicios.service';
 import { grupoService } from '@/services/grupo.service';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
-import { Package, Loader2, Home, Search } from 'lucide-react';
+import { Package, Loader2, Home, Search, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -92,7 +92,8 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
         return (
           String(order.ORDENPREVISIONAL || '').toLowerCase().includes(term) ||
           String(order.CodMaterial || order.MATERIAL || '').toLowerCase().includes(term) ||
-          String(order.NOMBRE || '').toLowerCase().includes(term)
+          String(order.NOMBRE || '').toLowerCase().includes(term) ||
+          String(order.CATEGORIA || '').toLowerCase().includes(term)
         );
       }
       return true;
@@ -136,6 +137,14 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
               value={searchTerm}
               onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
             />
+            {searchTerm && (
+              <button 
+                onClick={() => setSearchTerm('')}
+                className="absolute right-2.5 top-2.5 text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -160,6 +169,7 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Orden</th>
+                  <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Categoría</th>
                   <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Material</th>
                   <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Nombre</th>
                   <th className="px-6 py-3 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider">Cantidad</th>
@@ -173,6 +183,7 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
                 {displayedOrders.length > 0 ? displayedOrders.map((order, idx) => (
                   <tr key={`${order.ORDENPREVISIONAL}-${idx}`} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-indigo-600 font-mono">{order.ORDENPREVISIONAL}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-600 font-medium">{order.CATEGORIA || '-'}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-600">{formatMaterial(order.CodMaterial || order.MATERIAL)}</td>
                     <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate" title={order.NOMBRE}>{order.NOMBRE}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-right text-indigo-600">{(Number(order.CANTIDAD) || 0).toLocaleString()}</td>
@@ -183,7 +194,7 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
                   </tr>
                 )) : (
                   <tr>
-                    <td colSpan={8} className="px-6 py-12 text-center text-gray-400 italic">
+                    <td colSpan={9} className="px-6 py-12 text-center text-gray-400 italic">
                       No se encontraron órdenes para el centro {selectedCenter}.
                     </td>
                   </tr>
