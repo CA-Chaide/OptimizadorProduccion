@@ -9,7 +9,7 @@ import { Package, Loader2, Home, Search, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface ProvisionalOrder {
   ORDENPREVISIONAL: string;
@@ -64,7 +64,26 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
 
       if (pageResponse && pageResponse.data) {
         const rawOrders = Array.isArray(pageResponse.data) ? pageResponse.data : [];
-        setOrders(rawOrders);
+        
+        // Lógica de mapeo dinámico para la columna LINEA basada en CATEGORIA
+        const mappedOrders = rawOrders.map((o: any) => {
+          const cat = String(o.CATEGORIA || '').toUpperCase();
+          let calculatedLinea = '';
+          
+          if (cat.includes('L1')) calculatedLinea = 'LINEA 1';
+          else if (cat.includes('L2')) calculatedLinea = 'LINEA 2';
+          else if (cat.includes('L3')) calculatedLinea = 'LINEA 3';
+          else if (cat.includes('L5')) calculatedLinea = 'LINEA 5';
+          else if (cat.includes('B-B')) calculatedLinea = 'LINEA 5';
+          else calculatedLinea = String(o.LINEA || '').trim().toUpperCase();
+
+          return {
+            ...o,
+            LINEA: calculatedLinea
+          };
+        });
+
+        setOrders(mappedOrders);
       }
       
       if (centersFromGroups.length > 0 && !selectedCenter) {
