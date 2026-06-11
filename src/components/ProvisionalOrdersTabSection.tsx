@@ -26,11 +26,6 @@ interface ProvisionalOrder {
   Maquina: string | null;
   ClaseOrden: string;
   CodMaterial: string;
-  T_ARMADO?: number;
-  T_CERRADO_L1?: number;
-  T_CERRADO1_L2?: number;
-  T_CERRADO2_L2?: number;
-  T_CERRADO_L3?: number;
 }
 
 export const ProvisionalOrdersTabSection: React.FC = () => {
@@ -58,52 +53,20 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
     try {
       setIsLoading(true);
       
-      const [groupsRes, pageResponse, tiemposRes] = await Promise.all([
+      const [groupsRes, pageResponse] = await Promise.all([
         grupoService.getAll(),
-        serviciosService.OrdenesProvisionalesPaginados(1, 10000),
-        serviciosService.getTiemposEnsamblado(1, 10000)
+        serviciosService.OrdenesProvisionalesPaginados(1, 10000)
       ]);
 
       const centersFromGroups = [...new Set((groupsRes?.data || []).map((g: any) => String(g.centro).trim()))].sort();
       setAvailableCenters(centersFromGroups);
 
-      // Crear mapa de búsqueda para tiempos técnicos por estación
-      const lookup = new Map<string, Record<string, number>>();
-      const tiemposData = Array.isArray(tiemposRes?.data) ? tiemposRes.data : [];
-      
-      tiemposData.forEach((t: any) => {
-        const materialKey = `${String(t.Centro).trim()}|${normalizeMaterialCode(t.CodMaterial)}`;
-        const stationName = String(t.PuestoTrabajo || '').trim().toUpperCase();
-        const time = Number(t.Tiempo_Min) || 0;
-        
-        if (!lookup.has(materialKey)) {
-          lookup.set(materialKey, {});
-        }
-        lookup.get(materialKey)![stationName] = time;
-      });
-
       if (pageResponse && pageResponse.data) {
         const rawOrders = Array.isArray(pageResponse.data) ? pageResponse.data : [];
-        const enriched = rawOrders.map(order => {
-          const materialKey = `${String(order.Centro).trim()}|${normalizeMaterialCode(order.CodMaterial || order.MATERIAL)}`;
-          const times = lookup.get(materialKey) || {};
-          
-          // Lógica de validación por sufijo de Categoría (L1, L2, L3)
-          const catSuffix = String(order.CATEGORIA || '').trim().slice(-2).toUpperCase();
-          
-          return {
-            ...order,
-            T_ARMADO: times['ARMADO'] || 0,
-            T_CERRADO_L1: catSuffix === 'L1' ? (times['CERRADO L1'] || 0) : 0,
-            T_CERRADO1_L2: catSuffix === 'L2' ? (times['CERRADO1 L2'] || 0) : 0,
-            T_CERRADO2_L2: catSuffix === 'L2' ? (times['CERRADO2 L2'] || 0) : 0,
-            T_CERRADO_L3: catSuffix === 'L3' ? (times['CERRADO L3'] || 0) : 0,
-          };
-        });
-        setOrders(enriched);
+        setOrders(rawOrders);
       }
       
-      if (centersFromGroups.length > 0) {
+      if (centersFromGroups.length > 0 && !selectedCenter) {
         setSelectedCenter(centersFromGroups[0]);
       }
     } catch (err) {
@@ -111,7 +74,7 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [addNotification]);
+  }, [addNotification, selectedCenter]);
 
   useEffect(() => {
     loadData();
@@ -178,7 +141,7 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
       </div>
 
       <Tabs value={selectedCenter} onValueChange={(val) => { setSelectedCenter(val); setCurrentPage(1); }} className="w-full">
-        <TabsList className="flex flex-wrap h-auto bg-gray-100/50 p-1 mb-4">
+        <TabsList className="flex h-auto bg-gray-100/50 p-1 mb-4">
           {availableCenters.map(center => (
             <TabsTrigger 
               key={center} 
@@ -192,119 +155,65 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
         </TabsList>
 
         <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
-          <div className="overflow-x-auto" style={{ transform: 'rotateX(180deg)' }}>
-            <div style={{ transform: 'rotateX(180deg)' }}>
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Orden</th>
-                    <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Material</th>
-                    <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Nombre</th>
-                    <th className="px-4 py-3 text-right text-[10px] font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50/30">Armado</th>
-                    <th className="px-4 py-3 text-right text-[10px] font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50/30">Cerrado L1</th>
-                    <th className="px-4 py-3 text-right text-[10px] font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50/30">Cerrado1 L2</th>
-                    <th className="px-4 py-3 text-right text-[10px] font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50/30">Cerrado2 L2</th>
-                    <th className="px-4 py-3 text-right text-[10px] font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50/30">Cerrado L3</th>
-                    <th className="px-6 py-3 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider">Cantidad</th>
-                    <th className="px-4 py-3 text-right text-[10px] font-bold text-emerald-700 uppercase tracking-wider bg-emerald-50/30">TT Armado</th>
-                    <th className="px-4 py-3 text-right text-[10px] font-bold text-emerald-700 uppercase tracking-wider bg-emerald-50/30">TT Cerrado L1</th>
-                    <th className="px-4 py-3 text-right text-[10px] font-bold text-emerald-700 uppercase tracking-wider bg-emerald-50/30">TT Cerrado1 L2</th>
-                    <th className="px-4 py-3 text-right text-[10px] font-bold text-emerald-700 uppercase tracking-wider bg-emerald-50/30">TT Cerrado2 L2</th>
-                    <th className="px-4 py-3 text-right text-[10px] font-bold text-emerald-700 uppercase tracking-wider bg-emerald-50/30">TT Cerrado L3</th>
-                    <th className="px-6 py-3 text-center text-[10px] font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50/30">Almacén</th>
-                    <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Resp. Ctrl.</th>
-                    <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">F. Inicio</th>
-                    <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Máquina</th>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Orden</th>
+                  <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Material</th>
+                  <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Nombre</th>
+                  <th className="px-6 py-3 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider">Cantidad</th>
+                  <th className="px-6 py-3 text-center text-[10px] font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50/30">Almacén</th>
+                  <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Resp. Ctrl.</th>
+                  <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">F. Inicio</th>
+                  <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Máquina</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {displayedOrders.length > 0 ? displayedOrders.map((order, idx) => (
+                  <tr key={`${order.ORDENPREVISIONAL}-${idx}`} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-indigo-600 font-mono">{order.ORDENPREVISIONAL}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-600">{formatMaterial(order.CodMaterial || order.MATERIAL)}</td>
+                    <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate" title={order.NOMBRE}>{order.NOMBRE}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-right text-indigo-600">{(Number(order.CANTIDAD) || 0).toLocaleString()}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-center font-bold text-indigo-700 bg-indigo-50/10">{order.Almacen}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{order.RESPCONTROLPROD}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{order.FECHAINICIO}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-mono text-xs">{order.Maquina || '-'}</td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {displayedOrders.length > 0 ? displayedOrders.map((order, idx) => {
-                    const qty = Number(order.CANTIDAD || 0);
-                    const ttArmado = (order.T_ARMADO || 0) * qty;
-                    const ttCerradoL1 = (order.T_CERRADO_L1 || 0) * qty;
-                    const ttCerrado1L2 = (order.T_CERRADO1_L2 || 0) * qty;
-                    const ttCerrado2L2 = (order.T_CERRADO2_L2 || 0) * qty;
-                    const ttCerradoL3 = (order.T_CERRADO_L3 || 0) * qty;
+                )) : (
+                  <tr>
+                    <td colSpan={8} className="px-6 py-12 text-center text-gray-400 italic">
+                      No se encontraron órdenes para el centro {selectedCenter}.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
 
-                    return (
-                      <tr key={`${order.ORDENPREVISIONAL}-${idx}`} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-indigo-600 font-mono">{order.ORDENPREVISIONAL}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-600">{formatMaterial(order.CodMaterial || order.MATERIAL)}</td>
-                        <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate" title={order.NOMBRE}>{order.NOMBRE}</td>
-                        <td className="px-4 py-4 whitespace-nowrap text-sm font-bold text-right text-indigo-600 bg-indigo-50/10">
-                          {order.T_ARMADO ? order.T_ARMADO.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 }) : '-'}
-                        </td>
-                        <td className="px-4 py-4 whitespace-nowrap text-sm font-bold text-right text-indigo-600 bg-indigo-50/10">
-                          {order.T_CERRADO_L1 ? order.T_CERRADO_L1.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 }) : '-'}
-                        </td>
-                        <td className="px-4 py-4 whitespace-nowrap text-sm font-bold text-right text-indigo-600 bg-indigo-50/10">
-                          {order.T_CERRADO1_L2 ? order.T_CERRADO1_L2.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 }) : '-'}
-                        </td>
-                        <td className="px-4 py-4 whitespace-nowrap text-sm font-bold text-right text-indigo-600 bg-indigo-50/10">
-                          {order.T_CERRADO2_L2 ? order.T_CERRADO2_L2.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 }) : '-'}
-                        </td>
-                        <td className="px-4 py-4 whitespace-nowrap text-sm font-bold text-right text-indigo-600 bg-indigo-50/10">
-                          {order.T_CERRADO_L3 ? order.T_CERRADO_L3.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 }) : '-'}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-right text-indigo-600">{qty.toLocaleString()}</td>
-                        
-                        {/* TT Columns */}
-                        <td className="px-4 py-4 whitespace-nowrap text-sm font-bold text-right text-emerald-700 bg-emerald-50/10">
-                          {ttArmado > 0 ? ttArmado.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}
-                        </td>
-                        <td className="px-4 py-4 whitespace-nowrap text-sm font-bold text-right text-emerald-700 bg-emerald-50/10">
-                          {ttCerradoL1 > 0 ? ttCerradoL1.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}
-                        </td>
-                        <td className="px-4 py-4 whitespace-nowrap text-sm font-bold text-right text-emerald-700 bg-emerald-50/10">
-                          {ttCerrado1L2 > 0 ? ttCerrado1L2.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}
-                        </td>
-                        <td className="px-4 py-4 whitespace-nowrap text-sm font-bold text-right text-emerald-700 bg-emerald-50/10">
-                          {ttCerrado2L2 > 0 ? ttCerrado2L2.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}
-                        </td>
-                        <td className="px-4 py-4 whitespace-nowrap text-sm font-bold text-right text-emerald-700 bg-emerald-50/10">
-                          {ttCerradoL3 > 0 ? ttCerradoL3.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}
-                        </td>
-
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-center font-bold text-indigo-700 bg-indigo-50/10">{order.Almacen}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{order.RESPCONTROLPROD}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{order.FECHAINICIO}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-mono text-xs">{order.Maquina || '-'}</td>
-                      </tr>
-                    );
-                  }) : (
-                    <tr>
-                      <td colSpan={18} className="px-6 py-12 text-center text-gray-400 italic">
-                        No se encontraron órdenes para el centro {selectedCenter}.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+        <div className="bg-gray-50 px-6 py-4 border-t flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <span className="text-xs font-medium text-gray-500 uppercase">Ver:</span>
+            <select
+              value={rowsPerPage}
+              onChange={(e) => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }}
+              className="text-sm border rounded p-1 bg-white"
+            >
+              <option value={10}>10</option>
+              <option value={20}>20</option>
+              <option value={50}>50</option>
+            </select>
+            <span className="text-xs text-gray-400 font-medium">
+              Viendo {startIndex + 1} - {Math.min(endIndex, currentCenterOrders.length)} de {currentCenterOrders.length}
+            </span>
           </div>
 
-          <div className="bg-gray-50 px-6 py-4 border-t flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <span className="text-xs font-medium text-gray-500 uppercase">Ver:</span>
-              <select
-                value={rowsPerPage}
-                onChange={(e) => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }}
-                className="text-sm border rounded p-1 bg-white"
-              >
-                <option value={10}>10</option>
-                <option value={20}>20</option>
-                <option value={50}>50</option>
-              </select>
-              <span className="text-xs text-gray-400 font-medium">
-                Viendo {startIndex + 1} - {Math.min(endIndex, currentCenterOrders.length)} de {currentCenterOrders.length}
-              </span>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}> Anterior </Button>
-              <div className="px-4 py-1 bg-white border rounded text-sm font-bold text-indigo-600 min-w-[80px] text-center"> {currentPage} / {totalPagesLocal} </div>
-              <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => Math.min(totalPagesLocal, p + 1))} disabled={currentPage === totalPagesLocal}> Siguiente </Button>
-            </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}> Anterior </Button>
+            <div className="px-4 py-1 bg-white border rounded text-sm font-bold text-indigo-600 min-w-[80px] text-center"> {currentPage} / {totalPagesLocal} </div>
+            <Button variant="outline" size="sm" onClick={() => setCurrentPage(p => Math.min(totalPagesLocal, p + 1))} disabled={currentPage === totalPagesLocal}> Siguiente </Button>
           </div>
         </div>
       </Tabs>
