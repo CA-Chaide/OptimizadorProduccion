@@ -14,7 +14,7 @@ import {
   AlertCircle 
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import * as XLSX from 'xlsx';
 
 interface SummaryRow {
@@ -72,7 +72,7 @@ export const RevCapacidadTabSection: React.FC = () => {
       setAvailableCenters(centersFromGroups);
       if (centersFromGroups.length > 0 && !selectedCenter) setSelectedCenter(centersFromGroups[0]);
 
-      // Cargar Tiempos Técnicos (reutilizamos la lógica de paginación)
+      // Cargar Tiempos Técnicos
       let allTiempos: any[] = [];
       let page = 1;
       let hasMore = true;
@@ -129,7 +129,6 @@ export const RevCapacidadTabSection: React.FC = () => {
 
     fertOrders.forEach(o => {
       const orderCenter = String(o.CENTRO || '').trim();
-      // FILTRO: Fecha Y Centro
       if (normalizeDateISO(o.FECHA || o.fecha) === targetDateISO && orderCenter === selectedCenter) {
         const key = `${o.LINEA_MAPPED}|${normalizeMaterialCode(o.MATERIAL || o.CodMaterial)}`;
         const pend = Number(o.CANTPENDIENTE || 0) || 0;
@@ -146,7 +145,6 @@ export const RevCapacidadTabSection: React.FC = () => {
 
     provisionalOrders.forEach(o => {
       const orderCenter = String(o.Centro || '').trim();
-      // FILTRO: Fecha Y Centro
       if (normalizeDateISO(o.FECHAINICIO || o.fecha_inicio) === targetDateISO && orderCenter === selectedCenter) {
         const key = `${o.LINEA_MAPPED}|${normalizeMaterialCode(o.MATERIAL || o.CodMaterial)}`;
         const cant = Number(o.CANTIDAD || 0) || 0;
@@ -241,88 +239,96 @@ export const RevCapacidadTabSection: React.FC = () => {
         <Button variant="outline" size="sm" onClick={handleExport} disabled={summaryData.length === 0}><Download className="w-4 h-4 mr-2" /> Exportar</Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-gray-50 border rounded-xl shadow-sm">
-        <div className="flex items-center gap-3 bg-white border rounded-md px-3 py-2 h-11">
-          <label className="text-[10px] font-bold text-gray-400 uppercase">Día Programación:</label>
-          <input type="date" value={programmingDate} onChange={e => setProgrammingDate(e.target.value)} className="text-xs border-none focus:ring-0 font-medium text-indigo-700 outline-none" />
-          <CalendarIcon className="w-4 h-4 text-gray-400" />
-        </div>
-        <div className="flex items-center gap-3 bg-white border rounded-md px-3 py-2 h-11">
-          <label className="text-[10px] font-bold text-gray-400 uppercase">Fecha Previsionales:</label>
-          <input type="date" value={provisionalDate} onChange={e => setProvisionalDate(e.target.value)} className="text-xs border-none focus:ring-0 font-medium text-indigo-700 outline-none" />
-          <CalendarIcon className="w-4 h-4 text-gray-400" />
-        </div>
-        <div className="flex items-center gap-3 bg-white border rounded-md px-3 py-2 h-11">
-          <label className="text-[10px] font-bold text-gray-400 uppercase">Centro:</label>
-          <select value={selectedCenter} onChange={e => setSelectedCenter(e.target.value)} className="text-xs border-none focus:ring-0 font-bold text-indigo-700 bg-transparent outline-none flex-1">
-            {availableCenters.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
-          <Home className="w-4 h-4 text-gray-400" />
-        </div>
-      </div>
+      <Tabs value={selectedCenter} onValueChange={(val) => { setSelectedCenter(val); }} className="w-full">
+        <TabsList className="flex h-auto bg-gray-100/50 p-1 mb-4">
+          {availableCenters.map(center => (
+            <TabsTrigger 
+              key={center} 
+              value={center}
+              className="data-[state=active]:bg-white data-[state=active]:text-indigo-700 data-[state=active]:shadow-sm px-6 py-2 text-xs font-bold uppercase tracking-wider"
+            >
+              <Home className="w-3 h-3 mr-2" />
+              Centro {center}
+            </TabsTrigger>
+          ))}
+        </TabsList>
 
-      <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200 border-collapse">
-            <thead className="bg-gray-50">
-              <tr className="text-[11px] font-bold text-gray-600 uppercase tracking-wider">
-                <th className="px-4 py-3 text-left border">Línea</th>
-                <th className="px-4 py-3 text-left border">Puesto Trabajo</th>
-                <th className="px-4 py-3 text-right border">Cant ordFab</th>
-                <th className="px-4 py-3 text-right border">Cant ordPrev</th>
-                <th className="px-4 py-3 text-right border text-indigo-700">Tiempo ordFab</th>
-                <th className="px-4 py-3 text-right border text-indigo-700">Tiempo ordPrev</th>
-                <th className="px-4 py-3 text-right border bg-indigo-50/30">Total Cantidad</th>
-                <th className="px-4 py-3 text-right border bg-indigo-50/30">Total Tiempo (h)</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200 text-xs">
-              {summaryData.length > 0 ? (() => {
-                const rows: React.ReactNode[] = [];
-                const lines = [...new Set(summaryData.map(r => r.linea))];
-                
-                lines.forEach(lineName => {
-                  const lineRows = summaryData.filter(r => r.linea === lineName);
-                  lineRows.forEach((r, idx) => {
-                    rows.push(
-                      <tr key={`${lineName}-${idx}`} className="hover:bg-gray-50 transition-colors">
-                        {idx === 0 && (
-                          <td rowSpan={lineRows.length} className="px-4 py-3 font-bold text-gray-900 border align-top bg-gray-50/30">
-                            {lineName}
-                          </td>
-                        )}
-                        <td className="px-4 py-3 font-medium text-gray-700 border">{r.puesto}</td>
-                        <td className="px-4 py-3 text-right font-mono border">{r.cantOrdFab.toLocaleString()}</td>
-                        <td className="px-4 py-3 text-right font-mono border">{r.cantOrdPrev.toLocaleString()}</td>
-                        <td className="px-4 py-3 text-right font-mono border text-indigo-600">{r.tiempoOrdFab.toFixed(2)}</td>
-                        <td className="px-4 py-3 text-right font-mono border text-indigo-600">{r.tiempoOrdPrev.toFixed(2)}</td>
-                        <td className="px-4 py-3 text-right font-bold border bg-indigo-50/10">{r.totalCantidad.toLocaleString()}</td>
-                        <td className="px-4 py-3 text-right font-bold border bg-indigo-50/10">{r.totalTiempo.toFixed(2)}</td>
-                      </tr>
-                    );
-                  });
-                });
-                return rows;
-              })() : (
-                <tr><td colSpan={8} className="px-6 py-12 text-center text-gray-400 italic"><AlertCircle className="w-8 h-8 mx-auto mb-2 opacity-20" />Sin datos para los criterios seleccionados.</td></tr>
-              )}
-            </tbody>
-            {summaryData.length > 0 && (
-              <tfoot className="bg-gray-800 text-white font-bold text-xs">
-                <tr>
-                  <td colSpan={2} className="px-4 py-3 text-right uppercase border-r border-gray-700">Total General:</td>
-                  <td className="px-4 py-3 text-right font-mono border-r border-gray-700">{grandTotals.cantFab.toLocaleString()}</td>
-                  <td className="px-4 py-3 text-right font-mono border-r border-gray-700">{grandTotals.cantPrev.toLocaleString()}</td>
-                  <td className="px-4 py-3 text-right font-mono border-r border-gray-700 text-indigo-200">{grandTotals.timeFab.toFixed(2)}</td>
-                  <td className="px-4 py-3 text-right font-mono border-r border-gray-700 text-indigo-200">{grandTotals.timePrev.toFixed(2)}</td>
-                  <td className="px-4 py-3 text-right font-mono border-r border-gray-700 text-emerald-300">{grandTotals.totalCant.toLocaleString()}</td>
-                  <td className="px-4 py-3 text-right font-mono text-emerald-300">{grandTotals.totalTime.toFixed(2)}</td>
-                </tr>
-              </tfoot>
-            )}
-          </table>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-gray-50 border rounded-xl shadow-sm mb-6">
+          <div className="flex items-center gap-3 bg-white border rounded-md px-3 py-2 h-11">
+            <label className="text-[10px] font-bold text-gray-400 uppercase">Día Programación:</label>
+            <input type="date" value={programmingDate} onChange={e => setProgrammingDate(e.target.value)} className="text-xs border-none focus:ring-0 font-medium text-indigo-700 outline-none flex-1" />
+            <CalendarIcon className="w-4 h-4 text-gray-400" />
+          </div>
+          <div className="flex items-center gap-3 bg-white border rounded-md px-3 py-2 h-11">
+            <label className="text-[10px] font-bold text-gray-400 uppercase">Fecha Previsionales:</label>
+            <input type="date" value={provisionalDate} onChange={e => setProvisionalDate(e.target.value)} className="text-xs border-none focus:ring-0 font-medium text-indigo-700 outline-none flex-1" />
+            <CalendarIcon className="w-4 h-4 text-gray-400" />
+          </div>
         </div>
-      </div>
+
+        <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200 border-collapse">
+              <thead className="bg-gray-50">
+                <tr className="text-[11px] font-bold text-gray-600 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left border">Línea</th>
+                  <th className="px-4 py-3 text-left border">Puesto Trabajo</th>
+                  <th className="px-4 py-3 text-right border">Cant ordFab</th>
+                  <th className="px-4 py-3 text-right border">Cant ordPrev</th>
+                  <th className="px-4 py-3 text-right border text-indigo-700">Tiempo ordFab</th>
+                  <th className="px-4 py-3 text-right border text-indigo-700">Tiempo ordPrev</th>
+                  <th className="px-4 py-3 text-right border bg-indigo-50/30">Total Cantidad</th>
+                  <th className="px-4 py-3 text-right border bg-indigo-50/30">Total Tiempo (h)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200 text-xs">
+                {summaryData.length > 0 ? (() => {
+                  const rows: React.ReactNode[] = [];
+                  const lines = [...new Set(summaryData.map(r => r.linea))];
+                  
+                  lines.forEach(lineName => {
+                    const lineRows = summaryData.filter(r => r.linea === lineName);
+                    lineRows.forEach((r, idx) => {
+                      rows.push(
+                        <tr key={`${lineName}-${idx}`} className="hover:bg-gray-50 transition-colors">
+                          {idx === 0 && (
+                            <td rowSpan={lineRows.length} className="px-4 py-3 font-bold text-gray-900 border align-top bg-gray-50/30">
+                              {lineName}
+                            </td>
+                          )}
+                          <td className="px-4 py-3 font-medium text-gray-700 border">{r.puesto}</td>
+                          <td className="px-4 py-3 text-right font-mono border">{r.cantOrdFab.toLocaleString()}</td>
+                          <td className="px-4 py-3 text-right font-mono border">{r.cantOrdPrev.toLocaleString()}</td>
+                          <td className="px-4 py-3 text-right font-mono border text-indigo-600">{r.tiempoOrdFab.toFixed(2)}</td>
+                          <td className="px-4 py-3 text-right font-mono border text-indigo-600">{r.tiempoOrdPrev.toFixed(2)}</td>
+                          <td className="px-4 py-3 text-right font-bold border bg-indigo-50/10">{r.totalCantidad.toLocaleString()}</td>
+                          <td className="px-4 py-3 text-right font-bold border bg-indigo-50/10">{r.totalTiempo.toFixed(2)}</td>
+                        </tr>
+                      );
+                    });
+                  });
+                  return rows;
+                })() : (
+                  <tr><td colSpan={8} className="px-6 py-12 text-center text-gray-400 italic"><AlertCircle className="w-8 h-8 mx-auto mb-2 opacity-20" />Sin datos para los criterios seleccionados.</td></tr>
+                )}
+              </tbody>
+              {summaryData.length > 0 && (
+                <tfoot className="bg-gray-800 text-white font-bold text-xs">
+                  <tr>
+                    <td colSpan={2} className="px-4 py-3 text-right uppercase border-r border-gray-700">Total General:</td>
+                    <td className="px-4 py-3 text-right font-mono border-r border-gray-700">{grandTotals.cantFab.toLocaleString()}</td>
+                    <td className="px-4 py-3 text-right font-mono border-r border-gray-700">{grandTotals.cantPrev.toLocaleString()}</td>
+                    <td className="px-4 py-3 text-right font-mono border-r border-gray-700 text-indigo-200">{grandTotals.timeFab.toFixed(2)}</td>
+                    <td className="px-4 py-3 text-right font-mono border-r border-gray-700 text-indigo-200">{grandTotals.timePrev.toFixed(2)}</td>
+                    <td className="px-4 py-3 text-right font-mono border-r border-gray-700 text-emerald-300">{grandTotals.totalCant.toLocaleString()}</td>
+                    <td className="px-4 py-3 text-right font-mono text-emerald-300">{grandTotals.totalTime.toFixed(2)}</td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+        </div>
+      </Tabs>
     </div>
   );
 };
