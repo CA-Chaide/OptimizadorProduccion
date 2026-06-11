@@ -21,6 +21,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 import * as XLSX from 'xlsx';
 
 interface SummaryRow {
@@ -32,7 +33,7 @@ interface SummaryRow {
   tiempoOrdPrev: number;
   totalCantidad: number;
   totalTiempo: number;
-  puestosObjetivo: number; // Valor de restricción predefinida
+  puestosObjetivo: number;
 }
 
 const normalizeDateISO = (dateStr: any): string | null => {
@@ -49,7 +50,6 @@ const normalizeMaterialCode = (code: string | number): string => {
   return String(code || '').trim().slice(-8);
 };
 
-// RESTRICCIONES PREDEFINIDAS (El "Target" del juego)
 const RESTRICCIONES_PUESTOS: Record<string, number> = {
   'LINEA 1|Armado': 12,
   'LINEA 1|Cerrado L1': 6,
@@ -140,7 +140,7 @@ export const RevCapacidadTabSection: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [addNotification, selectedCenter, allData.length]);
+  }, [addNotification, selectedCenter, technicalData.length]);
 
   useEffect(() => {
     loadData();
@@ -235,8 +235,8 @@ export const RevCapacidadTabSection: React.FC = () => {
       timePrev: acc.timePrev + r.tiempoOrdPrev,
       totalCant: acc.totalCant + r.totalCantidad,
       totalTime: acc.totalTime + r.totalTiempo,
-      totalPuestos: acc.totalTime / horasTurno1,
-      totalObjetivo: acc.totalPuestos + r.puestosObjetivo
+      totalPuestos: acc.totalPuestos + (r.totalTiempo / horasTurno1),
+      totalObjetivo: acc.totalObjetivo + r.puestosObjetivo
     }), { cantFab: 0, cantPrev: 0, timeFab: 0, timePrev: 0, totalCant: 0, totalTime: 0, totalPuestos: 0, totalObjetivo: 0 });
   }, [summaryData, horasTurno1]);
 
@@ -285,7 +285,6 @@ export const RevCapacidadTabSection: React.FC = () => {
           ))}
         </TabsList>
 
-        {/* Panel de Filtros Expandido */}
         <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-8 gap-4 p-4 bg-gray-50 border rounded-xl shadow-sm mb-6">
           <div className="flex flex-col gap-1">
             <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Día Prog:</label>
@@ -391,13 +390,13 @@ export const RevCapacidadTabSection: React.FC = () => {
                     <td className="px-4 py-3 text-right font-mono border-r border-gray-700 text-indigo-300">{grandTotals.totalCant.toLocaleString()}</td>
                     <td className="px-4 py-3 text-right font-mono border-r border-gray-700 text-indigo-300">{grandTotals.totalTime.toFixed(2)}</td>
                     <td className="px-4 py-3 text-right font-mono text-blue-300 border-r border-gray-700">
-                      {(grandTotals.totalTime / horasTurno1).toFixed(2)}
+                      {grandTotals.totalPuestos.toFixed(2)}
                     </td>
                     <td className="px-4 py-3 text-right font-mono text-indigo-300 border-r border-gray-700">
                         {summaryData.reduce((sum, r) => sum + r.puestosObjetivo, 0)}
                     </td>
                     <td className="px-4 py-3 text-right">
-                        {(summaryData.reduce((sum, r) => sum + r.puestosObjetivo, 0) - (grandTotals.totalTime / horasTurno1)).toFixed(2)}
+                        {(summaryData.reduce((sum, r) => sum + r.puestosObjetivo, 0) - grandTotals.totalPuestos).toFixed(2)}
                     </td>
                   </tr>
                 </tfoot>
