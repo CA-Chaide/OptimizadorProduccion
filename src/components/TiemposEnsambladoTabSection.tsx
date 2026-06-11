@@ -505,6 +505,10 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
                   
                   const cantOrdFab = fertSumMap.get(key) || 0;
                   const cantOrdPrev = provisionalSumMap.get(key) || 0;
+                  
+                  // Cálculos de tiempo en horas: (tiempo_min * cantidad) / 60
+                  const tiempoOrdFab = (Number(row.Tiempo_Min || 0) * cantOrdFab) / 60;
+                  const tiempoOrdPrev = (Number(row.Tiempo_Min || 0) * cantOrdPrev) / 60;
 
                   return (
                     <tr key={`${row.CodMaterial}-${idx}`} className="hover:bg-gray-50 transition-colors">
@@ -523,10 +527,10 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
                             {cantOrdPrev > 0 ? cantOrdPrev.toLocaleString() : '0'}
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap text-xs font-bold text-right text-emerald-800 bg-emerald-100/10">
-                            0
+                            {tiempoOrdFab > 0 ? tiempoOrdFab.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0'}
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap text-xs font-bold text-right text-amber-800 bg-amber-100/10">
-                            0
+                            {tiempoOrdPrev > 0 ? tiempoOrdPrev.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0'}
                           </td>
                         </>
                       )}
