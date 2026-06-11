@@ -60,7 +60,7 @@ export const RevCapacidadTabSection: React.FC = () => {
   const [programmingDate, setProgrammingDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [provisionalDate, setProvisionalDate] = useState<string>(new Date().toISOString().split('T')[0]);
 
-  // Nuevos estados para horas de turno
+  // Nuevos estados para horas de turno (4 a 12 horas)
   const [horasTurno1, setHorasTurno1] = useState<number>(8);
   const [horasTurno2, setHorasTurno2] = useState<number>(8);
 
@@ -225,7 +225,8 @@ export const RevCapacidadTabSection: React.FC = () => {
       'Línea': r.linea, 'Puesto Trabajo': r.puesto,
       'Cant ordFab': r.cantOrdFab, 'Cant ordPrev': r.cantOrdPrev,
       'Tiempo ordFab': r.tiempoOrdFab.toFixed(2), 'Tiempo ordPrev': r.tiempoOrdPrev.toFixed(2),
-      'Total Cantidad': r.totalCantidad, 'Total Tiempo (h)': r.totalTiempo.toFixed(2)
+      'Total Cantidad': r.totalCantidad, 'Total Tiempo (h)': r.totalTiempo.toFixed(2),
+      'No. Puestos': (r.totalTiempo / horasTurno1).toFixed(2)
     })));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Resumen Capacidad");
@@ -233,7 +234,12 @@ export const RevCapacidadTabSection: React.FC = () => {
   };
 
   if (isLoading && technicalData.length === 0) {
-    return <div className="flex flex-col items-center py-20"><Loader2 className="animate-spin h-8 w-8 text-indigo-600" /><span>Calculando resumen...</span></div>;
+    return (
+      <div className="flex flex-col items-center py-20">
+        <Loader2 className="animate-spin h-8 w-8 text-indigo-600" />
+        <span>Calculando resumen...</span>
+      </div>
+    );
   }
 
   return (
@@ -243,10 +249,13 @@ export const RevCapacidadTabSection: React.FC = () => {
           <Activity className="w-6 h-6 text-indigo-600" />
           <h3 className="text-xl font-semibold text-gray-800">Resumen de Capacidad por Puesto</h3>
         </div>
-        <Button variant="outline" size="sm" onClick={handleExport} disabled={summaryData.length === 0}><Download className="w-4 h-4 mr-2" /> Exportar</Button>
+        <Button variant="outline" size="sm" onClick={handleExport} disabled={summaryData.length === 0}>
+          <Download className="w-4 h-4 mr-2" /> 
+          Exportar
+        </Button>
       </div>
 
-      <Tabs value={selectedCenter} onValueChange={(val) => { setSelectedCenter(val); }} className="w-full">
+      <Tabs value={selectedCenter} onValueChange={(val) => setSelectedCenter(val)} className="w-full">
         <TabsList className="flex h-auto bg-gray-100/50 p-1 mb-4">
           {availableCenters.map(center => (
             <TabsTrigger 
@@ -265,14 +274,24 @@ export const RevCapacidadTabSection: React.FC = () => {
           {/* Día Programación */}
           <div className="flex items-center gap-3 bg-white border rounded-md px-3 py-2 h-11">
             <label className="text-[10px] font-bold text-gray-400 uppercase">Día Programación:</label>
-            <input type="date" value={programmingDate} onChange={e => setProgrammingDate(e.target.value)} className="text-xs border-none focus:ring-0 font-medium text-indigo-700 outline-none flex-1" />
+            <input 
+              type="date" 
+              value={programmingDate} 
+              onChange={e => setProgrammingDate(e.target.value)} 
+              className="text-xs border-none focus:ring-0 font-medium text-indigo-700 outline-none flex-1" 
+            />
             <CalendarIcon className="w-4 h-4 text-gray-400" />
           </div>
 
           {/* Fecha Previsionales */}
           <div className="flex items-center gap-3 bg-white border rounded-md px-3 py-2 h-11">
             <label className="text-[10px] font-bold text-gray-400 uppercase">Fecha Previsionales:</label>
-            <input type="date" value={provisionalDate} onChange={e => setProvisionalDate(e.target.value)} className="text-xs border-none focus:ring-0 font-medium text-indigo-700 outline-none flex-1" />
+            <input 
+              type="date" 
+              value={provisionalDate} 
+              onChange={e => setProvisionalDate(e.target.value)} 
+              className="text-xs border-none focus:ring-0 font-medium text-indigo-700 outline-none flex-1" 
+            />
             <CalendarIcon className="w-4 h-4 text-gray-400" />
           </div>
 
@@ -316,6 +335,7 @@ export const RevCapacidadTabSection: React.FC = () => {
                   <th className="px-4 py-3 text-right border text-indigo-700">Tiempo ordPrev</th>
                   <th className="px-4 py-3 text-right border bg-indigo-50/30">Total Cantidad</th>
                   <th className="px-4 py-3 text-right border bg-indigo-50/30">Total Tiempo (h)</th>
+                  <th className="px-4 py-3 text-right border text-blue-700 bg-blue-50/30">No. Puestos</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 text-xs">
@@ -340,13 +360,21 @@ export const RevCapacidadTabSection: React.FC = () => {
                           <td className="px-4 py-3 text-right font-mono border text-indigo-600">{r.tiempoOrdPrev.toFixed(2)}</td>
                           <td className="px-4 py-3 text-right font-bold border bg-indigo-50/10">{r.totalCantidad.toLocaleString()}</td>
                           <td className="px-4 py-3 text-right font-bold border bg-indigo-50/10">{r.totalTiempo.toFixed(2)}</td>
+                          <td className="px-4 py-3 text-right font-bold border text-blue-700 bg-blue-50/10">
+                            {(r.totalTiempo / horasTurno1).toFixed(2)}
+                          </td>
                         </tr>
                       );
                     });
                   });
                   return rows;
                 })() : (
-                  <tr><td colSpan={8} className="px-6 py-12 text-center text-gray-400 italic"><AlertCircle className="w-8 h-8 mx-auto mb-2 opacity-20" />Sin datos para los criterios seleccionados.</td></tr>
+                  <tr>
+                    <td colSpan={9} className="px-6 py-12 text-center text-gray-400 italic">
+                      <AlertCircle className="w-8 h-8 mx-auto mb-2 opacity-20" />
+                      Sin datos para los criterios seleccionados.
+                    </td>
+                  </tr>
                 )}
               </tbody>
               {summaryData.length > 0 && (
@@ -358,7 +386,10 @@ export const RevCapacidadTabSection: React.FC = () => {
                     <td className="px-4 py-3 text-right font-mono border-r border-gray-700 text-indigo-200">{grandTotals.timeFab.toFixed(2)}</td>
                     <td className="px-4 py-3 text-right font-mono border-r border-gray-700 text-indigo-200">{grandTotals.timePrev.toFixed(2)}</td>
                     <td className="px-4 py-3 text-right font-mono border-r border-gray-700 text-emerald-300">{grandTotals.totalCant.toLocaleString()}</td>
-                    <td className="px-4 py-3 text-right font-mono text-emerald-300">{grandTotals.totalTime.toFixed(2)}</td>
+                    <td className="px-4 py-3 text-right font-mono border-r border-gray-700 text-emerald-300">{grandTotals.totalTime.toFixed(2)}</td>
+                    <td className="px-4 py-3 text-right font-mono text-blue-300">
+                      {(grandTotals.totalTime / horasTurno1).toFixed(2)}
+                    </td>
                   </tr>
                 </tfoot>
               )}
