@@ -13,7 +13,8 @@ import {
   UserCheck, 
   Clock, 
   CalendarRange,
-  Activity
+  Activity,
+  CheckCircle2
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -25,6 +26,7 @@ import { HabilidadesOpTabSection } from './HabilidadesOpTabSection';
 import { TiemposEnsambladoTabSection } from './TiemposEnsambladoTabSection';
 import { PresupuestoProdSemanalTabSection } from './PresupuestoProdSemanalTabSection';
 import { RevCapacidadTabSection } from './RevCapacidadTabSection';
+import { PlanPropuestoTabSection } from './PlanPropuestoTabSection';
 import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
 import type { Grupo, Restriccion } from '@/types/interfaces';
@@ -102,7 +104,7 @@ export const TacticalPlan2Section: React.FC = () => {
       </div>
       
       <Tabs defaultValue="grupos" className="w-full">
-        <TabsList className="grid w-full grid-cols-9 mb-8">
+        <TabsList className="grid w-full grid-cols-10 mb-8">
           <TabsTrigger value="grupos" className="flex items-center gap-2">
             <Users className="w-4 h-4" />
             Grupos
@@ -138,6 +140,10 @@ export const TacticalPlan2Section: React.FC = () => {
           <TabsTrigger value="rev_capacidad" className="flex items-center gap-2">
             <Activity className="w-4 h-4" />
             Rev Capacidad
+          </TabsTrigger>
+          <TabsTrigger value="plan_propuesto" className="flex items-center gap-2 font-bold text-indigo-700">
+            <CheckCircle2 className="w-4 h-4" />
+            Plan Propuesto
           </TabsTrigger>
         </TabsList>
 
@@ -306,6 +312,18 @@ export const TacticalPlan2Section: React.FC = () => {
             </CardHeader>
             <CardContent>
               <RevCapacidadTabSection />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="plan_propuesto">
+          <Card>
+            <CardHeader>
+              <CardTitle>Plan de Producción Propuesto (Optimizado)</CardTitle>
+              <CardDescription>Cantidades ajustadas para cumplir con los puestos objetivo por línea.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <PlanPropuestoTabSection />
             </CardContent>
           </Card>
         </TabsContent>
