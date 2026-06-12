@@ -181,6 +181,18 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return String(value);
   }, [safeParseDateParts]);
 
+  const getPageNumbers = (current: number, total: number): (number | '...')[] => {
+    if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+    const pages: (number | '...')[] = [1];
+    const left = Math.max(2, current - 1);
+    const right = Math.min(total - 1, current + 1);
+    if (left > 2) pages.push('...');
+    for (let i = left; i <= right; i++) pages.push(i);
+    if (right < total - 1) pages.push('...');
+    pages.push(total);
+    return pages;
+  };
+
   const fetchBaseData = useCallback(async () => {
     try {
       setIsLoading(true);
@@ -270,7 +282,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
         if (!filters[key]) filters[key] = [];
         
         const val = r.valor_restriccion.trim();
-        // SOPORTE PARA CÓDIGOS SEPARADOS POR & (Ej: 002&009&010)
         if (val.includes('&')) {
           filters[key].push(...val.split('&').map(s => s.trim()));
         } else {
@@ -1216,7 +1227,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
               <div className="space-y-4">
                 <div className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm">
                   <div className="overflow-x-auto border rounded-lg">
-                    <table className="w-full border-collapse">
+                    <table className="min-w-full border-collapse">
                       <thead>
                         <tr className="bg-gray-100 border-b">
                           {maintColumns.map((col) => (
@@ -1239,7 +1250,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
                                 const value = row[col];
                                 const upperCol = col.toUpperCase().replace(/_/g, '');
                                 
-                                // Formateo de fechas
                                 if (upperCol.includes('FECHA')) {
                                   return (
                                     <td key={`${idx}-${col}`} className="px-4 py-3 text-xs font-mono text-blue-700 whitespace-nowrap">
@@ -1248,7 +1258,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
                                   );
                                 }
                                 
-                                // Formateo de estados con Badges
                                 if (upperCol === 'ESTADO' || upperCol === 'STATUS') {
                                   const val = String(value || '').toUpperCase();
                                   const isEjecutado = val.includes('EJEC') || val.includes('OK') || val.includes('TERMINADO');
@@ -1268,7 +1277,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
                                   );
                                 }
 
-                                // Equipo o Máquina
                                 if (upperCol.includes('EQUIPO') || upperCol.includes('MAQUINA')) {
                                   return (
                                     <td key={`${idx}-${col}`} className="px-4 py-3 text-xs font-bold text-gray-900">
@@ -1297,61 +1305,71 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Pagination Controls */}
+                {/* Pagination Controls with Page Numbers */}
                 {maintTotalPages > 1 && (
-                  <div className="flex justify-between items-center mt-6">
+                  <div className="flex flex-col md:flex-row items-center justify-between gap-4 py-3 px-4 bg-gray-50 rounded-lg border border-gray-200 shadow-sm">
                     <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">
-                      Mostrando página {maintCurrentPage} de {maintTotalPages} ({filteredMantenimientosFull.length} registros filtrados por FECHA_PRO)
+                      Página {maintCurrentPage} de {maintTotalPages} ({filteredMantenimientosFull.length} registros)
                     </div>
 
-                    <div className="flex gap-2 items-center">
+                    <div className="flex items-center gap-1">
                       <Button
                         variant="outline"
-                        size="sm"
+                        size="icon"
                         onClick={() => setMaintCurrentPage(1)}
                         disabled={maintCurrentPage === 1 || isLoadingMantenimientos}
-                        className="h-8 w-8 p-0"
+                        className="h-8 w-8"
                       >
                         <ChevronsLeft className="h-4 w-4" />
                       </Button>
 
                       <Button
                         variant="outline"
-                        size="sm"
+                        size="icon"
                         onClick={() => setMaintCurrentPage(prev => Math.max(1, prev - 1))}
                         disabled={maintCurrentPage === 1 || isLoadingMantenimientos}
-                        className="h-8 w-8 p-0"
+                        className="h-8 w-8"
                       >
                         <ChevronLeft className="h-4 w-4" />
                       </Button>
 
-                      <div className="flex items-center gap-2">
-                        <Input
-                          type="number"
-                          min={1}
-                          max={maintTotalPages}
-                          value={maintCurrentPage}
-                          onChange={(e) => setMaintCurrentPage(parseInt(e.target.value) || 1)}
-                          className="w-14 h-8 text-center text-xs font-bold"
-                        />
+                      <div className="flex items-center gap-1 mx-2">
+                        {getPageNumbers(maintCurrentPage, maintTotalPages).map((pageNum, idx) => (
+                          pageNumber === '...' ? (
+                            <span key={`ell-${idx}`} className="px-2 text-gray-400 text-xs font-bold">...</span>
+                          ) : (
+                            <Button
+                              key={`p-${pageNum}`}
+                              variant={maintCurrentPage === pageNum ? "default" : "outline"}
+                              size="sm"
+                              onClick={() => setMaintCurrentPage(pageNum as number)}
+                              className={cn(
+                                "h-8 w-8 p-0 text-xs font-bold",
+                                maintCurrentPage === pageNum ? "bg-primary text-primary-foreground" : "bg-white"
+                              )}
+                            >
+                              {pageNum}
+                            </Button>
+                          )
+                        ))}
                       </div>
 
                       <Button
                         variant="outline"
-                        size="sm"
+                        size="icon"
                         onClick={() => setMaintCurrentPage(prev => Math.min(maintTotalPages, prev + 1))}
                         disabled={maintCurrentPage === maintTotalPages || isLoadingMantenimientos}
-                        className="h-8 w-8 p-0"
+                        className="h-8 w-8"
                       >
                         <ChevronRight className="h-4 w-4" />
                       </Button>
 
                       <Button
                         variant="outline"
-                        size="sm"
+                        size="icon"
                         onClick={() => setMaintCurrentPage(maintTotalPages)}
                         disabled={maintCurrentPage === maintTotalPages || isLoadingMantenimientos}
-                        className="h-8 w-8 p-0"
+                        className="h-8 w-8"
                       >
                         <ChevronsRight className="h-4 w-4" />
                       </Button>
