@@ -1335,7 +1335,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
                       <div className="flex items-center gap-1 mx-2">
                         {getPageNumbers(maintCurrentPage, maintTotalPages).map((pageNum, idx) => (
-                          pageNumber === '...' ? (
+                          pageNum === '...' ? (
                             <span key={`ell-${idx}`} className="px-2 text-gray-400 text-xs font-bold">...</span>
                           ) : (
                             <Button
