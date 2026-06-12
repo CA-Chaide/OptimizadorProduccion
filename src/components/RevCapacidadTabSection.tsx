@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -13,13 +12,11 @@ import {
   Calendar as CalendarIcon, 
   Download,
   AlertCircle,
-  Clock,
-  TrendingUp,
   Target,
   ArrowRightLeft
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import * as XLSX from 'xlsx';
@@ -34,6 +31,7 @@ interface SummaryRow {
   totalCantidad: number;
   totalTiempo: number;
   puestosObjetivo: number;
+  puestosOptimizados: number;
 }
 
 const normalizeDateISO = (dateStr: any): string | null => {
@@ -61,6 +59,14 @@ const RESTRICCIONES_PUESTOS: Record<string, number> = {
   'LINEA 5|Armado': 2,
 };
 
+// Puestos que mandan el ritmo para el balanceo
+const PUESTOS_REFERENCIA: Record<string, string> = {
+  'LINEA 1': 'Armado',
+  'LINEA 2': 'Armado',
+  'LINEA 3': 'Armado',
+  'LINEA 5': 'Armado',
+};
+
 export const RevCapacidadTabSection: React.FC = () => {
   const inspector = useRuntimeInspector('RevCapacidadTab');
   const { addNotification } = useAppContext();
@@ -71,19 +77,20 @@ export const RevCapacidadTabSection: React.FC = () => {
   const [availableCenters, setAvailableCenters] = useState<string[]>([]);
   const [selectedCenter, setSelectedCenter] = useState<string>("1000");
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isMounted, setIsMounted] = useState(false);
   
   const [programmingDate, setProgrammingDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [provisionalDate, setProvisionalDate] = useState<string>(new Date().toISOString().split('T')[0]);
-
   const [horasTurno1, setHorasTurno1] = useState<number>(8);
   const [horasTurno2, setHorasTurno2] = useState<number>(8);
-
   const [rendLinea1, setRendLinea1] = useState<number>(1.05);
   const [rendLinea2, setRendLinea2] = useState<number>(1.08);
   const [rendLinea3, setRendLinea3] = useState<number>(1.05);
   const [rendLinea5, setRendLinea5] = useState<number>(1.05);
 
   const hourOptions = Array.from({ length: 9 }, (_, i) => i + 4);
+
+  useEffect(() => setIsMounted(true), []);
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
@@ -94,14 +101,14 @@ export const RevCapacidadTabSection: React.FC = () => {
         serviciosService.OrdenesProvisionalesAlphaPaginados(1, 10000)
       ]);
 
-      const centersFromGroups = [...new Set((groupsRes?.data || []).map((g: any) => String(g.centro).trim()))].sort();
-      setAvailableCenters(centersFromGroups);
-      if (centersFromGroups.length > 0 && !selectedCenter) setSelectedCenter(centersFromGroups[0]);
+      const centers = [...new Set((groupsRes?.data || []).map((g: any) => String(g.centro).trim()))].sort();
+      setAvailableCenters(centers);
+      if (centers.length > 0 && !selectedCenter) setSelectedCenter(centers[0]);
 
       let allTiempos: any[] = [];
       let page = 1;
       let hasMore = true;
-      while (hasMore && page <= 10) {
+      while (hasMore && page <= 5) {
         const response = await serviciosService.getTiemposEnsamblado(page, 5000);
         const raw = Array.isArray(response?.data) ? response.data : [];
         allTiempos = [...allTiempos, ...raw];
@@ -140,7 +147,7 @@ export const RevCapacidadTabSection: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [addNotification, selectedCenter, technicalData.length]);
+  }, [addNotification, selectedCenter]);
 
   useEffect(() => {
     loadData();
@@ -196,7 +203,8 @@ export const RevCapacidadTabSection: React.FC = () => {
           cantOrdFab: 0, cantOrdPrev: 0, 
           tiempoOrdFab: 0, tiempoOrdPrev: 0,
           totalCantidad: 0, totalTiempo: 0,
-          puestosObjetivo: RESTRICCIONES_PUESTOS[key] || 0
+          puestosObjetivo: RESTRICCIONES_PUESTOS[key] || 0,
+          puestosOptimizados: 0
         });
       }
 
@@ -224,20 +232,43 @@ export const RevCapacidadTabSection: React.FC = () => {
       entry.totalTiempo = entry.tiempoOrdFab + entry.tiempoOrdPrev;
     });
 
-    return Array.from(map.values()).sort((a, b) => a.linea.localeCompare(b.linea) || a.puesto.localeCompare(b.puesto));
-  }, [technicalData, selectedCenter, fertSumMap, prevSumMap, rendLinea1, rendLinea2, rendLinea3, rendLinea5]);
+    const rows = Array.from(map.values());
+
+    // CALCULO DE PUESTOS OPTIMIZADOS (BASADO EN BALANCEO POR PUESTO DE REFERENCIA)
+    const lineFactors = new Map<string, number>();
+    const linesFound = [...new Set(rows.map(r => r.linea))];
+
+    linesFound.forEach(lName => {
+      const refPuesto = PUESTOS_REFERENCIA[lName];
+      const refRow = rows.find(r => r.linea === lName && r.puesto === refPuesto);
+      if (refRow && refRow.totalTiempo > 0) {
+        const currentCalculated = refRow.totalTiempo / horasTurno1;
+        const target = refRow.puestosObjetivo;
+        lineFactors.set(lName, target / currentCalculated);
+      } else {
+        lineFactors.set(lName, 1);
+      }
+    });
+
+    return rows.map(r => {
+      const factor = lineFactors.get(r.linea) || 1;
+      return {
+        ...r,
+        puestosOptimizados: (r.totalTiempo / horasTurno1) * factor
+      };
+    }).sort((a, b) => a.linea.localeCompare(b.linea) || a.puesto.localeCompare(b.puesto));
+  }, [technicalData, selectedCenter, fertSumMap, prevSumMap, rendLinea1, rendLinea2, rendLinea3, rendLinea5, horasTurno1]);
 
   const grandTotals = useMemo(() => {
     return summaryData.reduce((acc, r) => ({
       cantFab: acc.cantFab + r.cantOrdFab,
       cantPrev: acc.cantPrev + r.cantOrdPrev,
-      timeFab: acc.timeFab + r.tiempoOrdFab,
-      timePrev: acc.timePrev + r.tiempoOrdPrev,
       totalCant: acc.totalCant + r.totalCantidad,
       totalTime: acc.totalTime + r.totalTiempo,
       totalPuestos: acc.totalPuestos + (r.totalTiempo / horasTurno1),
-      totalObjetivo: acc.totalObjetivo + r.puestosObjetivo
-    }), { cantFab: 0, cantPrev: 0, timeFab: 0, timePrev: 0, totalCant: 0, totalTime: 0, totalPuestos: 0, totalObjetivo: 0 });
+      totalObjetivo: acc.totalObjetivo + r.puestosObjetivo,
+      totalOptimizados: acc.totalOptimizados + r.puestosOptimizados
+    }), { cantFab: 0, cantPrev: 0, totalCant: 0, totalTime: 0, totalPuestos: 0, totalObjetivo: 0, totalOptimizados: 0 });
   }, [summaryData, horasTurno1]);
 
   return (
@@ -260,13 +291,14 @@ export const RevCapacidadTabSection: React.FC = () => {
                 onClick={() => {
                     const ws = XLSX.utils.json_to_sheet(summaryData.map(r => ({
                     'Línea': r.linea, 'Puesto Trabajo': r.puesto,
-                    'Cant ordFab': r.cantOrdFab, 'Cant ordPrev': r.cantOrdPrev,
+                    'Total Cant': r.totalCantidad,
                     'Total Tiempo (h)': r.totalTiempo.toFixed(2),
                     'No. Puestos': (r.totalTiempo / horasTurno1).toFixed(2),
-                    'Puestos Objetivo': r.puestosObjetivo
+                    'Puestos Objetivo': r.puestosObjetivo,
+                    'Puestos Optimizados': r.puestosOptimizados.toFixed(2)
                     })));
                     const wb = XLSX.utils.book_new();
-                    XLSX.utils.book_append_sheet(wb, ws, "Resumen");
+                    XLSX.utils.book_append_sheet(wb, ws, "Capacidad");
                     XLSX.writeFile(wb, `Capacidad_${selectedCenter}.xlsx`);
                 }} 
                 disabled={summaryData.length === 0}
@@ -337,10 +369,11 @@ export const RevCapacidadTabSection: React.FC = () => {
                   <th className="px-4 py-3 text-right border bg-indigo-50/30">Total Tiempo (h)</th>
                   <th className="px-4 py-3 text-right border text-blue-700 bg-blue-50/30">No. Puestos</th>
                   <th className="px-4 py-3 text-right border text-indigo-700 bg-indigo-50/30">Puestos Objetivo</th>
+                  <th className="px-4 py-3 text-right border text-purple-700 bg-purple-50/30">Puestos Optimizados</th>
                   <th className="px-4 py-3 text-right border">Diferencia (±)</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody className="divide-y divide-gray-100">
                 {summaryData.length > 0 ? (() => {
                   const items: React.ReactNode[] = [];
                   const lines = [...new Set(summaryData.map(r => r.linea))];
@@ -359,18 +392,21 @@ export const RevCapacidadTabSection: React.FC = () => {
                           <td className="px-4 py-3 text-right font-bold border bg-indigo-50/5">{r.totalCantidad.toLocaleString()}</td>
                           <td className="px-4 py-3 text-right font-bold border bg-indigo-50/5">{r.totalTiempo.toFixed(2)}</td>
                           <td className="px-4 py-3 text-right font-bold border text-blue-700 bg-blue-50/5">
-                            {calculatedPuestos}
+                            {isMounted ? calculatedPuestos.toFixed(2) : '-'}
                           </td>
                           <td className="px-4 py-3 text-right font-bold border text-indigo-700 bg-indigo-50/10">
                             <span className="inline-flex items-center gap-1">
                                 <Target className="w-3 h-3 opacity-50" /> {r.puestosObjetivo}
                             </span>
                           </td>
+                          <td className="px-4 py-3 text-right font-bold border text-purple-700 bg-purple-50/10">
+                            {isMounted ? r.puestosOptimizados.toFixed(2) : '-'}
+                          </td>
                           <td className={cn(
                             "px-4 py-3 text-right font-bold border",
                             delta < 0 ? "text-red-600 bg-red-50" : delta > 0 ? "text-green-600 bg-green-50" : "text-gray-400"
                           )}>
-                            {delta > 0 ? `+${delta.toFixed(2)}` : delta.toFixed(2)}
+                            {isMounted ? (delta > 0 ? `+${delta.toFixed(2)}` : delta.toFixed(2)) : '-'}
                           </td>
                         </tr>
                       );
@@ -378,7 +414,7 @@ export const RevCapacidadTabSection: React.FC = () => {
                   });
                   return items;
                 })() : (
-                  <tr><td colSpan={9} className="px-6 py-12 text-center text-gray-400 italic">Sin datos disponibles.</td></tr>
+                  <tr><td colSpan={10} className="px-6 py-12 text-center text-gray-400 italic">Sin datos disponibles.</td></tr>
                 )}
               </tbody>
               {summaryData.length > 0 && (
@@ -390,13 +426,16 @@ export const RevCapacidadTabSection: React.FC = () => {
                     <td className="px-4 py-3 text-right font-mono border-r border-gray-700 text-indigo-300">{grandTotals.totalCant.toLocaleString()}</td>
                     <td className="px-4 py-3 text-right font-mono border-r border-gray-700 text-indigo-300">{grandTotals.totalTime.toFixed(2)}</td>
                     <td className="px-4 py-3 text-right font-mono text-blue-300 border-r border-gray-700">
-                      {grandTotals.totalPuestos.toFixed(2)}
+                      {isMounted ? grandTotals.totalPuestos.toFixed(2) : '-'}
                     </td>
                     <td className="px-4 py-3 text-right font-mono text-indigo-300 border-r border-gray-700">
-                        {summaryData.reduce((sum, r) => sum + r.puestosObjetivo, 0)}
+                        {grandTotals.totalObjetivo}
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono text-purple-300 border-r border-gray-700">
+                        {isMounted ? grandTotals.totalOptimizados.toFixed(2) : '-'}
                     </td>
                     <td className="px-4 py-3 text-right">
-                        {(summaryData.reduce((sum, r) => sum + r.puestosObjetivo, 0) - grandTotals.totalPuestos).toFixed(2)}
+                        {isMounted ? (grandTotals.totalObjetivo - grandTotals.totalPuestos).toFixed(2) : '-'}
                     </td>
                   </tr>
                 </tfoot>
