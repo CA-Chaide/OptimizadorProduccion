@@ -629,22 +629,17 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const filteredMantenimientosFull = useMemo(() => {
     let result = [...mantenimientosData];
 
-    const allowedResps = (externalFilters['RESPCTRLPROD'] || []).map(r => r.padStart(3, '0'));
-    
-    if (allowedResps.length > 0) {
-      result = result.filter(m => {
-        const respKey = Object.keys(m).find(k => {
-          const uk = k.toUpperCase().replace(/_/g, '');
-          return uk === 'RESPCONTROLPROD' || uk === 'RESPCTRLPROD' || uk === 'RESPONSABLE';
-        });
+    // FILTRO POR ÁREA DE FORROS (Instrucción: quitar filtro por responsable y filtrar por AREA forros)
+    result = result.filter(m => {
+      // Buscar la clave de área de forma flexible
+      const areaKey = Object.keys(m).find(k => k.toUpperCase().trim() === 'AREA');
+      if (!areaKey) return true; // Si no existe la columna área en este registro, lo dejamos pasar por ahora
+      
+      const areaVal = String(m[areaKey] || '').toUpperCase().trim();
+      return areaVal.includes('FORRO');
+    });
 
-        if (!respKey) return true; 
-        
-        const val = String(m[respKey] || '').trim().padStart(3, '0');
-        return allowedResps.includes(val);
-      });
-    }
-
+    // Ordenar cronológicamente por FECHA_PRO
     result.sort((a, b) => {
       const dateA = new Date(a.FECHA_PRO || a.FECHA_INICIO || a.FECHA || 0).getTime();
       const dateB = new Date(b.FECHA_PRO || b.FECHA_INICIO || b.FECHA || 0).getTime();
@@ -652,7 +647,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     });
 
     return result;
-  }, [mantenimientosData, externalFilters]);
+  }, [mantenimientosData]);
 
   const maintTotalPages = Math.max(1, Math.ceil(filteredMantenimientosFull.length / MAINT_ROWS_PER_PAGE));
   const paginatedMantenimientos = useMemo(() => {
