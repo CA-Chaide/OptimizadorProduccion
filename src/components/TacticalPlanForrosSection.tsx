@@ -31,7 +31,7 @@ import {
   Wrench
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@radix-ui/react-tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -629,15 +629,16 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const filteredMantenimientosFull = useMemo(() => {
     let result = [...mantenimientosData];
 
-    // FILTRO POR ÁREA DE FORROS (Instrucción: quitar filtro por responsable y filtrar por AREA forros)
-    result = result.filter(m => {
-      // Buscar la clave de área de forma flexible
-      const areaKey = Object.keys(m).find(k => k.toUpperCase().trim() === 'AREA');
-      if (!areaKey) return true; // Si no existe la columna área en este registro, lo dejamos pasar por ahora
-      
-      const areaVal = String(m[areaKey] || '').toUpperCase().trim();
-      return areaVal.includes('FORRO');
-    });
+    // FILTRO POR RESPONSABLE DE FORROS (SEGÚN RESTRICCIÓN)
+    const allowedResps = externalFilters['RESPCTRLPROD'] || [];
+    if (allowedResps.length > 0) {
+      result = result.filter(m => {
+        const respKey = Object.keys(m).find(k => k.toUpperCase().trim() === 'RESP_CONTROL_PROD' || k.toUpperCase().trim() === 'RESPONSABLE');
+        if (!respKey) return true;
+        const val = String(m[respKey] || '').trim().padStart(3, '0');
+        return allowedResps.includes(val);
+      });
+    }
 
     // Ordenar cronológicamente por FECHA_PRO
     result.sort((a, b) => {
@@ -647,13 +648,29 @@ export const TacticalPlanForrosSection: React.FC = () => {
     });
 
     return result;
-  }, [mantenimientosData]);
+  }, [mantenimientosData, externalFilters]);
 
   const maintTotalPages = Math.max(1, Math.ceil(filteredMantenimientosFull.length / MAINT_ROWS_PER_PAGE));
   const paginatedMantenimientos = useMemo(() => {
     const start = (maintCurrentPage - 1) * MAINT_ROWS_PER_PAGE;
     return filteredMantenimientosFull.slice(start, start + MAINT_ROWS_PER_PAGE);
   }, [filteredMantenimientosFull, maintCurrentPage]);
+
+  // COLUMNAS DE MANTENIMIENTO ORDENADAS (FECHA AL INICIO)
+  const maintColumnsSorted = useMemo(() => {
+    if (maintColumns.length === 0) return [];
+    
+    // Identificar la columna de fecha de programación
+    const dateCol = maintColumns.find(c => {
+      const norm = c.toUpperCase().replace(/_/g, '');
+      return norm === 'FECHAPRO' || norm === 'FECHAPROGRAMACION';
+    }) || maintColumns.find(c => c.toUpperCase().includes('FECHA'));
+
+    if (!dateCol) return maintColumns;
+
+    // Crear nueva lista con la fecha primero
+    return [dateCol, ...maintColumns.filter(c => c !== dateCol)];
+  }, [maintColumns]);
 
   const chnBasesDateTotals = useMemo(() => {
     const filteredForTab = dailyOrders.filter(order => {
@@ -1210,7 +1227,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                   <CardTitle>Mantenimientos Preventivos Programados</CardTitle>
-                  <CardDescription>Paros técnicos organizados por fecha de programación (FECHA_PRO) y filtrados para el área de Forros.</CardDescription>
+                  <CardDescription>Paros técnicos organizados cronológicamente y filtrados para el área de Forros (según RespCtrlProd).</CardDescription>
                 </div>
                 <Button variant="outline" size="sm" onClick={fetchMantenimientos} disabled={isLoadingMantenimientos}>
                   <RefreshCw className={cn("h-4 w-4 mr-2", isLoadingMantenimientos && "animate-spin")} />
@@ -1223,9 +1240,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 <div className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm">
                   <div className="overflow-x-auto border rounded-lg">
                     <table className="min-w-full border-collapse">
-                      <thead>
-                        <tr className="bg-gray-100 border-b">
-                          {maintColumns.map((col) => (
+                      <thead className="bg-gray-100 border-b">
+                        <tr>
+                          {maintColumnsSorted.map((col) => (
                             <th
                               key={`maint-col-${col}`}
                               className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase whitespace-nowrap"
@@ -1237,17 +1254,17 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-100">
                         {isLoadingMantenimientos ? (
-                          <tr><td colSpan={maintColumns.length || 6} className="py-24 text-center"><Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" /></td></tr>
+                          <tr><td colSpan={maintColumnsSorted.length || 6} className="py-24 text-center"><Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" /></td></tr>
                         ) : paginatedMantenimientos.length > 0 ? (
                           paginatedMantenimientos.map((row, idx) => (
                             <tr key={`maint-row-${idx}`} className="hover:bg-blue-50/20 transition-colors">
-                              {maintColumns.map((col) => {
+                              {maintColumnsSorted.map((col) => {
                                 const value = row[col];
                                 const upperCol = col.toUpperCase().replace(/_/g, '');
                                 
                                 if (upperCol.includes('FECHA')) {
                                   return (
-                                    <td key={`${idx}-${col}`} className="px-4 py-3 text-xs font-mono text-blue-700 whitespace-nowrap">
+                                    <td key={`${idx}-${col}`} className="px-4 py-3 text-xs font-mono font-bold text-blue-700 whitespace-nowrap">
                                       {formatValueForDisplay(col, value)}
                                     </td>
                                   );
@@ -1256,14 +1273,14 @@ export const TacticalPlanForrosSection: React.FC = () => {
                                 if (upperCol === 'ESTADO' || upperCol === 'STATUS') {
                                   const val = String(value || '').toUpperCase();
                                   const isEjecutado = val.includes('EJEC') || val.includes('OK') || val.includes('TERMINADO');
-                                  const isProgramado = val.includes('PROG');
+                                  const isEnProceso = val.includes('PROC') || val.includes('CURSO');
                                   
                                   return (
                                     <td key={`${idx}-${col}`} className="px-4 py-3">
                                       <Badge variant="outline" className={cn(
                                         "font-bold text-[10px] px-2 py-0.5",
                                         isEjecutado ? "bg-green-50 text-green-700 border-green-200" :
-                                        isProgramado ? "bg-blue-50 text-blue-700 border-blue-200" :
+                                        isEnProceso ? "bg-blue-50 text-blue-700 border-blue-200" :
                                         "bg-amber-50 text-amber-700 border-amber-200"
                                       )}>
                                         {val || 'PROGRAMADO'}
@@ -1274,7 +1291,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
                                 if (upperCol.includes('EQUIPO') || upperCol.includes('MAQUINA')) {
                                   return (
-                                    <td key={`${idx}-${col}`} className="px-4 py-3 text-xs font-bold text-gray-900">
+                                    <td key={`${idx}-${col}`} className="px-4 py-3 text-xs font-mono font-bold text-gray-900">
                                       {String(value ?? '—')}
                                     </td>
                                   );
@@ -1290,8 +1307,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
                           ))
                         ) : (
                           <tr>
-                            <td colSpan={maintColumns.length || 6} className="text-center py-20 text-gray-500 italic">
-                              No hay registros de mantenimientos preventivos programados para esta área.
+                            <td colSpan={maintColumnsSorted.length || 6} className="text-center py-20 text-gray-500 italic">
+                              No hay registros de mantenimientos programados para los responsables técnicos de Forros.
                             </td>
                           </tr>
                         )}
@@ -1304,7 +1321,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 {maintTotalPages > 1 && (
                   <div className="flex flex-col md:flex-row items-center justify-between gap-4 py-3 px-4 bg-gray-50 rounded-lg border border-gray-200 shadow-sm">
                     <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">
-                      Página {maintCurrentPage} de {maintTotalPages} ({filteredMantenimientosFull.length} registros)
+                      Mostrando página {maintCurrentPage} de {maintTotalPages} ({filteredMantenimientosFull.length} registros)
                     </div>
 
                     <div className="flex items-center gap-1">
@@ -1340,7 +1357,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                               onClick={() => setMaintCurrentPage(pageNum as number)}
                               className={cn(
                                 "h-8 w-8 p-0 text-xs font-bold",
-                                maintCurrentPage === pageNum ? "bg-primary text-primary-foreground" : "bg-white"
+                                maintCurrentPage === pageNum ? "bg-primary text-primary-foreground shadow-sm" : "bg-white hover:bg-gray-100"
                               )}
                             >
                               {pageNum}
