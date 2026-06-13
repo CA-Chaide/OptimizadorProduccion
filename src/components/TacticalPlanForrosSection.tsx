@@ -45,7 +45,7 @@ interface WorkstationConfig {
 /**
  * Componente: MachineCard
  * Representa el estado y carga de una estación de trabajo específica.
- * Ahora con diseño claro y columna HR en el listado.
+ * Ahora con diseño claro (Indigo-50) y columna HR en la tabla de órdenes.
  */
 const MachineCard = ({ 
   puestoName, 
@@ -79,7 +79,7 @@ const MachineCard = ({
       "flex border border-slate-200 rounded-3xl overflow-hidden shadow-sm bg-white transition-all hover:shadow-lg",
       small ? "h-[420px]" : "h-[480px]"
     )}>
-      {/* PANEL IZQUIERDO - DISEÑO CLARO */}
+      {/* PANEL IZQUIERDO - DISEÑO CLARO (INDIGO-50) */}
       <div className={cn(
         "bg-indigo-50/50 p-6 text-slate-900 flex flex-col border-r border-indigo-100",
         small ? "w-[42%]" : "w-[38%]"
@@ -90,7 +90,7 @@ const MachineCard = ({
               <Cpu className="w-5 h-5 text-indigo-600" />
               {puestoName}
             </h3>
-            {/* BADGE HR MÁS VISIBLE */}
+            {/* BADGE HR MÁS VISIBLE EN LA ESQUINA */}
             <Badge className="bg-indigo-600 text-white font-black text-[10px] uppercase tracking-widest px-3 py-1 rounded-lg border-none shadow-md shadow-indigo-200">
               {hrCode}
             </Badge>
@@ -139,7 +139,7 @@ const MachineCard = ({
         </div>
       </div>
       
-      {/* PANEL DERECHO - TABLA DE ÓRDENES */}
+      {/* PANEL DERECHO - TABLA DE ÓRDENES CON COLUMNA HR */}
       <div className="flex-1 p-6 flex flex-col bg-slate-50/50">
         <div className="flex items-center justify-between mb-4">
           <h4 className="text-[11px] font-black text-slate-800 uppercase tracking-[0.25em] flex items-center gap-2">
@@ -163,8 +163,8 @@ const MachineCard = ({
                 const t = calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || 0), o) / 60;
                 return (
                   <tr key={i} className="hover:bg-indigo-50/30 transition-colors">
-                    <td className="px-4 py-3 font-mono font-bold text-slate-700 truncate max-w-[100px]" title={o['CodMaterial'] || normalizeMaterialCode(o['MATERIAL'])}>{o['CodMaterial'] || normalizeMaterialCode(o['MATERIAL'])}</td>
-                    <td className="px-4 py-3 text-slate-600 truncate max-w-[180px]" title={o['NOMBRE'] || o['TEXTOMATERIAL']}>{o['NOMBRE'] || o['TEXTOMATERIAL'] || '—'}</td>
+                    <td className="px-4 py-3 font-mono font-bold text-slate-700 truncate max-w-[80px]" title={o['CodMaterial'] || normalizeMaterialCode(o['MATERIAL'])}>{o['CodMaterial'] || normalizeMaterialCode(o['MATERIAL'])}</td>
+                    <td className="px-4 py-3 text-slate-600 truncate max-w-[150px]" title={o['NOMBRE'] || o['TEXTOMATERIAL']}>{o['NOMBRE'] || o['TEXTOMATERIAL'] || '—'}</td>
                     <td className="px-4 py-3 font-bold text-indigo-700 bg-indigo-50/20">{hrCode}</td>
                     <td className="px-4 py-3 text-right font-mono font-black text-slate-800">{Number(o['CANTIDAD'] || 0).toLocaleString()}</td>
                     <td className="px-4 py-3 text-right font-mono font-black text-indigo-600 bg-indigo-50/30">{t.toFixed(2)}</td>
@@ -202,11 +202,9 @@ const TableKPI = ({
             <CardDescription className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-1">Base de datos de Tiempos por Material y Puesto</CardDescription>
           </div>
         </div>
-        <div className="flex gap-3">
-           <div className="bg-white/5 border border-white/10 rounded-2xl px-5 py-3 text-center">
-              <span className="block text-[8px] text-slate-500 uppercase font-black tracking-widest">Registros</span>
-              <span className="text-xl font-mono font-black text-sky-400">{tiemposProduccion.length}</span>
-           </div>
+        <div className="bg-white/5 border border-white/10 rounded-2xl px-5 py-3 text-center">
+          <span className="block text-[8px] text-slate-500 uppercase font-black tracking-widest">Registros</span>
+          <span className="text-xl font-mono font-black text-sky-400">{tiemposProduccion.length}</span>
         </div>
       </div>
     </CardHeader>
@@ -274,8 +272,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   const NOCTURNA_OPTIONS = [
     { label: "Sin Jornada Nocturna", value: "0" },
-    { label: "21:00 - 05:30 (8.5h)", value: "8.5" },
-    { label: "19:00 - 05:30 (10.5h)", value: "10.5" }
+    { label: "19:00 - 05:30 (10.5h)", value: "10.5" },
+    { label: "21:00 - 05:30 (8.5h)", value: "8.5" }
   ];
 
   const horasNetasDiurnas = useMemo(() => parseFloat(jornadaDiurnaSel || "0") * 0.84, [jornadaDiurnaSel]);
@@ -290,9 +288,11 @@ export const TacticalPlanForrosSection: React.FC = () => {
     const pn = String(puestoName || '').toUpperCase().trim();
     if (!pn || pn === '—' || pn === 'NULL') return '';
     
+    // Reglas de negocio explícitas
     if (pn === 'ACOLCHADORA09') return 'HR-ACH09';
     if (pn === 'COSEDORA-ACH02') return 'HR-PEF02';
 
+    // Búsqueda en maestros
     const match = tiemposProduccion.find(t => {
       const tp = String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').toUpperCase().trim();
       return tp === pn;
@@ -303,10 +303,11 @@ export const TacticalPlanForrosSection: React.FC = () => {
       if (hr && hr.startsWith('HR-')) return hr;
     }
 
+    // Deducción automática por sufijo numérico
     const numMatch = pn.match(/\d+/);
     const num = numMatch ? numMatch[0].padStart(2, '0') : '';
-    if (pn.includes('COSEDORA') || pn.includes('PEGADORA')) return `HR-PEF${num}`;
-    if (pn.includes('ACOLCHADORA')) return `HR-ACH${num}`;
+    if (pn.includes('COSEDORA') || pn.includes('PEGADORA') || pn.includes('PEF')) return `HR-PEF${num}`;
+    if (pn.includes('ACOLCHADORA') || pn.includes('ACH')) return `HR-ACH${num}`;
     
     return pn.startsWith('HR-') ? pn : `HR-${pn}`;
   }, [tiemposProduccion]);
@@ -462,7 +463,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
     setWorkstationConfigs(prev => ({ ...prev, [p]: { ...prev[p], [field]: value } }));
   };
 
-  if (!isMounted) return null;
+  // Hydration guard: ensures identical first render on server and client
+  if (!isMounted) {
+    return null;
+  }
 
   return (
     <div className="p-6 md:p-8 space-y-6 bg-slate-50/40 min-h-screen font-body" suppressHydrationWarning>
