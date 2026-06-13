@@ -99,10 +99,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
   // PERSONAL & TURNOS
   const [workstationConfigs, setWorkstationConfigs] = useState<Record<string, WorkstationConfig>>({});
 
-  // FECHAS & HORIZONTE
-  const [todayDate, setTodayDate] = useState<string>('');
-  const [targetDate, setTargetDate] = useState<string>('');
-
   useEffect(() => {
     setIsMounted(true);
   }, []);
@@ -209,16 +205,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     const forrosGroupIds = new Set(forrosGruposList.map(g => g.codigo_grupo));
     return restricciones.filter(r => forrosGroupIds.has(r.codigo_grupo));
   }, [forrosGruposList, restricciones]);
-
-  useEffect(() => {
-    if (isMounted) {
-      const today = new Date();
-      const target = new Date();
-      target.setDate(today.getDate() + 1);
-      setTodayDate(today.toISOString().split('T')[0]);
-      setTargetDate(target.toISOString().split('T')[0]);
-    }
-  }, [isMounted]);
 
   const externalFilters = useMemo(() => {
     const filters: Record<string, string[]> = {};
@@ -330,7 +316,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     
     // 1. Agregar Hojas de Ruta reales de los maestros técnicos
     tiemposProduccion.forEach(t => {
-      const dbHr = String(t.HojaRuta || t['HOJA DE RUTA'] || '').trim().toUpperCase();
+      const dbHr = String(t.HojaRuta || t['HOJA DE RUTA'] || mapToHojaRuta(String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || ''))).trim().toUpperCase();
       if (dbHr && dbHr.startsWith('HR')) {
         wsSet.add(dbHr);
       } else {
@@ -686,6 +672,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
                         return dbHr === ws;
                       });
                       
+                      const friendlyName = matches.length > 0 
+                        ? String(matches[0].PuestoTrabajo || matches[0].nombre_estacion || matches[0].Maquina || ws).trim().toUpperCase()
+                        : ws;
+
                       const avgHrMin = matches.length > 0 ? matches.reduce((sum, t) => sum + Number(t.Tiempo || t.Tiempo_Min || 0), 0) / matches.length : 0;
                       const totalTimeHours = orders.reduce((sum, o) => sum + calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || 0), o), 0) / 60;
                       
@@ -697,7 +687,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       return (
                         <tr key={idx} className="hover:bg-slate-50 transition-all group">
                           <td className="px-8 py-5 font-mono font-black text-indigo-700 bg-indigo-50/20">{ws}</td>
-                          <td className="px-8 py-5 font-black text-slate-900 uppercase">{ws}</td>
+                          <td className="px-8 py-5 font-black text-slate-900 uppercase">{friendlyName}</td>
                           <td className="px-8 py-5 text-center font-mono font-bold text-slate-400">{avgHrMin.toFixed(2)}</td>
                           <td className="px-8 py-5 text-right font-mono font-black text-slate-800">{totalUnits.toLocaleString()}</td>
                           <td className="px-8 py-5 text-right font-mono font-black text-indigo-700 bg-indigo-50/40">{totalTimeHours.toFixed(2)}h</td>
