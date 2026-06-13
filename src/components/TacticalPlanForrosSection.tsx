@@ -137,11 +137,16 @@ export const TacticalPlanForrosSection: React.FC = () => {
       setGrupos(gRes.data || []);
       setRestricciones(rRes.data || []);
       
-      const forrosGroup = gRes.data?.find((g: any) => g.nombre_grupo.toUpperCase().includes('FORRO'));
-      if (forrosGroup) {
-        const groupRest = rRes.data?.filter((r: any) => r.codigo_grupo === forrosGroup.codigo_grupo) || [];
-        const hTrabajo = groupRest.find((r: any) => r.nombre_restriccion === 'HORAS_TRABAJO');
-        const hExtras = groupRest.find((r: any) => r.nombre_restriccion === 'MAX_EXTRAS_HORAS');
+      // Filtrar por grupos relacionados con Forros y procesos asociados
+      const relevantGroups = gRes.data?.filter((g: any) => {
+        const name = g.nombre_grupo.toUpperCase();
+        return name.includes('FORRO') || name.includes('ACOLCHADO') || name.includes('TAPAS') || name.includes('BANDA');
+      }) || [];
+
+      if (relevantGroups.length > 0) {
+        const firstGroupRest = rRes.data?.filter((r: any) => r.codigo_grupo === relevantGroups[0].codigo_grupo) || [];
+        const hTrabajo = firstGroupRest.find((r: any) => r.nombre_restriccion === 'HORAS_TRABAJO');
+        const hExtras = firstGroupRest.find((r: any) => r.nombre_restriccion === 'MAX_EXTRAS_HORAS');
         if (hTrabajo) setJornadaDiurnaSel(parseFloat(hTrabajo.valor_restriccion).toFixed(1));
         if (hExtras) setMaxExtrasPermitidas(parseInt(hExtras.valor_restriccion));
       }
@@ -283,15 +288,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
   }, [forrosRestricciones]);
 
-  const uniqueWorkstations = useMemo(() => {
-    const wsSet = new Set<string>();
-    tiemposProduccion.forEach(t => {
-      const ws = String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').trim().toUpperCase();
-      if (ws && ws !== 'NULL' && ws !== '-') wsSet.add(ws);
-    });
-    return Array.from(wsSet).sort();
-  }, [tiemposProduccion]);
-
   const getResolvedMachine = useCallback((order: any) => {
     const orderFields = ['MAQUINA', 'Maquina', 'PuestoTrabajo'];
     for (const k of orderFields) {
@@ -305,6 +301,25 @@ export const TacticalPlanForrosSection: React.FC = () => {
     const match = tiemposProduccion.find(t => normalizeMaterialCode(t.CodMaterial || t.Material || '') === material);
     return match ? String(match.PuestoTrabajo || match.nombre_estacion || match.Maquina || '').trim().toUpperCase() : '';
   }, [tiemposProduccion, normalizeMaterialCode]);
+
+  // DETECCION ROBUSTA DE PUESTOS (Hibrido: Maestro + Buffer)
+  const uniqueWorkstations = useMemo(() => {
+    const wsSet = new Set<string>();
+    
+    // De los maestros técnicos
+    tiemposProduccion.forEach(t => {
+      const ws = String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').trim().toUpperCase();
+      if (ws && ws !== 'NULL' && ws !== '-' && ws !== '—') wsSet.add(ws);
+    });
+
+    // De las órdenes actuales (por si hay órdenes en máquinas no mapeadas aún)
+    dailyOrders.forEach(o => {
+      const ws = getResolvedMachine(o);
+      if (ws && ws !== 'Z_SIN_MAQUINA' && ws !== '') wsSet.add(ws);
+    });
+
+    return Array.from(wsSet).sort();
+  }, [tiemposProduccion, dailyOrders, getResolvedMachine]);
 
   const calculateProductionTime = useCallback((material: string, quantity: number, order: any) => {
     if (!material) return 0;
@@ -640,7 +655,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
           <TabsTrigger value="mantenimiento" className="flex items-center gap-2.5 px-7 py-4 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[11px] font-black uppercase tracking-widest text-slate-500 group">
             <Wrench className="w-4 h-4 group-data-[state=active]:text-sky-400" /> Mantenimiento
           </TabsTrigger>
-          <TabsTrigger value="personal-turnos" className="flex items-center gap-2.5 px-7 py-4 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[11px] font-black uppercase tracking-widest text-slate-500 group">
+          <TabsTrigger value="personal-turnos" className="flex items-center gap-2 px-7 py-4 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[11px] font-black uppercase tracking-widest text-slate-500 group">
             <UserPlus className="w-4 h-4 group-data-[state=active]:text-sky-400" /> Capacidad
           </TabsTrigger>
         </TabsList>
@@ -681,7 +696,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 bg-white">
-                    {uniqueWorkstations.map((ws, idx) => {
+                    {uniqueWorkstations.length > 0 ? uniqueWorkstations.map((ws, idx) => {
                       const orders = dailyOrders.filter(o => getResolvedMachine(o) === ws);
                       const totalUnits = orders.reduce((sum, o) => sum + Number(o['CANTIDAD'] || 0), 0);
                       
@@ -743,7 +758,16 @@ export const TacticalPlanForrosSection: React.FC = () => {
                           </td>
                         </tr>
                       );
-                    })}
+                    }) : (
+                      <tr>
+                        <td colSpan={8} className="py-32 text-center">
+                          <div className="flex flex-col items-center gap-3">
+                            <Loader2 className="w-8 h-8 animate-spin text-slate-300" />
+                            <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">Sincronizando centros de trabajo...</p>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
