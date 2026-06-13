@@ -9,13 +9,9 @@ import {
   RefreshCw, 
   ChevronLeft, 
   ChevronRight, 
-  ChevronsLeft, 
-  ChevronsRight, 
   Clock,
   MapPin,
   Inbox,
-  Filter,
-  ArrowRight,
   Cpu,
   Layers,
   Settings2,
@@ -23,14 +19,9 @@ import {
   LayoutGrid,
   ClipboardList,
   UserPlus,
-  AlertTriangle,
-  CheckCircle2,
   BarChart3,
-  Search,
-  Info,
   ShieldCheck,
   Zap,
-  ZapOff,
   History
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -90,7 +81,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   const [jornadaDiurnaSel, setJornadaDiurnaSel] = useState("8.0");
   const [jornadaNocturnaSel, setJornadaNocturnaSel] = useState("0");
-  const [maxExtrasPermitidas, setMaxExtrasPermitidas] = useState(2);
 
   const horasNetasDiurnas = useMemo(() => parseFloat(jornadaDiurnaSel) * 0.84, [jornadaDiurnaSel]);
   const horasNetasNocturnas = useMemo(() => parseFloat(jornadaNocturnaSel) * 0.84, [jornadaNocturnaSel]);
@@ -109,42 +99,20 @@ export const TacticalPlanForrosSection: React.FC = () => {
   }, []);
 
   /**
-   * Mapa de equivalencias dinámico extraído de la base de datos
-   * Vincula el nombre del puesto con su código de Hoja de Ruta real
-   */
-  const workstationToHojaRutaMap = useMemo(() => {
-    const map = new Map<string, string>();
-    tiemposProduccion.forEach(t => {
-      const puesto = String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').trim().toUpperCase();
-      const hr = String(t.HojaRuta || t['HOJA DE RUTA'] || '').trim().toUpperCase();
-      if (puesto && hr && hr.startsWith('HR')) {
-        map.set(puesto, hr);
-      }
-    });
-    return map;
-  }, [tiemposProduccion]);
-
-  /**
    * Mapea un nombre de puesto a su Hoja de Ruta estándar (HR-...)
+   * Basado en las reglas de negocio estrictas solicitadas
    */
   const mapToHojaRuta = useCallback((name: string): string => {
     const n = String(name || '').toUpperCase().trim();
     if (n === '' || n === 'NULL' || n === '—' || n === '-') return '';
     
-    // Explicit Overrides solicitados por el usuario
+    // Explicit Overrides
     if (n === 'ACOLCHADORA09' || n === 'ACOLCHADORA 09') return 'HR-ACH09';
     if (n === 'COSEDORA-ACH08' || n === 'COSEDORA ACH 08') return 'HR-PEF08';
     if (n === 'COSEDORA-ACH02' || n === 'COSEDORA ACH 02') return 'HR-PEF02';
 
-    // 1. Prioridad: Buscar en el mapa de equivalencias de la base de datos
-    if (workstationToHojaRutaMap.has(n)) {
-      return workstationToHojaRutaMap.get(n)!;
-    }
-
-    // 2. Si ya viene formateado, devolverlo
     if (n.startsWith('HR-')) return n;
 
-    // 3. Inferencia técnica por nombre si no hay match en BD
     const numMatch = n.match(/\d+/);
     const num = numMatch ? numMatch[0].padStart(2, '0') : '';
 
@@ -157,7 +125,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
 
     return `HR-${n}`;
-  }, [workstationToHojaRutaMap]);
+  }, []);
 
   const fetchBaseData = useCallback(async () => {
     try {
@@ -177,11 +145,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
       if (relevantGroups.length > 0) {
         const firstGroupRest = rRes.data?.filter((r: any) => r.codigo_grupo === relevantGroups[0].codigo_grupo) || [];
         const hTrabajo = firstGroupRest.find((r: any) => r.nombre_restriccion === 'HORAS_TRABAJO');
-        const hExtras = firstGroupRest.find((r: any) => r.nombre_restriccion === 'MAX_EXTRAS_HORAS');
         if (hTrabajo) setJornadaDiurnaSel(parseFloat(hTrabajo.valor_restriccion).toFixed(1));
-        if (hExtras) setMaxExtrasPermitidas(parseInt(hExtras.valor_restriccion));
       }
-
     } catch (error) {
       console.error('Error fetching base data:', error);
     } finally {
@@ -196,12 +161,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const forrosGruposList = useMemo(() => {
     return grupos.filter(g => {
       const name = (g.nombre_grupo || '').toUpperCase();
-      return name.includes('FORRO') || 
-             name.includes('CHN') || 
-             name.includes('BASE') || 
-             name.includes('BANDA') || 
-             name.includes('ACOLCHADO') ||
-             name.includes('TAPAS');
+      return name.includes('FORRO') || name.includes('CHN') || name.includes('BASE') || name.includes('BANDA') || name.includes('ACOLCHADO') || name.includes('TAPAS');
     });
   }, [grupos]);
 
@@ -239,7 +199,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
           return allowed.includes(resp);
         });
       }
-
       setTiemposProduccion(allData);
     } catch (error) {
       console.error('Error al cargar tiempos:', error);
@@ -293,98 +252,74 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
   }, [forrosRestricciones]);
 
-  const getResolvedMachine = useCallback((order: any) => {
-    const orderFields = ['MAQUINA', 'Maquina', 'PuestoTrabajo'];
+  const getResolvedPuesto = useCallback((order: any) => {
+    const orderFields = ['PuestoTrabajo', 'MAQUINA', 'Maquina'];
     for (const k of orderFields) {
       const val = order[k];
       if (val && String(val).trim() !== '' && String(val).toLowerCase() !== 'null') {
-        const sVal = String(val).trim().toUpperCase();
-        if (sVal.startsWith('HR')) return sVal;
+        return String(val).trim().toUpperCase();
       }
     }
     const material = normalizeMaterialCode(order['MATERIAL'] || order['CodMaterial'] || '');
     const match = tiemposProduccion.find(t => normalizeMaterialCode(t.CodMaterial || t.Material || '') === material);
-    
-    if (match) {
-      const dbHr = String(match.HojaRuta || match['HOJA DE RUTA'] || '').trim().toUpperCase();
-      if (dbHr && dbHr.startsWith('HR')) return dbHr;
-      
-      const rawName = String(match.PuestoTrabajo || match.nombre_estacion || match.Maquina || '').trim().toUpperCase();
-      return mapToHojaRuta(rawName);
-    }
-    return '';
-  }, [tiemposProduccion, normalizeMaterialCode, mapToHojaRuta]);
+    return match ? String(match.PuestoTrabajo || match.nombre_estacion || match.Maquina || '').trim().toUpperCase() : '';
+  }, [tiemposProduccion, normalizeMaterialCode]);
 
-  const uniqueWorkstations = useMemo(() => {
-    const wsSet = new Set<string>();
-    
-    // 1. Agregar Hojas de Ruta reales de los maestros técnicos
+  const uniquePuestos = useMemo(() => {
+    const pSet = new Set<string>();
     tiemposProduccion.forEach(t => {
-      const dbHr = String(t.HojaRuta || t['HOJA DE RUTA'] || mapToHojaRuta(String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || ''))).trim().toUpperCase();
-      if (dbHr && dbHr.startsWith('HR')) {
-        wsSet.add(dbHr);
-      } else {
-        const rawName = String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').trim().toUpperCase();
-        if (rawName && rawName !== 'NULL' && rawName !== '-' && rawName !== '—') {
-          wsSet.add(mapToHojaRuta(rawName));
-        }
-      }
+      const p = String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').trim().toUpperCase();
+      if (p && p !== 'NULL' && p !== '-' && p !== '—') pSet.add(p);
     });
-
-    // 2. Agregar Hojas de Ruta resueltas de las órdenes reales
     dailyOrders.forEach(o => {
-      const ws = getResolvedMachine(o);
-      if (ws && ws !== 'Z_SIN_MAQUINA' && ws !== '') {
-        wsSet.add(ws);
-      }
+      const p = getResolvedPuesto(o);
+      if (p && p !== '') pSet.add(p);
     });
-
-    return Array.from(wsSet).filter(Boolean).sort();
-  }, [tiemposProduccion, dailyOrders, getResolvedMachine, mapToHojaRuta]);
+    return Array.from(pSet).sort();
+  }, [tiemposProduccion, dailyOrders, getResolvedPuesto]);
 
   const calculateProductionTime = useCallback((material: string, quantity: number, order: any) => {
     if (!material) return 0;
     const normMaterial = normalizeMaterialCode(material);
-    const machine = getResolvedMachine(order);
+    const puesto = getResolvedPuesto(order);
     
     const match = tiemposProduccion.find(t => {
       const mNorm = normalizeMaterialCode(t.CodMaterial || t.Material || '');
-      const tHr = String(t.HojaRuta || t['HOJA DE RUTA'] || mapToHojaRuta(String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || ''))).trim().toUpperCase();
-      return mNorm === normMaterial && tHr === machine;
+      const tPuesto = String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').trim().toUpperCase();
+      return mNorm === normMaterial && tPuesto === puesto;
     }) || tiemposProduccion.find(t => normalizeMaterialCode(t.CodMaterial || t.Material || '') === normMaterial);
     
     return match ? (Number(match.Tiempo || match.Tiempo_Min || 0) * quantity) : 0;
-  }, [tiemposProduccion, normalizeMaterialCode, getResolvedMachine, mapToHojaRuta]);
+  }, [tiemposProduccion, normalizeMaterialCode, getResolvedPuesto]);
 
-  const group1Suffixes = ['02', '06', '07', '08', '09', '10'];
-
-  const workstationsGroup2 = useMemo(() => {
-    return uniqueWorkstations.filter(m => 
-      m.includes('ACH11') || m.includes('ACH12') || m.includes('RMTB') || m.includes('COS3D') || m.includes('ENCBD') || m.includes('BO01')
+  // Agrupaciones por puesto de trabajo descriptivo
+  const puestosGroup2 = useMemo(() => {
+    return uniquePuestos.filter(p => 
+      p.includes('ACH11') || p.includes('ACH12') || p.includes('RMTB') || p.includes('COS3D') || p.includes('ENCBD') || p.includes('BO01')
     );
-  }, [uniqueWorkstations]);
+  }, [uniquePuestos]);
 
-  const workstationsGroup3 = useMemo(() => {
-    return uniqueWorkstations.filter(m => 
-      m.includes('INTP') || m.includes('MTBS') || m.includes('CT') || m.includes('TTCF') || m.includes('TTSUP')
+  const puestosGroup3 = useMemo(() => {
+    return uniquePuestos.filter(p => 
+      p.includes('INTP') || p.includes('MTBS') || p.includes('CT') || p.includes('TTCF') || p.includes('TTSUP') || p.includes('TELAS') || p.includes('FUNDAS')
     );
-  }, [uniqueWorkstations]);
+  }, [uniquePuestos]);
 
-  const workstationsGroup4 = useMemo(() => {
-    return uniqueWorkstations.filter(m => 
-      m.includes('FORRO') || m.includes('FBASE')
+  const puestosGroup4 = useMemo(() => {
+    return uniquePuestos.filter(p => 
+      p.includes('FORRO') || p.includes('FBASE')
     );
-  }, [uniqueWorkstations]);
+  }, [uniquePuestos]);
 
   useEffect(() => {
-    if (uniqueWorkstations.length > 0 && Object.keys(workstationConfigs).length === 0) {
+    if (uniquePuestos.length > 0 && Object.keys(workstationConfigs).length === 0) {
       const initial: Record<string, WorkstationConfig> = {};
-      uniqueWorkstations.forEach(ws => {
-        initial[ws] = { machine: ws, shifts: 1, people: 1 };
+      uniquePuestos.forEach(p => {
+        initial[p] = { machine: p, shifts: 1, people: 1 };
       });
       setWorkstationConfigs(initial);
     }
-  }, [uniqueWorkstations, workstationConfigs]);
+  }, [uniquePuestos, workstationConfigs]);
 
   useEffect(() => {
     if (isMounted && forrosGruposList.length > 0) {
@@ -397,7 +332,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const renderResolvedProvisionalCell = useCallback((column: string, order: any) => {
     const upperCol = column.toUpperCase().trim();
     if (upperCol === 'MAQUINA') {
-      const val = getResolvedMachine(order);
+      const val = getResolvedPuesto(order);
       return val ? (
         <span className="font-black text-slate-700 bg-slate-100 px-3 py-1 rounded-lg border border-slate-200 text-[10px]">
           {val}
@@ -407,24 +342,24 @@ export const TacticalPlanForrosSection: React.FC = () => {
       );
     }
     return undefined;
-  }, [getResolvedMachine]);
+  }, [getResolvedPuesto]);
 
   const resolveLogicValue = useCallback((column: string, order: any) => {
     const upperCol = column.toUpperCase().trim();
     if (upperCol === 'MAQUINA') {
-      return getResolvedMachine(order) || 'Z_SIN_MAQUINA';
+      return getResolvedPuesto(order) || 'Z_SIN_PUESTO';
     }
     return String(order[column] ?? '');
-  }, [getResolvedMachine]);
+  }, [getResolvedPuesto]);
 
-  const handleWorkstationConfigChange = (ws: string, field: keyof WorkstationConfig, value: any) => {
-    setWorkstationConfigs(prev => ({ ...prev, [ws]: { ...prev[ws], [field]: value } }));
+  const handleWorkstationConfigChange = (p: string, field: keyof WorkstationConfig, value: any) => {
+    setWorkstationConfigs(prev => ({ ...prev, [p]: { ...prev[p], [field]: value } }));
   };
 
-  const MachineCard = ({ machineCode, small = false }: { machineCode: string, small?: boolean }) => {
-    const orders = dailyOrders.filter(o => getResolvedMachine(o) === machineCode);
+  const MachineCard = ({ puestoName, small = false }: { puestoName: string, small?: boolean }) => {
+    const orders = dailyOrders.filter(o => getResolvedPuesto(o) === puestoName);
     const totalTimeHours = orders.reduce((sum, o) => sum + calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || 0), o), 0) / 60;
-    const config = workstationConfigs[machineCode] || { people: 1 };
+    const config = workstationConfigs[puestoName] || { people: 1 };
     const capacityHours = totalHorasNetas * config.people;
     const utilization = capacityHours > 0 ? (totalTimeHours / capacityHours) * 100 : 0;
     const isOverloaded = utilization > 100;
@@ -442,20 +377,22 @@ export const TacticalPlanForrosSection: React.FC = () => {
             <div className="flex items-center justify-between">
               <h3 className="text-xl font-black uppercase tracking-tighter text-slate-100 flex items-center gap-2">
                 <Cpu className="w-5 h-5 text-sky-400" />
-                {machineCode}
+                {puestoName}
               </h3>
-              <Badge variant="outline" className="border-white/20 text-sky-400 font-black text-[8px] uppercase tracking-widest px-2">HR-ENG</Badge>
+              <Badge variant="outline" className="border-white/20 text-sky-400 font-black text-[8px] uppercase tracking-widest px-2">
+                {mapToHojaRuta(puestoName)}
+              </Badge>
             </div>
-            <p className="text-[9px] font-bold uppercase tracking-[0.25em] text-slate-500 mt-1">Status Operativo Nivel 1</p>
+            <p className="text-[9px] font-bold uppercase tracking-[0.25em] text-slate-500 mt-1">Status Operativo Puesto</p>
           </div>
           <div className="flex-1 space-y-5">
             <div className="bg-white/5 p-4 rounded-2xl border border-white/10 shadow-inner">
               <div className="flex justify-between items-center mb-3">
                 <span className="text-[10px] font-black uppercase text-slate-500 tracking-[0.2em]">Dotación:</span>
                 <div className="flex items-center gap-2.5 bg-slate-900 rounded-xl p-1.5 border border-white/10">
-                  <button onClick={() => handleWorkstationConfigChange(machineCode, 'people', Math.max(1, config.people - 1))} className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-indigo-600 flex items-center justify-center font-black transition-colors">-</button>
+                  <button onClick={() => handleWorkstationConfigChange(puestoName, 'people', Math.max(1, config.people - 1))} className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-indigo-600 flex items-center justify-center font-black transition-colors">-</button>
                   <span className="font-mono font-black text-sm w-5 text-center text-sky-300">{config.people}</span>
-                  <button onClick={() => handleWorkstationConfigChange(machineCode, 'people', config.people + 1)} className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-indigo-600 flex items-center justify-center font-black transition-colors">+</button>
+                  <button onClick={() => handleWorkstationConfigChange(puestoName, 'people', config.people + 1)} className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-indigo-600 flex items-center justify-center font-black transition-colors">+</button>
                 </div>
               </div>
               <div className="flex justify-between items-center text-[10px] border-t border-white/5 pt-3">
@@ -547,7 +484,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   if (!isMounted) return null;
 
   return (
-    <div className="p-6 md:p-8 space-y-6 bg-slate-50/40 min-h-screen">
+    <div className="p-6 md:p-8 space-y-6 bg-slate-50/40 min-h-screen font-body">
       {/* HEADER PRINCIPAL */}
       <div className="flex flex-col xl:flex-row items-center justify-between gap-6 bg-white p-7 rounded-[2rem] border border-slate-200 shadow-sm">
         <div className="flex items-center space-x-6">
@@ -594,7 +531,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
           <div className="flex flex-wrap items-center gap-10">
             <div className="bg-indigo-50 border border-indigo-100 px-5 py-3 rounded-2xl">
               <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4" /> Buffer Maestro Total Activado (Sin Filtro de Fecha)
+                <ShieldCheck className="w-4 h-4" /> Buffer Maestro Total Activado (Carga Global del Buffer)
               </span>
             </div>
           </div>
@@ -627,7 +564,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
             <LayoutGrid className="w-4 h-4 group-data-[state=active]:text-sky-400" /> 4. Forros Finales
           </TabsTrigger>
           <TabsTrigger value="componentes" className="flex items-center gap-2.5 px-7 py-4 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[11px] font-black uppercase tracking-widest text-slate-500 group">
-            <Inbox className="w-4 h-4 group-data-[state=active]:text-sky-400" /> Componentes
+            <Inbox className="w-4 h-4 group-data-[state=active]:text-sky-400" /> Buffer Global
           </TabsTrigger>
           <TabsTrigger value="mantenimiento" className="flex items-center gap-2.5 px-7 py-4 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[11px] font-black uppercase tracking-widest text-slate-500 group">
             <Wrench className="w-4 h-4 group-data-[state=active]:text-sky-400" /> Mantenimiento
@@ -637,7 +574,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
           </TabsTrigger>
         </TabsList>
 
-        {/* CONTENIDO DE PESTAÑAS */}
         <TabsContent value="resumen-produccion">
           <Card className="rounded-[2.5rem] shadow-sm border-slate-200 overflow-hidden bg-white ring-1 ring-slate-100">
             <CardHeader className="bg-slate-50/50 border-b border-slate-200 p-10">
@@ -647,9 +583,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     <BarChart3 className="w-7 h-7 text-indigo-600" />
                     <CardTitle className="text-2xl font-black text-slate-900 uppercase tracking-tight">Matriz de Salud de Planta</CardTitle>
                   </div>
-                  <CardDescription className="mt-2 text-slate-500 font-bold uppercase text-[10px] tracking-widest">Análisis de carga total vs capacidad neta por Hoja de Ruta</CardDescription>
+                  <CardDescription className="mt-2 text-slate-500 font-bold uppercase text-[10px] tracking-widest">Resumen basado en Puestos de Trabajo operativos</CardDescription>
                 </div>
-                <div className="bg-slate-950 px-6 py-3 rounded-2xl text-white shadow-lg ring-4 ring-slate-100">
+                <div className="bg-slate-950 px-6 py-3 rounded-2xl text-white shadow-lg">
                   <span className="text-sm font-black font-mono">{totalHorasNetas.toFixed(2)}h / Operador (84% Efic.)</span>
                 </div>
               </div>
@@ -659,8 +595,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 <table className="w-full text-[12px] border-collapse">
                   <thead className="bg-slate-900 sticky top-0 z-10 text-white">
                     <tr className="text-slate-400 font-black uppercase tracking-[0.2em]">
-                      <th className="px-8 py-5 text-left bg-slate-950">HOJA DE RUTA</th>
-                      <th className="px-8 py-5 text-left">Puesto de Trabajo</th>
+                      <th className="px-8 py-5 text-left bg-slate-950">Puesto de Trabajo</th>
+                      <th className="px-8 py-5 text-left text-sky-400">HOJA DE RUTA</th>
                       <th className="px-8 py-5 text-center">Ingeniería (min/u)</th>
                       <th className="px-8 py-5 text-right">Cant. Total</th>
                       <th className="px-8 py-5 text-right bg-indigo-950/20">T. Requerido (h)</th>
@@ -669,31 +605,28 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 bg-white">
-                    {uniqueWorkstations.map((ws, idx) => {
-                      const orders = dailyOrders.filter(o => getResolvedMachine(o) === ws);
+                    {uniquePuestos.map((p, idx) => {
+                      const orders = dailyOrders.filter(o => getResolvedPuesto(o) === p);
                       const totalUnits = orders.reduce((sum, o) => sum + Number(o['CANTIDAD'] || 0), 0);
                       
                       const matches = tiemposProduccion.filter(t => {
-                        const dbHr = String(t.HojaRuta || t['HOJA DE RUTA'] || mapToHojaRuta(String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || ''))).trim().toUpperCase();
-                        return dbHr === ws;
+                        const tPuesto = String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').trim().toUpperCase();
+                        return tPuesto === p;
                       });
                       
-                      const friendlyName = matches.length > 0 
-                        ? String(matches[0].PuestoTrabajo || matches[0].nombre_estacion || matches[0].Maquina || ws).trim().toUpperCase()
-                        : ws;
-
+                      const hr = mapToHojaRuta(p);
                       const avgHrMin = matches.length > 0 ? matches.reduce((sum, t) => sum + Number(t.Tiempo || t.Tiempo_Min || 0), 0) / matches.length : 0;
                       const totalTimeHours = orders.reduce((sum, o) => sum + calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || 0), o), 0) / 60;
                       
-                      const config = workstationConfigs[ws] || { people: 1 };
+                      const config = workstationConfigs[p] || { people: 1 };
                       const capacityHours = totalHorasNetas * config.people;
                       const utilization = capacityHours > 0 ? (totalTimeHours / capacityHours) * 100 : 0;
                       const isOverloaded = utilization > 100;
 
                       return (
                         <tr key={idx} className="hover:bg-slate-50 transition-all group">
-                          <td className="px-8 py-5 font-mono font-black text-indigo-700 bg-indigo-50/20">{ws}</td>
-                          <td className="px-8 py-5 font-black text-slate-900 uppercase">{friendlyName}</td>
+                          <td className="px-8 py-5 font-black text-slate-900 bg-slate-50/20 uppercase">{p}</td>
+                          <td className="px-8 py-5 font-mono font-black text-indigo-700 uppercase">{hr}</td>
                           <td className="px-8 py-5 text-center font-mono font-bold text-slate-400">{avgHrMin.toFixed(2)}</td>
                           <td className="px-8 py-5 text-right font-mono font-black text-slate-800">{totalUnits.toLocaleString()}</td>
                           <td className="px-8 py-5 text-right font-mono font-black text-indigo-700 bg-indigo-50/40">{totalTimeHours.toFixed(2)}h</td>
@@ -727,12 +660,12 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 <div>
                   <div className="flex items-center gap-3">
                     <History className="w-7 h-7 text-indigo-600" />
-                    <CardTitle className="text-2xl font-black text-slate-900 uppercase tracking-tight">Maestros Técnicos de Ingeniería</CardTitle>
+                    <CardTitle className="text-2xl font-black text-slate-900 uppercase tracking-tight">KPI Tiempos de Ingeniería</CardTitle>
                   </div>
-                  <CardDescription className="mt-2 text-slate-500 font-bold uppercase text-[10px] tracking-widest">Base de datos de tiempos de ensamble por material y puesto</CardDescription>
+                  <CardDescription className="mt-2 text-slate-500 font-bold uppercase text-[10px] tracking-widest">Maestro técnico filtrado por responsabilidad de grupo</CardDescription>
                 </div>
                 <div className="flex items-center gap-3 bg-slate-950 px-6 py-3 rounded-2xl text-white">
-                  <span className="text-xs font-black font-mono">{tiemposProduccion.length} Registros Activos</span>
+                  <span className="text-xs font-black font-mono">{tiemposProduccion.length} Registros Técnicos</span>
                 </div>
               </div>
             </CardHeader>
@@ -741,36 +674,36 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 <table className="w-full text-[11px] border-collapse">
                   <thead className="bg-slate-900 sticky top-0 z-10 text-white">
                     <tr className="text-slate-400 font-black uppercase tracking-widest">
-                      <th className="px-6 py-4 text-left">Código Material</th>
-                      <th className="px-6 py-4 text-left">Descripción</th>
+                      <th className="px-6 py-4 text-left">Material</th>
+                      <th className="px-6 py-4 text-left">Puesto de Trabajo</th>
+                      <th className="px-6 py-4 text-left text-sky-400">HOJA DE RUTA</th>
+                      <th className="px-6 py-4 text-right">Tiempo (min)</th>
                       <th className="px-6 py-4 text-center">Centro</th>
                       <th className="px-6 py-4 text-left">Línea</th>
-                      <th className="px-6 py-4 text-left text-sky-400">HOJA DE RUTA</th>
-                      <th className="px-6 py-4 text-left">Puesto de Trabajo</th>
-                      <th className="px-6 py-4 text-right">Tiempo (min)</th>
                       <th className="px-6 py-4 text-center">Resp.</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 bg-white">
                     {tiemposProduccion.map((t, idx) => {
-                      const rawName = String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').trim().toUpperCase();
-                      const hr = String(t.HojaRuta || t['HOJA DE RUTA'] || mapToHojaRuta(rawName)).trim().toUpperCase();
+                      const pName = String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').trim().toUpperCase();
+                      const hr = mapToHojaRuta(pName);
                       return (
                         <tr key={idx} className="hover:bg-indigo-50/30 transition-colors">
-                          <td className="px-6 py-3 font-mono font-bold text-slate-700">{t.CodMaterial || t.Material || '—'}</td>
-                          <td className="px-6 py-3 uppercase text-slate-500 truncate max-w-[250px]" title={t.Material || t.NOMBRE}>{t.Material || t.NOMBRE || '—'}</td>
+                          <td className="px-6 py-3 font-mono font-bold text-slate-700">
+                             <div className="flex flex-col">
+                               <span>{t.CodMaterial || t.Material || '—'}</span>
+                               <span className="text-[9px] text-slate-400 uppercase truncate max-w-[200px]">{t.NOMBRE || t.Material}</span>
+                             </div>
+                          </td>
+                          <td className="px-6 py-3 font-black text-slate-800 uppercase">{pName}</td>
+                          <td className="px-6 py-3 font-black text-indigo-700 bg-indigo-50/20">{hr}</td>
+                          <td className="px-6 py-3 text-right font-mono font-black text-sky-600 bg-sky-50/30">{Number(t.Tiempo || t.Tiempo_Min || 0).toFixed(2)}</td>
                           <td className="px-6 py-3 text-center font-bold text-slate-400">{t.Centro || '—'}</td>
                           <td className="px-6 py-3 text-slate-600 font-medium">{t.Linea || '—'}</td>
-                          <td className="px-6 py-3 font-black text-indigo-700 bg-indigo-50/20">{hr}</td>
-                          <td className="px-6 py-3 font-medium text-slate-600">{rawName}</td>
-                          <td className="px-6 py-3 text-right font-mono font-black text-sky-600 bg-sky-50/30">{Number(t.Tiempo || t.Tiempo_Min || 0).toFixed(2)}</td>
                           <td className="px-6 py-3 text-center text-slate-400 font-bold">{t.RespControlProd || t.RESPCONTROLPROD || '—'}</td>
                         </tr>
                       );
                     })}
-                    {tiemposProduccion.length === 0 && (
-                      <tr><td colSpan={8} className="py-32 text-center text-slate-300 font-black uppercase text-sm tracking-widest">No se encontraron datos técnicos para este grupo</td></tr>
-                    )}
                   </tbody>
                 </table>
               </div>
@@ -779,12 +712,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="acolchado-tapas" className="space-y-16 pb-20">
-          {group1Suffixes.map(suffix => {
-            const achCode = `HR-ACH${suffix}`;
-            const pefCode = `HR-PEF${suffix}`;
-            const achExists = uniqueWorkstations.includes(achCode);
-            const pefExists = uniqueWorkstations.includes(pefCode);
-            if (!achExists && !pefExists) return null;
+          {['02', '06', '07', '08', '09', '10'].map(suffix => {
+            const achNames = uniquePuestos.filter(p => p.includes(`ACH${suffix}`) || p.includes(`ACOLCHADORA${suffix}`));
+            const pefNames = uniquePuestos.filter(p => p.includes(`PEF${suffix}`) || p.includes(`COSEDORA-ACH${suffix}`) || p.includes(`PEGADORA${suffix}`));
+            if (achNames.length === 0 && pefNames.length === 0) return null;
             return (
               <div key={suffix} className="space-y-6">
                 <div className="flex items-center gap-4 px-7 py-2.5 bg-slate-900 rounded-full w-fit shadow-xl">
@@ -792,8 +723,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   <span className="text-white font-black text-xs uppercase tracking-[0.3em]">Célula Twin {suffix}</span>
                 </div>
                 <div className="grid grid-cols-1 xl:grid-cols-2 gap-10">
-                  {achExists ? <MachineCard machineCode={achCode} /> : <div className="hidden xl:flex bg-slate-100/30 border-2 border-dashed border-slate-200 rounded-[2.5rem] p-20 text-slate-300 font-black uppercase text-[10px]">No Definido</div>}
-                  {pefExists ? <MachineCard machineCode={pefCode} /> : <div className="hidden xl:flex bg-slate-100/30 border-2 border-dashed border-slate-200 rounded-[2.5rem] p-20 text-slate-300 font-black uppercase text-[10px]">No Definido</div>}
+                  {achNames.length > 0 ? <MachineCard puestoName={achNames[0]} /> : <div className="hidden xl:flex bg-slate-100/30 border-2 border-dashed border-slate-200 rounded-[2.5rem] p-20 text-slate-300 font-black uppercase text-[10px]">ACH No Definida</div>}
+                  {pefNames.length > 0 ? <MachineCard puestoName={pefNames[0]} /> : <div className="hidden xl:flex bg-slate-100/30 border-2 border-dashed border-slate-200 rounded-[2.5rem] p-20 text-slate-300 font-black uppercase text-[10px]">PEF No Definida</div>}
                 </div>
               </div>
             );
@@ -802,19 +733,19 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
         <TabsContent value="bandas" className="space-y-10 pb-20">
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-10">
-            {workstationsGroup2.map((wsCode) => (<MachineCard key={wsCode} machineCode={wsCode} small />))}
+            {puestosGroup2.map((pName) => (<MachineCard key={pName} puestoName={pName} small />))}
           </div>
         </TabsContent>
 
         <TabsContent value="interiores-corte" className="space-y-10 pb-20">
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-10">
-            {workstationsGroup3.map((wsCode) => (<MachineCard key={wsCode} machineCode={wsCode} small />))}
+            {puestosGroup3.map((pName) => (<MachineCard key={pName} puestoName={pName} small />))}
           </div>
         </TabsContent>
 
         <TabsContent value="forros" className="space-y-10 pb-20">
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-10">
-            {workstationsGroup4.map((wsCode) => (<MachineCard key={wsCode} machineCode={wsCode} small />))}
+            {puestosGroup4.map((pName) => (<MachineCard key={pName} puestoName={pName} small />))}
           </div>
         </TabsContent>
 
@@ -825,7 +756,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   <Inbox className="w-8 h-8 text-indigo-600" />
                   <div>
                     <CardTitle className="text-2xl font-black text-slate-900 uppercase">Buffer Maestro de Componentes</CardTitle>
-                    <CardDescription className="text-[9px] font-bold tracking-widest text-slate-400 mt-1 uppercase">Listado global sin restricciones de fecha</CardDescription>
+                    <CardDescription className="text-[9px] font-bold tracking-widest text-slate-400 mt-1 uppercase">Backlog total sin restricciones temporales</CardDescription>
                   </div>
                 </div>
              </CardHeader>
@@ -927,18 +858,18 @@ export const TacticalPlanForrosSection: React.FC = () => {
                <CardHeader className="bg-slate-50/50 p-10"><CardTitle className="text-2xl font-black uppercase tracking-tight">Dotación de Planta</CardTitle></CardHeader>
                <CardContent className="p-10">
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-h-[65vh] overflow-y-auto pr-4">
-                    {uniqueWorkstations.map(ws => {
-                      const config = workstationConfigs[ws] || { people: 1 };
+                    {uniquePuestos.map(pName => {
+                      const config = workstationConfigs[pName] || { people: 1 };
                       return (
-                        <div key={ws} className="flex items-center justify-between p-6 border-2 border-slate-50 rounded-[2rem] bg-white hover:border-indigo-100 transition-all">
+                        <div key={pName} className="flex items-center justify-between p-6 border-2 border-slate-50 rounded-[2rem] bg-white hover:border-indigo-100 transition-all">
                           <div>
-                            <p className="font-black text-slate-800 uppercase text-sm">{ws}</p>
+                            <p className="font-black text-slate-800 uppercase text-sm">{pName}</p>
                             <Badge className="bg-slate-100 text-slate-400 border-none font-mono text-[10px] mt-2">CAP: {(config.people * totalHorasNetas).toFixed(1)}h</Badge>
                           </div>
                           <div className="flex items-center gap-3 bg-slate-50 p-2 rounded-2xl border border-slate-100">
-                            <button onClick={() => handleWorkstationConfigChange(ws, 'people', Math.max(1, config.people - 1))} className="w-9 h-9 rounded-xl bg-white shadow-sm flex items-center justify-center font-black">-</button>
+                            <button onClick={() => handleWorkstationConfigChange(pName, 'people', Math.max(1, config.people - 1))} className="w-9 h-9 rounded-xl bg-white shadow-sm flex items-center justify-center font-black">-</button>
                             <span className="font-mono font-black text-lg min-w-[32px] text-center text-indigo-700">{config.people}</span>
-                            <button onClick={() => handleWorkstationConfigChange(ws, 'people', config.people + 1)} className="w-9 h-9 rounded-xl bg-white shadow-sm flex items-center justify-center font-black">+</button>
+                            <button onClick={() => handleWorkstationConfigChange(pName, 'people', config.people + 1)} className="w-9 h-9 rounded-xl bg-white shadow-sm flex items-center justify-center font-black">+</button>
                           </div>
                         </div>
                       );
