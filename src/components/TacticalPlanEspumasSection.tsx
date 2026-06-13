@@ -22,7 +22,9 @@ import {
   Search,
   History,
   AlertCircle,
-  ShoppingCart
+  ShoppingCart,
+  Check,
+  TrendingUp
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -53,16 +55,28 @@ const BASE_GAP_CM = 30;
 const MANIPULATION_FACTOR = 1.05; // +5% sobre distancia entre bloques
 const EFFECTIVE_GAP_CM = BASE_GAP_CM * MANIPULATION_FACTOR; // 31.5 cm reales
 const BLOCK_20M_CM = 2000; 
-
-// Capacidad de Coche: 2 bloques apilados, altura máxima 2 metros (200cm)
 const MAX_STACK_HEIGHT_CM = 200; 
 
 // Tiempos Estándar (Segundos)
-const SECONDS_PER_LOAD_VUELTA = 300; // 5 min por vuelta de carrusel
-const SECONDS_PER_MANEUVER_DESC = 45; // 45 segundos por repetición de descarga
+const SECONDS_PER_LOAD_VUELTA = 300; 
+const SECONDS_PER_MANEUVER_DESC = 45; 
 
-const RESPONSABLES_QUITO = ["013", "036", "038", "039", "044"];
-const RESPONSABLES_GYE = ["002", "038", "039"];
+const PARO_PROG_T1 = 1.27;
+const PARO_PROG_T2 = 0.77;
+
+const CAPACIDAD_CONFIG = {
+  '1000': [
+    { code: 'CR04', name: 'Carrusel 4 FECKEN', t1: 12, t2: 10, rendimiento: 0.90 },
+    { code: 'CR03', name: 'Carrusel 3 SCHMUZIG ER C-700', t1: 12, t2: 10, rendimiento: 0.90 },
+    { code: 'CR01', name: 'Carrusel 1 SCHMUZIGER', t1: 6.6, t2: 10, rendimiento: 0.90 },
+    { code: 'CNC01', name: 'Cortadora CNC GIOTTO X #1', t1: 9, t2: 10, rendimiento: 0.90 },
+  ],
+  '2000': [
+    { code: 'CR02', name: 'Fema', t1: 10, t2: 0, rendimiento: 0.70 },
+    { code: 'CR01', name: 'Carrusel 1 SCHMUZIGER', t1: 10, t2: 0, rendimiento: 0.70 },
+    { code: 'LA02', name: 'Repotenciado', t1: 10, t2: 0, rendimiento: 0.70 },
+  ]
+};
 
 const OPERATIVE_BASE = {
   '1000': [
@@ -84,7 +98,7 @@ const safeNum = (val: any): number => {
   return isNaN(n) ? 0 : n;
 };
 
-const formatNum = (val: any, decimals: number = 0): string => {
+const formatNum = (val: any, decimals: number = 2): string => {
   const n = safeNum(val);
   return n.toLocaleString(undefined, { 
     minimumFractionDigits: decimals, 
@@ -164,24 +178,17 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const desc = nameStr || matStr.replace(/^\d+\s*/, '') || '—';
 
     const dims: any = { dens: '—', ancho: '—', largo: '—', esp: '—' };
-    
     const dimFullMatch = desc.match(/(\d+(?:\.\d+)?)\s*[xX*]\s*(\d+(?:\.\d+)?)(?:\s*[xX*]\s*(\d+(?:\.\d+)?))?/);
-    
     if (dimFullMatch) {
       dims.ancho = dimFullMatch[1];
       dims.largo = dimFullMatch[2];
       if (dimFullMatch[3]) dims.esp = dimFullMatch[3];
     }
-    
     const densM = catStr.match(/D(\d+)/i) || desc.match(/D-?(\d+)/i);
     if (densM) dims.dens = densM[1];
-
     return { code, desc, ...dims };
   };
 
-  /**
-   * --- MOTOR DE CÁLCULO TÉCNICO (INGENIERÍA DE PLANTA) ---
-   */
   const calculateEngineering = (o: any) => {
     const info = extractMaterialInfo(o);
     const qty = safeNum(o.CANTIDAD || o.CANTPROGRAMADA || 0);
@@ -190,31 +197,21 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const esp = parseFloat(info.esp) || 0;
     const densV = parseFloat(info.dens) || 0;
 
-    // 1. Altura Útil según apilamiento de 2 bloques
     const singleBlockH = (densV < 30) ? 103 : 85;
     const stackedH = singleBlockH * 2;
     const usefulH = Math.min(MAX_STACK_HEIGHT_CM, stackedH);
-    
-    // 2. Cálculo de Subbloques (Pilas verticales en el carrusel)
     const sheetsPerStack = esp > 0 ? Math.floor(usefulH / esp) : 1;
     const subblocks = sheetsPerStack > 0 ? Math.ceil(qty / sheetsPerStack) : 0;
-
-    // 3. Consumo Real de Bloques de 20 metros (Cada subbloque usa 2 bloques apilados)
     const piezasPorLargoBloque = largo > 0 ? Math.floor(BLOCK_20M_CM / largo) : 0;
     const blocks20m = piezasPorLargoBloque > 0 ? (subblocks * 2) / piezasPorLargoBloque : 0;
-
-    // 4. Capacidad del Carrusel (Gap 31.5cm dinámico: 30cm + 5% maniobra)
     const sbPerLoad = ancho > 0 ? Math.floor(CIRCUMFERENCE / (ancho + EFFECTIVE_GAP_CM)) : 1;
     const loads = sbPerLoad > 0 ? Math.ceil(subblocks / sbPerLoad) : 0;
 
-    // 5. Tiempos de Maniobra y Proceso (Basado en Segundos)
     const tCargaSec = loads * SECONDS_PER_LOAD_VUELTA; 
-    
     const sheetsPerRep = (esp > 10) ? 4 : 3;
     const totalRepsDescarga = sheetsPerRep > 0 ? Math.ceil(qty / sheetsPerRep) : qty;
     const tDescargaSec = totalRepsDescarga * SECONDS_PER_MANEUVER_DESC;
 
-    // Tiempo SAP (Segundos)
     const matchTime = tiemposEnsamblado.find(t => String(t.CodMaterial).slice(-8) === info.code);
     const sapSecPerUnit = safeNum(matchTime?.Tiempo || 0);
     const totalSapSec = qty * sapSecPerUnit;
@@ -223,28 +220,20 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const hours = totalTimeSec / 3600;
     const indivMin = qty > 0 ? (totalTimeSec / qty) / 60 : 0;
 
-    return { 
-      ...info, 
-      subblocks, 
-      sbPerLoad, 
-      blocks20m, 
-      loads, 
-      hours, 
-      indivMin,
-      qty, 
-      tCargaSec, 
-      tDescargaSec,
-      totalSapSec
-    };
+    return { ...info, subblocks, sbPerLoad, blocks20m, loads, hours, indivMin, qty, tCargaSec, tDescargaSec, totalSapSec };
   };
 
   const filterData = (data: any[], centro: string) => {
+    const relevantGroups = grupos.filter(g => String(g.centro).trim() === centro);
+    const allowedResps = restriccionesArray
+      .filter(r => r.nombre_restriccion === 'RESPCTRLPROD' && relevantGroups.some(g => g.codigo_grupo === r.codigo_grupo))
+      .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()));
+
     return data.filter(o => {
       const c = String(o.CENTRO || o.Centro || '').trim();
       if (c !== centro) return false;
       const resp = String(o.RESPCONTROLPROD || o.RespControlProd || '').trim();
-      const valid = centro === '1000' ? RESPONSABLES_QUITO : RESPONSABLES_GYE;
-      if (valid.length > 0 && !valid.includes(resp)) return false;
+      if (allowedResps.length > 0 && !allowedResps.includes(resp)) return false;
       if (selectedDate !== 'all') {
         const dFull = String(o.FECHAINICIO || o.FECHA || '').trim();
         if ((dFull.includes('T') ? dFull.split('T')[0] : dFull) !== selectedDate) return false;
@@ -253,17 +242,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     });
   };
 
-  const provC1000 = useMemo(() => filterData(ordenes, '1000'), [ordenes, selectedDate, tiemposEnsamblado]);
-  const provC2000 = useMemo(() => filterData(ordenes, '2000'), [ordenes, selectedDate, tiemposEnsamblado]);
+  const provC1000 = useMemo(() => filterData(ordenes, '1000'), [ordenes, grupos, restriccionesArray, selectedDate]);
+  const provC2000 = useMemo(() => filterData(ordenes, '2000'), [ordenes, grupos, restriccionesArray, selectedDate]);
 
   const datesWithOrders = useMemo(() => {
     if (!mounted) return new Set<string>();
     const dates = new Set<string>();
     ordenes.forEach(o => {
-      const c = String(o.CENTRO || o.Centro || '').trim();
-      const resp = String(o.RESPCONTROLPROD || o.RespControlProd || '').trim();
-      const valid = c === '1000' ? RESPONSABLES_QUITO : RESPONSABLES_GYE;
-      if (valid.length > 0 && !valid.includes(resp)) return;
       const d = String(o.FECHAINICIO || o.FECHA || '').trim();
       if (d && d !== 'null') dates.add(d.includes('T') ? d.split('T')[0] : d);
     });
@@ -280,23 +265,25 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return [...Array(pad).fill(null), ...days];
   }, [viewDate, mounted]);
 
-  const getPuestoMTTO = (idMaquina: string) => {
-    const match = habilidades.find(h => getProp(h, ['MaquinaSismac']).toUpperCase() === String(idMaquina).trim().toUpperCase());
-    return match ? getProp(match, ['PuestoTrabajo']) : '—';
+  const getMachineMTTO = (maquinaCode: string) => {
+    if (selectedDate === 'all') return 0;
+    return mantenimientos
+      .filter(m => {
+        const mDate = String(m.FECHA_PRO || m.FECHA_INI || '').split('T')[0];
+        const mMachine = String(m.MAQUINA || m.ID_MAQUINA || '').toUpperCase();
+        return mDate === selectedDate && (mMachine.includes(maquinaCode.toUpperCase()) || maquinaCode.toUpperCase().includes(mMachine));
+      })
+      .reduce((sum, m) => sum + safeNum(m.TIEMPO), 0);
   };
 
-  const getConsolidadoResumen = (centroId: string, maquinaCode: string) => {
-    const orders = centroId === '1000' ? provC1000 : provC2000;
-    const mNorm = String(maquinaCode).trim().toUpperCase();
-    return orders.reduce((acc, o) => {
-      const oM = String(o.MAQUINA || o.RECURSO || '').trim().toUpperCase();
-      if (oM.includes(mNorm) || mNorm.includes(oM)) {
-        const eng = calculateEngineering(o);
-        acc.qty += eng.qty;
-        acc.hours += eng.hours;
-      }
-      return acc;
-    }, { qty: 0, hours: 0 });
+  const getPlannedHours = (centro: string, maquinaCode: string) => {
+    const data = centro === '1000' ? provC1000 : provC2000;
+    return data
+      .filter(o => {
+        const oM = String(o.MAQUINA || o.RECURSO || '').toUpperCase();
+        return oM.includes(maquinaCode.toUpperCase()) || maquinaCode.toUpperCase().includes(oM);
+      })
+      .reduce((sum, o) => sum + calculateEngineering(o).hours, 0);
   };
 
   if (!mounted) return null;
@@ -323,14 +310,12 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-8 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
+        <TabsList className="grid grid-cols-6 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
           {[ 
             { v: 'resumenOperativo', l: 'Resumen Operativo', i: Activity },
             { v: 'resumen', l: 'Capacidad', i: LayoutDashboard }, 
             { v: 'habilidades', l: 'Habilidades SAP', i: GraduationCap },
             { v: 'mantenimiento', l: 'MTTO Preventivo', i: Wrench }, 
-            { v: 'grupos', l: 'Grupos', i: Users }, 
-            { v: 'restricciones', l: 'Parámetros', i: Lock }, 
             { v: 'ordenes', l: 'Provisionales', i: Package }, 
             { v: 'tiempos', l: 'Catálogo Tiempos', i: Clock }
           ].map(tab => (
@@ -388,60 +373,134 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             </Popover>
           </div>
 
-          <Card className="rounded-2xl border border-gray-100 shadow-xl overflow-hidden bg-white">
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse font-sans text-left">
-                <thead className="bg-[#1e293b] text-white uppercase font-black tracking-tighter text-[9px] border-b border-slate-700">
-                  <tr>
-                    <th className="px-2 py-4 text-center w-12 border-r border-white/5"></th>
-                    <th className="px-2 py-4 text-center border-r border-white/5">Turno</th>
-                    <th className="px-4 py-4 border-r border-white/5 w-56">MÁQUINA</th>
-                    <th className="px-3 py-4 border-r border-white/5 text-right w-20">Cantidad</th>
-                    <th className="px-3 py-4 border-r border-white/5 text-right w-24">T. ocupacion</th>
-                    <th className="px-4 py-4 border-r border-white/5">Código Operador</th>
-                    <th className="px-4 py-4 border-r border-white/5">Nombre Empleado</th>
-                    <th className="px-3 py-4 border-r border-white/5 text-center w-24">_Habilidades (%)</th>
-                    <th className="px-4 py-4 border-r border-white/5 text-center">Horas Efectivas</th>
-                    <th className="px-3 py-4 border-r border-white/5 text-center">Tiempo MTTO</th>
-                    <th className="px-4 py-4 text-center">Citas Médicas</th>
-                  </tr>
-                </thead>
-                <tbody className="text-[10px] font-bold">
-                  {Object.entries(OPERATIVE_BASE).map(([centro, machines]) => (
-                    <React.Fragment key={centro}>
-                      {machines.map((m, idx) => {
-                        const cons = getConsolidadoResumen(centro, m.code);
-                        const rowBg = centro === '1000' ? "bg-yellow-100/40" : "bg-slate-100/50";
+          <div className="grid grid-cols-1 gap-6">
+            {Object.entries(OPERATIVE_BASE).map(([centro, machines]) => (
+              <Card key={centro} className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                <div className="px-4 py-3 bg-gray-100 font-black uppercase text-[10px] tracking-widest text-slate-500">Centro {centro}</div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-[10px] font-bold">
+                    <thead className="bg-slate-800 text-white uppercase tracking-tighter">
+                      <tr>
+                        <th className="px-4 py-3 text-left w-56">Máquina</th>
+                        <th className="px-4 py-3 text-center">Cant. Planificada</th>
+                        <th className="px-4 py-3 text-center">Horas Req.</th>
+                        <th className="px-4 py-3 text-center">Operadores Asignados</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {machines.map((m) => {
+                        const planned = centro === '1000' ? provC1000 : provC2000;
+                        const machOrders = planned.filter(o => String(o.MAQUINA || o.RECURSO || '').toUpperCase().includes(m.code));
+                        const totalQty = machOrders.reduce((sum, o) => sum + safeNum(o.CANTIDAD || o.CANTPROGRAMADA), 0);
+                        const totalHours = machOrders.reduce((sum, o) => sum + calculateEngineering(o).hours, 0);
                         return (
-                          <React.Fragment key={`${centro}-${m.code}`}>
-                            {['dia', 'noche'].map((turno, tIdx) => (
-                              <tr key={tIdx} className={cn("border-b border-gray-100 hover:bg-gray-50", rowBg)}>
-                                {idx === 0 && tIdx === 0 && (
-                                  <td rowSpan={machines.length * 2} className={cn("px-2 py-4 border-r border-gray-200 font-black text-center uppercase tracking-widest text-[9px]", centro === '1000' ? "text-yellow-600" : "text-slate-400")}>
-                                    centro {centro}
-                                  </td>
-                                )}
-                                <td className="px-2 py-2 border-r border-gray-100 text-center uppercase text-slate-400">{turno}</td>
-                                <td className="px-4 py-2 border-r border-gray-100 text-slate-800 font-black uppercase">{m.maquina}</td>
-                                <td className="px-3 py-2 border-r border-gray-100 text-right font-mono text-gray-900">{turno === 'dia' ? (cons.qty > 0 ? formatNum(cons.qty) : '—') : ''}</td>
-                                <td className="px-3 py-2 border-r border-gray-100 text-right font-mono text-indigo-600">{turno === 'dia' ? (cons.hours > 0 ? `${cons.hours.toFixed(1)}h` : '—') : ''}</td>
-                                <td className="px-4 py-2 border-r border-gray-100 text-slate-400 font-mono">operador {turno === 'dia' ? 'a' : 'b'}</td>
-                                <td className="px-4 py-2 border-r border-gray-100"></td>
-                                <td className="px-3 py-2 border-r border-gray-100 text-center text-green-600">{turno === 'dia' ? '75%' : '100%'}</td>
-                                <td className="px-4 py-2 border-r border-gray-100 text-center font-black text-indigo-700">18.5h</td>
-                                <td className="px-3 py-2 border-r border-gray-100 text-center text-red-500">—</td>
-                                <td className="px-4 py-2 text-center text-orange-500">—</td>
-                              </tr>
-                            ))}
-                          </React.Fragment>
+                          <tr key={m.code} className="hover:bg-gray-50">
+                            <td className="px-4 py-3 text-slate-800 font-black uppercase">{m.maquina}</td>
+                            <td className="px-4 py-3 text-center font-mono">{totalQty > 0 ? formatNum(totalQty, 0) : '—'}</td>
+                            <td className="px-4 py-3 text-center font-mono text-indigo-600">{totalHours > 0 ? `${totalHours.toFixed(2)}h` : '—'}</td>
+                            <td className="px-4 py-3 text-center text-slate-400">—</td>
+                          </tr>
                         );
                       })}
-                    </React.Fragment>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Card>
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="resumen" className="animate-in fade-in duration-300 space-y-8">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {Object.entries(CAPACIDAD_CONFIG).map(([centro, machines]) => (
+              <div key={centro} className="space-y-4">
+                <div className="flex items-center justify-between px-2">
+                   <h3 className="text-sm font-black uppercase tracking-tighter text-slate-800">{centro === '1000' ? 'QUITO' : 'GUAYAQUIL'}</h3>
+                   <Badge className="bg-yellow-400 text-black font-black text-[9px] uppercase px-3">Status: {selectedDate === 'all' ? 'Consolidado' : selectedDate}</Badge>
+                </div>
+                <Card className="rounded-2xl border border-gray-200 shadow-xl overflow-hidden bg-white">
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse font-sans text-[10px]">
+                      <thead className="bg-[#4a69bd] text-white uppercase font-black tracking-tighter">
+                        <tr>
+                          <th rowSpan={2} className="px-4 py-4 border-r border-white/10 text-left bg-slate-900 w-44">Recurso Operativo</th>
+                          {machines.map(m => <th key={m.code} className="px-2 py-2 border-r border-white/10">{m.code}</th>)}
+                        </tr>
+                        <tr className="bg-slate-800 text-[8px]">
+                          {machines.map(m => <th key={`${m.code}-name`} className="px-2 py-2 border-r border-white/10 font-bold max-w-[80px]">{m.name}</th>)}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100 font-bold">
+                        <tr className="hover:bg-slate-50">
+                          <td className="px-4 py-2 border-r border-gray-100 bg-gray-50 uppercase">Turno 1 [H]</td>
+                          {machines.map(m => <td key={`${m.code}-t1`} className="px-2 py-2 border-r border-gray-100 text-center font-mono">{m.t1}</td>)}
+                        </tr>
+                        <tr className="hover:bg-slate-50">
+                          <td className="px-4 py-2 border-r border-gray-100 bg-gray-50 uppercase">Turno 2 [H]</td>
+                          {machines.map(m => <td key={`${m.code}-t2`} className="px-2 py-2 border-r border-gray-100 text-center font-mono">{m.t2}</td>)}
+                        </tr>
+                        <tr className="hover:bg-slate-50">
+                          <td className="px-4 py-2 border-r border-gray-100 bg-gray-50 uppercase text-red-600">Paro Prog. T1</td>
+                          {machines.map(m => <td key={`${m.code}-p1`} className="px-2 py-2 border-r border-gray-100 text-center font-mono text-red-400">{PARO_PROG_T1}</td>)}
+                        </tr>
+                        <tr className="hover:bg-slate-50">
+                          <td className="px-4 py-2 border-r border-gray-100 bg-gray-50 uppercase text-red-600">Paro Prog. T2</td>
+                          {machines.map(m => <td key={`${m.code}-p2`} className="px-2 py-2 border-r border-gray-100 text-center font-mono text-red-400">{PARO_PROG_T2}</td>)}
+                        </tr>
+                        <tr className="hover:bg-slate-50">
+                          <td className="px-4 py-2 border-r border-gray-100 bg-gray-50 uppercase">MTTO</td>
+                          {machines.map(m => <td key={`${m.code}-mtto`} className="px-2 py-2 border-r border-gray-100 text-center font-mono text-orange-600">{getMachineMTTO(m.code) > 0 ? getMachineMTTO(m.code) : '—'}</td>)}
+                        </tr>
+                        <tr className="bg-slate-50">
+                          <td className="px-4 py-2 border-r border-gray-100 uppercase font-black">Tiempo total</td>
+                          {machines.map(m => {
+                            const mtto = getMachineMTTO(m.code);
+                            const total = m.t1 + m.t2 - PARO_PROG_T1 - PARO_PROG_T2 - mtto;
+                            return <td key={`${m.code}-total`} className="px-2 py-2 border-r border-gray-100 text-center font-black font-mono">{total.toFixed(2)}</td>;
+                          })}
+                        </tr>
+                        <tr>
+                          <td className="px-4 py-2 border-r border-gray-100 bg-gray-50 uppercase">Rendimiento</td>
+                          {machines.map(m => <td key={`${m.code}-rend`} className="px-2 py-2 border-r border-gray-100 text-center font-black">{(m.rendimiento * 100).toFixed(0)}%</td>)}
+                        </tr>
+                        <tr className="bg-yellow-400/20">
+                          <td className="px-4 py-3 border-r border-gray-100 uppercase font-black text-slate-800">T. Total Disponible</td>
+                          {machines.map(m => {
+                            const mtto = getMachineMTTO(m.code);
+                            const total = m.t1 + m.t2 - PARO_PROG_T1 - PARO_PROG_T2 - mtto;
+                            const disp = total * m.rendimiento;
+                            return <td key={`${m.code}-disp`} className="px-2 py-3 border-r border-gray-100 text-center font-black font-mono bg-yellow-400 text-black">{disp.toFixed(1)}</td>;
+                          })}
+                        </tr>
+                        <tr>
+                          <td className="px-4 py-2 border-r border-gray-100 bg-gray-50 uppercase">Tiempo planificado</td>
+                          {machines.map(m => {
+                            const planned = getPlannedHours(centro, m.code);
+                            return <td key={`${m.code}-plan`} className="px-2 py-2 border-r border-gray-100 text-center font-mono text-indigo-700">{planned > 0 ? planned.toFixed(1) : '—'}</td>;
+                          })}
+                        </tr>
+                        <tr className="bg-emerald-50">
+                          <td className="px-4 py-2 border-r border-gray-100 uppercase font-black text-emerald-800">% Planificado</td>
+                          {machines.map(m => {
+                            const mtto = getMachineMTTO(m.code);
+                            const total = m.t1 + m.t2 - PARO_PROG_T1 - PARO_PROG_T2 - mtto;
+                            const disp = total * m.rendimiento;
+                            const planned = getPlannedHours(centro, m.code);
+                            const perc = disp > 0 ? (planned / disp) * 100 : 0;
+                            return (
+                              <td key={`${m.code}-perc`} className={cn("px-2 py-2 border-r border-gray-100 text-center font-black", perc > 100 ? "text-red-600" : "text-emerald-700")}>
+                                {perc > 0 ? `${perc.toFixed(1)}%` : '0%'}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+              </div>
+            ))}
+          </div>
         </TabsContent>
 
         <TabsContent value="habilidades" className="animate-in fade-in duration-300">
@@ -473,11 +532,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                   <tr>
                     <th className="px-4 py-4 border-r border-amber-100">ID Planta</th>
                     <th className="px-4 py-4 border-r border-amber-100 text-left">Máquina</th>
-                    <th className="px-4 py-4 border-r border-amber-100 bg-indigo-50 text-indigo-900">Puesto (SISMAC)</th>
+                    <th className="px-4 py-4 border-r border-amber-100 text-left">Desde</th>
+                    <th className="px-4 py-4 border-r border-amber-100 text-left">Hasta</th>
                     <th className="px-4 py-4 border-r border-amber-100">Tiempo (H)</th>
-                    <th className="px-4 py-4 border-r border-amber-100 text-left">Fecha Inicio</th>
-                    <th className="px-4 py-4 border-r border-amber-100 text-left">Fecha Fin</th>
-                    <th className="px-4 py-4">OT ID</th>
+                    <th className="px-4 py-4">Estado</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 font-bold">
@@ -485,11 +543,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                     <tr key={i} className="hover:bg-amber-50/30">
                       <td className="px-4 py-3 border-r border-gray-100 text-slate-400">{String(m.ID_PLANTA || '—')}</td>
                       <td className="px-4 py-3 border-r border-gray-100 text-left uppercase">{String(m.MAQUINA || '—')}</td>
-                      <td className="px-4 py-3 border-r border-gray-100 bg-indigo-50/20 text-indigo-700 uppercase">{getPuestoMTTO(String(m.ID_MAQUINA))}</td>
-                      <td className="px-4 py-3 border-r border-gray-100 font-black text-red-600">{String(m.TIEMPO || '0')}h</td>
                       <td className="px-4 py-3 border-r border-gray-100 text-left font-mono">{String(m.FECHA_INI || m.FECHA_PRO || '—')}</td>
                       <td className="px-4 py-3 border-r border-gray-100 text-left font-mono">{String(m.FECHA_FIN || '—')}</td>
-                      <td className="px-4 py-3 font-mono">{String(m.OT_PRG_ID || '—')}</td>
+                      <td className="px-4 py-3 border-r border-gray-100 font-black text-red-600">{String(m.TIEMPO || '0')}h</td>
+                      <td className="px-4 py-3 font-mono">{String(m.STATUS || 'P')}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -516,19 +573,12 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <th className="px-3 py-4 border-r border-gray-50">Fecha</th>
                         <th className="px-3 py-4 border-r border-gray-50">Material</th>
                         <th className="px-3 py-4 border-r border-gray-50 text-left">Descripción</th>
-                        <th className="px-2 py-4 border-r border-gray-50">DENS.</th>
-                        <th className="px-2 py-4 border-r border-gray-50">ANCHO</th>
-                        <th className="px-2 py-4 border-r border-gray-50">LARGO</th>
-                        <th className="px-2 py-4 border-r border-gray-50">ESP.</th>
                         <th className="px-3 py-4 border-r border-gray-100 font-black">Cant.</th>
                         <th className="px-3 py-4 border-r border-gray-100 font-black text-indigo-700 bg-indigo-50/20">Máquina</th>
                         <th className="px-3 py-4 border-r border-gray-100 bg-blue-50/20 text-blue-900">T. INDIV. (min)</th>
                         <th className="px-3 py-4 border-r border-gray-100 bg-amber-50/50 text-amber-900">T. TOTAL (H)</th>
-                        <th className="px-3 py-4 border-r border-gray-100 bg-green-50/50 text-green-900">T. C/D (H)</th>
-                        <th className="px-2 py-4 border-r border-gray-50 bg-purple-50/50 text-purple-900">SUBBL.</th>
-                        <th className="px-2 py-4 border-r border-gray-50 bg-orange-50/50 font-black">BLOQUES 20M</th>
+                        <th className="px-2 py-2 border-r border-gray-50 bg-orange-50/50 font-black">BLOQUES 20M</th>
                         <th className="px-3 py-4 border-r border-gray-50 text-red-700 bg-red-50/50 font-black">CARGAS</th>
-                        <th className="px-3 py-4 border-r border-gray-50">Alm.</th>
                         <th className="px-3 py-4">Resp.</th>
                       </tr>
                     </thead>
@@ -537,30 +587,18 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         const eng = calculateEngineering(o);
                         const dRaw = String(o.FECHAINICIO || o.FECHA || '—').trim();
                         const date = dRaw.includes('T') ? dRaw.split('T')[0] : dRaw;
-                        
-                        // Unificación de Tiempos de Maniobra en una sola columna en Horas
-                        const totalCDHours = ((eng.tCargaSec + eng.tDescargaSec) / 3600).toFixed(2);
-                        const cdTooltip = `${(eng.tCargaSec / 3600).toFixed(2)}h Carga + ${(eng.tDescargaSec / 3600).toFixed(2)}h Descarga`;
-                        
                         return (
                           <tr key={i} className="hover:bg-gray-50/50">
                             <td className="px-3 py-2 text-slate-400 border-r border-gray-50">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
                             <td className="px-3 py-2 border-r border-gray-100 font-mono text-[8px] text-gray-400">{date}</td>
                             <td className="px-3 py-2 font-mono text-primary border-r border-gray-50">{eng.code}</td>
-                            <td className="px-3 py-2 text-left border-r border-gray-50 truncate max-w-[120px] uppercase text-gray-500">{eng.desc}</td>
-                            <td className="px-2 py-2 border-r border-gray-50 text-gray-400">{eng.dens}</td>
-                            <td className="px-2 py-2 border-r border-gray-50 text-gray-400 font-mono">{eng.ancho}</td>
-                            <td className="px-2 py-2 border-r border-gray-50 text-gray-400 font-mono">{eng.largo}</td>
-                            <td className="px-2 py-2 border-r border-gray-50 text-gray-400 font-mono">{eng.esp}</td>
+                            <td className="px-3 py-2 text-left border-r border-gray-50 truncate max-w-[250px] uppercase text-gray-500">{eng.desc}</td>
                             <td className="px-3 py-2 border-r border-gray-100 font-black text-gray-900 font-mono">{eng.qty.toLocaleString()}</td>
                             <td className="px-3 py-2 border-r border-gray-100 font-black text-indigo-700 bg-indigo-50/5 uppercase">{String(o.MAQUINA || o.RECURSO || '—')}</td>
                             <td className="px-3 py-2 border-r border-gray-100 bg-blue-50/10 font-mono text-blue-700 text-center">{eng.indivMin.toFixed(2)}</td>
                             <td className="px-3 py-2 border-r border-gray-100 bg-amber-50/10 font-mono text-amber-700 text-center">{eng.hours.toFixed(2)}</td>
-                            <td className="px-3 py-2 border-r border-gray-100 bg-green-50/10 font-mono text-green-700 text-center" title={cdTooltip}>{totalCDHours}</td>
-                            <td className="px-2 py-2 border-r border-gray-50 bg-purple-50/10 text-purple-700">{eng.subblocks.toFixed(1)}</td>
                             <td className="px-2 py-2 border-r border-gray-50 bg-orange-50/10 font-black text-orange-800">{eng.blocks20m.toFixed(1)}</td>
                             <td className="px-3 py-2 border-r border-gray-50 bg-red-50/20 font-black text-red-600">{String(eng.loads)}</td>
-                            <td className="px-3 py-2 border-r border-gray-50 text-gray-300">{String(o.ALMACEN || '—')}</td>
                             <td className="px-3 py-2 text-gray-300">{String(o.RESPCONTROLPROD || '—')}</td>
                           </tr>
                         );
