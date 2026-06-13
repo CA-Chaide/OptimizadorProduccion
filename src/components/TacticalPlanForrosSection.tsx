@@ -113,30 +113,51 @@ export const TacticalPlanForrosSection: React.FC = () => {
   }, []);
 
   /**
+   * Mapa de equivalencias dinámico extraído de la base de datos
+   * Vincula el nombre del puesto con su código de Hoja de Ruta real
+   */
+  const workstationToHojaRutaMap = useMemo(() => {
+    const map = new Map<string, string>();
+    tiemposProduccion.forEach(t => {
+      const puesto = String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').trim().toUpperCase();
+      const hr = String(t.HojaRuta || t['HOJA DE RUTA'] || '').trim().toUpperCase();
+      if (puesto && hr && hr.startsWith('HR')) {
+        map.set(puesto, hr);
+      }
+    });
+    return map;
+  }, [tiemposProduccion]);
+
+  /**
    * Mapea un nombre de puesto a su Hoja de Ruta estándar (HR-...)
-   * Maneja equivalencias como COSEDORA-ACH08 -> HR-PEF08
+   * Utiliza primero el mapa de BD y luego reglas de inferencia
    */
   const mapToHojaRuta = useCallback((name: string): string => {
     const n = String(name || '').toUpperCase().trim();
     if (n === '' || n === 'NULL' || n === '—' || n === '-') return '';
+    
+    // 1. Prioridad: Buscar en el mapa de equivalencias de la base de datos
+    if (workstationToHojaRutaMap.has(n)) {
+      return workstationToHojaRutaMap.get(n)!;
+    }
+
+    // 2. Si ya viene formateado, devolverlo
     if (n.startsWith('HR-')) return n;
 
+    // 3. Inferencia técnica por nombre si no hay match en BD
     const numMatch = n.match(/\d+/);
     const num = numMatch ? numMatch[0].padStart(2, '0') : '';
 
-    // Regla: Cosedoras o Pegadoras asociadas a un número de ACH
     if (n.includes('COSEDORA') || n.includes('PEGADORA') || n.includes('PEF')) {
       return `HR-PEF${num}`;
     }
 
-    // Regla: Acolchadoras
     if (n.includes('ACOLCHADORA') || n.includes('ACH')) {
       return `HR-ACH${num}`;
     }
 
-    // Default: Prefijo HR- si no lo tiene
     return `HR-${n}`;
-  }, []);
+  }, [workstationToHojaRutaMap]);
 
   const fetchBaseData = useCallback(async () => {
     try {
@@ -294,8 +315,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
     const material = normalizeMaterialCode(order['MATERIAL'] || order['CodMaterial'] || '');
     const match = tiemposProduccion.find(t => normalizeMaterialCode(t.CodMaterial || t.Material || '') === material);
     
-    // Si hay match, resolver a HR estándar
     if (match) {
+      const dbHr = String(match.HojaRuta || match['HOJA DE RUTA'] || '').trim().toUpperCase();
+      if (dbHr && dbHr.startsWith('HR')) return dbHr;
+      
       const rawName = String(match.PuestoTrabajo || match.nombre_estacion || match.Maquina || '').trim().toUpperCase();
       return mapToHojaRuta(rawName);
     }
@@ -304,18 +327,28 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   const uniqueWorkstations = useMemo(() => {
     const wsSet = new Set<string>();
+    
+    // 1. Agregar Hojas de Ruta reales de los maestros técnicos
     tiemposProduccion.forEach(t => {
-      const ws = String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').trim().toUpperCase();
-      if (ws && ws !== 'NULL' && ws !== '-' && ws !== '—') {
-        wsSet.add(mapToHojaRuta(ws));
+      const dbHr = String(t.HojaRuta || t['HOJA DE RUTA'] || '').trim().toUpperCase();
+      if (dbHr && dbHr.startsWith('HR')) {
+        wsSet.add(dbHr);
+      } else {
+        const rawName = String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').trim().toUpperCase();
+        if (rawName && rawName !== 'NULL' && rawName !== '-' && rawName !== '—') {
+          wsSet.add(mapToHojaRuta(rawName));
+        }
       }
     });
+
+    // 2. Agregar Hojas de Ruta resueltas de las órdenes reales
     dailyOrders.forEach(o => {
       const ws = getResolvedMachine(o);
       if (ws && ws !== 'Z_SIN_MAQUINA' && ws !== '') {
         wsSet.add(ws);
       }
     });
+
     return Array.from(wsSet).filter(Boolean).sort();
   }, [tiemposProduccion, dailyOrders, getResolvedMachine, mapToHojaRuta]);
 
@@ -323,10 +356,13 @@ export const TacticalPlanForrosSection: React.FC = () => {
     if (!material) return 0;
     const normMaterial = normalizeMaterialCode(material);
     const machine = getResolvedMachine(order);
-    const match = tiemposProduccion.find(t => 
-      normalizeMaterialCode(t.CodMaterial || t.Material || '') === normMaterial &&
-      mapToHojaRuta(String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '')) === machine
-    ) || tiemposProduccion.find(t => normalizeMaterialCode(t.CodMaterial || t.Material || '') === normMaterial);
+    
+    const match = tiemposProduccion.find(t => {
+      const mNorm = normalizeMaterialCode(t.CodMaterial || t.Material || '');
+      const tHr = String(t.HojaRuta || t['HOJA DE RUTA'] || mapToHojaRuta(String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || ''))).trim().toUpperCase();
+      return mNorm === normMaterial && tHr === machine;
+    }) || tiemposProduccion.find(t => normalizeMaterialCode(t.CodMaterial || t.Material || '') === normMaterial);
+    
     return match ? (Number(match.Tiempo || match.Tiempo_Min || 0) * quantity) : 0;
   }, [tiemposProduccion, normalizeMaterialCode, getResolvedMachine, mapToHojaRuta]);
 
@@ -644,9 +680,15 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     {uniqueWorkstations.map((ws, idx) => {
                       const orders = dailyOrders.filter(o => getResolvedMachine(o) === ws);
                       const totalUnits = orders.reduce((sum, o) => sum + Number(o['CANTIDAD'] || 0), 0);
-                      const matches = tiemposProduccion.filter(t => mapToHojaRuta(String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '')) === ws);
+                      
+                      const matches = tiemposProduccion.filter(t => {
+                        const dbHr = String(t.HojaRuta || t['HOJA DE RUTA'] || mapToHojaRuta(String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || ''))).trim().toUpperCase();
+                        return dbHr === ws;
+                      });
+                      
                       const avgHrMin = matches.length > 0 ? matches.reduce((sum, t) => sum + Number(t.Tiempo || t.Tiempo_Min || 0), 0) / matches.length : 0;
                       const totalTimeHours = orders.reduce((sum, o) => sum + calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || 0), o), 0) / 60;
+                      
                       const config = workstationConfigs[ws] || { people: 1 };
                       const capacityHours = totalHorasNetas * config.people;
                       const utilization = capacityHours > 0 ? (totalTimeHours / capacityHours) * 100 : 0;
@@ -716,7 +758,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   <tbody className="divide-y divide-slate-100 bg-white">
                     {tiemposProduccion.map((t, idx) => {
                       const rawName = String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').trim().toUpperCase();
-                      const hr = mapToHojaRuta(rawName);
+                      const hr = String(t.HojaRuta || t['HOJA DE RUTA'] || mapToHojaRuta(rawName)).trim().toUpperCase();
                       return (
                         <tr key={idx} className="hover:bg-indigo-50/30 transition-colors">
                           <td className="px-6 py-3 font-mono font-bold text-slate-700">{t.CodMaterial || t.Material || '—'}</td>
