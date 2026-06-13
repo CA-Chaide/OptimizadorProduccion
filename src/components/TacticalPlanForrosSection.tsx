@@ -24,7 +24,8 @@ import {
   Zap,
   History,
   Sun,
-  Moon
+  Moon,
+  Search
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -63,17 +64,11 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [isLoadingTiempos, setIsLoadingTiempos] = useState(false);
   const [isLoadingDaily, setIsLoadingDaily] = useState(false);
 
-  // MANTENIMIENTO PREVENTIVO
-  const [mantenimientos, setMantenimientos] = useState<any[]>([]);
-  const [isLoadingMantenimientos, setIsLoadingMantenimientos] = useState(false);
-  const [maintPage, setMaintPage] = useState(1);
-  const maintPageSize = 10;
-
-  // CONFIGURACIÓN DE JORNADAS
+  // CONFIGURACIÓN DE JORNADAS (ACTUALIZADA)
   const DIURNA_OPTIONS = [
-    { label: "Jornada Normal (8h)", value: "8.0" },
     { label: "07:00 - 15:45 (8.75h)", value: "8.75" },
-    { label: "07:00 - 17:00 (10.0h)", value: "10.0" }
+    { label: "07:00 - 17:00 (10.0h)", value: "10.0" },
+    { label: "07:00 - 18:00 (11.0h)", value: "11.0" }
   ];
 
   const NOCTURNA_OPTIONS = [
@@ -81,7 +76,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     { label: "21:00 - 05:30 (8.5h)", value: "8.5" }
   ];
 
-  const [jornadaDiurnaSel, setJornadaDiurnaSel] = useState("8.0");
+  const [jornadaDiurnaSel, setJornadaDiurnaSel] = useState("8.75");
   const [jornadaNocturnaSel, setJornadaNocturnaSel] = useState("0");
 
   const horasNetasDiurnas = useMemo(() => parseFloat(jornadaDiurnaSel) * 0.84, [jornadaDiurnaSel]);
@@ -99,19 +94,33 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return String(code).trim().replace(/^0+/, '');
   }, []);
 
-  const mapToHojaRuta = useCallback((name: string): string => {
-    const n = String(name || '').toUpperCase().trim();
-    if (n === '' || n === 'NULL' || n === '—' || n === '-') return '';
-    if (n === 'ACOLCHADORA09' || n === 'ACOLCHADORA 09') return 'HR-ACH09';
-    if (n === 'COSEDORA-ACH08' || n === 'COSEDORA ACH 08') return 'HR-PEF08';
-    if (n === 'COSEDORA-ACH02' || n === 'COSEDORA ACH 02') return 'HR-PEF02';
-    if (n.startsWith('HR-')) return n;
-    const numMatch = n.match(/\d+/);
+  const mapToHojaRuta = useCallback((puestoName: string): string => {
+    const pn = String(puestoName || '').toUpperCase().trim();
+    if (!pn || pn === '—' || pn === 'NULL') return '';
+    
+    // Buscar en maestros técnicos la equivalencia real
+    const match = tiemposProduccion.find(t => {
+      const tp = String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').toUpperCase().trim();
+      return tp === pn;
+    });
+
+    if (match) {
+      const hr = String(match.HojaRuta || match['HOJA DE RUTA'] || '').trim();
+      if (hr && hr.startsWith('HR-')) return hr;
+    }
+
+    // Lógica de respaldo
+    if (pn.includes('ACOLCHADORA09')) return 'HR-ACH09';
+    if (pn.includes('COSEDORA-ACH02')) return 'HR-PEF02';
+    if (pn.includes('COSEDORA-ACH08')) return 'HR-PEF08';
+    
+    const numMatch = pn.match(/\d+/);
     const num = numMatch ? numMatch[0].padStart(2, '0') : '';
-    if (n.includes('COSEDORA') || n.includes('PEGADORA') || n.includes('PEF')) return `HR-PEF${num}`;
-    if (n.includes('ACOLCHADORA') || n.includes('ACH')) return `HR-ACH${num}`;
-    return `HR-${n}`;
-  }, []);
+    if (pn.includes('COSEDORA') || pn.includes('PEGADORA')) return `HR-PEF${num}`;
+    if (pn.includes('ACOLCHADORA')) return `HR-ACH${num}`;
+    
+    return pn.startsWith('HR-') ? pn : `HR-${pn}`;
+  }, [tiemposProduccion]);
 
   const fetchBaseData = useCallback(async () => {
     try {
@@ -122,17 +131,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
       ]);
       setGrupos(gRes.data || []);
       setRestricciones(rRes.data || []);
-      
-      const relevantGroups = gRes.data?.filter((g: any) => {
-        const name = g.nombre_grupo.toUpperCase();
-        return name.includes('FORRO') || name.includes('ACOLCHADO') || name.includes('TAPAS') || name.includes('BANDA');
-      }) || [];
-
-      if (relevantGroups.length > 0) {
-        const firstGroupRest = rRes.data?.filter((r: any) => r.codigo_grupo === relevantGroups[0].codigo_grupo) || [];
-        const hTrabajo = firstGroupRest.find((r: any) => r.nombre_restriccion === 'HORAS_TRABAJO');
-        if (hTrabajo) setJornadaDiurnaSel(parseFloat(hTrabajo.valor_restriccion).toFixed(1));
-      }
     } catch (error) {
       console.error('Error fetching base data:', error);
     } finally {
@@ -216,28 +214,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
   }, [isMounted, externalFilters]);
 
-  const fetchMantenimientos = useCallback(async () => {
-    setIsLoadingMantenimientos(true);
-    try {
-      const response = await serviciosService.ListarMantenimientoPreventivosProgramados();
-      const rawData = response.data || [];
-      const respRestriction = forrosRestricciones.find(r => r.nombre_restriccion.toUpperCase() === 'RESPCTRLPROD');
-      if (respRestriction) {
-        const allowedCodes = respRestriction.valor_restriccion.split('&').map(s => s.trim().padStart(3, '0'));
-        const filtered = rawData.filter((m: any) => {
-          const resp = String(m.RespCtrlProd || '').trim().padStart(3, '0');
-          return allowedCodes.includes(resp);
-        });
-        filtered.sort((a: any, b: any) => new Date(a.FECHA_PRO || 0).getTime() - new Date(b.FECHA_PRO || 0).getTime());
-        setMantenimientos(filtered);
-      }
-    } catch (error) {
-      console.error('Error fetching maintenance:', error);
-    } finally {
-      setIsLoadingMantenimientos(false);
-    }
-  }, [forrosRestricciones]);
-
   const getResolvedPuesto = useCallback((order: any) => {
     const orderFields = ['PuestoTrabajo', 'MAQUINA', 'Maquina'];
     for (const k of orderFields) {
@@ -290,9 +266,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
     if (isMounted && forrosGruposList.length > 0) {
       fetchTiemposProduccion();
       fetchDailyOrders();
-      fetchMantenimientos();
     }
-  }, [isMounted, forrosGruposList, fetchTiemposProduccion, fetchDailyOrders, fetchMantenimientos]);
+  }, [isMounted, forrosGruposList, fetchTiemposProduccion, fetchDailyOrders]);
 
   const handleWorkstationConfigChange = (p: string, field: keyof WorkstationConfig, value: any) => {
     setWorkstationConfigs(prev => ({ ...prev, [p]: { ...prev[p], [field]: value } }));
@@ -309,7 +284,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return (
       <div className={cn(
         "flex border border-slate-200 rounded-3xl overflow-hidden shadow-sm bg-white transition-all hover:shadow-lg",
-        small ? "h-[360px]" : "h-[450px]"
+        small ? "h-[380px]" : "h-[450px]"
       )}>
         <div className={cn(
           "bg-slate-950 p-6 text-white flex flex-col border-r border-slate-800",
@@ -403,6 +378,62 @@ export const TacticalPlanForrosSection: React.FC = () => {
     );
   };
 
+  const TableKPI = () => (
+    <Card className="rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden shadow-lg">
+      <CardHeader className="bg-slate-950 p-8 border-b border-slate-800">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="bg-indigo-600 p-3 rounded-2xl text-white shadow-lg shadow-indigo-500/20">
+              <Clock className="w-6 h-6" />
+            </div>
+            <div>
+              <CardTitle className="text-2xl font-black text-white uppercase tracking-tight">Maestros Técnicos de Ingeniería</CardTitle>
+              <CardDescription className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-1">Base de datos de Tiempos por Material y Puesto</CardDescription>
+            </div>
+          </div>
+          <div className="flex gap-3">
+             <div className="bg-white/5 border border-white/10 rounded-2xl px-5 py-3 text-center">
+                <span className="block text-[8px] text-slate-500 uppercase font-black tracking-widest">Registros</span>
+                <span className="text-xl font-mono font-black text-sky-400">{tiemposProduccion.length}</span>
+             </div>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="p-0">
+        <div className="overflow-x-auto max-h-[70vh] relative">
+          <table className="w-full text-[11px] border-collapse">
+            <thead className="bg-slate-900 sticky top-0 z-10 text-white text-left uppercase tracking-widest font-black">
+              <tr>
+                <th className="px-6 py-4 bg-slate-950 border-r border-white/5">Cod. Material</th>
+                <th className="px-6 py-4 bg-slate-950 border-r border-white/5 text-sky-400">HOJA DE RUTA</th>
+                <th className="px-6 py-4 border-r border-white/5">Puesto de Trabajo</th>
+                <th className="px-6 py-4 border-r border-white/5">Descripción</th>
+                <th className="px-6 py-4 border-r border-white/5 text-center">Centro</th>
+                <th className="px-6 py-4 border-r border-white/5">Línea</th>
+                <th className="px-6 py-4 text-right bg-indigo-900/40">Min / Und</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 bg-white">
+              {tiemposProduccion.map((t, i) => (
+                <tr key={i} className="hover:bg-slate-50 group transition-colors">
+                  <td className="px-6 py-4 font-mono font-bold text-slate-600 bg-slate-50/30">{t.CodMaterial || t.MATERIAL}</td>
+                  <td className="px-6 py-4 font-mono font-black text-indigo-700 bg-sky-50/50 uppercase">{mapToHojaRuta(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '')}</td>
+                  <td className="px-6 py-4 font-black text-slate-800 uppercase">{t.PuestoTrabajo || t.nombre_estacion || t.Maquina}</td>
+                  <td className="px-6 py-4 text-slate-500 max-w-[200px] truncate">{t.Material || t.DESCRIPCION || '—'}</td>
+                  <td className="px-6 py-4 text-center font-bold text-slate-700">{t.Centro || '—'}</td>
+                  <td className="px-6 py-4 text-slate-600 font-medium">{t.Linea || '—'}</td>
+                  <td className="px-6 py-4 text-right font-mono font-black text-indigo-600 bg-indigo-50/30">
+                    {(t.Tiempo || t.Tiempo_Min || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </CardContent>
+    </Card>
+  );
+
   if (!isMounted) return null;
 
   return (
@@ -465,6 +496,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
           </TabsTrigger>
           <TabsTrigger value="personal-turnos" className="flex items-center gap-2 px-7 py-4 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[11px] font-black uppercase tracking-widest text-slate-500">
             <UserPlus className="w-4 h-4" /> Dotación de Planta
+          </TabsTrigger>
+          <TabsTrigger value="kpi-tiempos" className="flex items-center gap-2 px-7 py-4 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[11px] font-black uppercase tracking-widest text-slate-500">
+            <ClipboardList className="w-4 h-4" /> KPI TIEMPOS
           </TabsTrigger>
         </TabsList>
 
@@ -655,6 +689,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
               </Card>
             </div>
           </div>
+        </TabsContent>
+
+        <TabsContent value="kpi-tiempos">
+          <TableKPI />
         </TabsContent>
       </Tabs>
     </div>
