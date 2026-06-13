@@ -112,6 +112,32 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return String(code).trim().replace(/^0+/, '');
   }, []);
 
+  /**
+   * Mapea un nombre de puesto a su Hoja de Ruta estándar (HR-...)
+   * Maneja equivalencias como COSEDORA-ACH08 -> HR-PEF08
+   */
+  const mapToHojaRuta = useCallback((name: string): string => {
+    const n = String(name || '').toUpperCase().trim();
+    if (n === '' || n === 'NULL' || n === '—' || n === '-') return '';
+    if (n.startsWith('HR-')) return n;
+
+    const numMatch = n.match(/\d+/);
+    const num = numMatch ? numMatch[0].padStart(2, '0') : '';
+
+    // Regla: Cosedoras o Pegadoras asociadas a un número de ACH
+    if (n.includes('COSEDORA') || n.includes('PEGADORA') || n.includes('PEF')) {
+      return `HR-PEF${num}`;
+    }
+
+    // Regla: Acolchadoras
+    if (n.includes('ACOLCHADORA') || n.includes('ACH')) {
+      return `HR-ACH${num}`;
+    }
+
+    // Default: Prefijo HR- si no lo tiene
+    return `HR-${n}`;
+  }, []);
+
   const fetchBaseData = useCallback(async () => {
     try {
       setIsLoading(true);
@@ -267,21 +293,31 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
     const material = normalizeMaterialCode(order['MATERIAL'] || order['CodMaterial'] || '');
     const match = tiemposProduccion.find(t => normalizeMaterialCode(t.CodMaterial || t.Material || '') === material);
-    return match ? String(match.PuestoTrabajo || match.nombre_estacion || match.Maquina || '').trim().toUpperCase() : '';
-  }, [tiemposProduccion, normalizeMaterialCode]);
+    
+    // Si hay match, resolver a HR estándar
+    if (match) {
+      const rawName = String(match.PuestoTrabajo || match.nombre_estacion || match.Maquina || '').trim().toUpperCase();
+      return mapToHojaRuta(rawName);
+    }
+    return '';
+  }, [tiemposProduccion, normalizeMaterialCode, mapToHojaRuta]);
 
   const uniqueWorkstations = useMemo(() => {
     const wsSet = new Set<string>();
     tiemposProduccion.forEach(t => {
       const ws = String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').trim().toUpperCase();
-      if (ws && ws !== 'NULL' && ws !== '-' && ws !== '—') wsSet.add(ws);
+      if (ws && ws !== 'NULL' && ws !== '-' && ws !== '—') {
+        wsSet.add(mapToHojaRuta(ws));
+      }
     });
     dailyOrders.forEach(o => {
       const ws = getResolvedMachine(o);
-      if (ws && ws !== 'Z_SIN_MAQUINA' && ws !== '') wsSet.add(ws);
+      if (ws && ws !== 'Z_SIN_MAQUINA' && ws !== '') {
+        wsSet.add(ws);
+      }
     });
-    return Array.from(wsSet).sort();
-  }, [tiemposProduccion, dailyOrders, getResolvedMachine]);
+    return Array.from(wsSet).filter(Boolean).sort();
+  }, [tiemposProduccion, dailyOrders, getResolvedMachine, mapToHojaRuta]);
 
   const calculateProductionTime = useCallback((material: string, quantity: number, order: any) => {
     if (!material) return 0;
@@ -289,10 +325,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
     const machine = getResolvedMachine(order);
     const match = tiemposProduccion.find(t => 
       normalizeMaterialCode(t.CodMaterial || t.Material || '') === normMaterial &&
-      String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').trim().toUpperCase() === machine
+      mapToHojaRuta(String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '')) === machine
     ) || tiemposProduccion.find(t => normalizeMaterialCode(t.CodMaterial || t.Material || '') === normMaterial);
     return match ? (Number(match.Tiempo || match.Tiempo_Min || 0) * quantity) : 0;
-  }, [tiemposProduccion, normalizeMaterialCode, getResolvedMachine]);
+  }, [tiemposProduccion, normalizeMaterialCode, getResolvedMachine, mapToHojaRuta]);
 
   const group1Suffixes = ['02', '06', '07', '08', '09', '10'];
 
@@ -528,27 +564,14 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
       <Card className="rounded-3xl shadow-sm border-slate-200 bg-white overflow-hidden ring-1 ring-slate-100">
         <div className="px-8 py-5 flex flex-col md:flex-row items-center justify-between gap-8 bg-slate-50/40">
-          <div className="flex flex-wrap items-center gap-10 opacity-40 grayscale pointer-events-none">
-            <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase text-slate-400 tracking-[0.3em] flex items-center gap-2">
-                <Clock className="w-3.5 h-3.5 text-indigo-400" /> Inicio Horizonte
-              </label>
-              <input type="date" value={todayDate} className="bg-white border border-slate-200 rounded-2xl px-5 py-3 text-sm font-black text-slate-800 outline-none transition-all shadow-sm w-[180px]" disabled />
-            </div>
-            <div className="flex items-center pt-6"><ArrowRight className="w-5 h-5 text-slate-300 mx-2" /></div>
-            <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase text-slate-400 tracking-[0.3em] flex items-center gap-2">
-                <Clock className="w-3.5 h-3.5 text-indigo-400" /> Fin Horizonte
-              </label>
-              <input type="date" value={targetDate} className="bg-white border border-slate-200 rounded-2xl px-5 py-3 text-sm font-black text-slate-800 outline-none transition-all shadow-sm w-[180px]" disabled />
+          <div className="flex flex-wrap items-center gap-10">
+            <div className="bg-indigo-50 border border-indigo-100 px-5 py-3 rounded-2xl">
+              <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4" /> Buffer Maestro Total Activado (Sin Filtro de Fecha)
+              </span>
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <div className="bg-indigo-50 border border-indigo-100 px-5 py-3 rounded-2xl">
-              <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4" /> Buffer Maestro Total Activado
-              </span>
-            </div>
             <Button onClick={fetchDailyOrders} disabled={isLoadingDaily} variant="outline" className="h-14 w-14 rounded-2xl border-2 border-slate-200 hover:bg-white text-slate-600 shadow-sm active:scale-95">
               <RefreshCw className={cn("w-5 h-5", isLoadingDaily && "animate-spin")} />
             </Button>
@@ -621,27 +644,32 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     {uniqueWorkstations.map((ws, idx) => {
                       const orders = dailyOrders.filter(o => getResolvedMachine(o) === ws);
                       const totalUnits = orders.reduce((sum, o) => sum + Number(o['CANTIDAD'] || 0), 0);
-                      const matches = tiemposProduccion.filter(t => String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').trim().toUpperCase() === ws);
+                      const matches = tiemposProduccion.filter(t => mapToHojaRuta(String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '')) === ws);
                       const avgHrMin = matches.length > 0 ? matches.reduce((sum, t) => sum + Number(t.Tiempo || t.Tiempo_Min || 0), 0) / matches.length : 0;
                       const totalTimeHours = orders.reduce((sum, o) => sum + calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || 0), o), 0) / 60;
                       const config = workstationConfigs[ws] || { people: 1 };
                       const capacityHours = totalHorasNetas * config.people;
                       const utilization = capacityHours > 0 ? (totalTimeHours / capacityHours) * 100 : 0;
+                      const isOverloaded = utilization > 100;
 
                       return (
                         <tr key={idx} className="hover:bg-slate-50 transition-all group">
-                          <td className="px-8 py-5 font-mono font-black text-indigo-700 bg-indigo-50/20">{ws.startsWith('HR') ? ws : `HR-${ws}`}</td>
+                          <td className="px-8 py-5 font-mono font-black text-indigo-700 bg-indigo-50/20">{ws}</td>
                           <td className="px-8 py-5 font-black text-slate-900 uppercase">{ws}</td>
                           <td className="px-8 py-5 text-center font-mono font-bold text-slate-400">{avgHrMin.toFixed(2)}</td>
                           <td className="px-8 py-5 text-right font-mono font-black text-slate-800">{totalUnits.toLocaleString()}</td>
                           <td className="px-8 py-5 text-right font-mono font-black text-indigo-700 bg-indigo-50/40">{totalTimeHours.toFixed(2)}h</td>
                           <td className="px-8 py-5 text-right font-mono font-bold text-slate-900">{capacityHours.toFixed(2)}h</td>
                           <td className="px-8 py-5 text-center">
-                             <div className="flex items-center justify-center gap-3">
-                               <div className="w-16 bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                                 <motion.div initial={{width:0}} animate={{width: `${Math.min(utilization, 100)}%`}} className={cn("h-full", utilization > 100 ? "bg-red-500" : "bg-indigo-600")} />
+                             <div className="flex items-center justify-center gap-4">
+                               <div className="flex-1 bg-slate-100 h-2 rounded-full overflow-hidden max-w-[100px] border border-slate-200">
+                                 <motion.div 
+                                   initial={{ width: 0 }}
+                                   animate={{ width: `${Math.min(utilization, 100)}%` }}
+                                   className={cn("h-full transition-all duration-1000", isOverloaded ? "bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]" : "bg-indigo-600 shadow-[0_0_10px_rgba(79,70,229,0.4)]")} 
+                                 />
                                </div>
-                               <span className={cn("font-mono font-black", utilization > 100 ? "text-red-600" : "text-slate-900")}>{utilization.toFixed(0)}%</span>
+                               <span className={cn("font-mono font-black text-[10px] min-w-[30px]", isOverloaded ? "text-red-600" : "text-slate-900")}>{utilization.toFixed(0)}%</span>
                              </div>
                           </td>
                         </tr>
@@ -687,8 +715,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   </thead>
                   <tbody className="divide-y divide-slate-100 bg-white">
                     {tiemposProduccion.map((t, idx) => {
-                      const ws = String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').trim().toUpperCase();
-                      const hr = t.HojaRuta || t['HOJA DE RUTA'] || t.HOJA_DE_RUTA || (ws.startsWith('HR') ? ws : `HR-${ws}`);
+                      const rawName = String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').trim().toUpperCase();
+                      const hr = mapToHojaRuta(rawName);
                       return (
                         <tr key={idx} className="hover:bg-indigo-50/30 transition-colors">
                           <td className="px-6 py-3 font-mono font-bold text-slate-700">{t.CodMaterial || t.Material || '—'}</td>
@@ -696,7 +724,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                           <td className="px-6 py-3 text-center font-bold text-slate-400">{t.Centro || '—'}</td>
                           <td className="px-6 py-3 text-slate-600 font-medium">{t.Linea || '—'}</td>
                           <td className="px-6 py-3 font-black text-indigo-700 bg-indigo-50/20">{hr}</td>
-                          <td className="px-6 py-3 font-medium text-slate-600">{ws}</td>
+                          <td className="px-6 py-3 font-medium text-slate-600">{rawName}</td>
                           <td className="px-6 py-3 text-right font-mono font-black text-sky-600 bg-sky-50/30">{Number(t.Tiempo || t.Tiempo_Min || 0).toFixed(2)}</td>
                           <td className="px-6 py-3 text-center text-slate-400 font-bold">{t.RespControlProd || t.RESPCONTROLPROD || '—'}</td>
                         </tr>
