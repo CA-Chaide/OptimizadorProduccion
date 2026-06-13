@@ -633,8 +633,15 @@ export const TacticalPlanForrosSection: React.FC = () => {
     const allowedResps = externalFilters['RESPCTRLPROD'] || [];
     if (allowedResps.length > 0) {
       result = result.filter(m => {
-        const respKey = Object.keys(m).find(k => k.toUpperCase().trim() === 'RESP_CONTROL_PROD' || k.toUpperCase().trim() === 'RESPONSABLE');
+        // Encontrar la columna del responsable (puede variar el nombre)
+        const respKey = Object.keys(m).find(k => 
+          k.toUpperCase().trim() === 'RESP_CONTROL_PROD' || 
+          k.toUpperCase().trim() === 'RESPONSABLE' ||
+          k.toUpperCase().trim() === 'RESPONSABLE_CONTROL'
+        );
         if (!respKey) return true;
+        
+        // Normalizar el valor de la fila a 3 dígitos para comparar
         const val = String(m[respKey] || '').trim().padStart(3, '0');
         return allowedResps.includes(val);
       });
