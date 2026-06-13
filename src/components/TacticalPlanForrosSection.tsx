@@ -126,12 +126,15 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   /**
    * Mapea un nombre de puesto a su Hoja de Ruta estándar (HR-...)
-   * Utiliza primero el mapa de BD y luego reglas de inferencia
    */
   const mapToHojaRuta = useCallback((name: string): string => {
     const n = String(name || '').toUpperCase().trim();
     if (n === '' || n === 'NULL' || n === '—' || n === '-') return '';
     
+    // Explicit Overrides
+    if (n === 'ACOLCHADORA09' || n === 'ACOLCHADORA 09') return 'HR-ACH09';
+    if (n === 'COSEDORA-ACH08' || n === 'COSEDORA ACH 08') return 'HR-PEF08';
+
     // 1. Prioridad: Buscar en el mapa de equivalencias de la base de datos
     if (workstationToHojaRutaMap.has(n)) {
       return workstationToHojaRutaMap.get(n)!;
