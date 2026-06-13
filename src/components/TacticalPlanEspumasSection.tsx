@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -207,6 +206,11 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return data.filter(o => {
       const c = String(o.CENTRO || o.Centro || '').trim();
       if (c !== centro) return false;
+      
+      // FILTRO DE ALMACÉN: Solo Almacén 1006 solicitado por el usuario
+      const almValue = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
+      if (almValue !== '1006') return false;
+
       const resp = String(o.RESPCONTROLPROD || o.RespControlProd || '').trim();
       if (allowedResps.length > 0 && !allowedResps.includes(resp)) return false;
       if (selectedDate !== 'all') {
@@ -284,7 +288,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <div className="p-2 bg-primary/10 rounded-xl"><Wind className="w-6 h-6 text-primary" /></div>
           <div>
             <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Programación Táctica Corte Espuma</h2>
-            <p className="text-xs text-gray-500 font-medium">Coche 2m | Gestión de Capacidad Industrial | Engineering Model v2.2</p>
+            <p className="text-xs text-gray-500 font-medium">Coche 2m | Gestión de Almacén 1006 | Engineering Model v2.2</p>
           </div>
         </div>
       </div>
@@ -310,7 +314,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               <div className="p-2 bg-primary/10 rounded-xl text-primary"><Activity className="w-4 h-4" /></div>
               <div>
                 <p className="text-[9px] font-black uppercase text-gray-400 tracking-widest">Tablero de Mando Diario</p>
-                <h3 className="text-[10px] font-black text-gray-700 uppercase">{selectedDate === 'all' ? 'Vista Consolidada' : `Fecha: ${selectedDate}`}</h3>
+                <h3 className="text-[10px] font-black text-gray-700 uppercase">{selectedDate === 'all' ? 'Vista Consolidada (Alm 1006)' : `Fecha: ${selectedDate}`}</h3>
               </div>
             </div>
             <Popover>
@@ -363,7 +367,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <th className="px-4 py-3 text-left w-56">Máquina</th>
                         <th className="px-4 py-3 text-center">Cant. Planificada</th>
                         <th className="px-4 py-3 text-center">Horas Req.</th>
-                        <th className="px-4 py-3 text-center">Operadores Asignados</th>
+                        <th className="px-4 py-3 text-center">Almacén Origen</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
@@ -377,7 +381,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                             <td className="px-4 py-3 text-slate-800 font-black uppercase">{m.maquina}</td>
                             <td className="px-4 py-3 text-center font-mono">{totalQty > 0 ? formatNum(totalQty, 0) : '—'}</td>
                             <td className="px-4 py-3 text-center font-mono text-indigo-600">{totalHours > 0 ? `${totalHours.toFixed(2)}h` : '—'}</td>
-                            <td className="px-4 py-3 text-center text-slate-400">—</td>
+                            <td className="px-4 py-3 text-center text-slate-400">1006</td>
                           </tr>
                         );
                       })}
@@ -416,9 +420,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               return (
                 <div key={centro} className="space-y-4">
                   <div className="flex items-center justify-between px-2">
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 text-left">
                       <div className="p-2 bg-slate-900 rounded-xl text-white shadow-lg"><Activity className="w-4 h-4" /></div>
-                      <h3 className="text-sm font-black uppercase tracking-tighter text-slate-800">CENTRO {centro === '1000' ? 'QUITO' : 'GUAYAQUIL'}</h3>
+                      <h3 className="text-sm font-black uppercase tracking-tighter text-slate-800">CENTRO {centro === '1000' ? 'QUITO' : 'GUAYAQUIL'} (Solo Alm. 1006)</h3>
                     </div>
                     <Badge className="bg-yellow-400 text-black font-black text-[9px] uppercase px-4 shadow-sm border-none">Periodo: {selectedDate === 'all' ? 'PLAN CONSOLIDADO' : selectedDate}</Badge>
                   </div>
@@ -447,12 +451,12 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                             {machines.map(m => <td key={`${m.code}-t2`} className="px-4 py-2 border-r border-gray-100 text-center font-mono">{m.t2}</td>)}
                             <td className="px-4 py-2 text-center font-mono bg-slate-50 border-l-2 border-indigo-500/10">{totalT2.toFixed(1)}</td>
                           </tr>
-                          <tr className="hover:bg-slate-50 text-red-600/70">
+                          <tr className="hover:bg-slate-50 text-red-600/70 text-left">
                             <td className="px-6 py-2 border-r border-gray-100 bg-gray-50/50 uppercase">Paro Prog. T1</td>
                             {machines.map(m => <td key={`${m.code}-p1`} className="px-4 py-2 border-r border-gray-100 text-center font-mono">{PARO_PROG_T1}</td>)}
                             <td className="px-4 py-2 text-center font-mono bg-red-50/20 border-l-2 border-indigo-500/10">{totalParo1.toFixed(2)}</td>
                           </tr>
-                          <tr className="hover:bg-slate-50 text-red-600/70">
+                          <tr className="hover:bg-slate-50 text-red-600/70 text-left">
                             <td className="px-6 py-2 border-r border-gray-100 bg-gray-50/50 uppercase">Paro Prog. T2</td>
                             {machines.map(m => <td key={`${m.code}-p2`} className="px-4 py-2 border-r border-gray-100 text-center font-mono">{PARO_PROG_T2}</td>)}
                             <td className="px-4 py-2 text-center font-mono bg-red-50/20 border-l-2 border-indigo-500/10">{totalParo2.toFixed(2)}</td>
@@ -464,26 +468,22 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                           </tr>
                           <tr className="bg-slate-900 text-slate-300">
                             <td className="px-6 py-2 border-r border-white/5 uppercase font-black">Disponibilidad Neta</td>
-                            {machines.map(m => {
-                              const mtto = getMachineMTTO(m.code);
-                              const net = m.t1 + m.t2 - PARO_PROG_T1 - PARO_PROG_T2 - mtto;
-                              return <td key={`${m.code}-net`} className="px-4 py-2 border-r border-white/5 text-center font-mono">{net.toFixed(2)}</td>;
-                            })}
+                            {machines.map(m => <td key={`${m.code}-net`} className="px-4 py-2 border-r border-white/5 text-center font-mono text-slate-600">—</td>)}
                             <td className="px-4 py-2 text-center font-black font-mono border-l-2 border-indigo-500/30 text-indigo-300">{totalDisponibleBruto.toFixed(2)}</td>
                           </tr>
                           <tr className="bg-yellow-400">
                             <td className="px-6 py-3 border-r border-black/10 uppercase font-black text-slate-800">T. TOTAL DISPONIBLE [H]</td>
-                            {machines.map(m => <td key={`${m.code}-disp-cell`} className="px-4 py-3 border-r border-black/10 text-center font-black font-mono">—</td>)}
+                            {machines.map(m => <td key={`${m.code}-disp-cell`} className="px-4 py-3 border-r border-black/10 text-center font-black font-mono text-yellow-600">—</td>)}
                             <td className="px-4 py-3 text-center font-black font-mono bg-yellow-400 text-black border-l-2 border-black/20">{totalDisponibleReal.toFixed(1)}</td>
                           </tr>
                           <tr className="bg-blue-50/50">
                             <td className="px-6 py-3 border-r border-blue-100 uppercase font-black text-indigo-900">TIEMPO PLANIFICADO [H]</td>
-                            {machines.map(m => <td key={`${m.code}-plan-cell`} className="px-4 py-3 border-r border-blue-100 text-center font-black font-mono text-indigo-300">—</td>)}
+                            {machines.map(m => <td key={`${m.code}-plan-cell`} className="px-4 py-3 border-r border-blue-100 text-center font-black font-mono text-indigo-200">—</td>)}
                             <td className="px-4 py-3 text-center font-black font-mono text-indigo-900 bg-indigo-100 border-l-2 border-indigo-500/30">{totalPlanificado > 0 ? totalPlanificado.toFixed(1) : '0.0'}</td>
                           </tr>
                           <tr className="bg-slate-50 border-t-2 border-gray-200">
                             <td className="px-6 py-3 border-r border-gray-200 uppercase font-black text-slate-700">% OCUPACIÓN</td>
-                            {machines.map(m => <td key={`${m.code}-perc-cell`} className="px-4 py-3 border-r border-gray-100 text-center font-black text-xs text-slate-300">—</td>)}
+                            {machines.map(m => <td key={`${m.code}-perc-cell`} className="px-4 py-3 border-r border-gray-100 text-center font-black text-xs text-slate-200">—</td>)}
                             <td className={cn("px-4 py-3 text-center font-black border-l-2 border-indigo-500/30 text-base", totalOcupacion > 100 ? "text-red-700" : "text-emerald-700")}>
                               {totalOcupacion > 0 ? `${totalOcupacion.toFixed(1)}%` : '0%'}
                             </td>
@@ -552,8 +552,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
         <TabsContent value="ordenes" className="space-y-10 animate-in fade-in duration-300">
           {[ 
-            { t: 'Planta 1000 - Quito', d: provC1000, id: '1000', c: 'text-green-700', b: 'bg-green-600' }, 
-            { t: 'Planta 2000 - Guayaquil', d: provC2000, id: '2000', c: 'text-indigo-700', b: 'bg-indigo-600' } 
+            { t: 'Planta 1000 - Quito (Alm 1006)', d: provC1000, id: '1000', c: 'text-green-700', b: 'bg-green-600' }, 
+            { t: 'Planta 2000 - Guayaquil (Alm 1006)', d: provC2000, id: '2000', c: 'text-indigo-700', b: 'bg-indigo-600' } 
           ].map((center, idx) => (
             <div key={idx} className="space-y-3">
               <h3 className={cn("text-[10px] font-black uppercase flex items-center gap-2 px-1 text-left", center.c)}>
@@ -574,27 +574,68 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <th className="px-3 py-4 border-r border-gray-100 bg-amber-50/50 text-amber-900">T. TOTAL (H)</th>
                         <th className="px-2 py-2 border-r border-gray-50 bg-orange-50/50 font-black">BLOQUES 20M</th>
                         <th className="px-3 py-4 border-r border-gray-50 text-red-700 bg-red-50/50 font-black">CARGAS</th>
-                        <th className="px-3 py-4">Resp.</th>
+                        <th className="px-3 py-4 border-r border-gray-50">Resp.</th>
+                        <th className="px-3 py-4 bg-slate-50 text-slate-900 font-black">Alm.</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50 font-bold">
-                      {center.d.map((o, i) => {
-                        const eng = calculateEngineering(o);
-                        const dRaw = String(o.FECHAINICIO || o.FECHA || '—').trim();
-                        const date = dRaw.includes('T') ? dRaw.split('T')[0] : dRaw;
+                      {center.d.length === 0 ? (
+                        <tr><td colSpan={12} className="py-8 text-slate-300 font-bold uppercase italic">Sin órdenes para el Almacén 1006</td></tr>
+                      ) : (
+                        center.d.map((o, i) => {
+                          const eng = calculateEngineering(o);
+                          const dRaw = String(o.FECHAINICIO || o.FECHA || '—').trim();
+                          const date = dRaw.includes('T') ? dRaw.split('T')[0] : dRaw;
+                          return (
+                            <tr key={i} className="hover:bg-gray-50/50">
+                              <td className="px-3 py-2 text-slate-400 border-r border-gray-50">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
+                              <td className="px-3 py-2 border-r border-gray-100 font-mono text-[8px] text-gray-400">{date}</td>
+                              <td className="px-3 py-2 font-mono text-primary border-r border-gray-50">{eng.code}</td>
+                              <td className="px-3 py-2 text-left border-r border-gray-50 uppercase text-gray-500 max-w-[200px] truncate" title={eng.desc}>{eng.desc}</td>
+                              <td className="px-3 py-2 border-r border-gray-100 font-black text-gray-900 font-mono">{eng.qty.toLocaleString()}</td>
+                              <td className="px-3 py-2 border-r border-gray-100 font-black text-indigo-700 bg-indigo-50/5 uppercase">{String(o.MAQUINA || o.RECURSO || '—')}</td>
+                              <td className="px-3 py-2 border-r border-gray-100 bg-blue-50/10 font-mono text-blue-700 text-center">{eng.indivMin.toFixed(2)}</td>
+                              <td className="px-3 py-2 border-r border-gray-100 bg-amber-50/10 font-mono text-amber-700 text-center">{eng.hours.toFixed(2)}</td>
+                              <td className="px-2 py-2 border-r border-gray-50 bg-orange-50/10 font-black text-orange-800">{eng.blocks20m.toFixed(1)}</td>
+                              <td className="px-3 py-2 border-r border-gray-50 bg-red-50/20 font-black text-red-600">{String(eng.loads)}</td>
+                              <td className="px-3 py-2 border-r border-gray-50 text-gray-300">{String(o.RESPCONTROLPROD || '—')}</td>
+                              <td className="px-3 py-2 bg-slate-50/50 text-slate-900 font-black">1006</td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            </div>
+          ))}
+        </TabsContent>
+
+        <TabsContent value="tiempos" className="animate-in fade-in duration-300 space-y-10">
+          {[ { t: 'Quito 1000', d: tiemposEnsamblado.filter(t => String(t.Centro || t.centro || '').trim()==='1000') }, { t: 'Guayaquil 2000', d: tiemposEnsamblado.filter(t => String(t.Centro || t.centro || '').trim()==='2000') } ].map((center, idx) => (
+            <div key={idx} className="space-y-4">
+              <h3 className="text-[11px] font-black uppercase text-gray-400 text-left tracking-widest">Catálogo Tiempos - {center.t}</h3>
+              <Card className="rounded-2xl border border-gray-100 shadow-md overflow-hidden bg-white">
+                <div className="overflow-x-auto max-h-[500px]">
+                  <table className="w-full border-collapse text-[11px] font-bold text-center">
+                    <thead className="bg-[#1e293b] text-white sticky top-0 z-10 uppercase font-black tracking-widest text-[9px]">
+                      <tr>
+                        <th className="px-5 py-4 border-r border-white/5 text-left">Material</th>
+                        <th className="px-5 py-4 border-r border-white/5 text-left">Descripción Técnica</th>
+                        <th className="px-5 py-4 border-r border-white/5">Línea</th>
+                        <th className="px-5 py-4 text-teal-400">Estándar (Min)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {center.d.map((t, i) => {
+                        const info = extractMaterialInfo(t);
                         return (
-                          <tr key={i} className="hover:bg-gray-50/50">
-                            <td className="px-3 py-2 text-slate-400 border-r border-gray-50">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
-                            <td className="px-3 py-2 border-r border-gray-100 font-mono text-[8px] text-gray-400">{date}</td>
-                            <td className="px-3 py-2 font-mono text-primary border-r border-gray-50">{eng.code}</td>
-                            <td className="px-3 py-2 text-left border-r border-gray-50 truncate max-w-[250px] uppercase text-gray-500">{eng.desc}</td>
-                            <td className="px-3 py-2 border-r border-gray-100 font-black text-gray-900 font-mono">{eng.qty.toLocaleString()}</td>
-                            <td className="px-3 py-2 border-r border-gray-100 font-black text-indigo-700 bg-indigo-50/5 uppercase">{String(o.MAQUINA || o.RECURSO || '—')}</td>
-                            <td className="px-3 py-2 border-r border-gray-100 bg-blue-50/10 font-mono text-blue-700 text-center">{eng.indivMin.toFixed(2)}</td>
-                            <td className="px-3 py-2 border-r border-gray-100 bg-amber-50/10 font-mono text-amber-700 text-center">{eng.hours.toFixed(2)}</td>
-                            <td className="px-2 py-2 border-r border-gray-50 bg-orange-50/10 font-black text-orange-800">{eng.blocks20m.toFixed(1)}</td>
-                            <td className="px-3 py-2 border-r border-gray-50 bg-red-50/20 font-black text-red-600">{String(eng.loads)}</td>
-                            <td className="px-3 py-2 text-gray-300">{String(o.RESPCONTROLPROD || '—')}</td>
+                          <tr key={i} className="hover:bg-gray-50/50 transition-colors">
+                            <td className="px-4 py-3 font-mono text-indigo-600 border-r border-gray-50 text-left">{info.code}</td>
+                            <td className="px-4 py-3 text-left border-r border-gray-50 text-gray-600 truncate max-w-[300px] uppercase">{String(t.Material || t.Descripcion || '—')}</td>
+                            <td className="px-4 py-3 border-r border-gray-100 text-gray-400 uppercase">{String(t.Linea || '—')}</td>
+                            <td className="px-4 py-3 font-mono text-teal-600 bg-teal-50/10">{Number(t.Tiempo || 0).toFixed(2)}</td>
                           </tr>
                         );
                       })}
