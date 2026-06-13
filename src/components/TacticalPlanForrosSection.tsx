@@ -21,7 +21,8 @@ import {
   Settings2,
   Wrench,
   LayoutGrid,
-  ClipboardList
+  ClipboardList,
+  UserPlus
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -261,18 +262,11 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   // CATEGORIZACIÓN DE PUESTOS SEGÚN REQUERIMIENTO
   const workstationsGroup1 = useMemo(() => {
-    // Acolchadoras: 02, 06, 07, 08, 09, 10
-    // Pegadoras: 02, 06, 07, 08, 09 y las que haya
-    const allowedAchSuffixes = ['02', '06', '07', '08', '09', '10'];
-    
+    const allowedSuffixes = ['02', '06', '07', '08', '09', '10'];
     return uniqueWorkstations.filter(m => {
-      if (m.startsWith('HR-ACH')) {
+      if (m.startsWith('HR-ACH') || m.startsWith('HR-PEF')) {
         const suffix = m.slice(-2);
-        return allowedAchSuffixes.includes(suffix);
-      }
-      if (m.startsWith('HR-PEF')) {
-        // Incluir todas las pegadoras excepto las de grupo 2/3 si hubiera alguna interferencia
-        return true;
+        return allowedSuffixes.includes(suffix);
       }
       return false;
     });
@@ -369,9 +363,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   const MachineCard = ({ machineCode }: { machineCode: string }) => {
     const orders = dailyOrders.filter(o => getResolvedMachine(o) === machineCode);
-    const quantity = orders.reduce((sum, o) => sum + Number(o['CANTIDAD'] || 0), 0);
-    const totalTimeMin = orders.reduce((sum, o) => sum + calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || 0), o), 0);
-    const totalTimeHours = totalTimeMin / 60;
+    const totalTimeHours = orders.reduce((sum, o) => sum + calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || 0), o), 0) / 60;
     const config = workstationConfigs[machineCode] || { people: 1 };
     const capacityHours = totalHorasNetas * config.people;
     const utilization = capacityHours > 0 ? (totalTimeHours / capacityHours) * 100 : 0;
@@ -379,7 +371,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
     return (
       <div className="flex border border-slate-200 rounded-2xl overflow-hidden h-[420px] shadow-sm w-full bg-white transition-all hover:shadow-md">
-        {/* PANEL IZQUIERDO: INFO TÉCNICA (SLATE & INDIGO) */}
         <div className="w-[38%] bg-slate-900 p-6 text-white flex flex-col border-r border-slate-800">
           <div className="mb-6">
             <h3 className="text-xl font-black uppercase leading-tight tracking-tight text-slate-100 flex items-center gap-2">
@@ -398,9 +389,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 <div className="flex justify-between items-center">
                   <span className="font-bold uppercase text-[10px] text-slate-500">Operadores:</span>
                   <div className="flex items-center gap-2 bg-slate-800 rounded-lg p-1">
-                    <button onClick={() => handleWorkstationConfigChange(machineCode, 'people', Math.max(1, config.people - 1))} className="w-7 h-7 rounded-md bg-slate-700 hover:bg-sky-600 flex items-center justify-center text-white transition-colors">-</button>
+                    <button onClick={() => handleWorkstationConfigChange(machineCode, 'people', Math.max(1, config.people - 1))} className="w-7 h-7 rounded-md bg-slate-700 hover:bg-indigo-600 flex items-center justify-center text-white transition-colors">-</button>
                     <span className="font-mono font-bold text-lg text-white w-6 text-center">{config.people}</span>
-                    <button onClick={() => handleWorkstationConfigChange(machineCode, 'people', config.people + 1)} className="w-7 h-7 rounded-md bg-slate-700 hover:bg-sky-600 flex items-center justify-center text-white transition-colors">+</button>
+                    <button onClick={() => handleWorkstationConfigChange(machineCode, 'people', config.people + 1)} className="w-7 h-7 rounded-md bg-slate-700 hover:bg-indigo-600 flex items-center justify-center text-white transition-colors">+</button>
                   </div>
                 </div>
                 <div className="pt-2 border-t border-white/5 flex justify-between items-center text-xs">
@@ -427,7 +418,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
           </div>
         </div>
 
-        {/* PANEL DERECHO: LISTADO DE ÓRDENES (GRIS SOBRIO) */}
         <div className="flex-1 bg-slate-50/30 p-6 flex flex-col">
           <div className="flex items-center justify-between mb-5 pb-3 border-b border-slate-200">
             <h3 className="text-xs font-black text-slate-700 uppercase flex items-center gap-2 tracking-widest">
@@ -490,14 +480,14 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   return (
     <div className="p-6 md:p-8 space-y-6 bg-slate-50/40 min-h-screen">
-      {/* HEADER DE CONTROL E INDICADORES CLAVE */}
+      {/* HEADER DE CONTROL */}
       <div className="flex flex-col xl:flex-row items-center justify-between gap-6 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
         <div className="flex items-center space-x-5">
           <div className="bg-slate-900 p-4 rounded-2xl text-white shadow-lg">
             <CalendarClock className="w-8 h-8" />
           </div>
           <div>
-            <h2 className="text-2xl font-black text-slate-800 uppercase tracking-tighter">Programación Táctica de Forros</h2>
+            <h2 className="text-2xl font-black text-slate-800 uppercase tracking-tighter">Programación Táctica Forros</h2>
             <div className="flex items-center gap-2 mt-1">
               <Badge variant="outline" className="border-slate-200 text-slate-400 bg-slate-50 font-black uppercase tracking-[0.2em] text-[9px] px-3 py-0.5">Módulo de Planificación Corto Plazo</Badge>
             </div>
@@ -515,7 +505,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
         </div>
       </div>
 
-      {/* PANEL DE HORIZONTE TÁCTICO */}
+      {/* PANEL DE HORIZONTE */}
       <Card className="rounded-2xl shadow-sm border-slate-200 bg-white overflow-hidden">
         <div className="px-6 py-4 flex flex-col md:flex-row items-center justify-between gap-6 bg-slate-50/30">
           <div className="flex items-center gap-6">
@@ -588,7 +578,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
             <LayoutGrid className="w-3.5 h-3.5" /> 4. Forros Finales
           </TabsTrigger>
           <TabsTrigger value="componentes" className="flex items-center gap-2 px-6 py-3 data-[state=active]:bg-slate-900 data-[state=active]:text-white rounded-xl transition-all text-[10px] font-black uppercase tracking-widest text-slate-500">
-            <Inbox className="w-3.5 h-3.5" /> Buffer Maestro
+            <Inbox className="w-3.5 h-3.5" /> Componentes
           </TabsTrigger>
           <TabsTrigger value="mantenimiento" className="flex items-center gap-2 px-6 py-3 data-[state=active]:bg-slate-900 data-[state=active]:text-white rounded-xl transition-all text-[10px] font-black uppercase tracking-widest text-slate-500">
             <Wrench className="w-3.5 h-3.5" /> Mant. Preventivo
@@ -600,22 +590,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
         <TabsContent value="acolchado-tapas" className="space-y-8 pb-10">
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-            {workstationsGroup1.length > 0 ? (
-              workstationsGroup1.map((wsCode) => (
-                <MachineCard key={wsCode} machineCode={wsCode} />
-              ))
-            ) : (
-              <div className="col-span-full py-20 text-center bg-white rounded-3xl border border-dashed border-slate-300">
-                {isLoadingTiempos ? (
-                  <div className="flex flex-col items-center gap-4">
-                    <Loader2 className="w-10 h-10 text-indigo-500 animate-spin" />
-                    <p className="text-sm font-black uppercase tracking-[0.2em] text-slate-400">Sincronizando centros operativos...</p>
-                  </div>
-                ) : (
-                  <p className="text-sm font-black uppercase tracking-[0.2em] text-slate-300">No se detectaron máquinas para Acolchado y Tapas</p>
-                )}
-              </div>
-            )}
+            {workstationsGroup1.map((wsCode) => (
+              <MachineCard key={wsCode} machineCode={wsCode} />
+            ))}
           </div>
         </TabsContent>
 
@@ -646,12 +623,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
         <TabsContent value="componentes">
            <Card className="rounded-2xl shadow-sm border-slate-200 overflow-hidden bg-white">
              <CardHeader className="bg-slate-50/50 border-b border-slate-200 p-8">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="text-xl font-black text-slate-800 uppercase tracking-tight flex items-center gap-3"><Inbox className="w-6 h-6 text-slate-400" /> Buffer Maestro de Órdenes</CardTitle>
-                    <CardDescription className="text-slate-400 font-bold uppercase text-[9px] tracking-[0.25em] mt-2">Buffer global de órdenes previsionales filtradas por restricciones técnicas</CardDescription>
-                  </div>
-                </div>
+                <CardTitle className="text-xl font-black text-slate-800 uppercase tracking-tight flex items-center gap-3"><Inbox className="w-6 h-6 text-slate-400" /> Buffer Maestro de Órdenes</CardTitle>
              </CardHeader>
              <CardContent className="p-0">
                 <ProvisionalOrdersTabSection 
@@ -668,9 +640,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
           <Card className="rounded-2xl shadow-sm border-slate-200 overflow-hidden bg-white">
             <CardHeader className="bg-slate-50/50 border-b border-slate-200 p-8">
               <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="text-xl font-black text-slate-800 uppercase tracking-tight flex items-center gap-3"><Wrench className="w-6 h-6 text-slate-400" /> Mantenimiento Preventivo</CardTitle>
-                </div>
+                <CardTitle className="text-xl font-black text-slate-800 uppercase tracking-tight flex items-center gap-3"><Wrench className="w-6 h-6 text-slate-400" /> Mantenimiento Preventivo</CardTitle>
                 <Button onClick={fetchMantenimientos} disabled={isLoadingMantenimientos} variant="outline" size="sm" className="h-10 px-5 font-black uppercase text-[9px] tracking-widest border-slate-300 rounded-xl">
                   <RefreshCw className={cn("w-3.5 h-3.5 mr-2", isLoadingMantenimientos && "animate-spin")} /> Actualizar
                 </Button>
@@ -695,7 +665,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                         <td className="px-6 py-4 font-mono font-bold text-slate-500">{m.CODIGO_EQ || '—'}</td>
                         <td className="px-6 py-4 font-black text-slate-400 uppercase">{m.NOMBRE_EQ || '—'}</td>
                         <td className="px-6 py-4 text-slate-400 font-black uppercase text-[9px]">{m.T_FREC || '—'}</td>
-                        <td className="px-6 py-4"><Badge className="font-black text-[9px] px-3 py-1 border-none rounded-lg shadow-sm bg-sky-600 text-white">{m.ESTADO || 'PENDIENTE'}</Badge></td>
+                        <td className="px-6 py-4"><Badge className="font-black text-[9px] px-3 py-1 border-none rounded-lg shadow-sm bg-indigo-600 text-white">{m.ESTADO || 'PENDIENTE'}</Badge></td>
                       </tr>
                     )) : (
                       <tr><td colSpan={5} className="py-24 text-center font-black text-slate-200 uppercase text-xs tracking-widest">Sin paradas programadas</td></tr>
