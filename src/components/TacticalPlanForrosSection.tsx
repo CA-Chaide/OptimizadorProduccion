@@ -6,7 +6,6 @@ import {
   Loader2, 
   Users, 
   Lock, 
-  Package, 
   Timer, 
   RefreshCw, 
   ChevronLeft, 
@@ -14,12 +13,9 @@ import {
   ChevronsLeft, 
   ChevronsRight, 
   Clock,
-  Search,
-  Calendar as CalendarIconLucide,
   MapPin,
   ListTree,
   UserPlus,
-  Activity,
   ClipboardList,
   Wrench,
   LayoutGrid,
@@ -101,6 +97,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [targetDate, setTargetDate] = useState<string>('');
   const [isHorizonFilterActive, setIsHorizonFilterActive] = useState(false);
 
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
   const normalizeMaterialCode = useCallback((code: string | number): string => {
     if (!code) return '';
     return String(code).trim().replace(/^0+/, '');
@@ -139,14 +139,14 @@ export const TacticalPlanForrosSection: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    setIsMounted(true);
-    fetchBaseData();
-  }, [fetchBaseData]);
+    if (isMounted) fetchBaseData();
+  }, [isMounted, fetchBaseData]);
 
+  // Filtro de grupos para Forros incluyendo explícitamente ACOLCHADO para cargar los tiempos
   const forrosGruposList = useMemo(() => {
     return grupos.filter(g => {
       const name = (g.nombre_grupo || '').toUpperCase();
-      return name.includes('FORRO') || name.includes('CHN') || name.includes('BASE') || name.includes('BANDA');
+      return name.includes('FORRO') || name.includes('CHN') || name.includes('BASE') || name.includes('BANDA') || name.includes('ACOLCHADO');
     });
   }, [grupos]);
 
@@ -195,14 +195,22 @@ export const TacticalPlanForrosSection: React.FC = () => {
   }, [forrosGruposList]);
 
   const fetchDailyOrders = useCallback(async () => {
-    if (Object.keys(externalFilters).length === 0 || !todayDate) return;
+    if (!isMounted) return;
     setIsLoadingDaily(true);
     try {
       const response = await serviciosService.OrdenesProvisionalesAlphaPaginados(1, 10000);
       if (response && response.data) {
         let filtered = response.data;
         
-        // El Buffer Maestro SIEMPRE muestra todo, pero esta variable se usa para los tableros visuales
+        // Aplicar restricciones técnicas de Forros
+        if (externalFilters.RESPCTRLPROD) {
+          filtered = filtered.filter((o: any) => {
+            const resp = String(o.RESPCONTROLPROD || '').trim();
+            return externalFilters.RESPCTRLPROD.includes(resp);
+          });
+        }
+        
+        // Filtrado opcional por horizonte
         if (isHorizonFilterActive) {
           filtered = filtered.filter((order: any) => {
             const normalizedOrderDate = normalizeDateForFilter(order['FECHAINICIO']);
@@ -217,7 +225,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     } finally {
       setIsLoadingDaily(false);
     }
-  }, [externalFilters, todayDate, targetDate, normalizeDateForFilter, isHorizonFilterActive]);
+  }, [isMounted, externalFilters, todayDate, targetDate, normalizeDateForFilter, isHorizonFilterActive]);
 
   const fetchMantenimientos = useCallback(async () => {
     setIsLoadingMantenimientos(true);
@@ -251,13 +259,13 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const uniqueWorkstations = useMemo(() => {
     const wsSet = new Set<string>();
     tiemposProduccion.forEach(t => {
-      const ws = String(t.PuestoTrabajo || t.nombre_estacion || '').trim();
-      if (ws && ws !== 'null' && ws.toUpperCase() !== 'MARCOSUIO') wsSet.add(ws.toUpperCase());
+      const ws = String(t.PuestoTrabajo || t.nombre_estacion || '').trim().toUpperCase();
+      if (ws && ws !== 'NULL' && ws !== 'MARCOSUIO') wsSet.add(ws);
     });
     return Array.from(wsSet).sort();
   }, [tiemposProduccion]);
 
-  // CATEGORIZACIÓN DE PUESTOS POR PESTAÑAS
+  // CATEGORIZACIÓN DE PUESTOS
   const workstationsGroup1 = useMemo(() => {
     const allowedSuffixes = ['02', '06', '08', '09', '10'];
     return uniqueWorkstations.filter(m => 
@@ -506,15 +514,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
             <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex items-center gap-4 min-w-[180px] shadow-inner">
               <div className="bg-indigo-700 p-2 rounded-xl text-white"><MapPin className="w-4 h-4" /></div>
               <div>
-                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Carga GYE</p>
-                <p className="text-xl font-black text-slate-800 font-mono tracking-tight">{chnBasesDateTotals.totalToday.toLocaleString()}</p>
-              </div>
-            </div>
-            <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex items-center gap-4 min-w-[180px] shadow-inner">
-              <div className="bg-slate-800 p-2 rounded-xl text-white"><MapPin className="w-4 h-4" /></div>
-              <div>
-                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Carga UIO</p>
-                <p className="text-xl font-black text-slate-800 font-mono tracking-tight">{chnBasesDateTotals.totalTarget.toLocaleString()}</p>
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Carga Horizonte</p>
+                <p className="text-xl font-black text-slate-800 font-mono tracking-tight">{dailyOrders.length.toLocaleString()}</p>
               </div>
             </div>
           </div>
@@ -526,7 +527,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
         <div className="px-6 py-4 flex flex-col md:flex-row items-center justify-between gap-6 bg-slate-50/30">
           <div className="flex items-center gap-6">
             <div className="space-y-1">
-              <label className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] flex items-center gap-2"><CalendarIconLucide className="w-3 h-3" /> Inicio Horizonte</label>
+              <label className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] flex items-center gap-2">
+                <CalendarClock className="w-3 h-3" /> Inicio Horizonte
+              </label>
               <input 
                 type="date" 
                 value={todayDate} 
@@ -538,7 +541,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
               <ArrowRight className="w-4 h-4 text-slate-300" />
             </div>
             <div className="space-y-1">
-              <label className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] flex items-center gap-2"><CalendarIconLucide className="w-3 h-3" /> Fin Horizonte</label>
+              <label className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] flex items-center gap-2">
+                <CalendarClock className="w-3 h-3" /> Fin Horizonte
+              </label>
               <input 
                 type="date" 
                 value={targetDate} 
@@ -603,9 +608,22 @@ export const TacticalPlanForrosSection: React.FC = () => {
         {/* 1. ACOLCHADO & TAPAS */}
         <TabsContent value="acolchado-tapas" className="space-y-8 pb-10">
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-            {workstationsGroup1.map((wsCode) => (
-              <MachineCard key={wsCode} machineCode={wsCode} />
-            ))}
+            {workstationsGroup1.length > 0 ? (
+              workstationsGroup1.map((wsCode) => (
+                <MachineCard key={wsCode} machineCode={wsCode} />
+              ))
+            ) : (
+              <div className="col-span-full py-20 text-center bg-white rounded-3xl border border-dashed border-slate-300">
+                {isLoadingTiempos ? (
+                  <div className="flex flex-col items-center gap-4">
+                    <Loader2 className="w-10 h-10 text-indigo-500 animate-spin" />
+                    <p className="text-sm font-black uppercase tracking-[0.2em] text-slate-400">Sincronizando centros operativos...</p>
+                  </div>
+                ) : (
+                  <p className="text-sm font-black uppercase tracking-[0.2em] text-slate-300">No se detectaron máquinas para el proceso de Acolchado y Tapas</p>
+                )}
+              </div>
+            )}
           </div>
         </TabsContent>
 
@@ -615,6 +633,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
             {workstationsGroup2.map((wsCode) => (
               <MachineCard key={wsCode} machineCode={wsCode} />
             ))}
+            {workstationsGroup2.length === 0 && !isLoadingTiempos && (
+              <div className="col-span-full py-20 text-center bg-white rounded-3xl border border-dashed border-slate-300 font-black uppercase tracking-[0.2em] text-slate-300 text-xs">Sin estaciones de bandas detectadas</div>
+            )}
           </div>
         </TabsContent>
 
@@ -624,6 +645,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
             {workstationsGroup3.map((wsCode) => (
               <MachineCard key={wsCode} machineCode={wsCode} />
             ))}
+            {workstationsGroup3.length === 0 && !isLoadingTiempos && (
+              <div className="col-span-full py-20 text-center bg-white rounded-3xl border border-dashed border-slate-300 font-black uppercase tracking-[0.2em] text-slate-300 text-xs">Sin estaciones de corte/interiores detectadas</div>
+            )}
           </div>
         </TabsContent>
 
@@ -633,6 +657,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
             {workstationsGroup4.map((wsCode) => (
               <MachineCard key={wsCode} machineCode={wsCode} />
             ))}
+            {workstationsGroup4.length === 0 && !isLoadingTiempos && (
+              <div className="col-span-full py-20 text-center bg-white rounded-3xl border border-dashed border-slate-300 font-black uppercase tracking-[0.2em] text-slate-300 text-xs">Sin estaciones de forros detectadas</div>
+            )}
           </div>
         </TabsContent>
 
@@ -773,7 +800,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       </SelectContent>
                     </Select>
                  </div>
-                 <div className="p-7 bg-slate-900 rounded-[1.5rem] text-white shadow-xl border border-white/5 relative overflow-hidden">
+                 <div className="p-7 bg-slate-900 rounded-[1.5rem] text-white shadow-xl border border-white/10 relative overflow-hidden">
                     <div className="absolute top-0 right-0 p-4 opacity-5">
                       <Timer className="w-20 h-20" />
                     </div>
@@ -823,98 +850,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
                </CardContent>
             </Card>
           </div>
-        </TabsContent>
-
-        {/* MAESTROS TÉCNICOS */}
-        <TabsContent value="tiempos">
-          <Card className="rounded-2xl shadow-sm border-slate-200 overflow-hidden bg-white">
-             <CardHeader className="bg-slate-50/50 border-b border-slate-200 p-8">
-               <div className="flex items-center justify-between">
-                 <div>
-                   <CardTitle className="text-xl font-black text-slate-800 uppercase tracking-tight flex items-center gap-3"><Timer className="w-6 h-6 text-slate-400" /> Maestros Técnicos</CardTitle>
-                   <CardDescription className="text-slate-400 font-bold uppercase text-[9px] tracking-[0.25em] mt-2">Tiempos estándar de ensamble por material y puesto</CardDescription>
-                 </div>
-                 <Badge variant="secondary" className="font-mono bg-slate-100 text-slate-500 border-none px-4 py-1.5 rounded-xl">{tiemposProduccion.length} REGISTROS</Badge>
-               </div>
-             </CardHeader>
-             <CardContent className="p-0">
-               <div className="overflow-x-auto max-h-[65vh]">
-                 <table className="w-full text-[11px] border-collapse">
-                   <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
-                     <tr className="text-slate-500 font-black uppercase tracking-widest">
-                       <th className="px-6 py-4 text-left">CodMaterial</th>
-                       <th className="px-6 py-4 text-left">Descripción</th>
-                       <th className="px-6 py-4 text-left">Línea</th>
-                       <th className="px-6 py-4 text-left">Puesto</th>
-                       <th className="px-6 py-4 text-right text-indigo-700">Tiempo (min)</th>
-                     </tr>
-                   </thead>
-                   <tbody className="divide-y divide-slate-100 bg-white">
-                     {isLoadingTiempos ? (
-                       <tr><td colSpan={5} className="py-32 text-center font-black text-slate-200 italic animate-pulse tracking-[0.3em] uppercase text-xs">Sincronizando maestros...</td></tr>
-                     ) : tiemposProduccion.map((t, idx) => (
-                       <tr key={idx} className="hover:bg-slate-50/80 transition-colors group">
-                         <td className="px-6 py-3.5 font-mono font-bold text-slate-400 group-hover:text-indigo-600">{t.CodMaterial || t.Material}</td>
-                         <td className="px-6 py-3.5 uppercase font-bold text-slate-500 group-hover:text-slate-700 truncate max-w-[200px]">{t.Material || t.nombre_material || t.DESCRIPCION}</td>
-                         <td className="px-6 py-3.5 font-black text-slate-400 uppercase text-[10px]">{t.Linea || t.nombre_linea}</td>
-                         <td className="px-6 py-3.5"><Badge variant="outline" className="bg-slate-50 text-slate-400 border-slate-200 uppercase text-[8px] font-black px-2.5 py-0.5 rounded-lg">{t.PuestoTrabajo || t.nombre_estacion}</Badge></td>
-                         <td className="px-6 py-3.5 text-right font-mono font-black text-indigo-600">{Number(t.Tiempo || t.Tiempo_Min).toFixed(2)}</td>
-                       </tr>
-                     ))}
-                   </tbody>
-                 </table>
-               </div>
-             </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* REGLAS DE NEGOCIO */}
-        <TabsContent value="restricciones">
-           <Card className="rounded-2xl shadow-sm border-slate-200 overflow-hidden bg-white">
-             <CardHeader className="bg-slate-50/50 border-b border-slate-200 p-8">
-                <CardTitle className="text-xl font-black text-slate-800 uppercase tracking-tight flex items-center gap-3"><Lock className="w-6 h-6 text-slate-400" /> Restricciones Técnicas</CardTitle>
-             </CardHeader>
-             <CardContent className="p-8">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                   {forrosRestricciones.map(r => (
-                     <div key={r.codigo_restriccion} className="flex items-start gap-6 p-6 bg-white border border-slate-100 rounded-[1.5rem] shadow-sm hover:border-slate-300 transition-all group">
-                        <div className="bg-slate-900 p-3.5 rounded-2xl text-white group-hover:bg-indigo-700 transition-colors shadow-sm"><Lock className="w-5 h-5" /></div>
-                        <div>
-                          <h4 className="font-black text-slate-700 uppercase text-xs tracking-wider mb-2">{r.nombre_restriccion}</h4>
-                          <Badge className="bg-slate-100 text-slate-600 border-none font-mono mb-3 text-[10px] px-3 py-1 rounded-lg">{r.valor_restriccion}</Badge>
-                          <p className="text-[10px] text-slate-400 leading-relaxed font-bold uppercase tracking-tight">{r.descripcion || 'Sin descripción técnica registrada.'}</p>
-                        </div>
-                     </div>
-                   ))}
-                </div>
-             </CardContent>
-           </Card>
-        </TabsContent>
-
-        {/* ESTRUCTURA DE GRUPOS */}
-        <TabsContent value="grupos">
-           <Card className="rounded-2xl shadow-sm border-slate-200 overflow-hidden bg-white">
-             <CardHeader className="bg-slate-50/50 border-b border-slate-200 p-8">
-                <CardTitle className="text-xl font-black text-slate-800 uppercase tracking-tight flex items-center gap-3"><ListTree className="w-6 h-6 text-slate-400" /> Grupos de Planificación</CardTitle>
-             </CardHeader>
-             <CardContent className="p-8">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {forrosGruposList.map(g => (
-                    <div key={g.codigo_grupo} className="p-6 border border-slate-100 rounded-[1.5rem] bg-white hover:border-slate-400 transition-all group shadow-sm relative overflow-hidden">
-                      <div className="absolute top-0 right-0 w-20 h-20 bg-slate-50 rounded-bl-[3rem] -mr-8 -mt-8 group-hover:bg-slate-900 transition-colors duration-500"></div>
-                      <div className="flex items-center gap-4 mb-5 relative z-10">
-                        <div className="bg-slate-50 p-2.5 rounded-xl text-slate-600 group-hover:bg-white group-hover:text-slate-900 transition-colors shadow-sm"><ListTree className="w-4 h-4" /></div>
-                        <h4 className="font-black text-slate-700 uppercase tracking-tighter text-md group-hover:text-white transition-colors duration-500">{g.nombre_grupo}</h4>
-                      </div>
-                      <div className="space-y-2.5 pt-4 border-t border-slate-50 relative z-10">
-                        <p className="text-[9px] text-slate-400 font-black uppercase tracking-[0.2em]">ID GRUPO: <span className="text-slate-800 font-mono ml-2">{g.codigo_grupo}</span></p>
-                        <p className="text-[9px] text-slate-400 font-black uppercase tracking-[0.2em]">CENTRO: <span className="text-indigo-600 font-mono ml-2">{g.centro}</span></p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-             </CardContent>
-           </Card>
         </TabsContent>
       </Tabs>
     </div>
