@@ -25,7 +25,9 @@ import {
   Wrench,
   BarChart3,
   LayoutGrid,
-  Inbox
+  Inbox,
+  Filter,
+  ArrowRight
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -93,9 +95,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
   // PERSONAL & TURNOS
   const [workstationConfigs, setWorkstationConfigs] = useState<Record<string, WorkstationConfig>>({});
 
-  // FECHAS
+  // FECHAS & HORIZONTE
   const [todayDate, setTodayDate] = useState<string>('');
   const [targetDate, setTargetDate] = useState<string>('');
+  const [isHorizonFilterActive, setIsHorizonFilterActive] = useState(false);
 
   const normalizeMaterialCode = useCallback((code: string | number): string => {
     if (!code) return '';
@@ -196,10 +199,16 @@ export const TacticalPlanForrosSection: React.FC = () => {
     try {
       const response = await serviciosService.OrdenesProvisionalesAlphaPaginados(1, 10000);
       if (response && response.data) {
-        const filtered = response.data.filter((order: any) => {
-          const normalizedOrderDate = normalizeDateForFilter(order['FECHAINICIO']);
-          return normalizedOrderDate >= todayDate && normalizedOrderDate <= targetDate;
-        });
+        let filtered = response.data;
+        
+        // Filtrado por horizonte táctico solo si está activo
+        if (isHorizonFilterActive) {
+          filtered = filtered.filter((order: any) => {
+            const normalizedOrderDate = normalizeDateForFilter(order['FECHAINICIO']);
+            return normalizedOrderDate >= todayDate && normalizedOrderDate <= targetDate;
+          });
+        }
+        
         setDailyOrders(filtered);
       }
     } catch (error) {
@@ -207,7 +216,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     } finally {
       setIsLoadingDaily(false);
     }
-  }, [externalFilters, todayDate, targetDate, normalizeDateForFilter]);
+  }, [externalFilters, todayDate, targetDate, normalizeDateForFilter, isHorizonFilterActive]);
 
   const fetchMantenimientos = useCallback(async () => {
     setIsLoadingMantenimientos(true);
@@ -329,85 +338,86 @@ export const TacticalPlanForrosSection: React.FC = () => {
     const isOverloaded = utilization > 100;
 
     return (
-      <div className="flex border-2 border-slate-300 rounded-lg overflow-hidden h-[480px] shadow-lg w-full bg-white transition-all hover:shadow-xl">
-        {/* LADO IZQUIERDO: INFORMACIÓN TÉCNICA (AZUL PIZARRA) */}
-        <div className="w-[35%] bg-slate-800 p-5 text-white flex flex-col border-r-2 border-slate-300">
+      <div className="flex border border-slate-200 rounded-xl overflow-hidden h-[420px] shadow-sm w-full bg-white transition-all hover:shadow-md">
+        {/* LADO IZQUIERDO: INFORMACIÓN TÉCNICA (AZUL PIZARRA SOBRIO) */}
+        <div className="w-[38%] bg-slate-900 p-5 text-white flex flex-col border-r border-slate-200">
           <div className="mb-4">
-            <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">{machineCode}</h4>
-            <h3 className="text-2xl font-black uppercase leading-tight tracking-tighter text-blue-100">{title}</h3>
+            <h4 className="text-[9px] font-bold uppercase tracking-[0.2em] text-slate-500 mb-1">{machineCode}</h4>
+            <h3 className="text-xl font-bold uppercase leading-tight tracking-tight text-slate-100">{title}</h3>
           </div>
           
-          <div className="flex-1 space-y-5">
+          <div className="flex-1 space-y-4">
             <div className="bg-white/5 p-4 rounded-xl border border-white/10">
-              <p className="text-[9px] font-bold uppercase text-slate-400 mb-3 tracking-widest">Capacidad de Turno</p>
+              <p className="text-[8px] font-bold uppercase text-slate-500 mb-3 tracking-widest flex items-center gap-2">
+                <Activity className="w-3 h-3" /> Capacidad Neta Turno
+              </p>
               <div className="space-y-3">
                 <div className="flex justify-between items-center text-sm">
-                  <span className="flex items-center gap-2 font-bold uppercase text-[10px] text-slate-300"><Users className="w-4 h-4 text-blue-400" /> Operadores:</span>
+                  <span className="flex items-center gap-2 font-bold uppercase text-[9px] text-slate-400">Operadores:</span>
                   <div className="flex items-center gap-2">
-                    <button onClick={() => handleWorkstationConfigChange(machineCode, 'people', Math.max(1, config.people - 1))} className="w-6 h-6 rounded bg-slate-700 hover:bg-slate-600 flex items-center justify-center text-white">-</button>
-                    <span className="font-mono font-black text-xl text-blue-400">{config.people}</span>
-                    <button onClick={() => handleWorkstationConfigChange(machineCode, 'people', config.people + 1)} className="w-6 h-6 rounded bg-slate-700 hover:bg-slate-600 flex items-center justify-center text-white">+</button>
+                    <button onClick={() => handleWorkstationConfigChange(machineCode, 'people', Math.max(1, config.people - 1))} className="w-6 h-6 rounded bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-white text-xs transition-colors">-</button>
+                    <span className="font-mono font-bold text-lg text-sky-400 w-4 text-center">{config.people}</span>
+                    <button onClick={() => handleWorkstationConfigChange(machineCode, 'people', config.people + 1)} className="w-6 h-6 rounded bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-white text-xs transition-colors">+</button>
                   </div>
                 </div>
                 <div className="flex justify-between items-center text-sm">
-                  <span className="flex items-center gap-2 font-bold uppercase text-[10px] text-slate-300"><Activity className="w-4 h-4 text-blue-400" /> Neta Disp.:</span>
-                  <span className="font-mono font-black text-lg text-blue-400">{capacityHours.toFixed(2)}h</span>
+                  <span className="flex items-center gap-2 font-bold uppercase text-[9px] text-slate-400">Disp. Total:</span>
+                  <span className="font-mono font-bold text-md text-sky-400">{capacityHours.toFixed(2)}h</span>
                 </div>
               </div>
             </div>
 
             <div className="bg-white/5 p-4 rounded-xl border border-white/10">
-              <p className="text-[9px] font-bold uppercase text-slate-400 mb-3 tracking-widest">Saturación del Turno</p>
-              <div className="flex items-baseline gap-2 mb-2">
-                <span className={cn("text-5xl font-black font-mono tracking-tighter", isOverloaded ? "text-red-400" : "text-sky-300")}>
+              <p className="text-[8px] font-bold uppercase text-slate-500 mb-3 tracking-widest">Utilización de Recursos</p>
+              <div className="flex items-baseline gap-1 mb-2">
+                <span className={cn("text-4xl font-bold font-mono tracking-tighter", isOverloaded ? "text-red-400" : "text-sky-400")}>
                   {utilization.toFixed(1)}
                 </span>
-                <span className="text-xl font-bold text-slate-500">%</span>
+                <span className="text-md font-bold text-slate-600">%</span>
               </div>
-              <Progress value={utilization} className={cn("h-4 bg-slate-700", isOverloaded ? "[&>div]:bg-red-500" : "[&>div]:bg-sky-500")} />
-              <p className="text-[10px] mt-3 font-black uppercase text-center text-slate-400">
-                Carga: {totalTimeHours.toFixed(2)}h / {capacityHours.toFixed(2)}h
-              </p>
+              <Progress value={utilization} className={cn("h-3 bg-slate-800", isOverloaded ? "[&>div]:bg-red-500" : "[&>div]:bg-sky-500")} />
+              <div className="mt-3 flex justify-between text-[9px] font-bold uppercase text-slate-500">
+                <span>Carga: {totalTimeHours.toFixed(2)}h</span>
+                <span className={cn(isOverloaded ? "text-red-400" : "text-slate-500")}>Rem: {(capacityHours - totalTimeHours).toFixed(2)}h</span>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* LADO DERECHO: ÓRDENES (GRIS CLARO) */}
-        <div className="flex-1 bg-slate-50 p-5 flex flex-col">
+        {/* LADO DERECHO: ÓRDENES (GRIS SOBRIO) */}
+        <div className="flex-1 bg-slate-50/50 p-5 flex flex-col">
           <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-200">
-            <h3 className="text-xl font-black text-slate-800 uppercase flex items-center gap-2 tracking-tighter">
-              <ClipboardList className="w-6 h-6 text-blue-700" /> ÓRDENES DE TRABAJO
+            <h3 className="text-sm font-bold text-slate-700 uppercase flex items-center gap-2 tracking-tight">
+              <ClipboardList className="w-4 h-4 text-blue-600" /> Órdenes Planificadas
             </h3>
-            <Badge variant="secondary" className="bg-blue-100 text-blue-800 border-blue-200 font-mono px-3 py-1">{orders.length} ITEMS</Badge>
+            <Badge variant="secondary" className="bg-slate-200 text-slate-700 border-none font-mono text-[9px] px-2">{orders.length} LÍNEAS</Badge>
           </div>
           
-          <div className="flex-1 overflow-auto rounded-lg border border-slate-200 bg-white">
+          <div className="flex-1 overflow-auto rounded-lg border border-slate-200 bg-white shadow-inner">
             <table className="w-full text-[10px]">
-              <thead className="bg-slate-100 sticky top-0 z-10">
-                <tr>
-                  <th className="px-3 py-3 text-left font-black uppercase text-slate-500 border-b border-slate-200 tracking-widest">CodMaterial</th>
-                  <th className="px-3 py-3 text-left font-black uppercase text-slate-500 border-b border-slate-200 tracking-widest">Nombre</th>
-                  <th className="px-3 py-3 text-right font-black uppercase text-slate-500 border-b border-slate-200 tracking-widest">Cant.</th>
-                  <th className="px-3 py-3 text-center font-black uppercase text-slate-500 border-b border-slate-200 tracking-widest">Unid.</th>
-                  <th className="px-3 py-3 text-right font-black uppercase text-blue-800 border-b border-slate-200 tracking-widest">Tiempo (h)</th>
+              <thead className="bg-slate-100/80 sticky top-0 z-10">
+                <tr className="text-slate-500 font-bold uppercase tracking-wider">
+                  <th className="px-3 py-2.5 text-left border-b border-slate-200">Material</th>
+                  <th className="px-3 py-2.5 text-left border-b border-slate-200">Nombre</th>
+                  <th className="px-3 py-2.5 text-right border-b border-slate-200">Cant.</th>
+                  <th className="px-3 py-2.5 text-right border-b border-slate-200 text-blue-700">Tiempo (h)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {orders.map((o, i) => {
                   const t = calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || 0), o) / 60;
                   return (
-                    <tr key={i} className="hover:bg-blue-50/50 transition-all cursor-default">
-                      <td className="px-3 py-2.5 font-mono font-bold text-slate-700">{o['CodMaterial'] || normalizeMaterialCode(o['MATERIAL'])}</td>
-                      <td className="px-3 py-2.5 max-w-[150px] truncate font-medium uppercase text-slate-600" title={o['NOMBRE'] || o['TEXTOMATERIAL']}>{o['NOMBRE'] || o['TEXTOMATERIAL']}</td>
-                      <td className="px-3 py-2.5 text-right font-mono font-black text-slate-800">{Number(o['CANTIDAD'] || 0).toLocaleString()}</td>
-                      <td className="px-3 py-2.5 text-center text-slate-400 font-bold uppercase">{o['UNIDAD'] || 'ST'}</td>
-                      <td className="px-3 py-2.5 text-right font-mono font-black text-blue-800">{t.toFixed(2)}h</td>
+                    <tr key={i} className="hover:bg-blue-50/30 transition-colors">
+                      <td className="px-3 py-2 font-mono font-bold text-slate-600">{o['CodMaterial'] || normalizeMaterialCode(o['MATERIAL'])}</td>
+                      <td className="px-3 py-2 max-w-[140px] truncate font-medium uppercase text-slate-500" title={o['NOMBRE'] || o['TEXTOMATERIAL']}>{o['NOMBRE'] || o['TEXTOMATERIAL']}</td>
+                      <td className="px-3 py-2 text-right font-mono font-bold text-slate-700">{Number(o['CANTIDAD'] || 0).toLocaleString()}</td>
+                      <td className="px-3 py-2 text-right font-mono font-bold text-blue-700">{t.toFixed(2)}h</td>
                     </tr>
                   );
                 })}
                 {orders.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="py-12 text-center text-slate-400 italic font-medium uppercase tracking-widest">Sin órdenes para hoy</td>
+                    <td colSpan={4} className="py-12 text-center text-slate-400 italic font-medium uppercase tracking-widest text-[9px]">Sin datos para el horizonte táctico</td>
                   </tr>
                 )}
               </tbody>
@@ -450,72 +460,117 @@ export const TacticalPlanForrosSection: React.FC = () => {
   if (!isMounted) return null;
 
   return (
-    <div className="p-6 md:p-8 space-y-6 bg-slate-50 min-h-screen">
-      <div className="flex flex-col md:flex-row items-center justify-between gap-6 mb-2">
+    <div className="p-6 md:p-8 space-y-6 bg-slate-50/80 min-h-screen">
+      {/* HEADER SECTION: TITULO & RESUMEN DE CARGA */}
+      <div className="flex flex-col xl:flex-row items-center justify-between gap-6 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
         <div className="flex items-center space-x-4">
-          <div className="bg-slate-900 p-3 rounded-2xl text-white shadow-lg shadow-slate-200">
+          <div className="bg-slate-900 p-3 rounded-2xl text-white shadow-inner">
             <CalendarClock className="w-8 h-8" />
           </div>
           <div>
-            <h2 className="text-3xl font-black text-slate-800 uppercase tracking-tighter">Plan Táctico Forros</h2>
+            <h2 className="text-2xl font-bold text-slate-800 uppercase tracking-tight">Programación Táctica Forros</h2>
             <div className="flex items-center gap-2 mt-1">
-              <Badge variant="outline" className="border-blue-200 text-blue-700 bg-blue-50 font-bold uppercase tracking-widest text-[10px]">Horizonte Táctico: {todayDate} → {targetDate}</Badge>
+              <Badge variant="outline" className="border-slate-200 text-slate-500 bg-slate-50 font-bold uppercase tracking-widest text-[9px] px-2 py-0.5">Módulo de Sincronización ACH-PEF</Badge>
             </div>
           </div>
         </div>
         
-        {/* Resumen de Producción Permanente */}
-        <div className="flex gap-4">
-          <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm flex items-center gap-4 min-w-[200px]">
-            <div className="bg-blue-50 p-2 rounded-lg text-blue-700"><MapPin className="w-5 h-5" /></div>
-            <div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Producción GYE</p>
-              <p className="text-xl font-black text-slate-800 font-mono">{chnBasesDateTotals.totalToday.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</p>
+        <div className="flex flex-wrap gap-4 items-center">
+          <div className="flex gap-4">
+            <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 flex items-center gap-4 min-w-[180px]">
+              <div className="bg-blue-600 p-2 rounded-lg text-white"><MapPin className="w-4 h-4" /></div>
+              <div>
+                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Producción GYE</p>
+                <p className="text-lg font-bold text-slate-800 font-mono">{chnBasesDateTotals.totalToday.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</p>
+              </div>
             </div>
-          </div>
-          <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm flex items-center gap-4 min-w-[200px]">
-            <div className="bg-indigo-50 p-2 rounded-lg text-indigo-700"><MapPin className="w-5 h-5" /></div>
-            <div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Producción UIO</p>
-              <p className="text-xl font-black text-slate-800 font-mono">{chnBasesDateTotals.totalTarget.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</p>
+            <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 flex items-center gap-4 min-w-[180px]">
+              <div className="bg-indigo-600 p-2 rounded-lg text-white"><MapPin className="w-4 h-4" /></div>
+              <div>
+                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Producción UIO</p>
+                <p className="text-lg font-bold text-slate-800 font-mono">{chnBasesDateTotals.totalTarget.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</p>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      <Tabs defaultValue="visual" className="w-full">
-        <TabsList className="flex w-full h-auto bg-white border border-slate-200 p-1.5 mb-8 rounded-2xl shadow-sm overflow-x-auto justify-start sticky top-0 z-50">
-          <TabsTrigger value="visual" className="flex items-center gap-2 px-6 py-2.5 data-[state=active]:bg-slate-900 data-[state=active]:text-white rounded-xl transition-all text-xs font-black uppercase tracking-widest text-slate-500"><LayoutGrid className="w-4 h-4" /> Tablero ACH-PEF</TabsTrigger>
-          <TabsTrigger value="componentes" className="flex items-center gap-2 px-6 py-2.5 data-[state=active]:bg-slate-900 data-[state=active]:text-white rounded-xl transition-all text-xs font-black uppercase tracking-widest text-slate-500"><Inbox className="w-4 h-4" /> Componentes</TabsTrigger>
-          <TabsTrigger value="mantenimiento" className="flex items-center gap-2 px-6 py-2.5 data-[state=active]:bg-slate-900 data-[state=active]:text-white rounded-xl transition-all text-xs font-black uppercase tracking-widest text-slate-500"><Wrench className="w-4 h-4" /> Mant. Preventivo</TabsTrigger>
-          <TabsTrigger value="forros-chn-bases" className="flex items-center gap-2 px-6 py-2.5 data-[state=active]:bg-slate-900 data-[state=active]:text-white rounded-xl transition-all text-xs font-black uppercase tracking-widest text-slate-500"><Package className="w-4 h-4" /> Forros & Bases</TabsTrigger>
-          <TabsTrigger value="personal-turnos" className="flex items-center gap-2 px-6 py-2.5 data-[state=active]:bg-slate-900 data-[state=active]:text-white rounded-xl transition-all text-xs font-black uppercase tracking-widest text-slate-500"><UserPlus className="w-4 h-4" /> Capacidad</TabsTrigger>
-          <TabsTrigger value="tiempos" className="flex items-center gap-2 px-6 py-2.5 data-[state=active]:bg-slate-900 data-[state=active]:text-white rounded-xl transition-all text-xs font-black uppercase tracking-widest text-slate-500"><Timer className="w-4 h-4" /> Maestros</TabsTrigger>
-          <TabsTrigger value="restricciones" className="flex items-center gap-2 px-6 py-2.5 data-[state=active]:bg-slate-900 data-[state=active]:text-white rounded-xl transition-all text-xs font-black uppercase tracking-widest text-slate-500"><Lock className="w-4 h-4" /> Reglas</TabsTrigger>
-          <TabsTrigger value="grupos" className="flex items-center gap-2 px-6 py-2.5 data-[state=active]:bg-slate-900 data-[state=active]:text-white rounded-xl transition-all text-xs font-black uppercase tracking-widest text-slate-500"><Users className="w-4 h-4" /> Grupos</TabsTrigger>
-        </TabsList>
-
-        {/* CONTENIDO: TABLERO VISUAL ACH-PEF (SOBRIO) */}
-        <TabsContent value="visual" className="space-y-12">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-6 bg-white p-6 rounded-2xl border border-slate-200 shadow-lg">
-            <div className="flex items-center gap-5">
-              <div className="bg-blue-700 p-4 rounded-2xl shadow-xl shadow-blue-100">
-                <CalendarCheck className="w-8 h-8 text-white" />
-              </div>
-              <div>
-                <h3 className="text-2xl font-black text-slate-800 uppercase tracking-tighter leading-none">Tablero de Control Componentes</h3>
-                <p className="text-sm text-slate-500 font-bold mt-2 uppercase tracking-wide">Carga sincronizada para: <span className="text-blue-700">{todayDate}</span></p>
-              </div>
+      {/* DATE CONTROL PANEL: BOTON APARTE PARA FECHA */}
+      <Card className="rounded-2xl shadow-sm border-slate-200 bg-white overflow-hidden">
+        <div className="px-6 py-4 flex flex-col md:flex-row items-center justify-between gap-6">
+          <div className="flex items-center gap-6">
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold uppercase text-slate-400 tracking-widest flex items-center gap-1.5"><CalendarIconLucide className="w-3 h-3" /> Fecha Ejecución</label>
+              <input 
+                type="date" 
+                value={todayDate} 
+                onChange={(e) => setTodayDate(e.target.value)}
+                className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+              />
             </div>
-            <Button onClick={fetchDailyOrders} disabled={isLoadingDaily} className="bg-slate-900 hover:bg-slate-800 h-12 px-6 rounded-xl font-black uppercase text-xs tracking-widest transition-all shadow-lg"><RefreshCw className={cn("h-4 w-4 mr-2", isLoadingDaily && "animate-spin")} /> Refrescar Plan</Button>
+            <div className="flex items-center pt-5">
+              <ArrowRight className="w-4 h-4 text-slate-300" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold uppercase text-slate-400 tracking-widest flex items-center gap-1.5"><CalendarIconLucide className="w-3 h-3" /> Fecha Límite</label>
+              <input 
+                type="date" 
+                value={targetDate} 
+                onChange={(e) => setTargetDate(e.target.value)}
+                className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+              />
+            </div>
           </div>
 
+          <div className="flex items-center gap-3">
+            <Button 
+              onClick={() => {
+                setIsHorizonFilterActive(!isHorizonFilterActive);
+                fetchDailyOrders();
+              }}
+              variant={isHorizonFilterActive ? "default" : "outline"}
+              className={cn(
+                "h-10 px-6 rounded-xl font-bold uppercase text-[10px] tracking-widest transition-all gap-2",
+                isHorizonFilterActive ? "bg-blue-600 hover:bg-blue-700 shadow-md" : "border-slate-300 text-slate-600"
+              )}
+            >
+              <Filter className="w-4 h-4" />
+              {isHorizonFilterActive ? "Horizonte Activo" : "Aplicar Horizonte Táctico"}
+            </Button>
+            <Button 
+              onClick={fetchDailyOrders} 
+              disabled={isLoadingDaily}
+              variant="outline"
+              className="h-10 px-4 rounded-xl border-slate-300 hover:bg-slate-50 text-slate-600 transition-all"
+              title="Refrescar datos de la base"
+            >
+              <RefreshCw className={cn("w-4 h-4", isLoadingDaily && "animate-spin")} />
+            </Button>
+          </div>
+        </div>
+      </Card>
+
+      <Tabs defaultValue="visual" className="w-full">
+        <TabsList className="flex w-full h-auto bg-white border border-slate-200 p-1.5 mb-8 rounded-2xl shadow-sm overflow-x-auto justify-start sticky top-0 z-50">
+          <TabsTrigger value="visual" className="flex items-center gap-2 px-6 py-2.5 data-[state=active]:bg-slate-900 data-[state=active]:text-white rounded-xl transition-all text-[10px] font-bold uppercase tracking-widest text-slate-500"><LayoutGrid className="w-4 h-4" /> Tablero ACH-PEF</TabsTrigger>
+          <TabsTrigger value="componentes" className="flex items-center gap-2 px-6 py-2.5 data-[state=active]:bg-slate-900 data-[state=active]:text-white rounded-xl transition-all text-[10px] font-bold uppercase tracking-widest text-slate-500"><Inbox className="w-4 h-4" /> Buffer Maestro</TabsTrigger>
+          <TabsTrigger value="mantenimiento" className="flex items-center gap-2 px-6 py-2.5 data-[state=active]:bg-slate-900 data-[state=active]:text-white rounded-xl transition-all text-[10px] font-bold uppercase tracking-widest text-slate-500"><Wrench className="w-4 h-4" /> Mant. Preventivo</TabsTrigger>
+          <TabsTrigger value="forros-chn-bases" className="flex items-center gap-2 px-6 py-2.5 data-[state=active]:bg-slate-900 data-[state=active]:text-white rounded-xl transition-all text-[10px] font-bold uppercase tracking-widest text-slate-500"><Package className="w-4 h-4" /> Forros & Bases</TabsTrigger>
+          <TabsTrigger value="personal-turnos" className="flex items-center gap-2 px-6 py-2.5 data-[state=active]:bg-slate-900 data-[state=active]:text-white rounded-xl transition-all text-[10px] font-bold uppercase tracking-widest text-slate-500"><UserPlus className="w-4 h-4" /> Capacidad</TabsTrigger>
+          <TabsTrigger value="tiempos" className="flex items-center gap-2 px-6 py-2.5 data-[state=active]:bg-slate-900 data-[state=active]:text-white rounded-xl transition-all text-[10px] font-bold uppercase tracking-widest text-slate-500"><Timer className="w-4 h-4" /> Maestros</TabsTrigger>
+          <TabsTrigger value="restricciones" className="flex items-center gap-2 px-6 py-2.5 data-[state=active]:bg-slate-900 data-[state=active]:text-white rounded-xl transition-all text-[10px] font-bold uppercase tracking-widest text-slate-500"><Lock className="w-4 h-4" /> Reglas</TabsTrigger>
+          <TabsTrigger value="grupos" className="flex items-center gap-2 px-6 py-2.5 data-[state=active]:bg-slate-900 data-[state=active]:text-white rounded-xl transition-all text-[10px] font-bold uppercase tracking-widest text-slate-500"><Users className="w-4 h-4" /> Grupos</TabsTrigger>
+        </TabsList>
+
+        {/* CONTENIDO: TABLERO VISUAL ACH-PEF */}
+        <TabsContent value="visual" className="space-y-12">
           <div className="space-y-16 pb-24">
             {machinePairs.map((pair) => (
               <div key={pair.suffix} className="space-y-6">
                 <div className="flex items-center gap-5 px-2">
-                  <Badge className="bg-slate-700 text-white px-8 py-2 rounded-full font-black text-lg tracking-widest shadow-xl">LÍNEA TÉCNICA {pair.suffix}</Badge>
-                  <div className="h-0.5 flex-1 bg-slate-200 rounded-full"></div>
+                  <div className="bg-indigo-600 h-1.5 w-8 rounded-full"></div>
+                  <h3 className="text-sm font-bold text-slate-800 uppercase tracking-widest">Línea de Sincronización Técnica {pair.suffix}</h3>
+                  <div className="h-px flex-1 bg-slate-200"></div>
                 </div>
                 <div className="grid grid-cols-1 xl:grid-cols-2 gap-10">
                   <MachineCard machineCode={pair.ach} title={`Acolchadora ${pair.suffix}`} />
@@ -526,21 +581,23 @@ export const TacticalPlanForrosSection: React.FC = () => {
           </div>
         </TabsContent>
 
-        {/* CONTENIDO: COMPONENTES (BUFFER MAESTRO RESTAURADO) */}
+        {/* CONTENIDO: BUFFER MAESTRO (TODO EL UNIVERSO SIN FILTRO DE FECHA AUTOMATICO) */}
         <TabsContent value="componentes">
-           <Card className="rounded-2xl shadow-lg border-slate-200 overflow-hidden bg-white">
-             <CardHeader className="bg-slate-50 border-b border-slate-200">
+           <Card className="rounded-2xl shadow-sm border-slate-200 overflow-hidden bg-white">
+             <CardHeader className="bg-slate-50/50 border-b border-slate-200">
                 <div className="flex items-center justify-between">
                   <div>
-                    <CardTitle className="text-xl font-black text-slate-800 uppercase tracking-tighter flex items-center gap-2">
-                      <Inbox className="w-6 h-6 text-blue-700" />
-                      Listado Maestro de Componentes
+                    <CardTitle className="text-lg font-bold text-slate-800 uppercase tracking-tight flex items-center gap-2">
+                      <Inbox className="w-5 h-5 text-blue-600" />
+                      Listado Maestro de Componentes (Buffer Completo)
                     </CardTitle>
-                    <CardDescription className="text-slate-500 font-bold uppercase text-[10px] tracking-widest mt-1">
-                      Buffer general de órdenes previsionales filtrado por Responsabilidad de Forros
+                    <CardDescription className="text-slate-400 font-bold uppercase text-[9px] tracking-widest mt-1">
+                      Órdenes previsionales disponibles filtradas por responsabilidad técnica (RespCtrlProd)
                     </CardDescription>
                   </div>
-                  <Badge className="bg-slate-900 text-white font-mono px-3 py-1 uppercase text-[10px] tracking-widest">Entrada de Planta</Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge className="bg-slate-800 text-white font-mono px-3 py-1 uppercase text-[9px] tracking-widest">Estado: Sincronizado</Badge>
+                  </div>
                 </div>
              </CardHeader>
              <CardContent className="p-0">
@@ -555,51 +612,51 @@ export const TacticalPlanForrosSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="mantenimiento">
-          <Card className="rounded-2xl shadow-lg border-slate-200 overflow-hidden bg-white">
-            <CardHeader className="bg-slate-50 border-b border-slate-200">
+          <Card className="rounded-2xl shadow-sm border-slate-200 overflow-hidden bg-white">
+            <CardHeader className="bg-slate-50/50 border-b border-slate-200">
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle className="text-xl font-black text-slate-800 uppercase tracking-tighter flex items-center gap-2"><Wrench className="w-6 h-6 text-blue-700" /> Mantenimiento Preventivo</CardTitle>
-                  <CardDescription className="font-bold uppercase text-[10px] tracking-widest text-slate-400 mt-1">Sincronización por RespCtrlProd • Orden cronológico FECHA_PRO</CardDescription>
+                  <CardTitle className="text-lg font-bold text-slate-800 uppercase tracking-tight flex items-center gap-2"><Wrench className="w-5 h-5 text-blue-600" /> Mantenimiento Preventivo</CardTitle>
+                  <CardDescription className="font-bold uppercase text-[9px] tracking-widest text-slate-400 mt-1">Sincronización por RespCtrlProd • Orden cronológico FECHA_PRO</CardDescription>
                 </div>
-                <Button onClick={fetchMantenimientos} disabled={isLoadingMantenimientos} variant="outline" size="sm" className="h-9 px-4 font-black uppercase text-[10px] tracking-widest border-slate-300">
-                  <RefreshCw className={cn("w-3 h-3 mr-2", isLoadingMantenimientos && "animate-spin")} /> Sincronizar
+                <Button onClick={fetchMantenimientos} disabled={isLoadingMantenimientos} variant="outline" size="sm" className="h-9 px-4 font-bold uppercase text-[10px] tracking-widest border-slate-300">
+                  <RefreshCw className={cn("w-3 h-3 mr-2", isLoadingMantenimientos && "animate-spin")} /> Actualizar
                 </Button>
               </div>
             </CardHeader>
             <CardContent className="p-0">
               <div className="overflow-x-auto">
-                <table className="w-full text-[11px] border-collapse">
-                  <thead className="bg-slate-100 border-b border-slate-200 sticky top-0 z-10">
-                    <tr className="text-slate-600 font-black uppercase tracking-widest">
-                      <th className="px-4 py-4 text-left border-r border-slate-200 bg-blue-50/50">FECHA PROG.</th>
-                      <th className="px-4 py-4 text-left border-r border-slate-200">EQUIPO</th>
-                      <th className="px-4 py-4 text-left border-r border-slate-200">NOMBRE EQUIPO</th>
-                      <th className="px-4 py-4 text-left border-r border-slate-200">FRECUENCIA</th>
-                      <th className="px-4 py-4 text-left border-r border-slate-200">RESPONSABLE</th>
-                      <th className="px-4 py-4 text-left">ESTADO</th>
+                <table className="w-full text-[10px] border-collapse">
+                  <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
+                    <tr className="text-slate-500 font-bold uppercase tracking-widest">
+                      <th className="px-4 py-3.5 text-left bg-blue-50/30">FECHA PROG.</th>
+                      <th className="px-4 py-3.5 text-left">EQUIPO</th>
+                      <th className="px-4 py-3.5 text-left">NOMBRE EQUIPO</th>
+                      <th className="px-4 py-3.5 text-left">FRECUENCIA</th>
+                      <th className="px-4 py-3.5 text-left">RESPONSABLE</th>
+                      <th className="px-4 py-3.5 text-left">ESTADO</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 bg-white">
                     {isLoadingMantenimientos ? (
-                      <tr><td colSpan={6} className="py-20 text-center font-bold text-slate-400 italic">Consultando maestro de mantenimiento...</td></tr>
+                      <tr><td colSpan={6} className="py-16 text-center font-bold text-slate-400 italic">Consultando maestro de mantenimiento...</td></tr>
                     ) : pagedMantenimientos.length > 0 ? (
                       pagedMantenimientos.map((m, idx) => (
-                        <tr key={idx} className="hover:bg-blue-50/30 transition-colors">
-                          <td className="px-4 py-3.5 font-mono font-black text-blue-700 bg-blue-50/10">
+                        <tr key={idx} className="hover:bg-blue-50/20 transition-colors">
+                          <td className="px-4 py-3 font-mono font-bold text-blue-700">
                             {m.FECHA_PRO ? new Date(m.FECHA_PRO).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—'}
                           </td>
-                          <td className="px-4 py-3.5 font-mono font-bold text-slate-700">{m.CODIGO_EQ || '—'}</td>
-                          <td className="px-4 py-3.5 font-medium text-slate-600 uppercase">{m.NOMBRE_EQ || '—'}</td>
-                          <td className="px-4 py-3.5 text-slate-500 font-bold uppercase">{m.T_FREC || '—'}</td>
-                          <td className="px-4 py-3.5">
-                            <Badge variant="outline" className="bg-slate-50 text-slate-600 border-slate-200 font-mono text-[10px] px-2">{m.RespCtrlProd || '—'}</Badge>
+                          <td className="px-4 py-3 font-mono text-slate-600">{m.CODIGO_EQ || '—'}</td>
+                          <td className="px-4 py-3 font-medium text-slate-500 uppercase">{m.NOMBRE_EQ || '—'}</td>
+                          <td className="px-4 py-3 text-slate-400 font-bold uppercase">{m.T_FREC || '—'}</td>
+                          <td className="px-4 py-3">
+                            <Badge variant="outline" className="bg-slate-50 text-slate-500 border-slate-200 font-mono text-[9px] px-2">{m.RespCtrlProd || '—'}</Badge>
                           </td>
-                          <td className="px-4 py-3.5">
+                          <td className="px-4 py-3">
                             <Badge className={cn(
-                              "font-black text-[9px] px-2 py-0.5 border-none",
-                              m.ESTADO === 'PROGRAMADO' ? "bg-blue-600 text-white" : 
-                              m.ESTADO === 'EJECUTADO' ? "bg-emerald-600 text-white" : 
+                              "font-bold text-[8px] px-2 py-0.5 border-none",
+                              m.ESTADO === 'PROGRAMADO' ? "bg-blue-500 text-white" : 
+                              m.ESTADO === 'EJECUTADO' ? "bg-emerald-500 text-white" : 
                               "bg-slate-400 text-white"
                             )}>
                               {m.ESTADO || 'PENDIENTE'}
@@ -608,7 +665,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                         </tr>
                       ))
                     ) : (
-                      <tr><td colSpan={6} className="py-20 text-center text-slate-400 italic font-bold uppercase tracking-widest">No se encontraron mantenimientos registrados.</td></tr>
+                      <tr><td colSpan={6} className="py-16 text-center text-slate-400 italic font-bold uppercase tracking-widest">No se encontraron mantenimientos registrados.</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -616,30 +673,30 @@ export const TacticalPlanForrosSection: React.FC = () => {
               
               {totalMaintPages > 1 && (
                 <div className="flex items-center justify-between px-6 py-4 bg-slate-50 border-t border-slate-200">
-                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                    Mostrando {pagedMantenimientos.length} de {mantenimientos.length} registros
+                  <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                    Página {maintPage} de {totalMaintPages}
                   </div>
                   <div className="flex items-center gap-1">
-                    <Button variant="outline" size="icon" onClick={() => setMaintPage(1)} disabled={maintPage === 1} className="h-8 w-8"><ChevronsLeft className="h-4 w-4" /></Button>
-                    <Button variant="outline" size="icon" onClick={() => setMaintPage(prev => Math.max(1, prev - 1))} disabled={maintPage === 1} className="h-8 w-8"><ChevronLeft className="h-4 w-4" /></Button>
+                    <Button variant="outline" size="icon" onClick={() => setMaintPage(1)} disabled={maintPage === 1} className="h-8 w-8"><ChevronsLeft className="h-3 w-3" /></Button>
+                    <Button variant="outline" size="icon" onClick={() => setMaintPage(prev => Math.max(1, prev - 1))} disabled={maintPage === 1} className="h-8 w-8"><ChevronLeft className="h-3 w-3" /></Button>
                     
                     {getPageNumbers(maintPage, totalMaintPages).map((p, idx) => (
                       <button
                         key={idx}
                         onClick={() => typeof p === 'number' && setMaintPage(p)}
                         className={cn(
-                          "min-w-[32px] h-8 rounded-md text-[11px] font-black transition-all border",
+                          "min-w-[28px] h-8 rounded-lg text-[10px] font-bold transition-all border",
                           maintPage === p 
-                            ? "bg-slate-900 text-white border-slate-900 shadow-lg" 
-                            : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                            ? "bg-slate-900 text-white border-slate-900 shadow-sm" 
+                            : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50"
                         )}
                       >
                         {p}
                       </button>
                     ))}
 
-                    <Button variant="outline" size="icon" onClick={() => setMaintPage(prev => Math.min(totalMaintPages, prev + 1))} disabled={maintPage === totalMaintPages} className="h-8 w-8"><ChevronRight className="h-4 w-4" /></Button>
-                    <Button variant="outline" size="icon" onClick={() => setMaintPage(totalMaintPages)} disabled={maintPage === totalMaintPages} className="h-8 w-8"><ChevronsRight className="h-4 w-4" /></Button>
+                    <Button variant="outline" size="icon" onClick={() => setMaintPage(prev => Math.min(totalMaintPages, prev + 1))} disabled={maintPage === totalMaintPages} className="h-8 w-8"><ChevronRight className="h-3 w-3" /></Button>
+                    <Button variant="outline" size="icon" onClick={() => setMaintPage(totalMaintPages)} disabled={maintPage === totalMaintPages} className="h-8 w-8"><ChevronsRight className="h-3 w-3" /></Button>
                   </div>
                 </div>
               )}
@@ -648,11 +705,11 @@ export const TacticalPlanForrosSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="forros-chn-bases">
-          <Card className="rounded-2xl shadow-lg border-slate-200 overflow-hidden bg-white">
-            <CardHeader className="bg-slate-50 border-b border-slate-200">
+          <Card className="rounded-2xl shadow-sm border-slate-200 overflow-hidden bg-white">
+            <CardHeader className="bg-slate-50/50 border-b border-slate-200">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-xl font-black text-slate-800 uppercase tracking-tighter flex items-center gap-2"><Package className="w-6 h-6 text-blue-700" /> Órdenes Maestras de Forros y Bases</CardTitle>
-                <Badge variant="outline" className="font-bold border-blue-200 text-blue-700 uppercase tracking-widest text-[9px]">Producción Programada</Badge>
+                <CardTitle className="text-lg font-bold text-slate-800 uppercase tracking-tight flex items-center gap-2"><Package className="w-5 h-5 text-blue-600" /> Órdenes de Producción Forros/Bases</CardTitle>
+                <Badge variant="outline" className="font-bold border-blue-100 text-blue-600 uppercase tracking-widest text-[8px]">Filtrado por Proceso</Badge>
               </div>
             </CardHeader>
             <CardContent className="p-0">
@@ -668,15 +725,15 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
         <TabsContent value="personal-turnos">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <Card className="lg:col-span-1 rounded-2xl shadow-lg border-slate-200 overflow-hidden bg-white">
-               <CardHeader className="bg-slate-800 text-white border-b border-slate-700">
-                 <CardTitle className="text-xl font-black uppercase tracking-tighter flex items-center gap-2"><Clock className="w-6 h-6 text-sky-400" /> Horarios de Planta</CardTitle>
+            <Card className="lg:col-span-1 rounded-2xl shadow-sm border-slate-200 overflow-hidden bg-white">
+               <CardHeader className="bg-slate-900 text-white border-b border-slate-800">
+                 <CardTitle className="text-lg font-bold uppercase tracking-tight flex items-center gap-2"><Clock className="w-5 h-5 text-sky-400" /> Horarios de Planta</CardTitle>
                </CardHeader>
-               <CardContent className="p-6 space-y-8">
-                 <div className="space-y-4">
-                    <label className="text-xs font-black text-slate-500 uppercase tracking-widest">Jornada Diurna (L-V)</label>
+               <CardContent className="p-6 space-y-6">
+                 <div className="space-y-3">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Jornada Diurna (L-V)</label>
                     <Select value={jornadaDiurnaSel} onValueChange={setJornadaDiurnaSel}>
-                      <SelectTrigger className="h-12 border-2 border-slate-100 rounded-xl font-bold text-slate-700">
+                      <SelectTrigger className="h-10 border border-slate-200 rounded-xl font-bold text-slate-700">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -684,10 +741,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       </SelectContent>
                     </Select>
                  </div>
-                 <div className="space-y-4">
-                    <label className="text-xs font-black text-slate-500 uppercase tracking-widest">Jornada Nocturna</label>
+                 <div className="space-y-3">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Jornada Nocturna</label>
                     <Select value={jornadaNocturnaSel} onValueChange={setJornadaNocturnaSel}>
-                      <SelectTrigger className="h-12 border-2 border-slate-100 rounded-xl font-bold text-slate-700">
+                      <SelectTrigger className="h-10 border border-slate-200 rounded-xl font-bold text-slate-700">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -695,45 +752,45 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       </SelectContent>
                     </Select>
                  </div>
-                 <div className="p-6 bg-slate-900 rounded-2xl text-white shadow-xl">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-4">Capacidad Neta (84%)</p>
+                 <div className="p-6 bg-slate-900 rounded-2xl text-white shadow-lg border border-white/5">
+                    <p className="text-[9px] font-bold text-slate-500 uppercase tracking-[0.2em] mb-4">Capacidad Neta (84%)</p>
                     <div className="grid grid-cols-2 gap-4">
-                      <div className="border-l-4 border-sky-400 pl-4">
-                        <p className="text-2xl font-black font-mono">{horasNetasDiurnas.toFixed(2)}h</p>
-                        <p className="text-[9px] font-bold text-slate-500 uppercase">Día</p>
+                      <div className="border-l-2 border-sky-400 pl-4">
+                        <p className="text-xl font-bold font-mono">{horasNetasDiurnas.toFixed(2)}h</p>
+                        <p className="text-[8px] font-bold text-slate-500 uppercase">Día</p>
                       </div>
-                      <div className="border-l-4 border-slate-500 pl-4">
-                        <p className="text-2xl font-black font-mono">{horasNetasNocturnas.toFixed(2)}h</p>
-                        <p className="text-[9px] font-bold text-slate-500 uppercase">Noche</p>
+                      <div className="border-l-2 border-slate-600 pl-4">
+                        <p className="text-xl font-bold font-mono">{horasNetasNocturnas.toFixed(2)}h</p>
+                        <p className="text-[8px] font-bold text-slate-500 uppercase">Noche</p>
                       </div>
                     </div>
                     <div className="mt-6 pt-4 border-t border-white/10">
-                      <p className="text-4xl font-black text-sky-400 font-mono tracking-tighter">{totalHorasNetas.toFixed(2)}h</p>
-                      <p className="text-[10px] font-black text-slate-500 uppercase mt-1">Total Horas/Persona día</p>
+                      <p className="text-3xl font-bold text-sky-400 font-mono tracking-tighter">{totalHorasNetas.toFixed(2)}h</p>
+                      <p className="text-[9px] font-bold text-slate-500 uppercase mt-1">Horas/Persona día</p>
                     </div>
                  </div>
                </CardContent>
             </Card>
 
-            <Card className="lg:col-span-2 rounded-2xl shadow-lg border-slate-200 overflow-hidden bg-white">
-               <CardHeader className="bg-slate-50 border-b border-slate-200">
-                 <CardTitle className="text-xl font-black text-slate-800 uppercase tracking-tighter">Configuración de Puestos de Trabajo</CardTitle>
-                 <CardDescription className="font-bold uppercase text-[10px] text-slate-400">Define el número de personas para calcular la capacidad por puesto</CardDescription>
+            <Card className="lg:col-span-2 rounded-2xl shadow-sm border-slate-200 overflow-hidden bg-white">
+               <CardHeader className="bg-slate-50/50 border-b border-slate-200">
+                 <CardTitle className="text-lg font-bold text-slate-800 uppercase tracking-tight">Recursos por Puesto de Trabajo</CardTitle>
+                 <CardDescription className="font-bold uppercase text-[9px] text-slate-400 tracking-wider">Configuración de dotación para cálculo de capacidad neta</CardDescription>
                </CardHeader>
                <CardContent className="p-6">
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[60vh] overflow-y-auto pr-2">
                     {uniqueWorkstations.map(ws => {
                       const config = workstationConfigs[ws] || { people: 1 };
                       return (
-                        <div key={ws} className="flex items-center justify-between p-4 border-2 border-slate-100 rounded-2xl bg-white hover:border-blue-200 transition-all">
+                        <div key={ws} className="flex items-center justify-between p-4 border border-slate-100 rounded-2xl bg-white hover:border-blue-200 transition-all shadow-sm">
                           <div>
-                            <p className="font-black text-slate-800 uppercase text-xs tracking-tight">{ws}</p>
-                            <p className="text-[10px] font-bold text-slate-400 uppercase">Capacidad: {(config.people * totalHorasNetas).toFixed(1)}h</p>
+                            <p className="font-bold text-slate-700 uppercase text-xs tracking-tight">{ws}</p>
+                            <p className="text-[9px] font-bold text-slate-400 uppercase">Capacidad: {(config.people * totalHorasNetas).toFixed(1)}h/día</p>
                           </div>
-                          <div className="flex items-center gap-3 bg-slate-50 p-2 rounded-xl border border-slate-200">
-                            <button onClick={() => handleWorkstationConfigChange(ws, 'people', Math.max(1, config.people - 1))} className="w-8 h-8 rounded-lg bg-white shadow-sm border border-slate-200 flex items-center justify-center font-black hover:bg-slate-900 hover:text-white transition-all">-</button>
-                            <span className="font-mono font-black text-lg min-w-[20px] text-center text-blue-700">{config.people}</span>
-                            <button onClick={() => handleWorkstationConfigChange(ws, 'people', config.people + 1)} className="w-8 h-8 rounded-lg bg-white shadow-sm border border-slate-200 flex items-center justify-center font-black hover:bg-slate-900 hover:text-white transition-all">+</button>
+                          <div className="flex items-center gap-2 bg-slate-50 p-1.5 rounded-xl border border-slate-200">
+                            <button onClick={() => handleWorkstationConfigChange(ws, 'people', Math.max(1, config.people - 1))} className="w-7 h-7 rounded-lg bg-white shadow-sm border border-slate-200 flex items-center justify-center font-bold hover:bg-slate-900 hover:text-white transition-all text-xs">-</button>
+                            <span className="font-mono font-bold text-md min-w-[24px] text-center text-blue-600">{config.people}</span>
+                            <button onClick={() => handleWorkstationConfigChange(ws, 'people', config.people + 1)} className="w-7 h-7 rounded-lg bg-white shadow-sm border border-slate-200 flex items-center justify-center font-bold hover:bg-slate-900 hover:text-white transition-all text-xs">+</button>
                           </div>
                         </div>
                       );
@@ -745,35 +802,35 @@ export const TacticalPlanForrosSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="tiempos">
-          <Card className="rounded-2xl shadow-lg border-slate-200 overflow-hidden bg-white">
-             <CardHeader className="bg-slate-50 border-b border-slate-200">
+          <Card className="rounded-2xl shadow-sm border-slate-200 overflow-hidden bg-white">
+             <CardHeader className="bg-slate-50/50 border-b border-slate-200">
                <div className="flex items-center justify-between">
-                 <CardTitle className="text-xl font-black text-slate-800 uppercase tracking-tighter">Maestros Técnicos de Producción</CardTitle>
-                 <Badge variant="outline" className="font-mono border-slate-300 text-slate-600 bg-white">{tiemposProduccion.length} Registros</Badge>
+                 <CardTitle className="text-lg font-bold text-slate-800 uppercase tracking-tight">Maestros Técnicos de Producción</CardTitle>
+                 <Badge variant="secondary" className="font-mono bg-slate-200 text-slate-600">{tiemposProduccion.length} REGISTROS</Badge>
                </div>
              </CardHeader>
              <CardContent className="p-0">
                <div className="overflow-x-auto max-h-[60vh]">
                  <table className="w-full text-[10px] border-collapse">
-                   <thead className="bg-slate-100 border-b border-slate-200 sticky top-0 z-10">
-                     <tr className="text-slate-600 font-black uppercase tracking-widest">
+                   <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
+                     <tr className="text-slate-500 font-bold uppercase tracking-widest">
                        <th className="px-4 py-3 text-left">CodMaterial</th>
                        <th className="px-4 py-3 text-left">Descripción</th>
                        <th className="px-4 py-3 text-left">Línea</th>
                        <th className="px-4 py-3 text-left">Puesto</th>
-                       <th className="px-4 py-3 text-right text-blue-800">Tiempo (min)</th>
+                       <th className="px-4 py-3 text-right text-blue-700">Tiempo (min)</th>
                      </tr>
                    </thead>
                    <tbody className="divide-y divide-slate-100 bg-white">
                      {isLoadingTiempos ? (
-                       <tr><td colSpan={5} className="py-20 text-center font-bold text-slate-400 italic uppercase tracking-widest animate-pulse">Sincronizando maestros...</td></tr>
+                       <tr><td colSpan={5} className="py-16 text-center font-bold text-slate-400 italic animate-pulse">Sincronizando maestros...</td></tr>
                      ) : tiemposProduccion.map((t, idx) => (
-                       <tr key={idx} className="hover:bg-blue-50/40 transition-colors">
-                         <td className="px-4 py-2.5 font-mono font-bold text-slate-700">{t.CodMaterial || t.Material}</td>
-                         <td className="px-4 py-2.5 uppercase font-medium text-slate-600">{t.Material || t.nombre_material || t.DESCRIPCION}</td>
-                         <td className="px-4 py-2.5 font-bold text-slate-500">{t.Linea || t.nombre_linea}</td>
-                         <td className="px-4 py-2.5"><Badge variant="outline" className="bg-slate-50 text-slate-600 border-slate-200 uppercase text-[9px] font-black">{t.PuestoTrabajo || t.nombre_estacion}</Badge></td>
-                         <td className="px-4 py-2.5 text-right font-mono font-black text-blue-800">{Number(t.Tiempo || t.Tiempo_Min).toFixed(2)}</td>
+                       <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                         <td className="px-4 py-2.5 font-mono font-bold text-slate-600">{t.CodMaterial || t.Material}</td>
+                         <td className="px-4 py-2.5 uppercase font-medium text-slate-500">{t.Material || t.nombre_material || t.DESCRIPCION}</td>
+                         <td className="px-4 py-2.5 font-bold text-slate-400">{t.Linea || t.nombre_linea}</td>
+                         <td className="px-4 py-2.5"><Badge variant="outline" className="bg-slate-50 text-slate-400 border-slate-200 uppercase text-[8px] font-bold">{t.PuestoTrabajo || t.nombre_estacion}</Badge></td>
+                         <td className="px-4 py-2.5 text-right font-mono font-bold text-blue-600">{Number(t.Tiempo || t.Tiempo_Min).toFixed(2)}</td>
                        </tr>
                      ))}
                    </tbody>
@@ -784,19 +841,19 @@ export const TacticalPlanForrosSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="restricciones">
-           <Card className="rounded-2xl shadow-lg border-slate-200 overflow-hidden bg-white">
-             <CardHeader className="bg-slate-50 border-b border-slate-200">
-                <CardTitle className="text-xl font-black text-slate-800 uppercase tracking-tighter">Reglas de Negocio Área Forros</CardTitle>
+           <Card className="rounded-2xl shadow-sm border-slate-200 overflow-hidden bg-white">
+             <CardHeader className="bg-slate-50/50 border-b border-slate-200">
+                <CardTitle className="text-lg font-bold text-slate-800 uppercase tracking-tight">Reglas de Negocio Área Forros</CardTitle>
              </CardHeader>
              <CardContent className="p-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                    {forrosRestricciones.map(r => (
-                     <div key={r.codigo_restriccion} className="flex items-start gap-4 p-5 bg-white border border-slate-200 rounded-2xl shadow-sm hover:border-blue-300 transition-all group">
-                        <div className="bg-slate-50 p-3 rounded-xl text-slate-700 group-hover:bg-slate-900 group-hover:text-white transition-colors"><Lock className="w-6 h-6" /></div>
+                     <div key={r.codigo_restriccion} className="flex items-start gap-4 p-5 bg-white border border-slate-100 rounded-2xl shadow-sm hover:border-blue-200 transition-all group">
+                        <div className="bg-slate-900 p-3 rounded-xl text-white group-hover:bg-blue-600 transition-colors"><Lock className="w-5 h-5" /></div>
                         <div>
-                          <h4 className="font-black text-slate-800 uppercase text-sm tracking-widest mb-1">{r.nombre_restriccion}</h4>
-                          <Badge className="bg-slate-800 text-white font-mono mb-2 tracking-tighter">{r.valor_restriccion}</Badge>
-                          <p className="text-xs text-slate-500 leading-relaxed font-medium uppercase tracking-tight">{r.descripcion || 'Sin descripción técnica.'}</p>
+                          <h4 className="font-bold text-slate-700 uppercase text-xs tracking-wider mb-1">{r.nombre_restriccion}</h4>
+                          <Badge className="bg-slate-100 text-slate-800 border-none font-mono mb-2 text-[10px]">{r.valor_restriccion}</Badge>
+                          <p className="text-[10px] text-slate-400 leading-relaxed font-medium uppercase">{r.descripcion || 'Sin descripción técnica disponible.'}</p>
                         </div>
                      </div>
                    ))}
@@ -806,21 +863,21 @@ export const TacticalPlanForrosSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="grupos">
-           <Card className="rounded-2xl shadow-lg border-slate-200 overflow-hidden bg-white">
-             <CardHeader className="bg-slate-50 border-b border-slate-200">
-                <CardTitle className="text-xl font-black text-slate-800 uppercase tracking-tighter">Grupos Técnicos</CardTitle>
+           <Card className="rounded-2xl shadow-sm border-slate-200 overflow-hidden bg-white">
+             <CardHeader className="bg-slate-50/50 border-b border-slate-200">
+                <CardTitle className="text-lg font-bold text-slate-800 uppercase tracking-tight">Grupos Técnicos</CardTitle>
              </CardHeader>
              <CardContent className="p-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {forrosGruposList.map(g => (
-                    <div key={g.codigo_grupo} className="p-5 border border-slate-200 rounded-2xl bg-white hover:border-blue-400 transition-all group shadow-sm">
+                    <div key={g.codigo_grupo} className="p-5 border border-slate-100 rounded-2xl bg-white hover:border-blue-300 transition-all group shadow-sm">
                       <div className="flex items-center gap-3 mb-3">
-                        <div className="bg-blue-50 p-2 rounded-lg text-blue-700 group-hover:bg-slate-900 group-hover:text-white transition-colors"><ListTree className="w-5 h-5" /></div>
-                        <h4 className="font-black text-slate-800 uppercase tracking-tight">{g.nombre_grupo}</h4>
+                        <div className="bg-blue-50 p-2 rounded-lg text-blue-600 group-hover:bg-slate-900 group-hover:text-white transition-colors"><ListTree className="w-4 h-4" /></div>
+                        <h4 className="font-bold text-slate-700 uppercase tracking-tight text-sm">{g.nombre_grupo}</h4>
                       </div>
-                      <div className="space-y-2 pt-2 border-t border-slate-100">
-                        <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">ID GRUPO: <span className="text-slate-800">{g.codigo_grupo}</span></p>
-                        <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">CENTRO FAB.: <span className="text-blue-700">{g.centro}</span></p>
+                      <div className="space-y-2 pt-2 border-t border-slate-50">
+                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">ID GRUPO: <span className="text-slate-700">{g.codigo_grupo}</span></p>
+                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">CENTRO FAB.: <span className="text-blue-600 font-mono">{g.centro}</span></p>
                       </div>
                     </div>
                   ))}
