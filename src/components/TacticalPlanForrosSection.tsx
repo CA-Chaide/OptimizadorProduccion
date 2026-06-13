@@ -29,7 +29,9 @@ import {
   Search,
   Info,
   ShieldCheck,
-  Zap
+  Zap,
+  ZapOff,
+  History
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -100,7 +102,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
   // FECHAS & HORIZONTE
   const [todayDate, setTodayDate] = useState<string>('');
   const [targetDate, setTargetDate] = useState<string>('');
-  const [isHorizonFilterActive, setIsHorizonFilterActive] = useState(false);
 
   useEffect(() => {
     setIsMounted(true);
@@ -121,12 +122,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return null;
   }, []);
 
-  const normalizeDateForFilter = useCallback((dateInput: any): string | null => {
-    const parts = safeParseDateParts(dateInput);
-    if (parts) return `${parts.y}-${parts.m}-${parts.d}`;
-    return null;
-  }, [safeParseDateParts]);
-
   const fetchBaseData = useCallback(async () => {
     try {
       setIsLoading(true);
@@ -137,7 +132,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
       setGrupos(gRes.data || []);
       setRestricciones(rRes.data || []);
       
-      // Filtrar por grupos relacionados con Forros y procesos asociados
       const relevantGroups = gRes.data?.filter((g: any) => {
         const name = g.nombre_grupo.toUpperCase();
         return name.includes('FORRO') || name.includes('ACOLCHADO') || name.includes('TAPAS') || name.includes('BANDA');
@@ -214,7 +208,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
       if (externalFilters.RESPCTRLPROD) {
         const allowed = externalFilters.RESPCTRLPROD.map(c => c.trim().padStart(3, '0'));
         allData = allData.filter(t => {
-          const resp = String(t.RespControlProd || t.RESPCONTROLPROD || '').trim().padStart(3, '0');
+          const resp = String(t.RespControlProd || t.RESPCONTROLPROD || t.RespCtrlProd || '').trim().padStart(3, '0');
           return allowed.includes(resp);
         });
       }
@@ -234,7 +228,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
       const response = await serviciosService.OrdenesProvisionalesAlphaPaginados(1, 10000);
       if (response && response.data) {
         let filtered = response.data;
-        
         if (externalFilters.RESPCTRLPROD) {
           const allowedCodes = externalFilters.RESPCTRLPROD.map(c => c.trim().padStart(3, '0'));
           filtered = filtered.filter((o: any) => {
@@ -242,10 +235,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
             return allowedCodes.includes(resp);
           });
         }
-        
-        // Se elimina la restricción de fecha según solicitud del usuario
-        // Muestra todas las órdenes previsionales disponibles en el buffer
-        
         setDailyOrders(filtered);
       }
     } catch (error) {
@@ -260,7 +249,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     try {
       const response = await serviciosService.ListarMantenimientoPreventivosProgramados();
       const rawData = response.data || [];
-      
       const respRestriction = forrosRestricciones.find(r => r.nombre_restriccion.toUpperCase() === 'RESPCTRLPROD');
       if (respRestriction) {
         const allowedCodes = respRestriction.valor_restriccion.split('&').map(s => s.trim().padStart(3, '0'));
@@ -268,13 +256,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
           const resp = String(m.RespCtrlProd || '').trim().padStart(3, '0');
           return allowedCodes.includes(resp);
         });
-        
-        filtered.sort((a: any, b: any) => {
-          const dateA = new Date(a.FECHA_PRO || 0).getTime();
-          const dateB = new Date(b.FECHA_PRO || 0).getTime();
-          return dateA - dateB;
-        });
-        
+        filtered.sort((a: any, b: any) => new Date(a.FECHA_PRO || 0).getTime() - new Date(b.FECHA_PRO || 0).getTime());
         setMantenimientos(filtered);
       }
     } catch (error) {
@@ -298,22 +280,16 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return match ? String(match.PuestoTrabajo || match.nombre_estacion || match.Maquina || '').trim().toUpperCase() : '';
   }, [tiemposProduccion, normalizeMaterialCode]);
 
-  // DETECCION ROBUSTA DE PUESTOS (Hibrido: Maestro + Buffer)
   const uniqueWorkstations = useMemo(() => {
     const wsSet = new Set<string>();
-    
-    // De los maestros técnicos
     tiemposProduccion.forEach(t => {
       const ws = String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').trim().toUpperCase();
       if (ws && ws !== 'NULL' && ws !== '-' && ws !== '—') wsSet.add(ws);
     });
-
-    // De las órdenes actuales (por si hay órdenes en máquinas no mapeadas aún)
     dailyOrders.forEach(o => {
       const ws = getResolvedMachine(o);
       if (ws && ws !== 'Z_SIN_MAQUINA' && ws !== '') wsSet.add(ws);
     });
-
     return Array.from(wsSet).sort();
   }, [tiemposProduccion, dailyOrders, getResolvedMachine]);
 
@@ -325,11 +301,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
       normalizeMaterialCode(t.CodMaterial || t.Material || '') === normMaterial &&
       String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').trim().toUpperCase() === machine
     ) || tiemposProduccion.find(t => normalizeMaterialCode(t.CodMaterial || t.Material || '') === normMaterial);
-
     return match ? (Number(match.Tiempo || match.Tiempo_Min || 0) * quantity) : 0;
   }, [tiemposProduccion, normalizeMaterialCode, getResolvedMachine]);
 
-  // CATEGORIZACIÓN TÉCNICA
   const group1Suffixes = ['02', '06', '07', '08', '09', '10'];
 
   const workstationsGroup2 = useMemo(() => {
@@ -422,7 +396,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
             </div>
             <p className="text-[9px] font-bold uppercase tracking-[0.25em] text-slate-500 mt-1">Status Operativo Nivel 1</p>
           </div>
-          
           <div className="flex-1 space-y-5">
             <div className="bg-white/5 p-4 rounded-2xl border border-white/10 shadow-inner">
               <div className="flex justify-between items-center mb-3">
@@ -438,7 +411,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 <span className="font-mono font-black text-sky-400 text-sm">{capacityHours.toFixed(2)}h</span>
               </div>
             </div>
-
             <div className="bg-white/5 p-4 rounded-2xl border border-white/10 shadow-inner">
               <div className="flex items-center justify-between mb-3">
                 <p className="text-[10px] font-black uppercase text-slate-500 tracking-[0.2em]">Ocupación</p>
@@ -466,7 +438,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
             </div>
           </div>
         </div>
-
         <div className="flex-1 p-6 flex flex-col bg-slate-50/50">
           <div className="flex items-center justify-between mb-4">
             <h4 className="text-[11px] font-black text-slate-800 uppercase tracking-[0.25em] flex items-center gap-2">
@@ -474,7 +445,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
             </h4>
             <Badge className="bg-white text-slate-900 border-slate-200 font-mono font-black text-[10px] px-3 py-0.5 rounded-full shadow-sm">{orders.length} <span className="ml-1 text-[8px] opacity-40">ORD</span></Badge>
           </div>
-          
           <div className="flex-1 overflow-auto rounded-2xl border border-slate-200 bg-white shadow-inner">
             <table className="w-full text-[10px] border-collapse">
               <thead className="bg-slate-100/80 sticky top-0 z-10">
@@ -548,7 +518,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
             </div>
           </div>
         </div>
-        
         <div className="flex flex-wrap gap-4 items-center">
           <div className="bg-slate-50 border border-slate-100 rounded-3xl p-5 flex items-center gap-5 min-w-[200px] shadow-inner group hover:bg-indigo-50 transition-colors">
             <div className="bg-indigo-700 p-3 rounded-2xl text-white shadow-lg group-hover:scale-110 transition-transform"><MapPin className="w-5 h-5" /></div>
@@ -574,46 +543,23 @@ export const TacticalPlanForrosSection: React.FC = () => {
               <label className="text-[10px] font-black uppercase text-slate-400 tracking-[0.3em] flex items-center gap-2">
                 <Clock className="w-3.5 h-3.5 text-indigo-400" /> Inicio Horizonte
               </label>
-              <input 
-                type="date" 
-                value={todayDate} 
-                onChange={(e) => setTodayDate(e.target.value)}
-                className="bg-white border border-slate-200 rounded-2xl px-5 py-3 text-sm font-black text-slate-800 focus:ring-8 focus:ring-indigo-500/5 focus:border-indigo-500 outline-none transition-all shadow-sm w-[180px]"
-                disabled
-              />
+              <input type="date" value={todayDate} className="bg-white border border-slate-200 rounded-2xl px-5 py-3 text-sm font-black text-slate-800 outline-none transition-all shadow-sm w-[180px]" disabled />
             </div>
-            <div className="flex items-center pt-6">
-              <div className="w-12 h-[2px] bg-gradient-to-r from-transparent via-slate-200 to-transparent" />
-              <ArrowRight className="w-5 h-5 text-slate-300 mx-2" />
-              <div className="w-12 h-[2px] bg-gradient-to-r from-transparent via-slate-200 to-transparent" />
-            </div>
+            <div className="flex items-center pt-6"><ArrowRight className="w-5 h-5 text-slate-300 mx-2" /></div>
             <div className="space-y-2">
               <label className="text-[10px] font-black uppercase text-slate-400 tracking-[0.3em] flex items-center gap-2">
                 <Clock className="w-3.5 h-3.5 text-indigo-400" /> Fin Horizonte
               </label>
-              <input 
-                type="date" 
-                value={targetDate} 
-                onChange={(e) => setTargetDate(e.target.value)}
-                className="bg-white border border-slate-200 rounded-2xl px-5 py-3 text-sm font-black text-slate-800 focus:ring-8 focus:ring-indigo-500/5 focus:border-indigo-500 outline-none transition-all shadow-sm w-[180px]"
-                disabled
-              />
+              <input type="date" value={targetDate} className="bg-white border border-slate-200 rounded-2xl px-5 py-3 text-sm font-black text-slate-800 outline-none transition-all shadow-sm w-[180px]" disabled />
             </div>
           </div>
-
           <div className="flex items-center gap-4">
-            <div className="h-10 w-px bg-slate-200 mr-2 hidden md:block" />
             <div className="bg-indigo-50 border border-indigo-100 px-5 py-3 rounded-2xl">
               <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest flex items-center gap-2">
                 <ShieldCheck className="w-4 h-4" /> Buffer Maestro Total Activado
               </span>
             </div>
-            <Button 
-              onClick={fetchDailyOrders} 
-              disabled={isLoadingDaily}
-              variant="outline"
-              className="h-14 w-14 rounded-2xl border-2 border-slate-200 hover:bg-white text-slate-600 transition-all p-0 shadow-sm active:scale-95"
-            >
+            <Button onClick={fetchDailyOrders} disabled={isLoadingDaily} variant="outline" className="h-14 w-14 rounded-2xl border-2 border-slate-200 hover:bg-white text-slate-600 shadow-sm active:scale-95">
               <RefreshCw className={cn("w-5 h-5", isLoadingDaily && "animate-spin")} />
             </Button>
           </div>
@@ -624,6 +570,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
         <TabsList className="flex w-full h-auto bg-white border border-slate-200 p-2.5 mb-10 rounded-[2rem] shadow-sm overflow-x-auto justify-start sticky top-0 z-50 ring-1 ring-slate-100">
           <TabsTrigger value="resumen-produccion" className="flex items-center gap-2.5 px-7 py-4 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[11px] font-black uppercase tracking-widest text-slate-500 group">
             <BarChart3 className="w-4 h-4 group-data-[state=active]:text-sky-400" /> Resumen de Producción
+          </TabsTrigger>
+          <TabsTrigger value="kpi-tiempos" className="flex items-center gap-2.5 px-7 py-4 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[11px] font-black uppercase tracking-widest text-slate-500 group">
+            <Zap className="w-4 h-4 group-data-[state=active]:text-sky-400" /> KPI TIEMPOS
           </TabsTrigger>
           <TabsTrigger value="acolchado-tapas" className="flex items-center gap-2.5 px-7 py-4 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[11px] font-black uppercase tracking-widest text-slate-500 group">
             <Cpu className="w-4 h-4 group-data-[state=active]:text-sky-400" /> 1. Acolchado & Tapas
@@ -659,102 +608,106 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   </div>
                   <CardDescription className="mt-2 text-slate-500 font-bold uppercase text-[10px] tracking-widest">Análisis de carga total vs capacidad neta por Hoja de Ruta</CardDescription>
                 </div>
-                <div className="flex items-center gap-3 bg-slate-950 px-6 py-3 rounded-2xl text-white shadow-lg ring-4 ring-slate-100">
-                  <Clock className="w-5 h-5 text-sky-400" />
-                  <div className="flex flex-col">
-                    <span className="text-[10px] font-black uppercase tracking-widest opacity-60">Jornada Neta</span>
-                    <span className="text-sm font-black font-mono">{totalHorasNetas.toFixed(2)}h / Operador</span>
-                  </div>
+                <div className="bg-slate-950 px-6 py-3 rounded-2xl text-white shadow-lg ring-4 ring-slate-100">
+                  <span className="text-sm font-black font-mono">{totalHorasNetas.toFixed(2)}h / Operador (84% Efic.)</span>
                 </div>
               </div>
             </CardHeader>
             <CardContent className="p-0">
               <div className="overflow-x-auto">
                 <table className="w-full text-[12px] border-collapse">
-                  <thead className="bg-slate-900 sticky top-0 z-10">
+                  <thead className="bg-slate-900 sticky top-0 z-10 text-white">
                     <tr className="text-slate-400 font-black uppercase tracking-[0.2em]">
-                      <th className="px-8 py-5 text-left bg-slate-950 text-white">Puesto de Trabajo</th>
-                      <th className="px-8 py-5 text-left text-sky-400 uppercase">HOJA DE RUTA</th>
-                      <th className="px-8 py-5 text-center bg-slate-900/80">Ingeniería (min/u)</th>
+                      <th className="px-8 py-5 text-left bg-slate-950">HOJA DE RUTA</th>
+                      <th className="px-8 py-5 text-left">Puesto de Trabajo</th>
+                      <th className="px-8 py-5 text-center">Ingeniería (min/u)</th>
                       <th className="px-8 py-5 text-right">Cant. Total</th>
-                      <th className="px-8 py-5 text-right text-indigo-300 bg-indigo-950/20">T. Requerido (h)</th>
-                      <th className="px-8 py-5 text-right text-slate-200">Capacidad (h)</th>
+                      <th className="px-8 py-5 text-right bg-indigo-950/20">T. Requerido (h)</th>
+                      <th className="px-8 py-5 text-right">Capacidad (h)</th>
                       <th className="px-8 py-5 text-center">% Ocupación</th>
-                      <th className="px-8 py-5 text-right">Estatus</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 bg-white">
-                    {uniqueWorkstations.length > 0 ? uniqueWorkstations.map((ws, idx) => {
+                    {uniqueWorkstations.map((ws, idx) => {
                       const orders = dailyOrders.filter(o => getResolvedMachine(o) === ws);
                       const totalUnits = orders.reduce((sum, o) => sum + Number(o['CANTIDAD'] || 0), 0);
-                      
-                      const matches = tiemposProduccion.filter(t => 
-                        String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').trim().toUpperCase() === ws
-                      );
-                      const avgHrMin = matches.length > 0 
-                        ? matches.reduce((sum, t) => sum + Number(t.Tiempo || t.Tiempo_Min || 0), 0) / matches.length 
-                        : 0;
-
+                      const matches = tiemposProduccion.filter(t => String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').trim().toUpperCase() === ws);
+                      const avgHrMin = matches.length > 0 ? matches.reduce((sum, t) => sum + Number(t.Tiempo || t.Tiempo_Min || 0), 0) / matches.length : 0;
                       const totalTimeHours = orders.reduce((sum, o) => sum + calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || 0), o), 0) / 60;
                       const config = workstationConfigs[ws] || { people: 1 };
                       const capacityHours = totalHorasNetas * config.people;
                       const utilization = capacityHours > 0 ? (totalTimeHours / capacityHours) * 100 : 0;
-                      const isOverloaded = utilization > 100;
 
                       return (
                         <tr key={idx} className="hover:bg-slate-50 transition-all group">
-                          <td className="px-8 py-5 font-black text-slate-900 uppercase">
-                            <div className="flex items-center gap-3">
-                              <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 group-hover:scale-150 transition-transform" />
-                              {ws}
-                            </div>
-                          </td>
-                          <td className="px-8 py-5 font-mono font-black text-indigo-700 bg-indigo-50/20">
-                            {ws.startsWith('HR') ? ws : `HR-${ws}`}
-                          </td>
-                          <td className="px-8 py-5 text-center font-mono font-bold text-slate-400">
-                            {avgHrMin > 0 ? (
-                              <div className="flex items-center justify-center gap-1.5">
-                                <Info className="w-3 h-3 text-slate-300" />
-                                {avgHrMin.toFixed(2)}
-                              </div>
-                            ) : '—'}
-                          </td>
+                          <td className="px-8 py-5 font-mono font-black text-indigo-700 bg-indigo-50/20">{ws.startsWith('HR') ? ws : `HR-${ws}`}</td>
+                          <td className="px-8 py-5 font-black text-slate-900 uppercase">{ws}</td>
+                          <td className="px-8 py-5 text-center font-mono font-bold text-slate-400">{avgHrMin.toFixed(2)}</td>
                           <td className="px-8 py-5 text-right font-mono font-black text-slate-800">{totalUnits.toLocaleString()}</td>
                           <td className="px-8 py-5 text-right font-mono font-black text-indigo-700 bg-indigo-50/40">{totalTimeHours.toFixed(2)}h</td>
-                          <td className="px-8 py-5 text-right font-mono font-bold text-slate-900 border-l border-slate-100">{capacityHours.toFixed(2)}h</td>
-                          <td className="px-8 py-5">
-                            <div className="flex items-center justify-center gap-4">
-                              <div className="flex-1 bg-slate-100 h-2 rounded-full overflow-hidden max-w-[100px] border border-slate-200">
-                                <motion.div 
-                                  initial={{ width: 0 }}
-                                  animate={{ width: `${Math.min(utilization, 100)}%` }}
-                                  className={cn("h-full transition-all duration-1000", isOverloaded ? "bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]" : "bg-indigo-600 shadow-[0_0_10px_rgba(79,70,229,0.4)]")}
-                                />
-                              </div>
-                              <span className={cn("font-mono font-black w-10 text-right", isOverloaded ? "text-red-600" : "text-slate-900")}>{utilization.toFixed(0)}%</span>
-                            </div>
-                          </td>
-                          <td className="px-8 py-5 text-right">
-                            {isOverloaded ? (
-                              <Badge className="bg-red-600 text-white border-none rounded-xl text-[9px] font-black uppercase px-3 py-1 shadow-lg shadow-red-100">Crítico</Badge>
-                            ) : utilization > 80 ? (
-                              <Badge className="bg-amber-500 text-white border-none rounded-xl text-[9px] font-black uppercase px-3 py-1 shadow-lg shadow-amber-100">Alerta</Badge>
-                            ) : (
-                              <Badge className="bg-indigo-900 text-white border-none rounded-xl text-[9px] font-black uppercase px-3 py-1 shadow-lg shadow-indigo-100">Óptimo</Badge>
-                            )}
+                          <td className="px-8 py-5 text-right font-mono font-bold text-slate-900">{capacityHours.toFixed(2)}h</td>
+                          <td className="px-8 py-5 text-center">
+                             <div className="flex items-center justify-center gap-3">
+                               <div className="w-16 bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                                 <motion.div initial={{width:0}} animate={{width: `${Math.min(utilization, 100)}%`}} className={cn("h-full", utilization > 100 ? "bg-red-500" : "bg-indigo-600")} />
+                               </div>
+                               <span className={cn("font-mono font-black", utilization > 100 ? "text-red-600" : "text-slate-900")}>{utilization.toFixed(0)}%</span>
+                             </div>
                           </td>
                         </tr>
                       );
-                    }) : (
-                      <tr>
-                        <td colSpan={8} className="py-32 text-center">
-                          <div className="flex flex-col items-center gap-3">
-                            <Loader2 className="w-8 h-8 animate-spin text-slate-300" />
-                            <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">Sincronizando centros de trabajo...</p>
-                          </div>
-                        </td>
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="kpi-tiempos">
+          <Card className="rounded-[2.5rem] shadow-sm border-slate-200 overflow-hidden bg-white ring-1 ring-slate-100">
+            <CardHeader className="bg-slate-50/50 border-b border-slate-200 p-10">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="flex items-center gap-3">
+                    <History className="w-7 h-7 text-indigo-600" />
+                    <CardTitle className="text-2xl font-black text-slate-900 uppercase tracking-tight">Maestros Técnicos de Ingeniería</CardTitle>
+                  </div>
+                  <CardDescription className="mt-2 text-slate-500 font-bold uppercase text-[10px] tracking-widest">Base de datos de tiempos de ensamble por material y puesto</CardDescription>
+                </div>
+                <div className="flex items-center gap-3 bg-slate-950 px-6 py-3 rounded-2xl text-white">
+                  <span className="text-xs font-black font-mono">{tiemposProduccion.length} Registros Activos</span>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto max-h-[65vh]">
+                <table className="w-full text-[11px] border-collapse">
+                  <thead className="bg-slate-900 sticky top-0 z-10 text-white">
+                    <tr className="text-slate-400 font-black uppercase tracking-widest">
+                      <th className="px-6 py-4 text-left">Código Material</th>
+                      <th className="px-6 py-4 text-left">Descripción</th>
+                      <th className="px-6 py-4 text-center">Centro</th>
+                      <th className="px-6 py-4 text-left">Línea</th>
+                      <th className="px-6 py-4 text-left text-sky-400">Puesto (Hoja de Ruta)</th>
+                      <th className="px-6 py-4 text-right">Tiempo (min)</th>
+                      <th className="px-6 py-4 text-center">Resp.</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 bg-white">
+                    {tiemposProduccion.map((t, idx) => (
+                      <tr key={idx} className="hover:bg-indigo-50/30 transition-colors">
+                        <td className="px-6 py-3 font-mono font-bold text-slate-700">{t.CodMaterial || t.Material || '—'}</td>
+                        <td className="px-6 py-3 uppercase text-slate-500 truncate max-w-[250px]" title={t.Material || t.NOMBRE}>{t.Material || t.NOMBRE || '—'}</td>
+                        <td className="px-6 py-3 text-center font-bold text-slate-400">{t.Centro || '—'}</td>
+                        <td className="px-6 py-3 text-slate-600 font-medium">{t.Linea || '—'}</td>
+                        <td className="px-6 py-3 font-black text-indigo-700">{t.PuestoTrabajo || t.nombre_estacion || '—'}</td>
+                        <td className="px-6 py-3 text-right font-mono font-black text-sky-600 bg-sky-50/30">{Number(t.Tiempo || t.Tiempo_Min || 0).toFixed(2)}</td>
+                        <td className="px-6 py-3 text-center text-slate-400 font-bold">{t.RespControlProd || t.RESPCONTROLPROD || '—'}</td>
                       </tr>
+                    ))}
+                    {tiemposProduccion.length === 0 && (
+                      <tr><td colSpan={7} className="py-32 text-center text-slate-300 font-black uppercase text-sm tracking-widest">No se encontraron datos técnicos para este grupo</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -767,23 +720,18 @@ export const TacticalPlanForrosSection: React.FC = () => {
           {group1Suffixes.map(suffix => {
             const achCode = `HR-ACH${suffix}`;
             const pefCode = `HR-PEF${suffix}`;
-            
             const achExists = uniqueWorkstations.includes(achCode);
             const pefExists = uniqueWorkstations.includes(pefCode);
-
             if (!achExists && !pefExists) return null;
-
             return (
               <div key={suffix} className="space-y-6">
-                <div className="flex items-center gap-4 px-7 py-2.5 bg-slate-900 rounded-full w-fit shadow-xl shadow-slate-200">
+                <div className="flex items-center gap-4 px-7 py-2.5 bg-slate-900 rounded-full w-fit shadow-xl">
                   <div className="w-2 h-2 rounded-full bg-sky-400 animate-pulse" />
-                  <span className="text-white font-black text-xs uppercase tracking-[0.3em]">
-                    Célula de Producción Twin {suffix}
-                  </span>
+                  <span className="text-white font-black text-xs uppercase tracking-[0.3em]">Célula Twin {suffix}</span>
                 </div>
                 <div className="grid grid-cols-1 xl:grid-cols-2 gap-10">
-                  {achExists ? <MachineCard machineCode={achCode} /> : <div className="hidden xl:flex bg-slate-100/30 border-2 border-dashed border-slate-200 rounded-[2.5rem] items-center justify-center p-20 text-slate-300 font-black uppercase text-[10px] tracking-widest">Recurso {achCode} No Definido</div>}
-                  {pefExists ? <MachineCard machineCode={pefCode} /> : <div className="hidden xl:flex bg-slate-100/30 border-2 border-dashed border-slate-200 rounded-[2.5rem] items-center justify-center p-20 text-slate-300 font-black uppercase text-[10px] tracking-widest">Recurso {pefCode} No Definido</div>}
+                  {achExists ? <MachineCard machineCode={achCode} /> : <div className="hidden xl:flex bg-slate-100/30 border-2 border-dashed border-slate-200 rounded-[2.5rem] p-20 text-slate-300 font-black uppercase text-[10px]">No Definido</div>}
+                  {pefExists ? <MachineCard machineCode={pefCode} /> : <div className="hidden xl:flex bg-slate-100/30 border-2 border-dashed border-slate-200 rounded-[2.5rem] p-20 text-slate-300 font-black uppercase text-[10px]">No Definido</div>}
                 </div>
               </div>
             );
@@ -792,36 +740,30 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
         <TabsContent value="bandas" className="space-y-10 pb-20">
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-10">
-            {workstationsGroup2.map((wsCode) => (
-              <MachineCard key={wsCode} machineCode={wsCode} small />
-            ))}
+            {workstationsGroup2.map((wsCode) => (<MachineCard key={wsCode} machineCode={wsCode} small />))}
           </div>
         </TabsContent>
 
         <TabsContent value="interiores-corte" className="space-y-10 pb-20">
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-10">
-            {workstationsGroup3.map((wsCode) => (
-              <MachineCard key={wsCode} machineCode={wsCode} small />
-            ))}
+            {workstationsGroup3.map((wsCode) => (<MachineCard key={wsCode} machineCode={wsCode} small />))}
           </div>
         </TabsContent>
 
         <TabsContent value="forros" className="space-y-10 pb-20">
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-10">
-            {workstationsGroup4.map((wsCode) => (
-              <MachineCard key={wsCode} machineCode={wsCode} small />
-            ))}
+            {workstationsGroup4.map((wsCode) => (<MachineCard key={wsCode} machineCode={wsCode} small />))}
           </div>
         </TabsContent>
 
         <TabsContent value="componentes">
-           <Card className="rounded-[2.5rem] shadow-sm border-slate-200 overflow-hidden bg-white ring-1 ring-slate-100">
-             <CardHeader className="bg-slate-50/50 border-b border-slate-200 p-10">
+           <Card className="rounded-[2.5rem] bg-white overflow-hidden ring-1 ring-slate-100">
+             <CardHeader className="bg-slate-50/50 p-10">
                 <div className="flex items-center gap-4">
                   <Inbox className="w-8 h-8 text-indigo-600" />
                   <div>
-                    <CardTitle className="text-2xl font-black text-slate-900 uppercase tracking-tight">Buffer Maestro de Componentes</CardTitle>
-                    <CardDescription className="uppercase text-[9px] font-bold tracking-widest text-slate-400 mt-1">Listado global de órdenes previsionales filtrado por responsabilidad técnica</CardDescription>
+                    <CardTitle className="text-2xl font-black text-slate-900 uppercase">Buffer Maestro de Componentes</CardTitle>
+                    <CardDescription className="text-[9px] font-bold tracking-widest text-slate-400 mt-1 uppercase">Listado global sin restricciones de fecha</CardDescription>
                   </div>
                 </div>
              </CardHeader>
@@ -829,7 +771,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 <ProvisionalOrdersTabSection 
                   externalFilters={externalFilters} 
                   renderCell={renderResolvedProvisionalCell} 
-                  groupBy="FECHAINICIO"
+                  groupBy="ORDENPREVISIONAL"
                   resolveValue={resolveLogicValue} 
                 />
              </CardContent>
@@ -837,17 +779,17 @@ export const TacticalPlanForrosSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="mantenimiento">
-          <Card className="rounded-[2.5rem] shadow-sm border-slate-200 overflow-hidden bg-white ring-1 ring-slate-100">
-            <CardHeader className="bg-slate-50/50 border-b border-slate-200 p-10">
+          <Card className="rounded-[2.5rem] overflow-hidden bg-white ring-1 ring-slate-100">
+            <CardHeader className="bg-slate-50/50 p-10">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
                   <Wrench className="w-8 h-8 text-slate-400" />
                   <div>
-                    <CardTitle className="text-2xl font-black text-slate-900 uppercase tracking-tight">Paradas Programadas</CardTitle>
-                    <CardDescription className="uppercase text-[9px] font-bold tracking-widest text-slate-400 mt-1">Mantenimiento preventivo por responsables técnicos</CardDescription>
+                    <CardTitle className="text-2xl font-black text-slate-900 uppercase">Paradas Programadas</CardTitle>
+                    <CardDescription className="text-[9px] font-bold tracking-widest text-slate-400 mt-1 uppercase">Mantenimiento preventivo</CardDescription>
                   </div>
                 </div>
-                <Button onClick={fetchMantenimientos} disabled={isLoadingMantenimientos} variant="outline" size="sm" className="h-12 px-6 font-black uppercase text-[10px] tracking-widest border-slate-300 rounded-2xl shadow-sm hover:bg-slate-50">
+                <Button onClick={fetchMantenimientos} disabled={isLoadingMantenimientos} variant="outline" className="rounded-2xl font-black uppercase text-[10px]">
                   <RefreshCw className={cn("w-4 h-4 mr-2", isLoadingMantenimientos && "animate-spin")} /> Actualizar
                 </Button>
               </div>
@@ -855,124 +797,72 @@ export const TacticalPlanForrosSection: React.FC = () => {
             <CardContent className="p-0">
               <div className="overflow-x-auto">
                 <table className="w-full text-[12px] border-collapse">
-                  <thead className="bg-slate-950 sticky top-0 z-10">
+                  <thead className="bg-slate-950 text-white">
                     <tr className="text-slate-400 font-black uppercase tracking-[0.25em]">
-                      <th className="px-8 py-5 text-left bg-slate-900 text-white">FECHA PROG.</th>
+                      <th className="px-8 py-5 text-left">FECHA PROG.</th>
                       <th className="px-8 py-5 text-left">EQUIPO</th>
                       <th className="px-8 py-5 text-left text-sky-400">DESCRIPCIÓN</th>
                       <th className="px-8 py-5 text-left">FRECUENCIA</th>
                       <th className="px-8 py-5 text-left">ESTADO</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 bg-white">
-                    {pagedMantenimientos.length > 0 ? pagedMantenimientos.map((m, idx) => (
-                      <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-8 py-5 font-mono font-black text-slate-800">{m.FECHA_PRO ? new Date(m.FECHA_PRO).toLocaleDateString('es-ES') : '—'}</td>
+                  <tbody className="divide-y divide-slate-100">
+                    {pagedMantenimientos.map((m, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50">
+                        <td className="px-8 py-5 font-mono font-black">{m.FECHA_PRO ? new Date(m.FECHA_PRO).toLocaleDateString('es-ES') : '—'}</td>
                         <td className="px-8 py-5 font-mono font-bold text-slate-500">{m.CODIGO_EQ || '—'}</td>
-                        <td className="px-8 py-5 font-black text-slate-700 uppercase tracking-tight">{m.NOMBRE_EQ || '—'}</td>
-                        <td className="px-8 py-5 text-slate-400 font-black uppercase text-[10px] tracking-widest">{m.T_FREC || '—'}</td>
-                        <td className="px-8 py-5">
-                          <Badge className="font-black text-[10px] px-4 py-1.5 border-none rounded-xl shadow-md bg-indigo-600 text-white uppercase tracking-widest">{m.ESTADO || 'PENDIENTE'}</Badge>
-                        </td>
+                        <td className="px-8 py-5 font-black text-slate-700">{m.NOMBRE_EQ || '—'}</td>
+                        <td className="px-8 py-5 text-slate-400 font-black uppercase text-[10px]">{m.T_FREC || '—'}</td>
+                        <td className="px-8 py-5"><Badge className="bg-indigo-600 text-white uppercase text-[10px] font-black">{m.ESTADO || 'PENDIENTE'}</Badge></td>
                       </tr>
-                    )) : (
-                      <tr><td colSpan={5} className="py-40 text-center font-black text-slate-200 uppercase text-sm tracking-[0.4em]">Sin mantenimientos en calendario</td></tr>
-                    )}
+                    ))}
                   </tbody>
                 </table>
               </div>
-              {totalMaintPages > 1 && (
-                <div className="flex items-center justify-between px-10 py-6 bg-slate-50/50 border-t border-slate-200">
-                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Página {maintPage} de {totalMaintPages}</div>
-                  <div className="flex items-center gap-2">
-                    <Button variant="outline" size="icon" onClick={() => setMaintPage(1)} disabled={maintPage === 1} className="h-10 w-10 rounded-xl border-slate-200"><ChevronsLeft className="h-4 h-4" /></Button>
-                    <Button variant="outline" size="icon" onClick={() => setMaintPage(prev => Math.max(1, prev - 1))} disabled={maintPage === 1} className="h-10 w-10 rounded-xl border-slate-200"><ChevronLeft className="h-4 h-4" /></Button>
-                    <div className="flex items-center gap-1 mx-2">
-                      {getPageNumbers(maintPage, totalMaintPages).map((p, idx) => (
-                        <button key={idx} onClick={() => typeof p === 'number' && setMaintPage(p)} className={cn("min-w-[40px] h-10 rounded-xl text-[11px] font-black border-2 transition-all", maintPage === p ? "bg-slate-900 border-slate-900 text-white shadow-lg shadow-slate-200" : "bg-white text-slate-500 border-slate-200 hover:border-slate-300")}>{p}</button>
-                      ))}
-                    </div>
-                    <Button variant="outline" size="icon" onClick={() => setMaintPage(prev => Math.min(totalMaintPages, prev + 1))} disabled={maintPage === totalMaintPages} className="h-10 w-10 rounded-xl border-slate-200"><ChevronRight className="h-4 h-4" /></Button>
-                    <Button variant="outline" size="icon" onClick={() => setMaintPage(totalMaintPages)} disabled={maintPage === totalMaintPages} className="h-10 w-10 rounded-xl border-slate-200"><ChevronsRight className="h-4 h-4" /></Button>
-                  </div>
-                </div>
-              )}
             </CardContent>
           </Card>
         </TabsContent>
 
         <TabsContent value="personal-turnos">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
-            <Card className="lg:col-span-1 rounded-[2.5rem] shadow-sm border-slate-200 overflow-hidden bg-white ring-1 ring-slate-100">
-               <CardHeader className="bg-slate-950 text-white p-8">
-                 <div className="flex items-center gap-4">
-                   <Clock className="w-7 h-7 text-sky-400" />
-                   <CardTitle className="text-xl font-black uppercase tracking-tight">Parámetros de Jornada</CardTitle>
-                 </div>
-               </CardHeader>
+            <Card className="lg:col-span-1 rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden">
+               <CardHeader className="bg-slate-950 text-white p-8"><CardTitle className="text-xl font-black uppercase">Parámetros de Jornada</CardTitle></CardHeader>
                <CardContent className="p-10 space-y-10">
                  <div className="space-y-5">
                     <label className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em]">Jornada Diurna (L-V)</label>
                     <Select value={jornadaDiurnaSel} onValueChange={setJornadaDiurnaSel}>
-                      <SelectTrigger className="h-14 border-2 border-slate-100 rounded-2xl font-black text-slate-800 bg-slate-50/50 hover:bg-white transition-all">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {DIURNA_OPTIONS.map(opt => <SelectItem key={opt.value} value={opt.value} className="font-black py-3">{opt.label}</SelectItem>)}
-                      </SelectContent>
+                      <SelectTrigger className="h-14 border-2 rounded-2xl font-black text-slate-800"><SelectValue /></SelectTrigger>
+                      <SelectContent>{DIURNA_OPTIONS.map(opt => <SelectItem key={opt.value} value={opt.value} className="font-black py-3">{opt.label}</SelectItem>)}</SelectContent>
                     </Select>
                  </div>
-                 <div className="space-y-5">
-                    <label className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em]">Jornada Nocturna</label>
-                    <Select value={jornadaNocturnaSel} onValueChange={setJornadaNocturnaSel}>
-                      <SelectTrigger className="h-14 border-2 border-slate-100 rounded-2xl font-black text-slate-800 bg-slate-50/50 hover:bg-white transition-all">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {NOCTURNA_OPTIONS.map(opt => <SelectItem key={opt.value} value={opt.value} className="font-black py-3">{opt.label}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                 </div>
-                 <div className="p-8 bg-slate-950 rounded-[2rem] text-white shadow-2xl border border-white/5">
-                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.4em] mb-8">Eficiencia Operativa: 84%</p>
+                 <div className="p-8 bg-slate-950 rounded-[2rem] text-white">
                     <div className="grid grid-cols-2 gap-8">
-                      <div className="border-l-4 border-sky-500 pl-5"><p className="text-2xl font-black font-mono text-white">{horasNetasDiurnas.toFixed(2)}h</p><p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mt-2">Día Neto</p></div>
-                      <div className="border-l-4 border-indigo-600 pl-5"><p className="text-2xl font-black font-mono text-white">{horasNetasNocturnas.toFixed(2)}h</p><p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mt-2">Noche Neto</p></div>
+                      <div><p className="text-2xl font-black font-mono">{horasNetasDiurnas.toFixed(2)}h</p><p className="text-[10px] uppercase mt-2">Día Neto</p></div>
+                      <div><p className="text-2xl font-black font-mono">{horasNetasNocturnas.toFixed(2)}h</p><p className="text-[10px] uppercase mt-2">Noche Neto</p></div>
                     </div>
                     <div className="mt-10 pt-8 border-t border-white/5 flex flex-col items-center">
-                      <span className="text-4xl font-black text-sky-400 font-mono tracking-tighter drop-shadow-[0_0_10px_rgba(56,189,248,0.3)]">{totalHorasNetas.toFixed(2)}h</span>
-                      <span className="text-[11px] font-black text-slate-500 uppercase mt-3 tracking-[0.25em]">Capacidad Diaria / Persona</span>
+                      <span className="text-4xl font-black text-sky-400 font-mono tracking-tighter">{totalHorasNetas.toFixed(2)}h</span>
+                      <span className="text-[11px] font-black text-slate-500 uppercase mt-3">Capacidad Diaria / Persona</span>
                     </div>
                  </div>
                </CardContent>
             </Card>
-
-            <Card className="lg:col-span-2 rounded-[2.5rem] shadow-sm border-slate-200 overflow-hidden bg-white ring-1 ring-slate-100">
-               <CardHeader className="bg-slate-50/50 border-b border-slate-200 p-10">
-                  <div className="flex items-center gap-4">
-                    <UserPlus className="w-7 h-7 text-indigo-600" />
-                    <div>
-                      <CardTitle className="text-2xl font-black text-slate-900 uppercase tracking-tight">Dotación de Planta</CardTitle>
-                      <CardDescription className="uppercase text-[9px] font-bold tracking-widest text-slate-400 mt-1">Configuración de personal por puesto de trabajo</CardDescription>
-                    </div>
-                  </div>
-               </CardHeader>
+            <Card className="lg:col-span-2 rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden">
+               <CardHeader className="bg-slate-50/50 p-10"><CardTitle className="text-2xl font-black uppercase tracking-tight">Dotación de Planta</CardTitle></CardHeader>
                <CardContent className="p-10">
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-h-[65vh] overflow-y-auto pr-4 custom-scrollbar">
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-h-[65vh] overflow-y-auto pr-4">
                     {uniqueWorkstations.map(ws => {
                       const config = workstationConfigs[ws] || { people: 1 };
                       return (
-                        <div key={ws} className="flex items-center justify-between p-6 border-2 border-slate-50 rounded-[2rem] bg-white hover:border-indigo-100 hover:shadow-md transition-all group">
+                        <div key={ws} className="flex items-center justify-between p-6 border-2 border-slate-50 rounded-[2rem] bg-white hover:border-indigo-100 transition-all">
                           <div>
-                            <p className="font-black text-slate-800 uppercase text-sm tracking-tighter group-hover:text-indigo-700 transition-colors">{ws}</p>
-                            <div className="flex items-center gap-2 mt-2">
-                              <Badge className="bg-slate-100 text-slate-400 border-none font-mono text-[10px] px-2">CAP: {(config.people * totalHorasNetas).toFixed(1)}h</Badge>
-                            </div>
+                            <p className="font-black text-slate-800 uppercase text-sm">{ws}</p>
+                            <Badge className="bg-slate-100 text-slate-400 border-none font-mono text-[10px] mt-2">CAP: {(config.people * totalHorasNetas).toFixed(1)}h</Badge>
                           </div>
                           <div className="flex items-center gap-3 bg-slate-50 p-2 rounded-2xl border border-slate-100">
-                            <button onClick={() => handleWorkstationConfigChange(ws, 'people', Math.max(1, config.people - 1))} className="w-9 h-9 rounded-xl bg-white shadow-sm flex items-center justify-center font-black hover:bg-slate-900 hover:text-white transition-all text-sm">-</button>
+                            <button onClick={() => handleWorkstationConfigChange(ws, 'people', Math.max(1, config.people - 1))} className="w-9 h-9 rounded-xl bg-white shadow-sm flex items-center justify-center font-black">-</button>
                             <span className="font-mono font-black text-lg min-w-[32px] text-center text-indigo-700">{config.people}</span>
-                            <button onClick={() => handleWorkstationConfigChange(ws, 'people', config.people + 1)} className="w-9 h-9 rounded-xl bg-white shadow-sm flex items-center justify-center font-black hover:bg-slate-900 hover:text-white transition-all text-sm">+</button>
+                            <button onClick={() => handleWorkstationConfigChange(ws, 'people', config.people + 1)} className="w-9 h-9 rounded-xl bg-white shadow-sm flex items-center justify-center font-black">+</button>
                           </div>
                         </div>
                       );
