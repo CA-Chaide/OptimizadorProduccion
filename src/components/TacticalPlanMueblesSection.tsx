@@ -209,17 +209,17 @@ export const TacticalPlanMueblesSection: React.FC = () => {
       </div>
 
       <Tabs defaultValue="plan" className="w-full">
-          <TabsList className="grid w-full grid-cols-10 h-auto p-1 bg-muted border border-dashed border-gray-300 rounded-lg">
-              <TabsTrigger value="grupos" className="border-r border-dashed border-gray-300 last:border-r-0 text-[10px]">Grupos</TabsTrigger>
-              <TabsTrigger value="restricciones" className="border-r border-dashed border-gray-300 last:border-r-0 text-[10px]">Restricciones</TabsTrigger>
-              <TabsTrigger value="ordenes" className="border-r border-dashed border-gray-300 last:border-r-0 text-[10px]">Ord. Prev.</TabsTrigger>
-              <TabsTrigger value="ordenesFert" className="border-r border-dashed border-gray-300 last:border-r-0 text-[10px]">Ord. Fert</TabsTrigger>
-              <TabsTrigger value="tiemposMuebles" className="border-r border-dashed border-gray-300 last:border-r-0 text-[10px]">Tiempos</TabsTrigger>
-              <TabsTrigger value="habilidades" className="border-r border-dashed border-gray-300 last:border-r-0 text-[10px]">Habilidades</TabsTrigger>
-              <TabsTrigger value="cascos" className="border-r border-dashed border-gray-300 last:border-r-0 text-[10px]">Cascos</TabsTrigger>
-              <TabsTrigger value="telas" className="border-r border-dashed border-gray-300 last:border-r-0 text-[10px]">Telas</TabsTrigger>
-              <TabsTrigger value="materialesBrutos" className="border-r border-dashed border-gray-300 last:border-r-0 text-[10px]">Mat. Brutos</TabsTrigger>
-              <TabsTrigger value="plan" className="last:border-r-0 text-[10px]">PLAN</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-5 h-auto p-2 bg-muted border border-dashed border-gray-300 rounded-lg gap-2">
+              <TabsTrigger value="grupos" className="text-sm py-2 px-1">Grupos</TabsTrigger>
+              <TabsTrigger value="restricciones" className="text-sm py-2 px-1">Restricciones</TabsTrigger>
+              <TabsTrigger value="ordenes" className="text-sm py-2 px-1">Ord. Prev.</TabsTrigger>
+              <TabsTrigger value="ordenesFert" className="text-sm py-2 px-1">Ord. Fert</TabsTrigger>
+              <TabsTrigger value="tiemposMuebles" className="text-sm py-2 px-1">Tiempos</TabsTrigger>
+              <TabsTrigger value="habilidades" className="text-sm py-2 px-1">Habilidades</TabsTrigger>
+              <TabsTrigger value="cascos" className="text-sm py-2 px-1">Cascos</TabsTrigger>
+              <TabsTrigger value="telas" className="text-sm py-2 px-1">Telas</TabsTrigger>
+              <TabsTrigger value="materialesBrutos" className="text-sm py-2 px-1">Mat. Brutos</TabsTrigger>
+              <TabsTrigger value="plan" className="text-sm py-2 px-1 font-bold">PLAN</TabsTrigger>
           </TabsList>
           
           <TabsContent value="grupos" className="mt-4">
