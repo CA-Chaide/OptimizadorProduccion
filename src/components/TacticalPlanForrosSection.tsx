@@ -22,7 +22,9 @@ import {
   Wrench,
   LayoutGrid,
   ClipboardList,
-  UserPlus
+  UserPlus,
+  ShieldCheck,
+  AlertTriangle
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -143,7 +145,12 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const forrosGruposList = useMemo(() => {
     return grupos.filter(g => {
       const name = (g.nombre_grupo || '').toUpperCase();
-      return name.includes('FORRO') || name.includes('CHN') || name.includes('BASE') || name.includes('BANDA') || name.includes('ACOLCHADO');
+      return name.includes('FORRO') || 
+             name.includes('CHN') || 
+             name.includes('BASE') || 
+             name.includes('BANDA') || 
+             name.includes('ACOLCHADO') ||
+             name.includes('TAPAS');
     });
   }, [grupos]);
 
@@ -255,20 +262,19 @@ export const TacticalPlanForrosSection: React.FC = () => {
     const wsSet = new Set<string>();
     tiemposProduccion.forEach(t => {
       const ws = String(t.PuestoTrabajo || t.nombre_estacion || '').trim().toUpperCase();
-      if (ws && ws !== 'NULL' && ws !== 'MARCOSUIO') wsSet.add(ws);
+      if (ws && ws !== 'NULL') wsSet.add(ws);
     });
     return Array.from(wsSet).sort();
   }, [tiemposProduccion]);
 
-  // CATEGORIZACIÓN DE PUESTOS SEGÚN REQUERIMIENTO
+  // CATEGORIZACIÓN DE PUESTOS SEGÚN REQUERIMIENTO (ACOLCHADO Y TAPAS)
   const workstationsGroup1 = useMemo(() => {
-    const allowedSuffixes = ['02', '06', '07', '08', '09', '10'];
+    const achAllowed = ['02', '06', '07', '08', '09', '10'];
     return uniqueWorkstations.filter(m => {
-      if (m.startsWith('HR-ACH') || m.startsWith('HR-PEF')) {
-        const suffix = m.slice(-2);
-        return allowedSuffixes.includes(suffix);
+      if (m.startsWith('HR-ACH')) {
+        return achAllowed.includes(m.slice(-2));
       }
-      return false;
+      return m.startsWith('HR-PEF');
     });
   }, [uniqueWorkstations]);
 
@@ -377,13 +383,13 @@ export const TacticalPlanForrosSection: React.FC = () => {
               <Cpu className="w-5 h-5 text-sky-400" />
               {machineCode}
             </h3>
-            <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-slate-500 mt-1">Status Operativo</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-slate-500 mt-1">Capacidad Neta</p>
           </div>
           
           <div className="flex-1 space-y-5">
             <div className="bg-white/5 p-4 rounded-2xl border border-white/10 shadow-inner">
               <p className="text-[9px] font-bold uppercase text-slate-400 mb-3 tracking-[0.2em] flex items-center gap-2">
-                <Users className="w-3 h-3" /> Dotación Operativa
+                <Users className="w-3 h-3 text-indigo-400" /> Personal Asignado
               </p>
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
@@ -395,7 +401,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   </div>
                 </div>
                 <div className="pt-2 border-t border-white/5 flex justify-between items-center text-xs">
-                  <span className="font-bold uppercase text-[10px] text-slate-500">Capacidad Turno:</span>
+                  <span className="font-bold uppercase text-[10px] text-slate-500">Capacidad Total:</span>
                   <span className="font-mono font-bold text-sky-400">{capacityHours.toFixed(2)}h</span>
                 </div>
               </div>
@@ -421,7 +427,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
         <div className="flex-1 bg-slate-50/30 p-6 flex flex-col">
           <div className="flex items-center justify-between mb-5 pb-3 border-b border-slate-200">
             <h3 className="text-xs font-black text-slate-700 uppercase flex items-center gap-2 tracking-widest">
-              <ClipboardList className="w-4 h-4 text-slate-400" /> Órdenes Programadas
+              <ClipboardList className="w-4 h-4 text-slate-400" /> Detalle de Órdenes
             </h3>
             <Badge variant="outline" className="bg-white text-slate-500 border-slate-200 font-mono text-[10px] px-2.5 py-0.5">{orders.length} ITEMS</Badge>
           </div>
@@ -450,7 +456,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 })}
                 {orders.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="py-20 text-center text-slate-300 italic font-black uppercase tracking-[0.3em] text-[10px]">Sin órdenes asignadas</td>
+                    <td colSpan={4} className="py-20 text-center text-slate-300 italic font-black uppercase tracking-[0.3em] text-[10px]">Sin carga de producción</td>
                   </tr>
                 )}
               </tbody>
@@ -480,7 +486,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   return (
     <div className="p-6 md:p-8 space-y-6 bg-slate-50/40 min-h-screen">
-      {/* HEADER DE CONTROL */}
+      {/* HEADER TÁCTICO */}
       <div className="flex flex-col xl:flex-row items-center justify-between gap-6 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
         <div className="flex items-center space-x-5">
           <div className="bg-slate-900 p-4 rounded-2xl text-white shadow-lg">
@@ -489,7 +495,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
           <div>
             <h2 className="text-2xl font-black text-slate-800 uppercase tracking-tighter">Programación Táctica Forros</h2>
             <div className="flex items-center gap-2 mt-1">
-              <Badge variant="outline" className="border-slate-200 text-slate-400 bg-slate-50 font-black uppercase tracking-[0.2em] text-[9px] px-3 py-0.5">Módulo de Planificación Corto Plazo</Badge>
+              <Badge variant="outline" className="border-slate-200 text-slate-400 bg-slate-50 font-black uppercase tracking-[0.2em] text-[9px] px-3 py-0.5">Centro de Control Operativo</Badge>
             </div>
           </div>
         </div>
@@ -498,7 +504,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
           <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex items-center gap-4 min-w-[180px] shadow-inner">
             <div className="bg-indigo-700 p-2 rounded-xl text-white"><MapPin className="w-4 h-4" /></div>
             <div>
-              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Carga Horizonte</p>
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Órdenes Totales</p>
               <p className="text-xl font-black text-slate-800 font-mono tracking-tight">{dailyOrders.length.toLocaleString()}</p>
             </div>
           </div>
@@ -511,7 +517,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
           <div className="flex items-center gap-6">
             <div className="space-y-1">
               <label className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] flex items-center gap-2">
-                <CalendarClock className="w-3 h-3" /> Inicio Horizonte
+                <Clock className="w-3 h-3" /> Inicio Horizonte
               </label>
               <input 
                 type="date" 
@@ -525,7 +531,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
             </div>
             <div className="space-y-1">
               <label className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] flex items-center gap-2">
-                <CalendarClock className="w-3 h-3" /> Fin Horizonte
+                <Clock className="w-3 h-3" /> Fin Horizonte
               </label>
               <input 
                 type="date" 
@@ -549,7 +555,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
               )}
             >
               <Filter className="w-3.5 h-3.5" />
-              {isHorizonFilterActive ? "Horizonte Activo" : "Aplicar Horizonte"}
+              {isHorizonFilterActive ? "Filtro Aplicado" : "Aplicar Horizonte"}
             </Button>
             <Button 
               onClick={fetchDailyOrders} 
@@ -578,10 +584,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
             <LayoutGrid className="w-3.5 h-3.5" /> 4. Forros Finales
           </TabsTrigger>
           <TabsTrigger value="componentes" className="flex items-center gap-2 px-6 py-3 data-[state=active]:bg-slate-900 data-[state=active]:text-white rounded-xl transition-all text-[10px] font-black uppercase tracking-widest text-slate-500">
-            <Inbox className="w-3.5 h-3.5" /> Componentes
+            <Inbox className="w-3.5 h-3.5" /> Buffer Maestro
           </TabsTrigger>
           <TabsTrigger value="mantenimiento" className="flex items-center gap-2 px-6 py-3 data-[state=active]:bg-slate-900 data-[state=active]:text-white rounded-xl transition-all text-[10px] font-black uppercase tracking-widest text-slate-500">
-            <Wrench className="w-3.5 h-3.5" /> Mant. Preventivo
+            <Wrench className="w-3.5 h-3.5" /> Mantenimiento
           </TabsTrigger>
           <TabsTrigger value="personal-turnos" className="flex items-center gap-2 px-6 py-3 data-[state=active]:bg-slate-900 data-[state=active]:text-white rounded-xl transition-all text-[10px] font-black uppercase tracking-widest text-slate-500">
             <UserPlus className="w-3.5 h-3.5" /> Config. Capacidad
@@ -623,7 +629,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
         <TabsContent value="componentes">
            <Card className="rounded-2xl shadow-sm border-slate-200 overflow-hidden bg-white">
              <CardHeader className="bg-slate-50/50 border-b border-slate-200 p-8">
-                <CardTitle className="text-xl font-black text-slate-800 uppercase tracking-tight flex items-center gap-3"><Inbox className="w-6 h-6 text-slate-400" /> Buffer Maestro de Órdenes</CardTitle>
+                <CardTitle className="text-xl font-black text-slate-800 uppercase tracking-tight flex items-center gap-3"><Inbox className="w-6 h-6 text-slate-400" /> Listado Maestro de Componentes</CardTitle>
+                <CardDescription>Órdenes previsionales disponibles para asignación técnica.</CardDescription>
              </CardHeader>
              <CardContent className="p-0">
                 <ProvisionalOrdersTabSection 
@@ -640,7 +647,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
           <Card className="rounded-2xl shadow-sm border-slate-200 overflow-hidden bg-white">
             <CardHeader className="bg-slate-50/50 border-b border-slate-200 p-8">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-xl font-black text-slate-800 uppercase tracking-tight flex items-center gap-3"><Wrench className="w-6 h-6 text-slate-400" /> Mantenimiento Preventivo</CardTitle>
+                <CardTitle className="text-xl font-black text-slate-800 uppercase tracking-tight flex items-center gap-3"><Wrench className="w-6 h-6 text-slate-400" /> Paradas Programadas</CardTitle>
                 <Button onClick={fetchMantenimientos} disabled={isLoadingMantenimientos} variant="outline" size="sm" className="h-10 px-5 font-black uppercase text-[9px] tracking-widest border-slate-300 rounded-xl">
                   <RefreshCw className={cn("w-3.5 h-3.5 mr-2", isLoadingMantenimientos && "animate-spin")} /> Actualizar
                 </Button>
@@ -668,7 +675,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                         <td className="px-6 py-4"><Badge className="font-black text-[9px] px-3 py-1 border-none rounded-lg shadow-sm bg-indigo-600 text-white">{m.ESTADO || 'PENDIENTE'}</Badge></td>
                       </tr>
                     )) : (
-                      <tr><td colSpan={5} className="py-24 text-center font-black text-slate-200 uppercase text-xs tracking-widest">Sin paradas programadas</td></tr>
+                      <tr><td colSpan={5} className="py-24 text-center font-black text-slate-200 uppercase text-xs tracking-widest">Sin mantenimientos pendientes</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -724,7 +731,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
             </Card>
 
             <Card className="lg:col-span-2 rounded-2xl shadow-sm border-slate-200 overflow-hidden bg-white">
-               <CardHeader className="bg-slate-50/50 border-b border-slate-200 p-8"><CardTitle className="text-xl font-black text-slate-800 uppercase tracking-tight">Capacidad por Estación</CardTitle></CardHeader>
+               <CardHeader className="bg-slate-50/50 border-b border-slate-200 p-8"><CardTitle className="text-xl font-black text-slate-800 uppercase tracking-tight">Dotación por Estación</CardTitle></CardHeader>
                <CardContent className="p-8">
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-h-[60vh] overflow-y-auto pr-2">
                     {uniqueWorkstations.map(ws => {
