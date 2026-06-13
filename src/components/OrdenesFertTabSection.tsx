@@ -136,7 +136,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
     totalRegistros: 0,
     pageSize: 10000,
     isExploring: true,
-    rowsPerPage: 20,
+    rowsPerPage: 100,
   });
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
