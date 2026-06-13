@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { 
   CalendarClock, 
   Loader2, 
@@ -43,13 +42,15 @@ interface WorkstationConfig {
   peopleNocturno: number;
 }
 
-// Helpers outside component
-const getTodayString = () => {
-    const today = new Date();
-    return today.toISOString().split('T')[0]; 
+// Helper para fecha estable fuera del componente
+const getInitialTodayString = () => {
+  return ''; // Inicialmente vacío para evitar desajustes de hidratación
 };
 
-// Sub-component: MachineCard (extracted to avoid reconciliation/hydration issues)
+/**
+ * Componente: MachineCard
+ * Representa el estado y carga de una estación de trabajo específica.
+ */
 const MachineCard = ({ 
   puestoName, 
   small = false, 
@@ -173,7 +174,10 @@ const MachineCard = ({
   );
 };
 
-// Sub-component: TableKPI (extracted)
+/**
+ * Componente: TableKPI
+ * Muestra el listado de tiempos de ingeniería (KPIs).
+ */
 const TableKPI = ({ 
   tiemposProduccion, 
   mapToHojaRuta 
@@ -247,15 +251,16 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [isLoadingTiempos, setIsLoadingTiempos] = useState(false);
   const [isLoadingDaily, setIsLoadingDaily] = useState(false);
   
-  // Hydration-safe initial state
+  // Hydration-safe initial states
   const [executionDate, setExecutionDate] = useState<string>('');
   const [jornadaDiurnaSel, setJornadaDiurnaSel] = useState("8.75");
   const [jornadaNocturnaSel, setJornadaNocturnaSel] = useState("0");
   const [workstationConfigs, setWorkstationConfigs] = useState<Record<string, WorkstationConfig>>({});
 
+  // Efecto de montaje para evitar errores de hidratación
   useEffect(() => {
     setIsMounted(true);
-    setExecutionDate(getTodayString());
+    setExecutionDate(new Date().toISOString().split('T')[0]);
   }, []);
 
   const DIURNA_OPTIONS = [
@@ -270,8 +275,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
     { label: "19:00 - 05:30 (10.5h)", value: "10.5" }
   ];
 
-  const horasNetasDiurnas = useMemo(() => parseFloat(jornadaDiurnaSel) * 0.84, [jornadaDiurnaSel]);
-  const horasNetasNocturnas = useMemo(() => parseFloat(jornadaNocturnaSel) * 0.84, [jornadaNocturnaSel]);
+  const horasNetasDiurnas = useMemo(() => parseFloat(jornadaDiurnaSel || "0") * 0.84, [jornadaDiurnaSel]);
+  const horasNetasNocturnas = useMemo(() => parseFloat(jornadaNocturnaSel || "0") * 0.84, [jornadaNocturnaSel]);
 
   const normalizeMaterialCode = useCallback((code: string | number): string => {
     if (!code) return '';
@@ -282,9 +287,11 @@ export const TacticalPlanForrosSection: React.FC = () => {
     const pn = String(puestoName || '').toUpperCase().trim();
     if (!pn || pn === '—' || pn === 'NULL') return '';
     
+    // Mapeos específicos solicitados
     if (pn === 'ACOLCHADORA09') return 'HR-ACH09';
     if (pn === 'COSEDORA-ACH02') return 'HR-PEF02';
 
+    // Búsqueda en maestros de producción
     const match = tiemposProduccion.find(t => {
       const tp = String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').toUpperCase().trim();
       return tp === pn;
@@ -295,10 +302,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
       if (hr && hr.startsWith('HR-')) return hr;
     }
 
-    if (pn.includes('ACOLCHADORA09')) return 'HR-ACH09';
-    if (pn.includes('COSEDORA-ACH02')) return 'HR-PEF02';
-    if (pn.includes('COSEDORA-ACH08')) return 'HR-PEF08';
-    
+    // Lógica de respaldo por patrones
     const numMatch = pn.match(/\d+/);
     const num = numMatch ? numMatch[0].padStart(2, '0') : '';
     if (pn.includes('COSEDORA') || pn.includes('PEGADORA')) return `HR-PEF${num}`;
@@ -458,6 +462,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     setWorkstationConfigs(prev => ({ ...prev, [p]: { ...prev[p], [field]: value } }));
   };
 
+  // Mantenemos el loader durante la hidratación inicial para evitar errores de Next.js
   if (!isMounted) {
     return (
       <div className="flex h-screen items-center justify-center bg-slate-50/40">
@@ -466,8 +471,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
     );
   }
 
+  const targetDate = executionDate;
+
   return (
-    <div className="p-6 md:p-8 space-y-6 bg-slate-50/40 min-h-screen font-body">
+    <div className="p-6 md:p-8 space-y-6 bg-slate-50/40 min-h-screen font-body" suppressHydrationWarning>
       <div className="flex flex-col xl:flex-row items-center justify-between gap-6 bg-white p-7 rounded-[2rem] border border-slate-200 shadow-sm">
         <div className="flex items-center space-x-6">
           <div className="bg-slate-950 p-5 rounded-[1.5rem] text-white shadow-xl ring-4 ring-slate-100">
@@ -563,7 +570,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       const orders = dailyOrders.filter(o => getResolvedPuesto(o) === p);
                       const totalUnits = orders.reduce((sum, o) => sum + Number(o['CANTIDAD'] || 0), 0);
                       const totalTimeHours = orders.reduce((sum, o) => sum + calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || 0), o), 0) / 60;
-                      const config = workstationConfigs[p] || { peopleDiurno: 1, peopleNocturno: 0 };
+                      const config = workstationConfigs[p] || { machine: p, peopleDiurno: 1, peopleNocturno: 0 };
                       const capacityHours = (horasNetasDiurnas * config.peopleDiurno) + (horasNetasNocturnas * config.peopleNocturno);
                       const utilization = capacityHours > 0 ? (totalTimeHours / capacityHours) * 100 : 0;
                       return (
@@ -576,7 +583,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                           <td className="px-8 py-5 text-center">
                              <div className="flex items-center justify-center gap-4">
                                <div className="flex-1 bg-slate-100 h-2 rounded-full overflow-hidden max-w-[100px] border border-slate-200">
-                                 <motion.div initial={{ width: 0 }} animate={{ width: `${Math.min(utilization, 100)}%` }} className={cn("h-full transition-all duration-1000", utilization > 100 ? "bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]" : "bg-indigo-600 shadow-[0_0_10px_rgba(79,70,229,0.4)]")} />
+                                 <div className={cn("h-full transition-all duration-1000", utilization > 100 ? "bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]" : "bg-indigo-600 shadow-[0_0_10px_rgba(79,70,229,0.4)]")} style={{ width: `${Math.min(utilization, 100)}%` }} />
                                </div>
                                <span className={cn("font-mono font-black text-[10px] min-w-[30px]", utilization > 100 ? "text-red-600" : "text-slate-900")}>{utilization.toFixed(0)}%</span>
                              </div>
