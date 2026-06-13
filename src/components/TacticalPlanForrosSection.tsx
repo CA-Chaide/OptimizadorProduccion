@@ -24,7 +24,8 @@ import {
   ClipboardList,
   Wrench,
   BarChart3,
-  LayoutGrid
+  LayoutGrid,
+  Inbox
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -329,7 +330,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
     return (
       <div className="flex border-2 border-slate-300 rounded-lg overflow-hidden h-[480px] shadow-lg w-full bg-white transition-all hover:shadow-xl">
-        {/* LADO IZQUIERDO: INFORMACIÓN TÉCNICA (AZUL SOBRIO) */}
+        {/* LADO IZQUIERDO: INFORMACIÓN TÉCNICA (AZUL PIZARRA) */}
         <div className="w-[35%] bg-slate-800 p-5 text-white flex flex-col border-r-2 border-slate-300">
           <div className="mb-4">
             <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">{machineCode}</h4>
@@ -338,7 +339,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
           
           <div className="flex-1 space-y-5">
             <div className="bg-white/5 p-4 rounded-xl border border-white/10">
-              <p className="text-[9px] font-bold uppercase text-slate-400 mb-3 tracking-widest">Configuración de Capacidad</p>
+              <p className="text-[9px] font-bold uppercase text-slate-400 mb-3 tracking-widest">Capacidad de Turno</p>
               <div className="space-y-3">
                 <div className="flex justify-between items-center text-sm">
                   <span className="flex items-center gap-2 font-bold uppercase text-[10px] text-slate-300"><Users className="w-4 h-4 text-blue-400" /> Operadores:</span>
@@ -358,26 +359,26 @@ export const TacticalPlanForrosSection: React.FC = () => {
             <div className="bg-white/5 p-4 rounded-xl border border-white/10">
               <p className="text-[9px] font-bold uppercase text-slate-400 mb-3 tracking-widest">Saturación del Turno</p>
               <div className="flex items-baseline gap-2 mb-2">
-                <span className={cn("text-5xl font-black font-mono tracking-tighter", isOverloaded ? "text-red-400" : "text-blue-300")}>
+                <span className={cn("text-5xl font-black font-mono tracking-tighter", isOverloaded ? "text-red-400" : "text-sky-300")}>
                   {utilization.toFixed(1)}
                 </span>
                 <span className="text-xl font-bold text-slate-500">%</span>
               </div>
-              <Progress value={utilization} className={cn("h-4 bg-slate-700", isOverloaded ? "[&>div]:bg-red-500" : "[&>div]:bg-blue-500")} />
+              <Progress value={utilization} className={cn("h-4 bg-slate-700", isOverloaded ? "[&>div]:bg-red-500" : "[&>div]:bg-sky-500")} />
               <p className="text-[10px] mt-3 font-black uppercase text-center text-slate-400">
-                Uso: {totalTimeHours.toFixed(2)}h / {capacityHours.toFixed(2)}h
+                Carga: {totalTimeHours.toFixed(2)}h / {capacityHours.toFixed(2)}h
               </p>
             </div>
           </div>
         </div>
 
-        {/* LADO DERECHO: ÓRDENES (CELESTE / GRIS CLARO) */}
+        {/* LADO DERECHO: ÓRDENES (GRIS CLARO) */}
         <div className="flex-1 bg-slate-50 p-5 flex flex-col">
           <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-200">
             <h3 className="text-xl font-black text-slate-800 uppercase flex items-center gap-2 tracking-tighter">
-              <ClipboardList className="w-6 h-6 text-blue-600" /> ÓRDENES DE TRABAJO
+              <ClipboardList className="w-6 h-6 text-blue-700" /> ÓRDENES DE TRABAJO
             </h3>
-            <Badge variant="secondary" className="bg-blue-100 text-blue-800 border-blue-200 font-mono px-3 py-1">{orders.length} LÍNEAS</Badge>
+            <Badge variant="secondary" className="bg-blue-100 text-blue-800 border-blue-200 font-mono px-3 py-1">{orders.length} ITEMS</Badge>
           </div>
           
           <div className="flex-1 overflow-auto rounded-lg border border-slate-200 bg-white">
@@ -388,7 +389,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   <th className="px-3 py-3 text-left font-black uppercase text-slate-500 border-b border-slate-200 tracking-widest">Nombre</th>
                   <th className="px-3 py-3 text-right font-black uppercase text-slate-500 border-b border-slate-200 tracking-widest">Cant.</th>
                   <th className="px-3 py-3 text-center font-black uppercase text-slate-500 border-b border-slate-200 tracking-widest">Unid.</th>
-                  <th className="px-3 py-3 text-right font-black uppercase text-blue-700 border-b border-slate-200 tracking-widest">Tiempo (h)</th>
+                  <th className="px-3 py-3 text-right font-black uppercase text-blue-800 border-b border-slate-200 tracking-widest">Tiempo (h)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -400,7 +401,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       <td className="px-3 py-2.5 max-w-[150px] truncate font-medium uppercase text-slate-600" title={o['NOMBRE'] || o['TEXTOMATERIAL']}>{o['NOMBRE'] || o['TEXTOMATERIAL']}</td>
                       <td className="px-3 py-2.5 text-right font-mono font-black text-slate-800">{Number(o['CANTIDAD'] || 0).toLocaleString()}</td>
                       <td className="px-3 py-2.5 text-center text-slate-400 font-bold uppercase">{o['UNIDAD'] || 'ST'}</td>
-                      <td className="px-3 py-2.5 text-right font-mono font-black text-blue-700">{t.toFixed(2)}h</td>
+                      <td className="px-3 py-2.5 text-right font-mono font-black text-blue-800">{t.toFixed(2)}h</td>
                     </tr>
                   );
                 })}
@@ -452,7 +453,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     <div className="p-6 md:p-8 space-y-6 bg-slate-50 min-h-screen">
       <div className="flex flex-col md:flex-row items-center justify-between gap-6 mb-2">
         <div className="flex items-center space-x-4">
-          <div className="bg-blue-900 p-3 rounded-2xl text-white shadow-lg shadow-blue-200">
+          <div className="bg-slate-900 p-3 rounded-2xl text-white shadow-lg shadow-slate-200">
             <CalendarClock className="w-8 h-8" />
           </div>
           <div>
@@ -463,17 +464,17 @@ export const TacticalPlanForrosSection: React.FC = () => {
           </div>
         </div>
         
-        {/* Resumen de Producción Superior */}
+        {/* Resumen de Producción Permanente */}
         <div className="flex gap-4">
           <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm flex items-center gap-4 min-w-[200px]">
-            <div className="bg-blue-50 p-2 rounded-lg text-blue-600"><MapPin className="w-5 h-5" /></div>
+            <div className="bg-blue-50 p-2 rounded-lg text-blue-700"><MapPin className="w-5 h-5" /></div>
             <div>
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Producción GYE</p>
               <p className="text-xl font-black text-slate-800 font-mono">{chnBasesDateTotals.totalToday.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</p>
             </div>
           </div>
           <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm flex items-center gap-4 min-w-[200px]">
-            <div className="bg-indigo-50 p-2 rounded-lg text-indigo-600"><MapPin className="w-5 h-5" /></div>
+            <div className="bg-indigo-50 p-2 rounded-lg text-indigo-700"><MapPin className="w-5 h-5" /></div>
             <div>
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Producción UIO</p>
               <p className="text-xl font-black text-slate-800 font-mono">{chnBasesDateTotals.totalTarget.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</p>
@@ -484,21 +485,21 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
       <Tabs defaultValue="visual" className="w-full">
         <TabsList className="flex w-full h-auto bg-white border border-slate-200 p-1.5 mb-8 rounded-2xl shadow-sm overflow-x-auto justify-start sticky top-0 z-50">
-          <TabsTrigger value="visual" className="flex items-center gap-2 px-6 py-2.5 data-[state=active]:bg-blue-900 data-[state=active]:text-white rounded-xl transition-all text-xs font-black uppercase tracking-widest text-slate-500"><LayoutGrid className="w-4 h-4" /> Tablero Visual ACH-PEF</TabsTrigger>
-          <TabsTrigger value="componentes" className="flex items-center gap-2 px-6 py-2.5 data-[state=active]:bg-blue-900 data-[state=active]:text-white rounded-xl transition-all text-xs font-black uppercase tracking-widest text-slate-500"><ClipboardList className="w-4 h-4" /> Programación Componentes</TabsTrigger>
-          <TabsTrigger value="mantenimiento" className="flex items-center gap-2 px-6 py-2.5 data-[state=active]:bg-blue-900 data-[state=active]:text-white rounded-xl transition-all text-xs font-black uppercase tracking-widest text-slate-500"><Wrench className="w-4 h-4" /> Mantenimiento Preventivo</TabsTrigger>
-          <TabsTrigger value="forros-chn-bases" className="flex items-center gap-2 px-6 py-2.5 data-[state=active]:bg-blue-900 data-[state=active]:text-white rounded-xl transition-all text-xs font-black uppercase tracking-widest text-slate-500"><Package className="w-4 h-4" /> Forros & Bases</TabsTrigger>
-          <TabsTrigger value="personal-turnos" className="flex items-center gap-2 px-6 py-2.5 data-[state=active]:bg-blue-900 data-[state=active]:text-white rounded-xl transition-all text-xs font-black uppercase tracking-widest text-slate-500"><UserPlus className="w-4 h-4" /> Capacidad</TabsTrigger>
-          <TabsTrigger value="tiempos" className="flex items-center gap-2 px-6 py-2.5 data-[state=active]:bg-blue-900 data-[state=active]:text-white rounded-xl transition-all text-xs font-black uppercase tracking-widest text-slate-500"><Timer className="w-4 h-4" /> Maestros</TabsTrigger>
-          <TabsTrigger value="restricciones" className="flex items-center gap-2 px-6 py-2.5 data-[state=active]:bg-blue-900 data-[state=active]:text-white rounded-xl transition-all text-xs font-black uppercase tracking-widest text-slate-500"><Lock className="w-4 h-4" /> Reglas</TabsTrigger>
-          <TabsTrigger value="grupos" className="flex items-center gap-2 px-6 py-2.5 data-[state=active]:bg-blue-900 data-[state=active]:text-white rounded-xl transition-all text-xs font-black uppercase tracking-widest text-slate-500"><Users className="w-4 h-4" /> Grupos</TabsTrigger>
+          <TabsTrigger value="visual" className="flex items-center gap-2 px-6 py-2.5 data-[state=active]:bg-slate-900 data-[state=active]:text-white rounded-xl transition-all text-xs font-black uppercase tracking-widest text-slate-500"><LayoutGrid className="w-4 h-4" /> Tablero ACH-PEF</TabsTrigger>
+          <TabsTrigger value="componentes" className="flex items-center gap-2 px-6 py-2.5 data-[state=active]:bg-slate-900 data-[state=active]:text-white rounded-xl transition-all text-xs font-black uppercase tracking-widest text-slate-500"><Inbox className="w-4 h-4" /> Componentes</TabsTrigger>
+          <TabsTrigger value="mantenimiento" className="flex items-center gap-2 px-6 py-2.5 data-[state=active]:bg-slate-900 data-[state=active]:text-white rounded-xl transition-all text-xs font-black uppercase tracking-widest text-slate-500"><Wrench className="w-4 h-4" /> Mant. Preventivo</TabsTrigger>
+          <TabsTrigger value="forros-chn-bases" className="flex items-center gap-2 px-6 py-2.5 data-[state=active]:bg-slate-900 data-[state=active]:text-white rounded-xl transition-all text-xs font-black uppercase tracking-widest text-slate-500"><Package className="w-4 h-4" /> Forros & Bases</TabsTrigger>
+          <TabsTrigger value="personal-turnos" className="flex items-center gap-2 px-6 py-2.5 data-[state=active]:bg-slate-900 data-[state=active]:text-white rounded-xl transition-all text-xs font-black uppercase tracking-widest text-slate-500"><UserPlus className="w-4 h-4" /> Capacidad</TabsTrigger>
+          <TabsTrigger value="tiempos" className="flex items-center gap-2 px-6 py-2.5 data-[state=active]:bg-slate-900 data-[state=active]:text-white rounded-xl transition-all text-xs font-black uppercase tracking-widest text-slate-500"><Timer className="w-4 h-4" /> Maestros</TabsTrigger>
+          <TabsTrigger value="restricciones" className="flex items-center gap-2 px-6 py-2.5 data-[state=active]:bg-slate-900 data-[state=active]:text-white rounded-xl transition-all text-xs font-black uppercase tracking-widest text-slate-500"><Lock className="w-4 h-4" /> Reglas</TabsTrigger>
+          <TabsTrigger value="grupos" className="flex items-center gap-2 px-6 py-2.5 data-[state=active]:bg-slate-900 data-[state=active]:text-white rounded-xl transition-all text-xs font-black uppercase tracking-widest text-slate-500"><Users className="w-4 h-4" /> Grupos</TabsTrigger>
         </TabsList>
 
-        {/* CONTENIDO: TABLERO VISUAL (AHORA CON COLORES AZULES/GRISES) */}
+        {/* CONTENIDO: TABLERO VISUAL ACH-PEF (SOBRIO) */}
         <TabsContent value="visual" className="space-y-12">
           <div className="flex flex-col md:flex-row items-center justify-between gap-6 bg-white p-6 rounded-2xl border border-slate-200 shadow-lg">
             <div className="flex items-center gap-5">
-              <div className="bg-blue-600 p-4 rounded-2xl shadow-xl shadow-blue-100">
+              <div className="bg-blue-700 p-4 rounded-2xl shadow-xl shadow-blue-100">
                 <CalendarCheck className="w-8 h-8 text-white" />
               </div>
               <div>
@@ -506,7 +507,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 <p className="text-sm text-slate-500 font-bold mt-2 uppercase tracking-wide">Carga sincronizada para: <span className="text-blue-700">{todayDate}</span></p>
               </div>
             </div>
-            <Button onClick={fetchDailyOrders} disabled={isLoadingDaily} className="bg-blue-900 hover:bg-blue-800 h-12 px-6 rounded-xl font-black uppercase text-xs tracking-widest transition-all shadow-lg"><RefreshCw className={cn("h-4 w-4 mr-2", isLoadingDaily && "animate-spin")} /> Refrescar Plan</Button>
+            <Button onClick={fetchDailyOrders} disabled={isLoadingDaily} className="bg-slate-900 hover:bg-slate-800 h-12 px-6 rounded-xl font-black uppercase text-xs tracking-widest transition-all shadow-lg"><RefreshCw className={cn("h-4 w-4 mr-2", isLoadingDaily && "animate-spin")} /> Refrescar Plan</Button>
           </div>
 
           <div className="space-y-16 pb-24">
@@ -525,23 +526,28 @@ export const TacticalPlanForrosSection: React.FC = () => {
           </div>
         </TabsContent>
 
-        {/* CONTENIDO: PROGRAMACIÓN COMPONENTES (TABLA DETALLADA) */}
+        {/* CONTENIDO: COMPONENTES (BUFFER MAESTRO RESTAURADO) */}
         <TabsContent value="componentes">
-           <Card className="rounded-2xl shadow-lg border-slate-200 overflow-hidden">
+           <Card className="rounded-2xl shadow-lg border-slate-200 overflow-hidden bg-white">
              <CardHeader className="bg-slate-50 border-b border-slate-200">
                 <div className="flex items-center justify-between">
                   <div>
-                    <CardTitle className="text-xl font-black text-slate-800 uppercase tracking-tighter">Listado Maestro de Componentes</CardTitle>
-                    <CardDescription className="text-slate-500 font-bold uppercase text-[10px] tracking-widest mt-1">Órdenes Previsionales para Acolchado y Pegado (ACH / PEF)</CardDescription>
+                    <CardTitle className="text-xl font-black text-slate-800 uppercase tracking-tighter flex items-center gap-2">
+                      <Inbox className="w-6 h-6 text-blue-700" />
+                      Listado Maestro de Componentes
+                    </CardTitle>
+                    <CardDescription className="text-slate-500 font-bold uppercase text-[10px] tracking-widest mt-1">
+                      Buffer general de órdenes previsionales filtrado por Responsabilidad de Forros
+                    </CardDescription>
                   </div>
-                  <Badge className="bg-blue-900 text-white font-mono px-3 py-1 uppercase text-[10px]">Vista de Ingeniería</Badge>
+                  <Badge className="bg-slate-900 text-white font-mono px-3 py-1 uppercase text-[10px] tracking-widest">Entrada de Planta</Badge>
                 </div>
              </CardHeader>
              <CardContent className="p-0">
                 <ProvisionalOrdersTabSection 
-                  externalFilters={{...externalFilters, MAQUINA: machinePairs.flatMap(p => [p.ach, p.pef])}} 
+                  externalFilters={externalFilters} 
                   renderCell={renderResolvedProvisionalCell} 
-                  groupBy="MAQUINA" 
+                  groupBy="FECHAINICIO"
                   resolveValue={resolveLogicValue} 
                 />
              </CardContent>
@@ -549,12 +555,12 @@ export const TacticalPlanForrosSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="mantenimiento">
-          <Card className="rounded-2xl shadow-lg border-slate-200 overflow-hidden">
+          <Card className="rounded-2xl shadow-lg border-slate-200 overflow-hidden bg-white">
             <CardHeader className="bg-slate-50 border-b border-slate-200">
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle className="text-xl font-black text-slate-800 uppercase tracking-tighter flex items-center gap-2"><Wrench className="w-6 h-6 text-blue-600" /> Mantenimiento Preventivo</CardTitle>
-                  <CardDescription className="font-bold uppercase text-[10px] tracking-widest text-slate-400 mt-1">Filtrado por responsables de Forros • Orden cronológico por FECHA_PRO</CardDescription>
+                  <CardTitle className="text-xl font-black text-slate-800 uppercase tracking-tighter flex items-center gap-2"><Wrench className="w-6 h-6 text-blue-700" /> Mantenimiento Preventivo</CardTitle>
+                  <CardDescription className="font-bold uppercase text-[10px] tracking-widest text-slate-400 mt-1">Sincronización por RespCtrlProd • Orden cronológico FECHA_PRO</CardDescription>
                 </div>
                 <Button onClick={fetchMantenimientos} disabled={isLoadingMantenimientos} variant="outline" size="sm" className="h-9 px-4 font-black uppercase text-[10px] tracking-widest border-slate-300">
                   <RefreshCw className={cn("w-3 h-3 mr-2", isLoadingMantenimientos && "animate-spin")} /> Sincronizar
@@ -624,7 +630,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                         className={cn(
                           "min-w-[32px] h-8 rounded-md text-[11px] font-black transition-all border",
                           maintPage === p 
-                            ? "bg-blue-900 text-white border-blue-900 shadow-lg" 
+                            ? "bg-slate-900 text-white border-slate-900 shadow-lg" 
                             : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
                         )}
                       >
@@ -642,7 +648,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="forros-chn-bases">
-          <Card className="rounded-2xl shadow-lg border-slate-200 overflow-hidden">
+          <Card className="rounded-2xl shadow-lg border-slate-200 overflow-hidden bg-white">
             <CardHeader className="bg-slate-50 border-b border-slate-200">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-xl font-black text-slate-800 uppercase tracking-tighter flex items-center gap-2"><Package className="w-6 h-6 text-blue-700" /> Órdenes Maestras de Forros y Bases</CardTitle>
@@ -662,9 +668,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
         <TabsContent value="personal-turnos">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <Card className="lg:col-span-1 rounded-2xl shadow-lg border-slate-200 overflow-hidden">
+            <Card className="lg:col-span-1 rounded-2xl shadow-lg border-slate-200 overflow-hidden bg-white">
                <CardHeader className="bg-slate-800 text-white border-b border-slate-700">
-                 <CardTitle className="text-xl font-black uppercase tracking-tighter flex items-center gap-2"><Clock className="w-6 h-6 text-blue-400" /> Horarios de Planta</CardTitle>
+                 <CardTitle className="text-xl font-black uppercase tracking-tighter flex items-center gap-2"><Clock className="w-6 h-6 text-sky-400" /> Horarios de Planta</CardTitle>
                </CardHeader>
                <CardContent className="p-6 space-y-8">
                  <div className="space-y-4">
@@ -690,26 +696,26 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     </Select>
                  </div>
                  <div className="p-6 bg-slate-900 rounded-2xl text-white shadow-xl">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-4">Resumen Capacidad Neta (84%)</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-4">Capacidad Neta (84%)</p>
                     <div className="grid grid-cols-2 gap-4">
-                      <div className="border-l-4 border-blue-400 pl-4">
+                      <div className="border-l-4 border-sky-400 pl-4">
                         <p className="text-2xl font-black font-mono">{horasNetasDiurnas.toFixed(2)}h</p>
                         <p className="text-[9px] font-bold text-slate-500 uppercase">Día</p>
                       </div>
-                      <div className="border-l-4 border-slate-400 pl-4">
+                      <div className="border-l-4 border-slate-500 pl-4">
                         <p className="text-2xl font-black font-mono">{horasNetasNocturnas.toFixed(2)}h</p>
                         <p className="text-[9px] font-bold text-slate-500 uppercase">Noche</p>
                       </div>
                     </div>
                     <div className="mt-6 pt-4 border-t border-white/10">
-                      <p className="text-4xl font-black text-blue-400 font-mono tracking-tighter">{totalHorasNetas.toFixed(2)}h</p>
+                      <p className="text-4xl font-black text-sky-400 font-mono tracking-tighter">{totalHorasNetas.toFixed(2)}h</p>
                       <p className="text-[10px] font-black text-slate-500 uppercase mt-1">Total Horas/Persona día</p>
                     </div>
                  </div>
                </CardContent>
             </Card>
 
-            <Card className="lg:col-span-2 rounded-2xl shadow-lg border-slate-200 overflow-hidden">
+            <Card className="lg:col-span-2 rounded-2xl shadow-lg border-slate-200 overflow-hidden bg-white">
                <CardHeader className="bg-slate-50 border-b border-slate-200">
                  <CardTitle className="text-xl font-black text-slate-800 uppercase tracking-tighter">Configuración de Puestos de Trabajo</CardTitle>
                  <CardDescription className="font-bold uppercase text-[10px] text-slate-400">Define el número de personas para calcular la capacidad por puesto</CardDescription>
@@ -725,9 +731,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
                             <p className="text-[10px] font-bold text-slate-400 uppercase">Capacidad: {(config.people * totalHorasNetas).toFixed(1)}h</p>
                           </div>
                           <div className="flex items-center gap-3 bg-slate-50 p-2 rounded-xl border border-slate-200">
-                            <button onClick={() => handleWorkstationConfigChange(ws, 'people', Math.max(1, config.people - 1))} className="w-8 h-8 rounded-lg bg-white shadow-sm border border-slate-200 flex items-center justify-center font-black hover:bg-blue-900 hover:text-white transition-all">-</button>
+                            <button onClick={() => handleWorkstationConfigChange(ws, 'people', Math.max(1, config.people - 1))} className="w-8 h-8 rounded-lg bg-white shadow-sm border border-slate-200 flex items-center justify-center font-black hover:bg-slate-900 hover:text-white transition-all">-</button>
                             <span className="font-mono font-black text-lg min-w-[20px] text-center text-blue-700">{config.people}</span>
-                            <button onClick={() => handleWorkstationConfigChange(ws, 'people', config.people + 1)} className="w-8 h-8 rounded-lg bg-white shadow-sm border border-slate-200 flex items-center justify-center font-black hover:bg-blue-900 hover:text-white transition-all">+</button>
+                            <button onClick={() => handleWorkstationConfigChange(ws, 'people', config.people + 1)} className="w-8 h-8 rounded-lg bg-white shadow-sm border border-slate-200 flex items-center justify-center font-black hover:bg-slate-900 hover:text-white transition-all">+</button>
                           </div>
                         </div>
                       );
@@ -739,7 +745,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="tiempos">
-          <Card className="rounded-2xl shadow-lg border-slate-200 overflow-hidden">
+          <Card className="rounded-2xl shadow-lg border-slate-200 overflow-hidden bg-white">
              <CardHeader className="bg-slate-50 border-b border-slate-200">
                <div className="flex items-center justify-between">
                  <CardTitle className="text-xl font-black text-slate-800 uppercase tracking-tighter">Maestros Técnicos de Producción</CardTitle>
@@ -755,7 +761,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                        <th className="px-4 py-3 text-left">Descripción</th>
                        <th className="px-4 py-3 text-left">Línea</th>
                        <th className="px-4 py-3 text-left">Puesto</th>
-                       <th className="px-4 py-3 text-right text-blue-700">Tiempo (min)</th>
+                       <th className="px-4 py-3 text-right text-blue-800">Tiempo (min)</th>
                      </tr>
                    </thead>
                    <tbody className="divide-y divide-slate-100 bg-white">
@@ -767,7 +773,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                          <td className="px-4 py-2.5 uppercase font-medium text-slate-600">{t.Material || t.nombre_material || t.DESCRIPCION}</td>
                          <td className="px-4 py-2.5 font-bold text-slate-500">{t.Linea || t.nombre_linea}</td>
                          <td className="px-4 py-2.5"><Badge variant="outline" className="bg-slate-50 text-slate-600 border-slate-200 uppercase text-[9px] font-black">{t.PuestoTrabajo || t.nombre_estacion}</Badge></td>
-                         <td className="px-4 py-2.5 text-right font-mono font-black text-blue-700">{Number(t.Tiempo || t.Tiempo_Min).toFixed(2)}</td>
+                         <td className="px-4 py-2.5 text-right font-mono font-black text-blue-800">{Number(t.Tiempo || t.Tiempo_Min).toFixed(2)}</td>
                        </tr>
                      ))}
                    </tbody>
@@ -778,7 +784,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="restricciones">
-           <Card className="rounded-2xl shadow-lg border-slate-200 overflow-hidden">
+           <Card className="rounded-2xl shadow-lg border-slate-200 overflow-hidden bg-white">
              <CardHeader className="bg-slate-50 border-b border-slate-200">
                 <CardTitle className="text-xl font-black text-slate-800 uppercase tracking-tighter">Reglas de Negocio Área Forros</CardTitle>
              </CardHeader>
@@ -786,7 +792,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                    {forrosRestricciones.map(r => (
                      <div key={r.codigo_restriccion} className="flex items-start gap-4 p-5 bg-white border border-slate-200 rounded-2xl shadow-sm hover:border-blue-300 transition-all group">
-                        <div className="bg-blue-50 p-3 rounded-xl text-blue-700 group-hover:bg-blue-700 group-hover:text-white transition-colors"><Lock className="w-6 h-6" /></div>
+                        <div className="bg-slate-50 p-3 rounded-xl text-slate-700 group-hover:bg-slate-900 group-hover:text-white transition-colors"><Lock className="w-6 h-6" /></div>
                         <div>
                           <h4 className="font-black text-slate-800 uppercase text-sm tracking-widest mb-1">{r.nombre_restriccion}</h4>
                           <Badge className="bg-slate-800 text-white font-mono mb-2 tracking-tighter">{r.valor_restriccion}</Badge>
@@ -800,7 +806,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="grupos">
-           <Card className="rounded-2xl shadow-lg border-slate-200 overflow-hidden">
+           <Card className="rounded-2xl shadow-lg border-slate-200 overflow-hidden bg-white">
              <CardHeader className="bg-slate-50 border-b border-slate-200">
                 <CardTitle className="text-xl font-black text-slate-800 uppercase tracking-tighter">Grupos Técnicos</CardTitle>
              </CardHeader>
@@ -809,7 +815,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   {forrosGruposList.map(g => (
                     <div key={g.codigo_grupo} className="p-5 border border-slate-200 rounded-2xl bg-white hover:border-blue-400 transition-all group shadow-sm">
                       <div className="flex items-center gap-3 mb-3">
-                        <div className="bg-blue-50 p-2 rounded-lg text-blue-700 group-hover:bg-blue-900 group-hover:text-white transition-colors"><ListTree className="w-5 h-5" /></div>
+                        <div className="bg-blue-50 p-2 rounded-lg text-blue-700 group-hover:bg-slate-900 group-hover:text-white transition-colors"><ListTree className="w-5 h-5" /></div>
                         <h4 className="font-black text-slate-800 uppercase tracking-tight">{g.nombre_grupo}</h4>
                       </div>
                       <div className="space-y-2 pt-2 border-t border-slate-100">
