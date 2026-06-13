@@ -64,7 +64,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [isLoadingTiempos, setIsLoadingTiempos] = useState(false);
   const [isLoadingDaily, setIsLoadingDaily] = useState(false);
 
-  // CONFIGURACIÓN DE JORNADAS (ACTUALIZADA)
+  // CONFIGURACIÓN DE JORNADAS
   const DIURNA_OPTIONS = [
     { label: "07:00 - 15:45 (8.75h)", value: "8.75" },
     { label: "07:00 - 17:00 (10.0h)", value: "10.0" },
@@ -73,7 +73,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   const NOCTURNA_OPTIONS = [
     { label: "Sin Jornada Nocturna", value: "0" },
-    { label: "21:00 - 05:30 (8.5h)", value: "8.5" }
+    { label: "21:00 - 05:30 (8.5h)", value: "8.5" },
+    { label: "19:00 - 05:30 (10.5h)", value: "10.5" }
   ];
 
   const [jornadaDiurnaSel, setJornadaDiurnaSel] = useState("8.75");
@@ -98,6 +99,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
     const pn = String(puestoName || '').toUpperCase().trim();
     if (!pn || pn === '—' || pn === 'NULL') return '';
     
+    // Mapeos estrictos solicitados
+    if (pn === 'ACOLCHADORA09') return 'HR-ACH09';
+    if (pn === 'COSEDORA-ACH02') return 'HR-PEF02';
+
     // Buscar en maestros técnicos la equivalencia real
     const match = tiemposProduccion.find(t => {
       const tp = String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').toUpperCase().trim();
@@ -109,7 +114,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
       if (hr && hr.startsWith('HR-')) return hr;
     }
 
-    // Lógica de respaldo
+    // Lógicas de respaldo y equivalencias conocidas
     if (pn.includes('ACOLCHADORA09')) return 'HR-ACH09';
     if (pn.includes('COSEDORA-ACH02')) return 'HR-PEF02';
     if (pn.includes('COSEDORA-ACH08')) return 'HR-PEF08';
@@ -247,7 +252,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     const match = tiemposProduccion.find(t => {
       const mNorm = normalizeMaterialCode(t.CodMaterial || t.Material || '');
       const tPuesto = String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').trim().toUpperCase();
-      return mNorm === normMaterial && tPuesto === puesto;
+      return mNorm === mNorm && tPuesto === puesto;
     }) || tiemposProduccion.find(t => normalizeMaterialCode(t.CodMaterial || t.Material || '') === normMaterial);
     return match ? (Number(match.Tiempo || match.Tiempo_Min || 0) * quantity) : 0;
   }, [tiemposProduccion, normalizeMaterialCode, getResolvedPuesto]);
@@ -318,7 +323,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
             </div>
             <div className="bg-white/5 p-4 rounded-2xl border border-white/10 shadow-inner">
               <div className="flex items-center justify-between mb-3">
-                <p className="text-[10px] font-black uppercase text-slate-500 tracking-[0.2em]">Ocupación</p>
+                <p className="text-xs font-black uppercase text-slate-500 tracking-[0.2em]">Ocupación</p>
                 <span className={cn("text-[10px] font-black px-2 py-0.5 rounded-lg border", isOverloaded ? "bg-red-500/20 border-red-500/30 text-red-400" : "bg-indigo-500/20 border-indigo-500/30 text-indigo-300")}>
                   {isOverloaded ? "Saturado" : "Estable"}
                 </span>
@@ -433,8 +438,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
       </CardContent>
     </Card>
   );
-
-  if (!isMounted) return null;
 
   return (
     <div className="p-6 md:p-8 space-y-6 bg-slate-50/40 min-h-screen font-body">
