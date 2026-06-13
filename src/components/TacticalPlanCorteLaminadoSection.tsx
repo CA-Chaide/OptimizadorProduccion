@@ -21,7 +21,10 @@ import {
   Info,
   Box,
   Check,
-  Database
+  Database,
+  ChevronDown,
+  Plus,
+  Minus
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -136,6 +139,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [isProcessingResumen, setIsProcessingResumen] = useState(false);
   const [resumenProgress, setResumenProgress] = useState({ current: 0, total: 0 });
   const [processedSignature, setProcessedSignature] = useState('');
+  
+  // Control de expansión de grupos
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     setMounted(true);
@@ -304,6 +310,52 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       }
     }
   }, [activeTab, filteredOrders, selectedDate, isProcessingResumen, processedSignature, handleProcessResumen]);
+
+  // Lógica de agrupamiento por Densidad y Altura
+  const groupedNeeds = useMemo(() => {
+    const map = new Map<string, { 
+      densidad: number; 
+      altura: number; 
+      items: UnifiedNeedRow[];
+      totalKg: number;
+      totalUn: number;
+      total1006: number;
+      total1008: number;
+      total1015: number;
+    }>();
+
+    unifiedNeeds.forEach(item => {
+      const key = `${item.densidad}-${item.altura}`;
+      if (!map.has(key)) {
+        map.set(key, { 
+          densidad: item.densidad, 
+          altura: item.altura, 
+          items: [], 
+          totalKg: 0, 
+          totalUn: 0,
+          total1006: 0,
+          total1008: 0,
+          total1015: 0
+        });
+      }
+      const group = map.get(key)!;
+      group.items.push(item);
+      group.totalKg += item.consumoKg;
+      group.totalUn += item.consumoUn;
+      group.total1006 += item.stock1006;
+      group.total1008 += item.stock1008;
+      group.total1015 += item.stock1015;
+    });
+
+    return Array.from(map.values()).sort((a, b) => b.totalKg - a.totalKg);
+  }, [unifiedNeeds]);
+
+  const toggleGroup = (key: string) => {
+    const next = new Set(expandedGroups);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    setExpandedGroups(next);
+  };
 
   const datesWithOrders = useMemo(() => {
     if (!mounted) return new Set<string>();
@@ -532,16 +584,16 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 {isProcessingResumen ? (
                   <div className="w-full px-10 space-y-3 text-center">
                     <div className="flex justify-between text-[10px] font-black uppercase text-indigo-600">
-                      <span>Procesando...</span>
+                      <span>Procesando Ingeniería...</span>
                       <span>{resumenProgress.current} / {resumenProgress.total}</span>
                     </div>
                     <Progress value={(resumenProgress.current / resumenProgress.total) * 100} className="h-2.5 bg-indigo-50" />
                   </div>
                 ) : (
                   <div className="flex flex-col items-center">
-                    <p className="text-sm font-black text-slate-700 uppercase tracking-tighter">Auditoría Técnica Completada</p>
+                    <p className="text-sm font-black text-slate-700 uppercase tracking-tighter">Auditoría Técnica por Dimensiones</p>
                     <p className="text-[10px] font-bold text-emerald-600 uppercase mt-1 flex items-center gap-1.5">
-                      <Check className="w-3 h-3" /> Datos sincronizados con SAP
+                      <Check className="w-3 h-3" /> Cálculos sincronizados SAP multinivel
                     </p>
                   </div>
                 )}
@@ -560,53 +612,85 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     <th className="px-4 py-4 border-r border-black/5">espesor</th>
                     <th className="px-4 py-4 border-r border-black/5">Densidad</th>
                     <th className="px-6 py-4 border-r border-black/5 bg-[#b4d4ea]">peso</th>
-                    <th className="px-3 py-4 border-r border-black/5">Stock SAP rollo 1006 (UN)</th>
-                    <th className="px-3 py-4 border-r border-black/5">Stock SAP rollo 1008 (UN)</th>
-                    <th className="px-3 py-4 border-r border-black/5">Stock SAP rollo 1015 (UN)</th>
-                    <th className="px-4 py-4 border-r border-black/5 text-right font-black">Consumo Actual OF [Kg]</th>
-                    <th className="px-4 py-4 border-r border-black/5 text-right font-black">Consumo Actual OF [Un]</th>
-                    <th className="px-4 py-4 border-r border-black/5">período de revisión</th>
-                    <th className="px-4 py-4 border-r border-black/5">peso / rollo (Kg)</th>
-                    <th className="px-6 py-4 text-right font-black">cantidad disponible (Kg)</th>
+                    <th className="px-3 py-4 border-r border-black/5">Stock 1006 (UN)</th>
+                    <th className="px-3 py-4 border-r border-black/5">Stock 1008 (UN)</th>
+                    <th className="px-3 py-4 border-r border-black/5">Stock 1015 (UN)</th>
+                    <th className="px-4 py-4 border-r border-black/5 text-right font-black">Consumo OF [Kg]</th>
+                    <th className="px-4 py-4 text-right font-black">Consumo OF [Un]</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 font-bold">
-                  {unifiedNeeds.map((row, idx) => {
-                    const totalStock = row.stock1006 + row.stock1008 + row.stock1015;
-                    const totalAvailableKg = totalStock * row.peso;
+                  {groupedNeeds.map((group, gIdx) => {
+                    const groupKey = `${group.densidad}-${group.altura}`;
+                    const isExpanded = expandedGroups.has(groupKey);
+                    
                     return (
-                      <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-4 py-3 border-r border-gray-100 font-mono text-indigo-600 text-left">{row.material}</td>
-                        <td className="px-6 py-3 border-r border-gray-100 text-left text-gray-500 uppercase leading-tight">{row.descripcion}</td>
-                        <td className="px-4 py-3 border-r border-gray-100 text-slate-400 font-mono">{row.distancia}</td>
-                        <td className="px-4 py-3 border-r border-gray-100 text-slate-400 font-mono">{row.altura}</td>
-                        <td className="px-4 py-3 border-r border-gray-100 text-slate-400 font-mono">{row.espesor.toFixed(1)}</td>
-                        <td className="px-4 py-3 border-r border-gray-100 text-slate-400 font-mono">{row.densidad}</td>
-                        <td className="px-6 py-3 border-r border-gray-100 bg-[#cfe2f3] font-mono font-black text-indigo-700">{row.peso.toFixed(2)}</td>
-                        <td className="px-3 py-3 border-r border-gray-100 font-mono text-gray-400">{row.stock1006 || '—'}</td>
-                        <td className="px-3 py-3 border-r border-gray-100 font-mono text-gray-400">{row.stock1008 || '—'}</td>
-                        <td className="px-3 py-3 border-r border-gray-100 font-mono text-gray-400">{row.stock1015 || '—'}</td>
-                        <td className="px-4 py-3 border-r border-gray-100 text-right font-mono font-black text-indigo-800">{row.consumoKg.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</td>
-                        <td className="px-4 py-3 border-r border-gray-100 text-right font-mono font-black text-emerald-600">{row.consumoUn.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</td>
-                        <td className="px-4 py-3 border-r border-gray-100 text-slate-300">—</td>
-                        <td className="px-4 py-3 border-r border-gray-100 font-mono text-gray-400">{row.peso.toFixed(2)}</td>
-                        <td className="px-6 py-3 text-right font-mono font-black text-slate-900 bg-slate-50/50">{totalAvailableKg.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</td>
-                      </tr>
+                      <React.Fragment key={groupKey}>
+                        {/* Fila de Subtotal / Grupo */}
+                        <tr className="bg-slate-50/80 hover:bg-slate-100 cursor-pointer transition-all border-l-4 border-l-red-500" onClick={() => toggleGroup(groupKey)}>
+                          <td className="px-4 py-4 flex items-center gap-2">
+                             {isExpanded ? <Minus className="w-3 h-3 text-red-500" /> : <Plus className="w-3 h-3 text-indigo-500" />}
+                             <span className="font-black text-[10px] text-slate-400 uppercase tracking-widest">SUBTOTAL</span>
+                          </td>
+                          <td className="px-6 py-4 text-left text-indigo-900 font-black uppercase">
+                            Agrupación: D{group.densidad} | H{group.altura}
+                            <span className="ml-3 text-[9px] font-bold text-slate-400">({group.items.length} materiales)</span>
+                          </td>
+                          <td className="px-4 py-4 text-slate-300 font-mono">VAR</td>
+                          <td className="px-4 py-4 text-indigo-700 font-mono font-black">{group.altura}</td>
+                          <td className="px-4 py-4 text-slate-300 font-mono">VAR</td>
+                          <td className="px-4 py-4 text-indigo-700 font-mono font-black">{group.densidad}</td>
+                          <td className="px-6 py-4 bg-[#cfe2f3]/30 font-mono text-slate-300">—</td>
+                          <td className="px-3 py-4 text-slate-400 font-mono">{(group.total1006).toLocaleString()}</td>
+                          <td className="px-3 py-4 text-slate-400 font-mono">{(group.total1008).toLocaleString()}</td>
+                          <td className="px-3 py-4 text-slate-400 font-mono">{(group.total1015).toLocaleString()}</td>
+                          <td className="px-4 py-4 text-right font-mono font-black text-indigo-900 bg-indigo-50/50">
+                            {group.totalKg.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+                          </td>
+                          <td className="px-4 py-4 text-right font-mono font-black text-emerald-700 bg-emerald-50/30">
+                            {group.totalUn.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                          </td>
+                        </tr>
+                        
+                        {/* Filas de Detalle (si está expandido) */}
+                        {isExpanded && group.items.map((row, iIdx) => (
+                          <tr key={`${groupKey}-${iIdx}`} className="bg-white hover:bg-blue-50/10 transition-colors animate-in slide-in-from-top-1 duration-200">
+                            <td className="px-4 py-3 border-r border-gray-100 font-mono text-indigo-600 text-left pl-8">{row.material}</td>
+                            <td className="px-6 py-3 border-r border-gray-100 text-left text-gray-400 uppercase leading-tight italic text-[10px]">{row.descripcion}</td>
+                            <td className="px-4 py-3 border-r border-gray-100 text-slate-400 font-mono">{row.distancia}</td>
+                            <td className="px-4 py-3 border-r border-gray-100 text-slate-400 font-mono">{row.altura}</td>
+                            <td className="px-4 py-3 border-r border-gray-100 text-slate-400 font-mono">{row.espesor.toFixed(1)}</td>
+                            <td className="px-4 py-3 border-r border-gray-100 text-slate-400 font-mono">{row.densidad}</td>
+                            <td className="px-6 py-3 border-r border-gray-100 bg-[#cfe2f3] font-mono font-black text-indigo-700">{row.peso.toFixed(2)}</td>
+                            <td className="px-3 py-3 border-r border-gray-100 font-mono text-slate-400">{row.stock1006 || '—'}</td>
+                            <td className="px-3 py-3 border-r border-gray-100 font-mono text-slate-400">{row.stock1008 || '—'}</td>
+                            <td className="px-3 py-3 border-r border-gray-100 font-mono text-slate-400">{row.stock1015 || '—'}</td>
+                            <td className="px-4 py-3 border-r border-gray-100 text-right font-mono font-bold text-indigo-400">{row.consumoKg.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</td>
+                            <td className="px-4 py-3 text-right font-mono font-bold text-emerald-400">{row.consumoUn.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</td>
+                          </tr>
+                        ))}
+                      </React.Fragment>
                     );
                   })}
                 </tbody>
                 {unifiedNeeds.length > 0 && (
-                  <tfoot className="bg-slate-900 text-white font-black uppercase text-[10px] sticky bottom-0">
+                  <tfoot className="bg-slate-900 text-white font-black uppercase text-[10px] sticky bottom-0 z-30">
                     <tr>
                       <td colSpan={10} className="px-6 py-4 text-right tracking-widest text-slate-500 uppercase">Consolidado Total Planificado:</td>
                       <td className="px-4 py-4 text-right font-mono text-indigo-300 text-sm">{totalsUnified.kg.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} KG</td>
                       <td className="px-4 py-4 text-right font-mono text-emerald-300 text-sm">{totalsUnified.un.toLocaleString(undefined, { maximumFractionDigits: 0 })} UN</td>
-                      <td colSpan={3} />
                     </tr>
                   </tfoot>
                 )}
               </table>
             </div>
+          </div>
+          
+          <div className="px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl flex items-center gap-2">
+            <Info className="w-4 h-4 text-blue-600" />
+            <p className="text-[9px] font-black text-blue-700 uppercase tracking-widest">
+              Nota: Use los botones + / - para auditar el detalle de materiales por cada especificación de Densidad y Altura.
+            </p>
           </div>
         </TabsContent>
 
