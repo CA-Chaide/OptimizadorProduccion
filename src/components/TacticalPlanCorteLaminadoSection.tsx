@@ -128,6 +128,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [processedSignature, setProcessedSignature] = useState('');
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
+  // Definición de datesWithOrders para el calendario
   const datesWithOrders = useMemo(() => {
     const dates = new Set<string>();
     ordenes.forEach(o => {
@@ -373,6 +374,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
   return (
     <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
+      {/* HEADER PRINCIPAL */}
       <div className="flex items-center justify-between pb-4 border-b border-gray-100">
         <div className="flex items-center space-x-3 text-left">
           <div className="p-2 bg-red-600/10 rounded-xl shadow-inner"><Scissors className="w-6 h-6 text-red-600" /></div>
@@ -380,6 +382,56 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             <h2 className="text-xl font-black text-gray-800 uppercase tracking-tighter">Programación Táctica Laminado</h2>
             <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Ingeniería SAP | Gestión de Rollos y Auditoría de Corridas</p>
           </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+           <Button 
+              onClick={handleRefresh} 
+              disabled={isProcessingResumen}
+              className="bg-red-600 hover:bg-red-700 text-white rounded-xl h-10 px-6 text-[10px] font-black uppercase tracking-widest shadow-lg active:scale-95 flex items-center gap-2"
+            >
+              {isProcessingResumen ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+              ACTUALIZAR DATOS
+            </Button>
+
+           <Popover>
+            <PopoverTrigger asChild>
+              <button className="h-10 px-5 rounded-2xl border border-gray-200 bg-white hover:border-red-500/50 flex items-center gap-3 font-black text-[11px] uppercase shadow-sm transition-all">
+                <Filter className="w-4 h-4 text-red-500" /> 
+                {selectedDate === 'all' ? 'Plan Maestro' : selectedDate}
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-64 p-0 border-none shadow-2xl rounded-2xl overflow-hidden mt-3" align="end">
+              <div className="bg-white p-5 font-sans text-left">
+                {viewDate && (
+                  <>
+                    <div className="flex items-center justify-between mb-5">
+                      <h3 className="text-xs font-black text-slate-800 capitalize">{format(viewDate, 'MMMM yyyy', { locale: es })}</h3>
+                      <div className="flex gap-1 bg-slate-50 p-1 rounded-xl">
+                        <Button variant="ghost" size="icon" onClick={() => setViewDate(subMonths(viewDate, 1))} className="h-8 w-8 hover:bg-white hover:shadow-sm"><ChevronLeft className="w-4 h-4" /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => setViewDate(addMonths(viewDate, 1))} className="h-8 w-8 hover:bg-white hover:shadow-sm"><ChevronRight className="w-4 h-4" /></Button>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-7 gap-y-1.5 text-center mb-4">
+                      {['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO'].map(d => <div key={d} className="text-[10px] font-black text-slate-300 py-1">{d}</div>)}
+                      {calendarDays.map((day, idx) => {
+                        if (!day) return <div key={idx} />;
+                        const dStr = format(day, 'yyyy-MM-dd');
+                        const sel = selectedDate === dStr;
+                        return (
+                          <button key={dStr} onClick={() => setSelectedDate(sel ? 'all' : dStr)} className={cn("relative h-8 w-8 mx-auto rounded-xl flex items-center justify-center transition-all", sel ? "bg-red-600 text-white shadow-md shadow-red-200" : "hover:bg-slate-50")}>
+                            <span className={cn("text-xs font-black", !datesWithOrders.has(dStr) && !sel ? "text-slate-200" : "text-slate-700")}>{format(day, 'd')}</span>
+                            {datesWithOrders.has(dStr) && !sel && <div className="absolute bottom-1.5 w-1 h-1 bg-red-400 rounded-full" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+                <Button variant="ghost" size="sm" className="w-full text-[10px] font-black uppercase text-red-600 h-9 mt-1 rounded-xl hover:bg-red-50 tracking-widest" onClick={() => setSelectedDate('all')}>Ver Todo el Plan</Button>
+              </div>
+            </PopoverContent>
+          </Popover>
         </div>
       </div>
 
@@ -398,48 +450,40 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         </TabsList>
 
         <TabsContent value="resumen" className="space-y-6 animate-in fade-in duration-300">
-           {/* DASHBOARD EJECUTIVO SEGÚN REFERENCIA */}
-           <div className="flex items-center gap-6 bg-[#1e293b] p-6 rounded-[2.5rem] border border-white/5 shadow-2xl text-white">
-             <div className="flex-1 flex items-center justify-between">
-                <div className="flex flex-col gap-1 border-r border-white/10 pr-8 flex-1">
+           {/* BARRA DE RESULTADOS MAESTRA */}
+           <div className="flex items-center gap-10 bg-[#1e293b] p-6 rounded-[2.5rem] border border-white/5 shadow-2xl text-white">
+             <div className="flex items-center gap-12 flex-1">
+                <div className="flex flex-col gap-1 border-r border-white/10 pr-10">
                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Cantidad necesaria (KG)</span>
-                   <p className="text-4xl font-black font-mono text-coral-400 text-[#f87171] tracking-tighter">
+                   <p className="text-4xl font-black font-mono text-[#f87171] tracking-tighter">
                      {totalsUnified.kg.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).replace('.', ',')}
                    </p>
                 </div>
-                <div className="flex flex-col gap-1 border-r border-white/10 px-8 flex-1">
+                <div className="flex flex-col gap-1 border-r border-white/10 px-10">
                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Cantidad Necesaria (und)</span>
                    <p className="text-4xl font-black font-mono text-indigo-400 tracking-tighter">
                      {Math.round(totalsUnified.un).toLocaleString()}
                    </p>
                 </div>
-                <div className="flex flex-col gap-1 pl-8 flex-1">
+                <div className="flex flex-col gap-1 flex-1">
                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Nro de Aperturas o corridas</span>
-                   <div className="flex items-center gap-6">
-                     <p className="text-4xl font-black font-mono text-yellow-400 tracking-tighter">
-                       {groupedNeeds.length}
-                     </p>
-                     <div className="flex flex-col gap-1">
+                   <div className="flex items-start gap-12">
+                     <div className="text-center">
+                        <p className="text-4xl font-black font-mono text-yellow-400 tracking-tighter">
+                          {groupedNeeds.length}
+                        </p>
+                     </div>
+                     <div className="flex flex-col gap-1 mt-1 border-l border-white/10 pl-6">
                         {densityBreakdown.map(([dens, count]) => (
                           <div key={dens} className="flex items-center gap-2">
-                             <div className="w-1.5 h-1.5 rounded-full bg-white/20" />
-                             <span className="text-[9px] font-black text-slate-400 uppercase">D{dens}: <span className="text-white font-mono">{count}</span></span>
+                             <span className="text-[10px] font-black text-slate-400 uppercase tracking-tight">
+                               - D{dens} = {count} CORRIDA{count !== 1 ? 'S' : ''}
+                             </span>
                           </div>
                         ))}
                      </div>
                    </div>
                 </div>
-             </div>
-             
-             <div className="flex flex-col justify-center">
-                <Button 
-                  onClick={handleRefresh} 
-                  disabled={isProcessingResumen}
-                  className="bg-red-600 hover:bg-red-700 text-white rounded-[1.5rem] h-14 px-8 text-[11px] font-black uppercase tracking-widest shadow-xl transition-all flex items-center gap-3 active:scale-95"
-                >
-                  {isProcessingResumen ? <Loader2 className="w-5 h-5 animate-spin" /> : <RefreshCw className="w-5 h-5" />}
-                  ACTUALIZAR DATOS
-                </Button>
              </div>
            </div>
 
@@ -528,47 +572,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   ))}
                 </div>
               </div>
-            </div>
-            
-            <div className="flex items-center gap-3">
-               <Popover>
-                <PopoverTrigger asChild>
-                  <button className="h-10 px-5 rounded-2xl border border-gray-200 bg-white hover:border-red-500/50 flex items-center gap-3 font-black text-[11px] uppercase shadow-sm transition-all">
-                    <Filter className="w-4 h-4 text-red-500" /> 
-                    {selectedDate === 'all' ? 'Plan Maestro' : selectedDate}
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent className="w-64 p-0 border-none shadow-2xl rounded-2xl overflow-hidden mt-3" align="end">
-                  <div className="bg-white p-5 font-sans text-left">
-                    {viewDate && (
-                      <>
-                        <div className="flex items-center justify-between mb-5">
-                          <h3 className="text-xs font-black text-slate-800 capitalize">{format(viewDate, 'MMMM yyyy', { locale: es })}</h3>
-                          <div className="flex gap-1 bg-slate-50 p-1 rounded-xl">
-                            <Button variant="ghost" size="icon" onClick={() => setViewDate(subMonths(viewDate, 1))} className="h-8 w-8 hover:bg-white hover:shadow-sm"><ChevronLeft className="w-4 h-4" /></Button>
-                            <Button variant="ghost" size="icon" onClick={() => setViewDate(addMonths(viewDate, 1))} className="h-8 w-8 hover:bg-white hover:shadow-sm"><ChevronRight className="w-4 h-4" /></Button>
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-7 gap-y-1.5 text-center mb-4">
-                          {['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO'].map(d => <div key={d} className="text-[10px] font-black text-slate-300 py-1">{d}</div>)}
-                          {calendarDays.map((day, idx) => {
-                            if (!day) return <div key={idx} />;
-                            const dStr = format(day, 'yyyy-MM-dd');
-                            const sel = selectedDate === dStr;
-                            return (
-                              <button key={dStr} onClick={() => setSelectedDate(sel ? 'all' : dStr)} className={cn("relative h-8 w-8 mx-auto rounded-xl flex items-center justify-center transition-all", sel ? "bg-red-600 text-white shadow-md shadow-red-200" : "hover:bg-slate-50")}>
-                                <span className={cn("text-xs font-black", !datesWithOrders.has(dStr) && !sel ? "text-slate-200" : "text-slate-700")}>{format(day, 'd')}</span>
-                                {datesWithOrders.has(dStr) && !sel && <div className="absolute bottom-1.5 w-1 h-1 bg-red-400 rounded-full" />}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </>
-                    )}
-                    <Button variant="ghost" size="sm" className="w-full text-[10px] font-black uppercase text-red-600 h-9 mt-1 rounded-xl hover:bg-red-50 tracking-widest" onClick={() => setSelectedDate('all')}>Ver Todo el Plan</Button>
-                  </div>
-                </PopoverContent>
-              </Popover>
             </div>
           </div>
 
