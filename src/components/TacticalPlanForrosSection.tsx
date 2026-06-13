@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -15,29 +14,20 @@ import {
   ChevronsLeft, 
   ChevronsRight, 
   CalendarCheck,
-  BarChart3,
   Clock,
   Search,
   Calendar as CalendarIconLucide,
   MapPin,
   ListTree,
-  Layers,
   UserPlus,
-  Repeat,
   Calculator,
-  FileSpreadsheet,
   GraduationCap,
   Wrench,
-  AlertTriangle,
-  CheckCircle2,
   Activity,
-  ShieldCheck,
-  ShieldAlert,
-  Info,
   ClipboardList
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@radix-ui/react-tabs';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -67,8 +57,6 @@ interface WorkstationConfig {
   nightName?: string;
 }
 
-const MAINT_ROWS_PER_PAGE = 20;
-
 export const TacticalPlanForrosSection: React.FC = () => {
   const { addNotification } = useAppContext();
   const [isMounted, setIsMounted] = useState(false);
@@ -80,31 +68,27 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [isLoadingTiempos, setIsLoadingTiempos] = useState(false);
   const [isLoadingDaily, setIsLoadingDaily] = useState(false);
 
-  // HABILIDADES OP
+  // HABILIDADES & MANTENIMIENTOS
   const [habilidadesOpData, setHabilidadesOpData] = useState<any[]>([]);
   const [isLoadingHabilidades, setIsLoadingHabilidades] = useState(false);
   const [habilidadesPage, setHabilidadesPage] = useState(1);
-  const [habilidadesRowsPerPage] = useState(20);
   const [habilidadesFilters, setHabilidadesFilters] = useState<Record<string, string>>({});
-
-  // MANTENIMIENTOS
   const [mantenimientosData, setMantenimientosData] = useState<any[]>([]);
   const [isLoadingMantenimientos, setIsLoadingMantenimientos] = useState(false);
   const [maintCurrentPage, setMaintCurrentPage] = useState(1);
-  const [maintColumns, setMaintColumns] = useState<string[]>([]);
 
   // CONFIGURACIÓN DE JORNADAS
   const DIURNA_OPTIONS = [
     { label: "07:00 - 15:45 (8.75h)", value: "8.75" },
     { label: "07:00 - 17:00 (10.0h)", value: "10.0" },
     { label: "07:00 - 18:00 (11.0h)", value: "11.0" }
-  ].sort((a, b) => parseFloat(a.value) - parseFloat(b.value));
+  ];
 
   const NOCTURNA_OPTIONS = [
     { label: "Sin Jornada Nocturna", value: "0" },
     { label: "21:00 - 05:30 (8.5h)", value: "8.5" },
     { label: "19:00 - 05:30 (10.5h)", value: "10.5" }
-  ].sort((a, b) => parseFloat(a.value) - parseFloat(b.value));
+  ];
 
   const [jornadaDiurnaSel, setJornadaDiurnaSel] = useState("10.0");
   const [jornadaNocturnaSel, setJornadaNocturnaSel] = useState("8.5");
@@ -116,38 +100,21 @@ export const TacticalPlanForrosSection: React.FC = () => {
   // PERSONAL & TURNOS
   const [workstationConfigs, setWorkstationConfigs] = useState<Record<string, WorkstationConfig>>({});
 
-  // Explosión de Materiales
+  // EXPLOSIÓN
   const [explosionData, setExplosionData] = useState<any[]>([]);
   const [isLoadingExplosion, setIsLoadingExplosion] = useState(false);
   const [explosionPage, setExplosionPage] = useState(1);
   const [explosionTotal, setExplosionTotal] = useState(0);
-  const [explosionRowsPerPage] = useState(20);
   const [centroExplosion, setCentroExplosion] = useState('1000');
   const [fertExplosion, setFertExplosion] = useState('');
 
-  // Filtros y Paginación
-  const [tiemposFilters, setTiemposFilters] = useState<Record<string, string>>({});
-  const [tiemposPage, setTiemposPage] = useState(1);
-  const [tiemposRowsPerPage, setTiemposRowsPerPage] = useState(20);
-  const [dailyPage, setDailyPage] = useState(1);
-  const [dailyRowsPerPage, setDailyRowsPerPage] = useState(20);
-
-  // Fechas
+  // FECHAS
   const [todayDate, setTodayDate] = useState<string>('');
   const [targetDate, setTargetDate] = useState<string>('');
 
   const normalizeMaterialCode = useCallback((code: string | number): string => {
     if (!code) return '';
     return String(code).trim().replace(/^0+/, '');
-  }, []);
-
-  const getEcuadorTodayString = useCallback((): string => {
-    return new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'America/Guayaquil',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit'
-    }).format(new Date());
   }, []);
 
   const safeParseDateParts = useCallback((value: any) => {
@@ -169,22 +136,17 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const formatValueForDisplay = useCallback((col: string, value: any): string => {
     if (value === null || value === undefined || value === '') return '—';
     const upperCol = col.toUpperCase().trim();
-    
     if (upperCol.includes('FECHA')) {
       const parts = safeParseDateParts(value);
-      if (parts) {
-        return `${parts.d}/${parts.m}/${parts.y}`;
-      }
+      if (parts) return `${parts.d}/${parts.m}/${parts.y}`;
       return String(value);
     }
-    
     const num = parseFloat(value);
     if (!isNaN(num)) {
-      if (upperCol === 'TIEMPO_MIN' || upperCol === 'TIEMPO' || upperCol.includes('TIEMPOS') || upperCol === 'CANTIDAD' || upperCol.includes('CANTIDAD')) {
-        return num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 });
+      if (upperCol === 'TIEMPO_MIN' || upperCol === 'TIEMPO' || upperCol === 'CANTIDAD') {
+        return num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
       }
     }
-
     return String(value);
   }, [safeParseDateParts]);
 
@@ -198,7 +160,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
       setGrupos(gRes.data || []);
       setRestricciones(rRes.data || []);
     } catch (error) {
-      console.error('Error fetching forros data:', error);
+      console.error('Error fetching base data:', error);
     } finally {
       setIsLoading(false);
     }
@@ -221,67 +183,23 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return restricciones.filter(r => forrosGroupIds.has(r.codigo_grupo));
   }, [forrosGruposList, restricciones]);
 
-  const horizonValue = useMemo(() => {
-    const horizon = forrosRestricciones.find(r => {
-      const name = r.nombre_restriccion.trim().toUpperCase();
-      return name === 'HORIZONTE_PLANIFICACION' || name === 'HORIZONTE_PLANIFICACIÓN';
-    });
-    const val = horizon ? parseInt(horizon.valor_restriccion) : 1;
-    return isNaN(val) ? 1 : val;
-  }, [forrosRestricciones]);
-
   useEffect(() => {
     if (isMounted) {
-      const todayStr = getEcuadorTodayString();
-      const [y, m, d] = todayStr.split('-').map(Number);
-      let baseDate = new Date(y, m - 1, d);
-      
-      const dayOfWeek = baseDate.getDay();
-      if (dayOfWeek === 6) baseDate.setDate(baseDate.getDate() + 2);
-      else if (dayOfWeek === 0) baseDate.setDate(baseDate.getDate() + 1);
-      
-      const planningToday = new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'America/Guayaquil',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit'
-      }).format(baseDate);
-
-      let targetDateObj = new Date(baseDate);
-      let businessDaysAdded = 0;
-      while (businessDaysAdded < horizonValue) {
-        targetDateObj.setDate(targetDateObj.getDate() + 1);
-        if (targetDateObj.getDay() !== 0 && targetDateObj.getDay() !== 6) {
-          businessDaysAdded++;
-        }
-      }
-
-      const planningTarget = new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'America/Guayaquil',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit'
-      }).format(targetDateObj);
-
-      setTodayDate(planningToday);
-      setTargetDate(planningTarget);
+      const today = new Date();
+      const target = new Date();
+      target.setDate(today.getDate() + 1);
+      setTodayDate(today.toISOString().split('T')[0]);
+      setTargetDate(target.toISOString().split('T')[0]);
     }
-  }, [isMounted, horizonValue, getEcuadorTodayString]);
+  }, [isMounted]);
 
   const externalFilters = useMemo(() => {
     const filters: Record<string, string[]> = {};
     forrosRestricciones.forEach(r => {
       const name = (r.nombre_restriccion || '').trim().toUpperCase();
-      if (name === 'RESPCTRLPROD' || name === 'ALMACEN' || name === 'ALMACÉN') {
-        const key = name === 'ALMACÉN' ? 'ALMACEN' : name;
-        if (!filters[key]) filters[key] = [];
-        
-        const val = r.valor_restriccion.trim();
-        if (val.includes('&')) {
-          filters[key].push(...val.split('&').map(s => s.trim()));
-        } else {
-          filters[key].push(val);
-        }
+      if (name === 'RESPCTRLPROD' || name === 'ALMACEN') {
+        if (!filters[name]) filters[name] = [];
+        filters[name].push(...r.valor_restriccion.split('&').map(s => s.trim()));
       }
     });
     return filters;
@@ -298,143 +216,59 @@ export const TacticalPlanForrosSection: React.FC = () => {
       const allData = responses.flatMap(res => res.data || []);
       setTiemposProduccion(allData);
     } catch (error) {
-      console.error('Error al cargar tiempos de producción:', error);
+      console.error('Error al cargar tiempos:', error);
     } finally {
       setIsLoadingTiempos(false);
     }
   }, [forrosGruposList]);
 
-  const fetchHabilidadesOp = useCallback(async () => {
-    setIsLoadingHabilidades(true);
-    try {
-      const res = await serviciosService.getCuboHabilidadesOP();
-      setHabilidadesOpData(res.data || []);
-      setHabilidadesPage(1);
-    } catch (error) {
-      console.error('Error fetching Habilidades OP:', error);
-    } finally {
-      setIsLoadingHabilidades(false);
-    }
-  }, []);
-
-  const fetchMantenimientos = useCallback(async () => {
-    setIsLoadingMantenimientos(true);
-    try {
-      const res = await serviciosService.ListarMantenimientoPreventivosProgramados();
-      const rawData = res.data || [];
-      setMantenimientosData(rawData);
-      if (rawData.length > 0) {
-        setMaintColumns(Object.keys(rawData[0]));
-      }
-      setMaintCurrentPage(1);
-    } catch (error) {
-      console.error('Error fetching Mantenimientos:', error);
-    } finally {
-      setIsLoadingMantenimientos(false);
-    }
-  }, []);
-
-  const uniqueWorkstations = useMemo(() => {
-    const wsSet = new Set<string>();
-    tiemposProduccion.forEach(t => {
-      const ws = String(t.PuestoTrabajo || t.nombre_estacion || '').trim();
-      if (ws && ws !== 'null' && ws.toUpperCase() !== 'MARCOSUIO') {
-        wsSet.add(ws);
-      }
-    });
-    return Array.from(wsSet).sort();
-  }, [tiemposProduccion]);
-
-  useEffect(() => {
-    if (uniqueWorkstations.length > 0 && Object.keys(workstationConfigs).length === 0 && forrosRestricciones.length > 0) {
-      const initial: Record<string, WorkstationConfig> = {};
-      uniqueWorkstations.forEach(ws => {
-        const wsNorm = ws.replace(/[\s-]/g, '_').toUpperCase();
-        
-        const peopleRes = forrosRestricciones.find(r => {
-          const rName = r.nombre_restriccion.toUpperCase();
-          return (rName.includes('PERSONAS') || rName.includes('CANTIDAD_PERSONAS')) && 
-                 (rName.includes(wsNorm) || rName.includes(ws.toUpperCase()));
-        });
-
-        initial[ws] = { 
-          machine: ws, 
-          shifts: 1, 
-          people: peopleRes ? parseInt(peopleRes.valor_restriccion) || 1 : 1,
-          dayCode: '',
-          dayName: '',
-          nightCode: '',
-          nightName: ''
-        };
-      });
-      setWorkstationConfigs(initial);
-    }
-  }, [uniqueWorkstations, forrosRestricciones, workstationConfigs]);
-
   const fetchDailyOrders = useCallback(async () => {
-    if (Object.keys(externalFilters).length === 0 || !todayDate || !targetDate) return;
+    if (Object.keys(externalFilters).length === 0 || !todayDate) return;
     setIsLoadingDaily(true);
     try {
       const response = await serviciosService.OrdenesProvisionalesAlphaPaginados(1, 10000);
       if (response && response.data) {
         const filtered = response.data.filter((order: any) => {
-          const matchesExternal = Object.entries(externalFilters).every(([key, allowed]) => {
-            const orderKey = Object.keys(order).find(k => k.toUpperCase().trim() === key.toUpperCase().trim());
-            if (!orderKey) return true;
-            const val = String(order[orderKey] ?? '').trim().toUpperCase();
-            return allowed.some(a => a.trim().toUpperCase() === val);
-          });
-          if (!matchesExternal) return false;
-
           const normalizedOrderDate = normalizeDateForFilter(order['FECHAINICIO']);
-          if (!normalizedOrderDate) return false;
           return normalizedOrderDate >= todayDate && normalizedOrderDate <= targetDate;
         });
         setDailyOrders(filtered);
-        setDailyPage(1);
       }
     } catch (error) {
       console.error('Error fetching daily orders:', error);
     } finally {
       setIsLoadingDaily(false);
     }
-  }, [externalFilters, targetDate, todayDate, normalizeDateForFilter]);
+  }, [externalFilters, todayDate, targetDate, normalizeDateForFilter]);
 
-  const fetchExplosionData = useCallback(async (page: number = 1) => {
-    setIsLoadingExplosion(true);
-    try {
-      const response = await serviciosService.getMaestroMaterialesExplosion(
-        centroExplosion,
-        fertExplosion,
-        page,
-        explosionRowsPerPage
-      );
-      if (response && response.data) {
-        setExplosionData(response.data);
-        setExplosionTotal(response.totalRegistros || 0);
-        setExplosionPage(page);
-      } else {
-        setExplosionData([]);
-        setExplosionTotal(0);
-      }
-    } catch (error) {
-      console.error('Error fetching explosion data:', error);
-    } finally {
-      setIsLoadingExplosion(false);
+  const uniqueWorkstations = useMemo(() => {
+    const wsSet = new Set<string>();
+    tiemposProduccion.forEach(t => {
+      const ws = String(t.PuestoTrabajo || t.nombre_estacion || '').trim();
+      if (ws && ws !== 'null' && ws.toUpperCase() !== 'MARCOSUIO') wsSet.add(ws);
+    });
+    return Array.from(wsSet).sort();
+  }, [tiemposProduccion]);
+
+  useEffect(() => {
+    if (uniqueWorkstations.length > 0 && Object.keys(workstationConfigs).length === 0) {
+      const initial: Record<string, WorkstationConfig> = {};
+      uniqueWorkstations.forEach(ws => {
+        initial[ws] = { machine: ws, shifts: 1, people: 1 };
+      });
+      setWorkstationConfigs(initial);
     }
-  }, [centroExplosion, fertExplosion, explosionRowsPerPage]);
+  }, [uniqueWorkstations, workstationConfigs]);
 
   useEffect(() => {
     if (isMounted && forrosGruposList.length > 0) {
       fetchTiemposProduccion();
       fetchDailyOrders();
-      fetchHabilidadesOp();
-      fetchMantenimientos();
     }
-  }, [isMounted, forrosGruposList, fetchTiemposProduccion, fetchDailyOrders, fetchHabilidadesOp, fetchMantenimientos]);
+  }, [isMounted, forrosGruposList, fetchTiemposProduccion, fetchDailyOrders]);
 
   const getResolvedMachine = useCallback((order: any) => {
-    const orderFields = ['MAQUINA', 'Maquina', 'maquina', 'PUESTOTRABAJO', 'PuestoTrabajo', 'puestotrabajo'];
+    const orderFields = ['MAQUINA', 'Maquina', 'PuestoTrabajo'];
     for (const k of orderFields) {
       const val = order[k];
       if (val && String(val).trim() !== '' && String(val).toLowerCase() !== 'null') {
@@ -442,779 +276,279 @@ export const TacticalPlanForrosSection: React.FC = () => {
         if (sVal.startsWith('HR')) return sVal;
       }
     }
-    
     const material = normalizeMaterialCode(order['MATERIAL'] || order['CodMaterial'] || '');
-    if (!material) return '';
-
-    const matches = tiemposProduccion.filter(t => 
-      normalizeMaterialCode(t.CodMaterial || t.Material || '') === material
-    );
-
-    if (matches.length > 0) {
-      for (const m of matches) {
-        const values = Object.values(m).map(v => String(v || '').trim().toUpperCase());
-        const hrValue = values.find(v => v.startsWith('HR'));
-        if (hrValue) return hrValue;
-      }
-      const best = matches.find(m => Number(m.Tiempo || m.Tiempo_Min) > 0) || matches[0];
-      return String(best.PuestoTrabajo || best.Maquina || best.nombre_estacion || '').trim().toUpperCase();
-    }
-
-    return '';
+    const match = tiemposProduccion.find(t => normalizeMaterialCode(t.CodMaterial || t.Material || '') === material);
+    return match ? String(match.PuestoTrabajo || match.nombre_estacion || '').trim().toUpperCase() : '';
   }, [tiemposProduccion, normalizeMaterialCode]);
 
   const calculateProductionTime = useCallback((material: string, quantity: number, order: any) => {
-    if (!material) return '0.00';
+    if (!material) return 0;
     const normMaterial = normalizeMaterialCode(material);
-    const resolvedMachine = getResolvedMachine(order).trim().toUpperCase();
-    
-    if (!resolvedMachine) return '0.00';
-    
-    const match = tiemposProduccion.find(t => {
-      if (normalizeMaterialCode(t.CodMaterial || t.Material || '') !== normMaterial) return false;
-      const values = Object.values(t).map(v => String(v || '').trim().toUpperCase());
-      return values.includes(resolvedMachine);
-    }) || tiemposProduccion.find(t => normalizeMaterialCode(t.CodMaterial || t.Material || '') === normMaterial && Number(t.Tiempo || t.Tiempo_Min) > 0);
+    const machine = getResolvedMachine(order);
+    const match = tiemposProduccion.find(t => 
+      normalizeMaterialCode(t.CodMaterial || t.Material || '') === normMaterial &&
+      String(t.PuestoTrabajo || t.nombre_estacion || '').trim().toUpperCase() === machine
+    ) || tiemposProduccion.find(t => normalizeMaterialCode(t.CodMaterial || t.Material || '') === normMaterial);
 
-    if (!match) return '0.00';
-    const unitTime = Number(match.Tiempo || match.Tiempo_Min || 0);
-    return (unitTime * quantity).toFixed(2);
+    return match ? (Number(match.Tiempo || match.Tiempo_Min || 0) * quantity) : 0;
   }, [tiemposProduccion, normalizeMaterialCode, getResolvedMachine]);
 
-  const renderResolvedProvisionalCell = useCallback((column: string, order: any) => {
-    const upperCol = column.toUpperCase().trim();
-    if (upperCol === 'MAQUINA') {
-      const val = getResolvedMachine(order);
-      return val ? (
-        <span className="font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
-          {val}
-        </span>
-      ) : (
-        <span className="text-gray-400 italic">—</span>
-      );
-    }
-    return undefined;
-  }, [getResolvedMachine]);
-
-  const resolveLogicValue = useCallback((column: string, order: any) => {
-    const upperCol = column.toUpperCase().trim();
-    if (upperCol === 'MAQUINA') {
-      return getResolvedMachine(order) || 'Z_SIN_MAQUINA';
-    }
-    return String(order[column] ?? '');
-  }, [getResolvedMachine]);
-
-  const filteredTiempos = useMemo(() => {
-    return tiemposProduccion.filter(item => {
-      return Object.entries(tiemposFilters).every(([col, val]) => {
-        if (!val) return true;
-        const itemVal = String(item[col] ?? '').toLowerCase();
-        return itemVal.includes(val.toLowerCase());
-      });
-    });
-  }, [tiemposProduccion, tiemposFilters]);
-
-  const totalTiemposPages = Math.max(1, Math.ceil(filteredTiempos.length / tiemposRowsPerPage));
-
-  const paginatedTiemposData = useMemo(() => {
-    const start = (tiemposPage - 1) * tiemposRowsPerPage;
-    return filteredTiempos.slice(start, start + tiemposRowsPerPage);
-  }, [filteredTiempos, tiemposPage, tiemposRowsPerPage]);
-
-  const handleTiemposFilterChange = (column: string, value: string) => {
-    setTiemposFilters(prev => ({ ...prev, [column]: value }));
-    setTiemposPage(1);
-  };
-
-  const processedDailyOrders = useMemo(() => {
-    return dailyOrders
-      .filter(order => {
-        const machine = getResolvedMachine(order);
-        return machine !== 'HR-FORRO' && machine !== 'HR-FBASE' && machine !== '';
-      });
-  }, [dailyOrders, getResolvedMachine]);
-
-  const handleWorkstationConfigChange = (ws: string, field: keyof WorkstationConfig, value: any) => {
-    setWorkstationConfigs(prev => ({
-      ...prev,
-      [ws]: {
-        ...prev[ws],
-        [field]: value
-      }
-    }));
-  };
-
-  const getMachineData = useCallback((machineCode: string) => {
-    const orders = processedDailyOrders.filter(o => getResolvedMachine(o) === machineCode);
-    const quantity = orders.reduce((sum, o) => sum + Number(o['CANTIDAD'] || 0), 0);
-    const totalTimeMin = orders.reduce((sum, o) => {
-      const t = parseFloat(calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || 0), o));
-      return sum + t;
-    }, 0);
-    const totalTimeHours = totalTimeMin / 60;
-    
-    const config = workstationConfigs[machineCode] || { people: 1 };
-    const capacityHours = totalHorasNetas * config.people;
-    const utilization = capacityHours > 0 ? (totalTimeHours / capacityHours) * 100 : 0;
-
-    return { orders, quantity, totalTimeHours, capacityHours, utilization, config };
-  }, [processedDailyOrders, getResolvedMachine, calculateProductionTime, workstationConfigs, totalHorasNetas]);
+  const chnBasesDateTotals = useMemo(() => {
+    const today = dailyOrders.filter(o => normalizeDateForFilter(o['FECHAINICIO']) === todayDate);
+    const target = dailyOrders.filter(o => normalizeDateForFilter(o['FECHAINICIO']) === targetDate);
+    return {
+      totalToday: today.reduce((sum, o) => sum + Number(o['CANTIDAD'] || 0), 0),
+      totalTarget: target.reduce((sum, o) => sum + Number(o['CANTIDAD'] || 0), 0)
+    };
+  }, [dailyOrders, todayDate, targetDate, normalizeDateForFilter]);
 
   const machinePairs = useMemo(() => {
     const suffixes = ["02", "06", "08", "09", "10"];
-    return suffixes.map(s => ({
-      suffix: s,
-      ach: `HR-ACH${s}`,
-      pef: `HR-PEF${s}`
-    }));
+    return suffixes.map(s => ({ suffix: s, ach: `HR-ACH${s}`, pef: `HR-PEF${s}` }));
   }, []);
 
+  const handleWorkstationConfigChange = (ws: string, field: keyof WorkstationConfig, value: any) => {
+    setWorkstationConfigs(prev => ({ ...prev, [ws]: { ...prev[ws], [field]: value } }));
+  };
+
   const MachineCard = ({ machineCode, title }: { machineCode: string, title: string }) => {
-    const data = getMachineData(machineCode);
-    const isOverloaded = data.utilization > 100;
+    const orders = dailyOrders.filter(o => getResolvedMachine(o) === machineCode);
+    const quantity = orders.reduce((sum, o) => sum + Number(o['CANTIDAD'] || 0), 0);
+    const totalTimeMin = orders.reduce((sum, o) => sum + calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || 0), o), 0);
+    const totalTimeHours = totalTimeMin / 60;
+    const config = workstationConfigs[machineCode] || { people: 1 };
+    const capacityHours = totalHorasNetas * config.people;
+    const utilization = capacityHours > 0 ? (totalTimeHours / capacityHours) * 100 : 0;
+    const isOverloaded = utilization > 100;
 
     return (
-      <div className="flex border-2 border-slate-800 rounded-lg overflow-hidden h-[450px] shadow-xl w-full">
+      <div className="flex border-2 border-slate-800 rounded-lg overflow-hidden h-[480px] shadow-xl w-full bg-white">
         {/* Lado Izquierdo: INFORMACIÓN (AZUL) */}
-        <div className="w-[35%] bg-[#0070c0] p-4 text-white flex flex-col border-r-2 border-slate-800">
+        <div className="w-[35%] bg-[#0070c0] p-5 text-white flex flex-col border-r-2 border-slate-800">
           <div className="mb-4">
             <h4 className="text-xs font-black uppercase tracking-widest opacity-80 mb-1">{machineCode}</h4>
-            <h3 className="text-xl font-black uppercase leading-tight">{title}</h3>
+            <h3 className="text-2xl font-black uppercase leading-tight tracking-tighter">{title}</h3>
           </div>
           
-          <div className="flex-1 space-y-4">
-            <div className="bg-white/10 p-3 rounded-lg backdrop-blur-sm border border-white/10">
-              <p className="text-[10px] font-bold uppercase opacity-60 mb-2">Información del Puesto</p>
-              <div className="space-y-2">
+          <div className="flex-1 space-y-5">
+            <div className="bg-white/10 p-4 rounded-xl backdrop-blur-sm border border-white/10">
+              <p className="text-[10px] font-bold uppercase opacity-60 mb-3 tracking-widest">Capacidad Técnica</p>
+              <div className="space-y-3">
                 <div className="flex justify-between items-center text-sm">
-                  <span className="flex items-center gap-2"><Users className="w-3.5 h-3.5" /> Personal:</span>
-                  <span className="font-mono font-bold text-lg">{data.config.people}</span>
+                  <span className="flex items-center gap-2 font-bold uppercase text-[11px]"><Users className="w-4 h-4" /> Personal:</span>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => handleWorkstationConfigChange(machineCode, 'people', Math.max(1, config.people - 1))} className="w-6 h-6 rounded bg-white/20 hover:bg-white/40 flex items-center justify-center">-</button>
+                    <span className="font-mono font-black text-xl">{config.people}</span>
+                    <button onClick={() => handleWorkstationConfigChange(machineCode, 'people', config.people + 1)} className="w-6 h-6 rounded bg-white/20 hover:bg-white/40 flex items-center justify-center">+</button>
+                  </div>
                 </div>
                 <div className="flex justify-between items-center text-sm">
-                  <span className="flex items-center gap-2"><Activity className="w-3.5 h-3.5" /> Capacidad:</span>
-                  <span className="font-mono font-bold">{data.capacityHours.toFixed(2)}h</span>
+                  <span className="flex items-center gap-2 font-bold uppercase text-[11px]"><Activity className="w-4 h-4" /> Disponible:</span>
+                  <span className="font-mono font-black text-lg">{capacityHours.toFixed(2)}h</span>
                 </div>
               </div>
             </div>
 
-            <div className="bg-white/10 p-3 rounded-lg backdrop-blur-sm border border-white/10">
-              <p className="text-[10px] font-bold uppercase opacity-60 mb-2">Ocupación del Turno</p>
+            <div className="bg-white/10 p-4 rounded-xl backdrop-blur-sm border border-white/10">
+              <p className="text-[10px] font-bold uppercase opacity-60 mb-3 tracking-widest">Saturación</p>
               <div className="flex items-baseline gap-2 mb-2">
-                <span className={cn("text-4xl font-black font-mono tracking-tighter", isOverloaded ? "text-red-300" : "text-white")}>
-                  {data.utilization.toFixed(1)}
+                <span className={cn("text-5xl font-black font-mono tracking-tighter", isOverloaded ? "text-red-300" : "text-white")}>
+                  {utilization.toFixed(1)}
                 </span>
-                <span className="text-lg font-bold opacity-60">%</span>
+                <span className="text-xl font-bold opacity-60">%</span>
               </div>
-              <Progress value={data.utilization} className={cn("h-3 bg-white/20", isOverloaded ? "[&>div]:bg-red-400" : "[&>div]:bg-green-400")} />
-              <p className="text-[10px] mt-2 font-bold uppercase text-center opacity-70">
-                Uso: {data.totalTimeHours.toFixed(2)}h de {data.capacityHours.toFixed(2)}h
+              <Progress value={utilization} className={cn("h-4 bg-white/20", isOverloaded ? "[&>div]:bg-red-400" : "[&>div]:bg-green-400")} />
+              <p className="text-[11px] mt-3 font-black uppercase text-center opacity-80">
+                Uso: {totalTimeHours.toFixed(2)}h / {capacityHours.toFixed(2)}h
               </p>
             </div>
+          </div>
 
-            <div className="space-y-1 pt-2">
-              <div className="flex items-center gap-2 text-[10px] font-bold text-blue-100/60 uppercase">
-                <div className="w-1.5 h-1.5 rounded-full bg-orange-400"></div>
-                Día: {data.config.dayName || 'Sin asignar'}
-              </div>
-              {parseFloat(jornadaNocturnaSel) > 0 && (
-                <div className="flex items-center gap-2 text-[10px] font-bold text-blue-100/60 uppercase">
-                  <div className="w-1.5 h-1.5 rounded-full bg-indigo-300"></div>
-                  Noche: {data.config.nightName || 'Sin asignar'}
-                </div>
-              )}
-            </div>
+          <div className="pt-4 border-t border-white/10 space-y-2">
+             <div className="flex items-center gap-2 text-[10px] font-black text-blue-100 uppercase">
+                <div className="w-2 h-2 rounded-full bg-orange-400 animate-pulse"></div>
+                Día: {config.dayName || 'AUTORIZADO'}
+             </div>
+             {parseFloat(jornadaNocturnaSel) > 0 && (
+               <div className="flex items-center gap-2 text-[10px] font-black text-blue-100 uppercase">
+                  <div className="w-2 h-2 rounded-full bg-indigo-300 animate-pulse"></div>
+                  Noche: {config.nightName || 'AUTORIZADO'}
+               </div>
+             )}
           </div>
         </div>
 
         {/* Lado Derecho: ÓRDENES (VERDE) */}
-        <div className="flex-1 bg-[#1d5c2a] p-4 flex flex-col">
-          <div className="flex items-center justify-between mb-4 pb-2 border-b border-white/10">
-            <h3 className="text-xl font-black text-white uppercase flex items-center gap-2">
-              <ClipboardList className="w-5 h-5 text-green-300" /> ÓRDENES
+        <div className="flex-1 bg-[#1d5c2a] p-5 flex flex-col">
+          <div className="flex items-center justify-between mb-4 pb-3 border-b border-white/20">
+            <h3 className="text-xl font-black text-white uppercase flex items-center gap-2 tracking-tighter">
+              <ClipboardList className="w-6 h-6 text-green-300" /> ÓRDENES DE TRABAJO
             </h3>
-            <Badge className="bg-white/10 text-white border-white/20 font-mono">{data.orders.length} ITEMS</Badge>
+            <Badge className="bg-white/10 text-white border-white/30 font-mono px-3 py-1">{orders.length} LÍNEAS</Badge>
           </div>
           
-          <div className="flex-1 overflow-auto rounded border border-white/10 bg-black/10">
+          <div className="flex-1 overflow-auto rounded-lg border border-white/10 bg-black/10">
             <table className="w-full text-[10px] text-white/90">
-              <thead className="bg-black/20 sticky top-0">
+              <thead className="bg-black/30 sticky top-0 z-10 backdrop-blur-sm">
                 <tr>
-                  <th className="px-2 py-2 text-left font-black uppercase text-green-300 border-b border-white/10">Material</th>
-                  <th className="px-2 py-2 text-left font-black uppercase text-green-300 border-b border-white/10">Nombre</th>
-                  <th className="px-2 py-2 text-right font-black uppercase text-green-300 border-b border-white/10">Cant.</th>
-                  <th className="px-2 py-2 text-center font-black uppercase text-green-300 border-b border-white/10">Unid.</th>
-                  <th className="px-2 py-2 text-right font-black uppercase text-green-300 border-b border-white/10">Tiempo (h)</th>
+                  <th className="px-3 py-3 text-left font-black uppercase text-green-300 border-b border-white/10 tracking-widest">CodMaterial</th>
+                  <th className="px-3 py-3 text-left font-black uppercase text-green-300 border-b border-white/10 tracking-widest">Nombre</th>
+                  <th className="px-3 py-3 text-right font-black uppercase text-green-300 border-b border-white/10 tracking-widest">Cant.</th>
+                  <th className="px-3 py-3 text-center font-black uppercase text-green-300 border-b border-white/10 tracking-widest">Unid.</th>
+                  <th className="px-3 py-3 text-right font-black uppercase text-green-300 border-b border-white/10 tracking-widest">Tiempo (h)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
-                {data.orders.map((o, i) => {
-                  const t = parseFloat(calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || 0), o)) / 60;
+                {orders.map((o, i) => {
+                  const t = calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || 0), o) / 60;
                   return (
-                    <tr key={i} className="hover:bg-white/5 transition-colors">
-                      <td className="px-2 py-1.5 font-mono font-bold text-green-100">{o['CodMaterial'] || normalizeMaterialCode(o['MATERIAL'])}</td>
-                      <td className="px-2 py-1.5 max-w-[120px] truncate" title={o['NOMBRE'] || o['TEXTOMATERIAL']}>{o['NOMBRE'] || o['TEXTOMATERIAL']}</td>
-                      <td className="px-2 py-1.5 text-right font-mono font-bold">{Number(o['CANTIDAD'] || 0).toLocaleString()}</td>
-                      <td className="px-2 py-1.5 text-center opacity-60 uppercase">{o['UNIDAD'] || 'ST'}</td>
-                      <td className="px-2 py-1.5 text-right font-mono font-bold text-green-300">{t.toFixed(2)}h</td>
+                    <tr key={i} className="hover:bg-white/10 transition-all cursor-default">
+                      <td className="px-3 py-2.5 font-mono font-bold text-green-100">{o['CodMaterial'] || normalizeMaterialCode(o['MATERIAL'])}</td>
+                      <td className="px-3 py-2.5 max-w-[150px] truncate font-medium uppercase" title={o['NOMBRE'] || o['TEXTOMATERIAL']}>{o['NOMBRE'] || o['TEXTOMATERIAL']}</td>
+                      <td className="px-3 py-2.5 text-right font-mono font-black text-white">{Number(o['CANTIDAD'] || 0).toLocaleString()}</td>
+                      <td className="px-3 py-2.5 text-center opacity-70 font-bold uppercase">{o['UNIDAD'] || 'ST'}</td>
+                      <td className="px-3 py-2.5 text-right font-mono font-black text-green-300">{t.toFixed(2)}h</td>
                     </tr>
                   );
                 })}
-                {data.orders.length === 0 && (
+                {orders.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="py-20 text-center opacity-30 italic text-sm">Sin órdenes para este puesto</td>
+                    <td colSpan={5} className="py-24 text-center opacity-30 italic text-lg tracking-widest">Sin carga de producción</td>
                   </tr>
                 )}
               </tbody>
             </table>
           </div>
           
-          <div className="mt-3 pt-3 border-t border-white/10 flex justify-between items-center">
-            <span className="text-[10px] font-black text-white/40 uppercase">Total Producción:</span>
-            <span className="text-lg font-black text-white font-mono">{data.quantity.toLocaleString()}</span>
+          <div className="mt-4 pt-4 border-t border-white/20 flex justify-between items-center">
+            <span className="text-[11px] font-black text-white/50 uppercase tracking-widest">Total Producción Puesto:</span>
+            <span className="text-2xl font-black text-white font-mono drop-shadow-md">{quantity.toLocaleString()} <span className="text-xs opacity-40">UND</span></span>
           </div>
         </div>
       </div>
     );
   };
 
-  if (!isMounted) return null;
+  const formattedTodayDisp = todayDate ? new Date(todayDate + 'T12:00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' }) : '—';
+  const formattedTargetDisp = targetDate ? new Date(targetDate + 'T12:00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' }) : '—';
 
   return (
-    <div className="p-6 md:p-8 space-y-6">
-      <div className="flex items-center space-x-3">
-        <CalendarClock className="w-6 h-6 text-gray-700" />
-        <h2 className="text-2xl font-semibold text-gray-700">Programación Táctica Forros</h2>
+    <div className="p-6 md:p-8 space-y-6 bg-slate-50 min-h-screen">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center space-x-3">
+          <div className="bg-slate-800 p-2 rounded-lg text-white">
+            <CalendarClock className="w-6 h-6" />
+          </div>
+          <h2 className="text-3xl font-black text-slate-800 uppercase tracking-tighter">Programación Táctica Forros</h2>
+        </div>
       </div>
 
       <Tabs defaultValue="diaria" className="w-full">
-        <div className="relative border-b border-gray-200 mb-8">
-          <TabsList className="flex w-full h-auto bg-transparent p-0 overflow-x-auto justify-start scrollbar-hide">
-            <TabsTrigger value="diaria" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><CalendarCheck className="w-4 h-4" /> Programación Componentes</TabsTrigger>
-            <TabsTrigger value="grupos" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><Users className="w-4 h-4" /> Grupos</TabsTrigger>
-            <TabsTrigger value="restricciones" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><Lock className="w-4 h-4" /> Restricciones</TabsTrigger>
-            <TabsTrigger value="tiempos" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><Timer className="w-4 h-4" /> Tiempos de Producción</TabsTrigger>
-            <TabsTrigger value="personal-turnos" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><UserPlus className="w-4 h-4" /> Distribución del personal</TabsTrigger>
-            <TabsTrigger value="habilidades-op" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><GraduationCap className="w-4 h-4" /> Habilidades OP</TabsTrigger>
-            <TabsTrigger value="mantenimiento" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><Wrench className="w-4 h-4" /> Mantenimiento Preventivo</TabsTrigger>
-            <TabsTrigger value="explosion" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><ListTree className="w-4 h-4" /> Explosión de Materiales</TabsTrigger>
-            <TabsTrigger value="forros-chn-bases" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><Package className="w-4 h-4" /> Forros CHN & Bases</TabsTrigger>
-          </TabsList>
-        </div>
+        <TabsList className="flex w-full h-auto bg-white border border-slate-200 p-1 mb-8 rounded-xl shadow-sm overflow-x-auto justify-start">
+          <TabsTrigger value="diaria" className="flex items-center gap-2 px-6 py-2.5 data-[state=active]:bg-slate-800 data-[state=active]:text-white rounded-lg transition-all text-sm font-bold uppercase tracking-tight text-slate-500"><CalendarCheck className="w-4 h-4" /> Tablero Visual ACH-PEF</TabsTrigger>
+          <TabsTrigger value="grupos" className="flex items-center gap-2 px-6 py-2.5 data-[state=active]:bg-slate-800 data-[state=active]:text-white rounded-lg transition-all text-sm font-bold uppercase tracking-tight text-slate-500"><Users className="w-4 h-4" /> Grupos</TabsTrigger>
+          <TabsTrigger value="restricciones" className="flex items-center gap-2 px-6 py-2.5 data-[state=active]:bg-slate-800 data-[state=active]:text-white rounded-lg transition-all text-sm font-bold uppercase tracking-tight text-slate-500"><Lock className="w-4 h-4" /> Restricciones</TabsTrigger>
+          <TabsTrigger value="tiempos" className="flex items-center gap-2 px-6 py-2.5 data-[state=active]:bg-slate-800 data-[state=active]:text-white rounded-lg transition-all text-sm font-bold uppercase tracking-tight text-slate-500"><Timer className="w-4 h-4" /> Maestros Técnicos</TabsTrigger>
+          <TabsTrigger value="personal-turnos" className="flex items-center gap-2 px-6 py-2.5 data-[state=active]:bg-slate-800 data-[state=active]:text-white rounded-lg transition-all text-sm font-bold uppercase tracking-tight text-slate-500"><UserPlus className="w-4 h-4" /> Capacidad Turnos</TabsTrigger>
+          <TabsTrigger value="forros-chn-bases" className="flex items-center gap-2 px-6 py-2.5 data-[state=active]:bg-slate-800 data-[state=active]:text-white rounded-lg transition-all text-sm font-bold uppercase tracking-tight text-slate-500"><Package className="w-4 h-4" /> Forros & Bases</TabsTrigger>
+        </TabsList>
 
-        <TabsContent value="diaria">
-          <div className="space-y-12">
-            <div className="flex flex-col md:flex-row items-center justify-between gap-6 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-              <div className="flex items-center gap-4">
-                <div className="bg-blue-600 p-3 rounded-2xl shadow-lg shadow-blue-200">
-                  <CalendarCheck className="w-6 h-6 text-white" />
-                </div>
-                <div>
-                  <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight">Tablero de Control Visual</h3>
-                  <p className="text-sm text-slate-500 font-medium">Planificación Sincronizada: {formattedTodayDisp} y {formattedTargetDisp}</p>
-                </div>
+        <TabsContent value="diaria" className="space-y-12">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-6 bg-white p-6 rounded-2xl border border-slate-200 shadow-lg">
+            <div className="flex items-center gap-5">
+              <div className="bg-indigo-600 p-4 rounded-2xl shadow-xl shadow-indigo-100">
+                <CalendarCheck className="w-8 h-8 text-white" />
               </div>
-              <div className="flex items-center gap-3">
-                <div className="flex flex-col items-end">
-                   <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 font-black text-[10px] mb-1">REGLA ESPEJO ACH-PEF ACTIVA</Badge>
-                   <p className="text-[10px] text-slate-400 font-bold uppercase">Actualizado hace: 1 min</p>
-                </div>
-                <Button variant="outline" size="sm" onClick={fetchDailyOrders} disabled={isLoadingDaily} className="h-10 px-4 bg-white border-slate-200 hover:bg-slate-50"><RefreshCw className={cn("h-4 w-4 mr-2", isLoadingDaily && "animate-spin")} /> Sincronizar</Button>
+              <div>
+                <h3 className="text-2xl font-black text-slate-800 uppercase tracking-tighter leading-none">Tablero de Control Componentes</h3>
+                <p className="text-sm text-slate-500 font-bold mt-2 uppercase tracking-wide">Planificación para: <span className="text-indigo-600">{formattedTodayDisp}</span> y <span className="text-indigo-600">{formattedTargetDisp}</span></p>
               </div>
             </div>
+            <div className="flex items-center gap-4">
+              <div className="text-right">
+                 <Badge className="bg-emerald-500 text-white border-none font-black text-[11px] px-3 py-1 mb-1 shadow-sm">REGLA ESPEJO ACTIVA</Badge>
+                 <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Sincronización en Tiempo Real</p>
+              </div>
+              <Button onClick={fetchDailyOrders} disabled={isLoadingDaily} className="bg-slate-800 hover:bg-slate-700 h-12 px-6 rounded-xl font-black uppercase text-xs tracking-widest transition-all shadow-lg"><RefreshCw className={cn("h-4 w-4 mr-2", isLoadingDaily && "animate-spin")} /> Refrescar</Button>
+            </div>
+          </div>
 
-            {/* TABLERO DE PARES TÉCNICOS */}
-            <div className="space-y-16 pb-20">
-              {machinePairs.map((pair) => (
-                <div key={pair.suffix} className="space-y-4">
-                  <div className="flex items-center gap-3">
-                    <div className="h-px flex-1 bg-slate-200"></div>
-                    <Badge className="bg-slate-800 text-white px-6 py-1.5 rounded-full font-black text-sm tracking-widest shadow-lg">LÍNEA TÉCNICA {pair.suffix}</Badge>
-                    <div className="h-px flex-1 bg-slate-200"></div>
-                  </div>
-                  
-                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-                    <MachineCard machineCode={pair.ach} title={`Acolchadora ${pair.suffix}`} />
-                    <MachineCard machineCode={pair.pef} title={`Pegadora de Tapa ${pair.suffix}`} />
-                  </div>
+          <div className="space-y-16 pb-24">
+            {machinePairs.map((pair) => (
+              <div key={pair.suffix} className="space-y-6">
+                <div className="flex items-center gap-5 px-2">
+                  <Badge className="bg-slate-800 text-white px-8 py-2 rounded-full font-black text-lg tracking-widest shadow-2xl">LÍNEA TÉCNICA {pair.suffix}</Badge>
+                  <div className="h-1 flex-1 bg-gradient-to-r from-slate-800 to-transparent opacity-10 rounded-full"></div>
                 </div>
-              ))}
+                
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-10">
+                  <MachineCard machineCode={pair.ach} title={`Acolchadora ${pair.suffix}`} />
+                  <MachineCard machineCode={pair.pef} title={`Pegadora de Tapa ${pair.suffix}`} />
+                </div>
+              </div>
+            ))}
 
-              {/* MÁQUINAS SIN PAR DIRECTO */}
-              <div className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <div className="h-px flex-1 bg-slate-200"></div>
-                  <Badge className="bg-slate-400 text-white px-6 py-1.5 rounded-full font-black text-sm tracking-widest shadow-lg">OTROS PUESTOS TÉCNICOS</Badge>
-                  <div className="h-px flex-1 bg-slate-200"></div>
-                </div>
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-                  {uniqueWorkstations.filter(ws => !ws.startsWith('HR-ACH') && !ws.startsWith('HR-PEF') && ws !== '').map(ws => (
-                    <MachineCard key={ws} machineCode={ws} title={ws.replace('HR-', '')} />
-                  ))}
-                </div>
+            <div className="space-y-6">
+              <div className="flex items-center gap-5 px-2">
+                <Badge className="bg-slate-400 text-white px-8 py-2 rounded-full font-black text-lg tracking-widest shadow-2xl">OTROS PUESTOS TÉCNICOS</Badge>
+                <div className="h-1 flex-1 bg-gradient-to-r from-slate-400 to-transparent opacity-10 rounded-full"></div>
+              </div>
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-10">
+                {uniqueWorkstations.filter(ws => !ws.startsWith('HR-ACH') && !ws.startsWith('HR-PEF') && ws !== '').map(ws => (
+                  <MachineCard key={ws} machineCode={ws} title={ws.replace('HR-', '')} />
+                ))}
               </div>
             </div>
           </div>
-        </TabsContent>
-
-        <TabsContent value="grupos">
-          <Card>
-            <CardHeader><CardTitle>Grupos del Área</CardTitle></CardHeader>
-            <CardContent>
-              <div className="rounded-md border overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr><th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">Código</th><th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">Centro</th><th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">Nombre</th><th className="px-6 py-3 text-center text-xs font-bold text-gray-600 uppercase">Estado</th></tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {forrosGruposList.map((g) => (
-                        <tr key={g.codigo_grupo} className="hover:bg-gray-50">
-                          <td className="px-6 py-4 whitespace-nowrap font-mono text-xs">{g.codigo_grupo}</td>
-                          <td className="px-6 py-4 whitespace-nowrap">{g.centro}</td>
-                          <td className="px-6 py-4 whitespace-nowrap font-medium">{g.nombre_grupo}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-center"><Badge variant={g.estado === 'A' ? 'default' : 'secondary'} className={g.estado === 'A' ? 'bg-green-600' : ''}>{g.estado === 'A' ? 'Activo' : 'Inactivo'}</Badge></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="restricciones">
-          <Card>
-            <CardHeader><CardTitle>Restricciones Técnicas</CardTitle></CardHeader>
-            <CardContent>
-              <div className="rounded-md border overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr><th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">Nombre</th><th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">Valor</th><th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase">Descripción</th></tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {forrosRestricciones.map((r) => (
-                        <tr key={r.codigo_restriccion} className="hover:bg-gray-50">
-                          <td className="px-6 py-4 whitespace-nowrap font-semibold text-indigo-700">{r.nombre_restriccion}</td>
-                          <td className="px-6 py-4 whitespace-nowrap font-mono">{r.valor_restriccion}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-gray-500 text-xs">{r.descripcion || '-'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="tiempos">
-          <Card>
-            <CardHeader><CardTitle>Tiempos de Producción (Maestros Técnicos)</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              <div className="rounded-md border border-gray-200 bg-white overflow-hidden">
-                <div className="overflow-auto max-h-[60vh]">
-                  <table className="min-w-full divide-y divide-gray-200 border-collapse">
-                    <thead className="bg-gray-100 sticky top-0 z-10 shadow-sm">
-                      <tr>
-                        {tiemposColumns.map((col, idx) => (
-                          <th key={`head-${col}-${idx}`} className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase whitespace-nowrap bg-gray-50 border-b">{col}</th>
-                        ))}
-                      </tr>
-                      <tr className="bg-gray-50/50">
-                        {tiemposColumns.map((col, idx) => (
-                          <th key={`filter-t-${col}-${idx}`} className="px-2 py-2 bg-gray-50 border-b border-gray-200">
-                            <div className="relative">
-                              <Search className="absolute left-2 top-1.5 h-3 w-3 text-gray-400" />
-                              <input type="text" placeholder="Buscar..." value={tiemposFilters[col] || ''} onChange={(e) => handleTiemposFilterChange(col, e.target.value)} className="w-full text-[10px] pl-7 pr-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-primary outline-none font-normal bg-white" />
-                            </div>
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200 bg-white">
-                      {isLoadingTiempos && tiemposProduccion.length === 0 ? (
-                        <tr><td colSpan={tiemposColumns.length} className="py-24 text-center"><Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" /></td></tr>
-                      ) : paginatedTiemposData.length > 0 ? paginatedTiemposData.map((t, idx) => (
-                        <tr key={`tiempo-${idx}`} className="hover:bg-blue-50/40 transition-colors">
-                          {tiemposColumns.map((col, cIdx) => (
-                            <td key={`cell-${idx}-${col}-${cIdx}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] text-gray-600 font-mono">{formatValueForDisplay(col, t[col])}</td>
-                          ))}
-                        </tr>
-                      )) : (
-                        <tr><td colSpan={tiemposColumns.length} className="py-20 text-center text-gray-400 italic bg-gray-50/50">No se encontraron resultados.</td></tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-              <div className="flex items-center justify-between gap-4 py-3 px-4 bg-gray-50 rounded-lg border border-gray-200 shadow-sm">
-                <div className="flex items-center gap-1">
-                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setTiemposPage(1)} disabled={tiemposPage === 1}><ChevronsLeft className="h-4 w-4" /></Button>
-                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setTiemposPage(p => Math.max(1, p - 1))} disabled={tiemposPage === 1}><ChevronLeft className="h-4 w-4" /></Button>
-                  <span className="px-3 text-[11px] font-bold min-w-[120px] text-center border-x py-1 bg-white rounded">Página {tiemposPage} de {totalTiemposPages}</span>
-                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setTiemposPage(p => Math.min(totalTiemposPages, p + 1))} disabled={tiemposPage === totalTiemposPages}><ChevronRight className="h-4 w-4" /></Button>
-                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setTiemposPage(totalTiemposPages)} disabled={tiemposPage === totalTiemposPages}><ChevronsRight className="h-4 w-4" /></Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="personal-turnos">
-          <div className="space-y-8">
-            <div>
-              <h3 className="text-xl font-bold text-gray-900">Configuración de Capacidad: Distribución del personal</h3>
-              <p className="text-sm text-gray-500 mt-1">Define los rangos horarios de las jornadas y el personal asignado por puesto.</p>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
-              <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5 hover:shadow-md transition-all">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="bg-orange-50 p-2.5 rounded-xl border border-orange-100">
-                    <Clock className="w-5 h-5 text-orange-600" />
-                  </div>
-                  <div>
-                    <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none">Turno Principal</h4>
-                    <p className="text-sm font-bold text-gray-700">JORNADA DIURNA</p>
-                  </div>
-                </div>
-                <Select value={jornadaDiurnaSel} onValueChange={setJornadaDiurnaSel}>
-                  <SelectTrigger className="w-full h-11 border-gray-200 bg-gray-50/50 font-semibold text-gray-700">
-                    <SelectValue placeholder="Seleccione horario" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {DIURNA_OPTIONS.map(opt => (
-                      <SelectItem key={`d-${opt.value}`} value={opt.value} className="text-xs">{opt.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-5 hover:shadow-md transition-all">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="bg-indigo-50 p-2.5 rounded-xl border border-indigo-100">
-                    <Clock className="w-5 h-5 text-indigo-600" />
-                  </div>
-                  <div>
-                    <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none">Turno Secundario</h4>
-                    <p className="text-sm font-bold text-gray-700">JORNADA NOCTURNA</p>
-                  </div>
-                </div>
-                <Select value={jornadaNocturnaSel} onValueChange={setJornadaNocturnaSel}>
-                  <SelectTrigger className="w-full h-11 border-gray-200 bg-gray-50/50 font-semibold text-gray-700">
-                    <SelectValue placeholder="Seleccione horario" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {NOCTURNA_OPTIONS.map(opt => (
-                      <SelectItem key={`n-${opt.value}`} value={opt.value} className="text-xs">{opt.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="bg-gradient-to-br from-indigo-600 to-violet-700 rounded-2xl shadow-lg p-5 text-white flex flex-col justify-between overflow-hidden relative group">
-                <div className="absolute top-0 right-0 p-4 opacity-10 transform translate-x-4 -translate-y-4 group-hover:translate-x-2 group-hover:-translate-y-2 transition-transform duration-500">
-                  <Calculator size={100} />
-                </div>
-                <div className="flex items-center gap-3 mb-4 relative z-10">
-                  <div className="bg-white/20 p-2 rounded-xl backdrop-blur-sm">
-                    <Calculator className="w-5 h-5 text-white" />
-                  </div>
-                  <div>
-                    <h4 className="text-[10px] font-black text-indigo-100 uppercase tracking-widest leading-none">Capacidad Calculada</h4>
-                    <p className="text-sm font-bold">HORAS NETAS POR TURNO (84%)</p>
-                  </div>
-                </div>
-                <div className="flex-1 flex flex-col justify-center space-y-1.5 mb-4 relative z-10">
-                  <div className="flex justify-between items-center text-[11px] text-indigo-50/80">
-                    <span className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-orange-400"></div> DIURNA ({parseFloat(jornadaDiurnaSel)}h):</span>
-                    <span className="font-mono font-bold text-white bg-white/10 px-2 py-0.5 rounded-md">{horasNetasDiurnas.toFixed(3)}h</span>
-                  </div>
-                  <div className="flex justify-between items-center text-[11px] text-indigo-50/80">
-                    <span className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-indigo-300"></div> NOCTURNA ({parseFloat(jornadaNocturnaSel)}h):</span>
-                    <span className="font-mono font-bold text-white bg-white/10 px-2 py-0.5 rounded-md">{horasNetasNocturnas.toFixed(3)}h</span>
-                  </div>
-                </div>
-                <div className="pt-4 border-t border-white/20 flex items-end justify-between relative z-10">
-                  <div className="flex flex-col">
-                    <span className="text-[9px] font-black uppercase tracking-tighter text-indigo-200">TOTAL DISPONIBLE:</span>
-                    <span className="text-4xl font-black font-mono tracking-tighter tabular-nums drop-shadow-md">{totalHorasNetas.toFixed(3)}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden shadow-sm">
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200 border-collapse">
-                  <thead className="bg-gray-50/50">
-                    <tr className="border-b border-gray-200">
-                      <th colSpan={1} className="px-4 py-2"></th>
-                      <th colSpan={1} className="px-4 py-2 text-center text-[10px] font-black text-gray-400 uppercase tracking-widest border-l border-gray-100">Configuración</th>
-                      <th colSpan={2} className="px-4 py-2 text-center text-[10px] font-black text-orange-600 uppercase tracking-widest border-l border-orange-100 bg-orange-50/30">Turno Día</th>
-                      <th colSpan={2} className="px-4 py-2 text-center text-[10px] font-black text-indigo-600 uppercase tracking-widest border-l border-indigo-100 bg-indigo-50/30">Turno Noche</th>
-                      <th className="px-4 py-2"></th>
-                    </tr>
-                    <tr>
-                      <th className="px-6 py-4 text-left text-xs font-black text-gray-500 uppercase tracking-widest">PUESTO DE TRABAJO</th>
-                      <th className="px-4 py-4 text-center text-xs font-black text-gray-500 uppercase tracking-widest border-l border-gray-100">Pers / Turno</th>
-                      <th className="px-4 py-4 text-left text-[10px] font-black text-orange-700 uppercase tracking-widest border-l border-orange-100 bg-orange-50/30">Código</th>
-                      <th className="px-4 py-4 text-left text-[10px] font-black text-orange-700 uppercase tracking-widest bg-orange-50/30">Nombre</th>
-                      <th className="px-4 py-4 text-left text-[10px] font-black text-indigo-700 uppercase tracking-widest border-l border-indigo-100 bg-indigo-50/30">Código</th>
-                      <th className="px-4 py-4 text-left text-[10px] font-black text-indigo-700 uppercase tracking-widest bg-indigo-50/30">Nombre</th>
-                      <th className="px-6 py-4 text-right text-xs font-black text-indigo-600 uppercase tracking-widest">Capacidad Neta (h)</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-100">
-                    {uniqueWorkstations.map((ws) => {
-                      const config = workstationConfigs[ws] || { machine: ws, shifts: 1, people: 1 };
-                      const totalNetHours = totalHorasNetas * config.people;
-
-                      return (
-                        <tr key={`config-${ws}`} className="hover:bg-indigo-50/30 transition-colors group">
-                          <td className="px-6 py-4 whitespace-nowrap font-bold text-gray-800">{ws}</td>
-                          <td className="px-4 py-4 whitespace-nowrap text-center border-l border-gray-50">
-                            <Input type="number" className="w-16 h-9 text-center text-xs font-bold border-gray-200 bg-gray-50/30 mx-auto" value={config.people} min="1" max="10" onChange={(e) => handleWorkstationConfigChange(ws, 'people', parseInt(e.target.value) || 1)} />
-                          </td>
-                          <td className="px-2 py-4 whitespace-nowrap border-l border-orange-100 bg-orange-50/20">
-                            <Input className="h-8 text-[10px] font-mono border-orange-200 focus:ring-orange-500" placeholder="Cód. Día" value={config.dayCode || ''} onChange={(e) => handleWorkstationConfigChange(ws, 'dayCode', e.target.value)} />
-                          </td>
-                          <td className="px-2 py-4 whitespace-nowrap bg-orange-50/20">
-                            <Input className="h-8 text-[10px] border-orange-200 focus:ring-orange-500" placeholder="Nombre Operador" value={config.dayName || ''} onChange={(e) => handleWorkstationConfigChange(ws, 'dayName', e.target.value)} />
-                          </td>
-                          <td className="px-2 py-4 whitespace-nowrap border-l border-indigo-100 bg-indigo-50/20">
-                            <Input className="h-8 text-[10px] font-mono border-indigo-200 focus:ring-indigo-500" placeholder="Cód. Noche" disabled={parseFloat(jornadaNocturnaSel) === 0} value={config.nightCode || ''} onChange={(e) => handleWorkstationConfigChange(ws, 'nightCode', e.target.value)} />
-                          </td>
-                          <td className="px-2 py-4 whitespace-nowrap bg-indigo-50/20">
-                            <Input className="h-8 text-[10px] border-indigo-200 focus:ring-indigo-500" placeholder="Nombre Operador" disabled={parseFloat(jornadaNocturnaSel) === 0} value={config.nightName || ''} onChange={(e) => handleWorkstationConfigChange(ws, 'nightName', e.target.value)} />
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-right font-mono font-bold text-indigo-700 text-md tabular-nums">
-                            {totalNetHours.toFixed(2)} <span className="text-[10px] font-bold opacity-40">h</span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="habilidades-op">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>Habilidades del Personal (OP)</CardTitle>
-                  <CardDescription>Calificación técnica y polivalencia de los operadores por estación.</CardDescription>
-                </div>
-                <Button variant="outline" size="sm" onClick={fetchHabilidadesOp} disabled={isLoadingHabilidades}>
-                  <RefreshCw className={cn("h-4 w-4 mr-2", isLoadingHabilidades && "animate-spin")} />
-                  Actualizar
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="relative">
-                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
-                    <Input 
-                      placeholder="Filtrar por Operador..." 
-                      className="pl-9 h-10 text-sm" 
-                      onChange={(e) => handleHabilidadesFilterChange('OPERADOR', e.target.value)}
-                    />
-                  </div>
-                  <div className="relative">
-                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
-                    <Input 
-                      placeholder="Filtrar por Estación..." 
-                      className="pl-9 h-10 text-sm" 
-                      onChange={(e) => handleHabilidadesFilterChange('ESTACION', e.target.value)}
-                    />
-                  </div>
-                </div>
-
-                <div className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm">
-                  <div className="overflow-x-auto max-h-[60vh]">
-                    <table className="min-w-full divide-y divide-gray-200 border-collapse">
-                      <thead className="bg-gray-50 sticky top-0 z-10 shadow-sm">
-                        <tr>
-                          {habilidadesOpData.length > 0 && Object.keys(habilidadesOpData[0]).map((col) => (
-                            <th key={`hab-head-${col}`} className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase whitespace-nowrap">{col}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-100">
-                        {isLoadingHabilidades ? (
-                          <tr><td colSpan={10} className="py-24 text-center"><Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" /></td></tr>
-                        ) : paginatedHabilidadesData.length > 0 ? paginatedHabilidadesData.map((row, idx) => (
-                          <tr key={`hab-row-${idx}`} className="hover:bg-blue-50/20 transition-colors">
-                            {Object.keys(row).map((col, cIdx) => {
-                              const val = row[col];
-                              const isCalificacion = col.toUpperCase().includes('CALIF') || col.toUpperCase().includes('PUNTAJE');
-                              return (
-                                <td key={`hab-cell-${idx}-${cIdx}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] font-mono text-gray-600">
-                                  {isCalificacion ? (
-                                    <Badge variant="outline" className={cn(
-                                      "font-bold font-mono",
-                                      Number(val) >= 90 ? "bg-green-50 text-green-700 border-green-200" :
-                                      Number(val) >= 70 ? "bg-amber-50 text-amber-700 border-amber-200" :
-                                      "bg-red-50 text-red-700 border-red-200"
-                                    )}>
-                                      {val}%
-                                    </Badge>
-                                  ) : String(val ?? '—')}
-                                </td>
-                              );
-                            })}
-                          </tr>
-                        )) : (
-                          <tr><td colSpan={10} className="py-20 text-center text-gray-400 italic">No se encontraron datos de habilidades.</td></tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between gap-4 py-3 px-4 bg-gray-50 rounded-lg border border-gray-200 shadow-sm">
-                  <div className="flex items-center gap-1">
-                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setHabilidadesPage(1)} disabled={habilidadesPage === 1}><ChevronsLeft className="h-4 w-4" /></Button>
-                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setHabilidadesPage(p => Math.max(1, p - 1))} disabled={habilidadesPage === 1}><ChevronLeft className="h-4 w-4" /></Button>
-                    <span className="px-3 text-[11px] font-bold min-w-[120px] text-center border-x py-1 bg-white rounded">Página {habilidadesPage} de {totalHabilidadesPages}</span>
-                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setHabilidadesPage(p => Math.min(totalHabilidadesPages, p + 1))} disabled={habilidadesPage === totalHabilidadesPages}><ChevronRight className="h-4 w-4" /></Button>
-                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setHabilidadesPage(totalHabilidadesPages)} disabled={habilidadesPage === totalHabilidadesPages}><ChevronsRight className="h-4 w-4" /></Button>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="mantenimiento">
-          <Card>
-            <CardHeader>
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                  <CardTitle>Mantenimientos Preventivos Programados</CardTitle>
-                  <CardDescription>Paros técnicos organizados cronológicamente y filtrados para el área de Forros.</CardDescription>
-                </div>
-                <Button variant="outline" size="sm" onClick={fetchMantenimientos} disabled={isLoadingMantenimientos}>
-                  <RefreshCw className={cn("h-4 w-4 mr-2", isLoadingMantenimientos && "animate-spin")} />
-                  Actualizar Datos
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm">
-                  <div className="overflow-x-auto border rounded-lg">
-                    <table className="min-w-full border-collapse">
-                      <thead className="bg-gray-100 border-b">
-                        <tr>
-                          {maintColumnsSorted.map((col) => (
-                            <th
-                              key={`maint-col-${col}`}
-                              className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase whitespace-nowrap"
-                            >
-                              {col}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white divide-y divide-gray-100">
-                        {isLoadingMantenimientos ? (
-                          <tr><td colSpan={maintColumnsSorted.length || 6} className="py-24 text-center"><Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" /></td></tr>
-                        ) : paginatedMantenimientos.length > 0 ? (
-                          paginatedMantenimientos.map((row, idx) => (
-                            <tr key={`maint-row-${idx}`} className="hover:bg-blue-50/20 transition-colors">
-                              {maintColumnsSorted.map((col) => {
-                                const value = row[col];
-                                const upperCol = col.toUpperCase().replace(/_/g, '');
-                                if (upperCol.includes('FECHA')) {
-                                  return (<td key={`${idx}-${col}`} className="px-4 py-3 text-xs font-mono font-bold text-blue-700 whitespace-nowrap">{formatValueForDisplay(col, value) || '—'}</td>);
-                                }
-                                if (upperCol === 'ESTADO' || upperCol === 'STATUS') {
-                                  const val = String(value || '').toUpperCase();
-                                  const isEjecutado = val.includes('EJEC') || val.includes('OK') || val.includes('TERMINADO');
-                                  const isEnProceso = val.includes('PROC') || val.includes('CURSO');
-                                  return (<td key={`${idx}-${col}`} className="px-4 py-3"><Badge variant="outline" className={cn("font-bold text-[10px] px-2 py-0.5", isEjecutado ? "bg-green-50 text-green-700 border-green-200" : isEnProceso ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-amber-50 text-amber-700 border-amber-200")}>{val || 'PROGRAMADO'}</Badge></td>);
-                                }
-                                return (<td key={`${idx}-${col}`} className="px-4 py-3 text-xs text-gray-600">{String(value ?? '—')}</td>);
-                              })}
-                            </tr>
-                          ))
-                        ) : (
-                          <tr><td colSpan={maintColumnsSorted.length || 6} className="text-center py-20 text-gray-500 italic">No hay registros de mantenimientos programados.</td></tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="explosion">
-          <Card>
-            <CardHeader>
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div><CardTitle>Explosión de Materiales (BOM)</CardTitle><CardDescription>Consulta de componentes por material (FERT).</CardDescription></div>
-                <div className="flex flex-wrap items-end gap-3 p-3 bg-gray-50 rounded-lg border">
-                  <div className="w-24"><label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Centro</label><Select value={centroExplosion} onValueChange={setCentroExplosion}><SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="1000">1000</SelectItem><SelectItem value="2000">2000</SelectItem></SelectContent></Select></div>
-                  <div className="w-48"><label className="text-[10px] font-bold text-gray-700 uppercase block mb-1.5">FERT Principal (Cód)</label><Input className="h-9 text-xs" placeholder="Ej: 10001433" value={fertExplosion} onChange={(e) => setFertExplosion(e.target.value)} /></div>
-                  <Button size="sm" onClick={() => fetchExplosionData(1)} disabled={isLoadingExplosion}>{isLoadingExplosion ? <Loader2 className="h-3 w-3 animate-spin mr-2" /> : <Search className="h-3 w-3 mr-2" />} Consultar</Button>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="rounded-md border bg-white overflow-hidden">
-                <div className="overflow-auto max-h-[55vh]">
-                  <table className="min-w-full divide-y divide-gray-200 border-collapse">
-                    <thead className="bg-gray-50 border-b"><th className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase">Centro</th><th className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase">FERT Principal</th><th className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase">Desc. FERT</th><th className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase">Componente</th><th className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase">Desc. Componente</th><th className="px-4 py-3 text-left text-[10px] font-bold text-gray-600 uppercase">Tipo</th><th className="px-4 py-3 text-right text-[10px] font-bold text-indigo-600 uppercase">Cant. Unitaria</th><th className="px-4 py-3 text-right text-[10px] font-bold text-indigo-600 uppercase">Cant. Acumulada</th></thead>
-                    <tbody className="divide-y divide-200 bg-white">
-                      {isLoadingExplosion ? <tr><td colSpan={8} className="py-24 text-center"><Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" /></td></tr> : explosionData.length > 0 ? explosionData.map((row, idx) => (<tr key={`bom-${idx}`} className="hover:bg-blue-50/40 transition-colors"><td className="px-4 py-2 text-[11px] font-mono">{row.CENTRO}</td><td className="px-4 py-2 text-[11px] font-bold">{row.FERT_PRINCIPAL}</td><td className="px-4 py-2 text-[11px] text-gray-600 max-w-40 truncate" title={row.DESCRIPCION_FERT}>{row.DESCRIPCION_FERT}</td><td className="px-4 py-2 text-[11px] font-bold text-blue-700">{row.COMPONENTE}</td><td className="px-4 py-2 text-[11px] text-gray-600 max-w-48 truncate" title={row.DESCRIPCION_COMPONENTE}>{row.DESCRIPCION_COMPONENTE}</td><td className="px-4 py-2 text-[11px] text-gray-400">{row.TipoMaterial}</td><td className="px-4 py-2 text-[11px] text-right font-mono font-bold text-indigo-700">{formatValueForDisplay('CANTIDAD', row.TOTAL_CANTIDAD_UNITARIA)}</td><td className="px-4 py-2 text-[11px] text-right font-mono font-bold text-indigo-400">{formatValueForDisplay('CANTIDAD', row.TOTAL_CANTIDAD_ACUMULADA)}</td></tr>)) : (<tr><td colSpan={8} className="py-20 text-center text-gray-400 italic bg-gray-50/50">Ingresa filtros y presiona consultar para ver la explosión de materiales.</td></tr>)}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
         </TabsContent>
 
         <TabsContent value="forros-chn-bases">
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Card className="bg-white border-l-4 border-l-orange-500 shadow-md">
-                <CardContent className="p-6">
+          <div className="space-y-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Card className="bg-white border-l-8 border-l-orange-500 shadow-xl rounded-2xl overflow-hidden group hover:scale-[1.02] transition-all duration-300">
+                <CardContent className="p-8">
                   <div className="flex items-center justify-between">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2 text-orange-600"><MapPin className="w-4 h-4" /><p className="text-sm font-bold uppercase tracking-wider">Producción GYE (Fecha Cercana)</p></div>
-                      <p className="text-md font-semibold text-gray-700">{formattedTodayDisp}</p>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 text-orange-600 font-black uppercase text-xs tracking-widest"><MapPin className="w-4 h-4" /> Producción GYE (Fecha 1)</div>
+                      <p className="text-lg font-bold text-slate-700 capitalize">{formattedTodayDisp}</p>
                     </div>
-                    <div className="bg-orange-50 p-3 rounded-full"><CalendarIconLucide className="w-6 h-6 text-orange-600" /></div>
+                    <div className="bg-orange-50 p-4 rounded-2xl group-hover:rotate-12 transition-transform"><CalendarIconLucide className="w-8 h-8 text-orange-600" /></div>
                   </div>
-                  <div className="mt-4 flex items-baseline gap-2"><p className="text-3xl font-extrabold text-orange-700 font-mono">{chnBasesDateTotals.totalToday.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p><p className="text-xs text-gray-400 uppercase font-semibold">Unidades</p></div>
+                  <div className="mt-6 flex items-baseline gap-2">
+                    <p className="text-5xl font-black text-orange-700 font-mono tracking-tighter tabular-nums">{chnBasesDateTotals.totalToday.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</p>
+                    <p className="text-xs text-slate-400 uppercase font-black tracking-widest">Unidades Totales</p>
+                  </div>
                 </CardContent>
               </Card>
-              <Card className="bg-white border-l-4 border-l-blue-600 shadow-md">
-                <CardContent className="p-6">
+
+              <Card className="bg-white border-l-8 border-l-indigo-600 shadow-xl rounded-2xl overflow-hidden group hover:scale-[1.02] transition-all duration-300">
+                <CardContent className="p-8">
                   <div className="flex items-center justify-between">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2 text-blue-600"><MapPin className="w-4 h-4" /><p className="text-sm font-bold uppercase tracking-wider">Producción Quito (Segunda Fecha)</p></div>
-                      <p className="text-md font-semibold text-gray-700">{formattedTargetDisp}</p>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 text-indigo-600 font-black uppercase text-xs tracking-widest"><MapPin className="w-4 h-4" /> Producción Quito (Fecha 2)</div>
+                      <p className="text-lg font-bold text-slate-700 capitalize">{formattedTargetDisp}</p>
                     </div>
-                    <div className="bg-blue-50 p-3 rounded-full"><CalendarIconLucide className="w-6 h-6 text-blue-600" /></div>
+                    <div className="bg-indigo-50 p-4 rounded-2xl group-hover:-rotate-12 transition-transform"><CalendarIconLucide className="w-8 h-8 text-indigo-600" /></div>
                   </div>
-                  <div className="mt-4 flex items-baseline gap-2"><p className="text-3xl font-extrabold text-blue-800 font-mono">{chnBasesDateTotals.totalTarget.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p><p className="text-xs text-gray-400 uppercase font-semibold">Unidades</p></div>
+                  <div className="mt-6 flex items-baseline gap-2">
+                    <p className="text-5xl font-black text-indigo-800 font-mono tracking-tighter tabular-nums">{chnBasesDateTotals.totalTarget.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</p>
+                    <p className="text-xs text-slate-400 uppercase font-black tracking-widest">Unidades Totales</p>
+                  </div>
                 </CardContent>
               </Card>
             </div>
-            <Card><CardHeader><CardTitle>Forros CHN & Bases</CardTitle></CardHeader><CardContent><ProvisionalOrdersTabSection externalFilters={{...externalFilters, MAQUINA: ['HR-FBASE', 'HR-FORRO']}} renderCell={renderResolvedProvisionalCell} groupBy="MAQUINA" resolveValue={resolveLogicValue} /></CardContent></Card>
+
+            <Card className="rounded-2xl shadow-lg border-slate-200 overflow-hidden">
+              <CardHeader className="bg-slate-50 border-b border-slate-200"><CardTitle className="text-xl font-black text-slate-800 uppercase tracking-tighter">Listado Maestro: Forros & Bases</CardTitle></CardHeader>
+              <CardContent className="p-0">
+                <ProvisionalOrdersTabSection 
+                  externalFilters={{...externalFilters, MAQUINA: ['HR-FBASE', 'HR-FORRO']}} 
+                  renderCell={renderResolvedProvisionalCell} 
+                  groupBy="MAQUINA" 
+                  resolveValue={resolveLogicValue} 
+                />
+              </CardContent>
+            </Card>
           </div>
         </TabsContent>
       </Tabs>
