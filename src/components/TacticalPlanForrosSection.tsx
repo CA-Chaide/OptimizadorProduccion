@@ -28,7 +28,9 @@ import {
   BarChart3,
   Search,
   BookOpen,
-  Info
+  Info,
+  ShieldCheck,
+  Zap
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -73,21 +75,21 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [maintPage, setMaintPage] = useState(1);
   const maintPageSize = 10;
 
-  // CONFIGURACIÓN DE JORNADAS
+  // CONFIGURACIÓN DE JORNADAS (Según restricciones solicitadas)
   const DIURNA_OPTIONS = [
+    { label: "Jornada Normal (8h)", value: "8.0" },
     { label: "07:00 - 15:45 (8.75h)", value: "8.75" },
-    { label: "07:00 - 17:00 (10.0h)", value: "10.0" },
-    { label: "07:00 - 18:00 (11.0h)", value: "11.0" }
+    { label: "07:00 - 17:00 (10.0h)", value: "10.0" }
   ];
 
   const NOCTURNA_OPTIONS = [
     { label: "Sin Jornada Nocturna", value: "0" },
-    { label: "21:00 - 05:30 (8.5h)", value: "8.5" },
-    { label: "19:00 - 05:30 (10.5h)", value: "10.5" }
+    { label: "21:00 - 05:30 (8.5h)", value: "8.5" }
   ];
 
-  const [jornadaDiurnaSel, setJornadaDiurnaSel] = useState("10.0");
-  const [jornadaNocturnaSel, setJornadaNocturnaSel] = useState("8.5");
+  const [jornadaDiurnaSel, setJornadaDiurnaSel] = useState("8.0");
+  const [jornadaNocturnaSel, setJornadaNocturnaSel] = useState("0");
+  const [maxExtrasPermitidas, setMaxExtrasPermitidas] = useState(2);
 
   const horasNetasDiurnas = useMemo(() => parseFloat(jornadaDiurnaSel) * 0.84, [jornadaDiurnaSel]);
   const horasNetasNocturnas = useMemo(() => parseFloat(jornadaNocturnaSel) * 0.84, [jornadaNocturnaSel]);
@@ -135,6 +137,17 @@ export const TacticalPlanForrosSection: React.FC = () => {
       ]);
       setGrupos(gRes.data || []);
       setRestricciones(rRes.data || []);
+      
+      // Capturar restricciones globales de Forros
+      const forrosGroup = gRes.data?.find((g: any) => g.nombre_grupo.toUpperCase().includes('FORRO'));
+      if (forrosGroup) {
+        const groupRest = rRes.data?.filter((r: any) => r.codigo_grupo === forrosGroup.codigo_grupo) || [];
+        const hTrabajo = groupRest.find((r: any) => r.nombre_restriccion === 'HORAS_TRABAJO');
+        const hExtras = groupRest.find((r: any) => r.nombre_restriccion === 'MAX_EXTRAS_HORAS');
+        if (hTrabajo) setJornadaDiurnaSel(parseFloat(hTrabajo.valor_restriccion).toFixed(1));
+        if (hExtras) setMaxExtrasPermitidas(parseInt(hExtras.valor_restriccion));
+      }
+
     } catch (error) {
       console.error('Error fetching base data:', error);
     } finally {
@@ -193,14 +206,24 @@ export const TacticalPlanForrosSection: React.FC = () => {
         serviciosService.getTiemposEnsambladobyCentroyCodigoGrupo(g.centro, g.codigo_grupo)
       );
       const responses = await Promise.all(promises);
-      const allData = responses.flatMap(res => res.data || []);
+      let allData = responses.flatMap(res => res.data || []);
+      
+      // Filtrar por RespCtrlProd si existe la restricción
+      if (externalFilters.RESPCTRLPROD) {
+        const allowed = externalFilters.RESPCTRLPROD.map(c => c.trim().padStart(3, '0'));
+        allData = allData.filter(t => {
+          const resp = String(t.RespControlProd || t.RESPCONTROLPROD || '').trim().padStart(3, '0');
+          return allowed.includes(resp);
+        });
+      }
+
       setTiemposProduccion(allData);
     } catch (error) {
       console.error('Error al cargar tiempos:', error);
     } finally {
       setIsLoadingTiempos(false);
     }
-  }, [forrosGruposList]);
+  }, [forrosGruposList, externalFilters]);
 
   const fetchDailyOrders = useCallback(async () => {
     if (!isMounted) return;
@@ -617,6 +640,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
           <TabsTrigger value="componentes" className="flex items-center gap-2.5 px-7 py-4 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[11px] font-black uppercase tracking-widest text-slate-500 group">
             <Inbox className="w-4 h-4 group-data-[state=active]:text-sky-400" /> Componentes
           </TabsTrigger>
+          <TabsTrigger value="maestros-tecnicos" className="flex items-center gap-2.5 px-7 py-4 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[11px] font-black uppercase tracking-widest text-slate-500 group">
+            <BookOpen className="w-4 h-4 group-data-[state=active]:text-sky-400" /> Maestros Técnicos
+          </TabsTrigger>
           <TabsTrigger value="mantenimiento" className="flex items-center gap-2.5 px-7 py-4 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[11px] font-black uppercase tracking-widest text-slate-500 group">
             <Wrench className="w-4 h-4 group-data-[state=active]:text-sky-400" /> Mantenimiento
           </TabsTrigger>
@@ -802,6 +828,91 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 />
              </CardContent>
            </Card>
+        </TabsContent>
+
+        <TabsContent value="maestros-tecnicos">
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <Card className="bg-slate-950 text-white rounded-3xl border-none shadow-xl">
+                <CardContent className="p-6 flex items-center gap-4">
+                  <div className="bg-indigo-600/20 p-3 rounded-2xl text-indigo-400"><Clock className="w-6 h-6" /></div>
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-widest opacity-40">Jornada Base</p>
+                    <p className="text-xl font-black font-mono">8 Horas</p>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="bg-slate-950 text-white rounded-3xl border-none shadow-xl">
+                <CardContent className="p-6 flex items-center gap-4">
+                  <div className="bg-sky-400/20 p-3 rounded-2xl text-sky-400"><Zap className="w-6 h-6" /></div>
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-widest opacity-40">Horas Extras Máx.</p>
+                    <p className="text-xl font-black font-mono">2 Horas</p>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="bg-slate-950 text-white rounded-3xl border-none shadow-xl">
+                <CardContent className="p-6 flex items-center gap-4">
+                  <div className="bg-emerald-400/20 p-3 rounded-2xl text-emerald-400"><ShieldCheck className="w-6 h-6" /></div>
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-widest opacity-40">Estatus Filtro</p>
+                    <p className="text-sm font-black uppercase text-emerald-400">RespCtrlProd Activo</p>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            <Card className="rounded-[2.5rem] shadow-sm border-slate-200 overflow-hidden bg-white ring-1 ring-slate-100">
+              <CardHeader className="bg-slate-50/50 border-b border-slate-200 p-10">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <BookOpen className="w-8 h-8 text-indigo-600" />
+                    <div>
+                      <CardTitle className="text-2xl font-black text-slate-900 uppercase tracking-tight">Maestros Técnicos de Producción</CardTitle>
+                      <CardDescription className="uppercase text-[9px] font-bold tracking-widest text-slate-400 mt-1">Hojas de ruta por material y puesto de trabajo</CardDescription>
+                    </div>
+                  </div>
+                  <Badge variant="outline" className="h-10 px-4 rounded-xl border-slate-200 text-slate-400 font-mono font-black text-xs">{tiemposProduccion.length} REGISTROS</Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto max-h-[60vh]">
+                  <table className="w-full text-[11px] border-collapse">
+                    <thead className="bg-slate-900 sticky top-0 z-10 shadow-md">
+                      <tr className="text-slate-400 font-black uppercase tracking-[0.2em]">
+                        <th className="px-8 py-5 text-left bg-slate-950 text-white">Cod. Material</th>
+                        <th className="px-8 py-5 text-left text-sky-400">Descripción / Nombre</th>
+                        <th className="px-8 py-5 text-center">Centro</th>
+                        <th className="px-8 py-5 text-left">Línea</th>
+                        <th className="px-8 py-5 text-left text-indigo-300">Puesto Trabajo (HR)</th>
+                        <th className="px-8 py-5 text-right text-sky-300 bg-sky-950/20">Tiempo (min)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 bg-white">
+                      {tiemposProduccion.length > 0 ? tiemposProduccion.map((t, idx) => (
+                        <tr key={idx} className="hover:bg-slate-50 transition-colors group">
+                          <td className="px-8 py-4 font-mono font-bold text-slate-500 group-hover:text-indigo-600">{t.CodMaterial || t.MATERIAL || '—'}</td>
+                          <td className="px-8 py-4 font-black text-slate-800 uppercase tracking-tight truncate max-w-[250px]">{t.Material || t.NOMBRE || '—'}</td>
+                          <td className="px-8 py-4 text-center text-slate-400 font-bold">{t.Centro || t.CENTRO || '—'}</td>
+                          <td className="px-8 py-4 text-slate-600 font-bold uppercase text-[10px]">{t.Linea || t.LINEA || '—'}</td>
+                          <td className="px-8 py-4">
+                            <span className="font-mono font-black text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
+                              {t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '—'}
+                            </span>
+                          </td>
+                          <td className="px-8 py-4 text-right font-mono font-black text-sky-600 bg-sky-50/30">
+                            {Number(t.Tiempo || t.Tiempo_Min || 0).toFixed(2)}
+                          </td>
+                        </tr>
+                      )) : (
+                        <tr><td colSpan={6} className="py-40 text-center font-black text-slate-200 uppercase text-sm tracking-[0.4em]">Sin datos de ingeniería cargados</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         <TabsContent value="mantenimiento">
