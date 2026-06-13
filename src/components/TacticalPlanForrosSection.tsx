@@ -6,26 +6,17 @@ import {
   CalendarClock, 
   Loader2, 
   Users, 
-  RefreshCw, 
-  ChevronLeft, 
-  ChevronRight, 
   Clock,
   MapPin,
-  Inbox,
   Cpu,
   Layers,
   Settings2,
-  Wrench,
   LayoutGrid,
   ClipboardList,
   UserPlus,
   BarChart3,
-  ShieldCheck,
-  Zap,
-  History,
   Sun,
-  Moon,
-  Search
+  Moon
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -39,7 +30,6 @@ import {
   SelectTrigger, 
   SelectValue 
 } from "@/components/ui/select";
-import { ProvisionalOrdersTabSection } from './ProvisionalOrdersTabSection';
 import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
 import { serviciosService } from '@/services/servicios.service';
@@ -53,6 +43,199 @@ interface WorkstationConfig {
   peopleNocturno: number;
 }
 
+// Helpers outside component
+const getTodayString = () => {
+    const today = new Date();
+    return today.toISOString().split('T')[0]; 
+};
+
+// Sub-component: MachineCard (extracted to avoid reconciliation/hydration issues)
+const MachineCard = ({ 
+  puestoName, 
+  small = false, 
+  orders, 
+  calculateProductionTime, 
+  config, 
+  horasNetasDiurnas, 
+  horasNetasNocturnas,
+  mapToHojaRuta,
+  normalizeMaterialCode
+}: { 
+  puestoName: string;
+  small?: boolean;
+  orders: any[];
+  calculateProductionTime: (material: string, quantity: number, order: any) => number;
+  config: WorkstationConfig;
+  horasNetasDiurnas: number;
+  horasNetasNocturnas: number;
+  mapToHojaRuta: (name: string) => string;
+  normalizeMaterialCode: (code: string | number) => string;
+}) => {
+  const totalTimeHours = orders.reduce((sum, o) => sum + calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || 0), o), 0) / 60;
+  const capacityHours = (horasNetasDiurnas * config.peopleDiurno) + (horasNetasNocturnas * config.peopleNocturno);
+  const utilization = capacityHours > 0 ? (totalTimeHours / capacityHours) * 100 : 0;
+  const isOverloaded = utilization > 100;
+
+  return (
+    <div className={cn(
+      "flex border border-slate-200 rounded-3xl overflow-hidden shadow-sm bg-white transition-all hover:shadow-lg",
+      small ? "h-[380px]" : "h-[450px]"
+    )}>
+      <div className={cn(
+        "bg-slate-950 p-6 text-white flex flex-col border-r border-slate-800",
+        small ? "w-[42%]" : "w-[38%]"
+      )}>
+        <div className="mb-6">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xl font-black uppercase tracking-tighter text-slate-100 flex items-center gap-2">
+              <Cpu className="w-5 h-5 text-sky-400" />
+              {puestoName}
+            </h3>
+            <Badge variant="outline" className="border-white/20 text-sky-400 font-black text-[8px] uppercase tracking-widest px-2">
+              {mapToHojaRuta(puestoName)}
+            </Badge>
+          </div>
+          <p className="text-[9px] font-bold uppercase tracking-[0.25em] text-slate-500 mt-1">Status Operativo Puesto</p>
+        </div>
+        <div className="flex-1 space-y-4">
+          <div className="bg-white/5 p-3 rounded-2xl border border-white/10">
+            <div className="flex justify-between items-center text-[9px] text-slate-500 uppercase font-black tracking-widest mb-2">Dotación Asignada</div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="bg-slate-900 rounded-xl p-2 border border-white/5 flex flex-col items-center">
+                <span className="text-[8px] text-slate-500 mb-1">SOL (D)</span>
+                <span className="font-mono font-black text-sky-400">{config.peopleDiurno}</span>
+              </div>
+              <div className="bg-slate-900 rounded-xl p-2 border border-white/5 flex flex-col items-center">
+                <span className="text-[8px] text-slate-500 mb-1">LUNA (N)</span>
+                <span className="font-mono font-black text-indigo-400">{config.peopleNocturno}</span>
+              </div>
+            </div>
+          </div>
+          <div className="bg-white/5 p-4 rounded-2xl border border-white/10 shadow-inner">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs font-black uppercase text-slate-500 tracking-[0.2em]">Ocupación</p>
+              <span className={cn("text-[10px] font-black px-2 py-0.5 rounded-lg border", isOverloaded ? "bg-red-500/20 border-red-500/30 text-red-400" : "bg-indigo-500/20 border-indigo-500/30 text-indigo-300")}>
+                {isOverloaded ? "Saturado" : "Estable"}
+              </span>
+            </div>
+            <div className="flex items-baseline gap-1.5 mb-2">
+              <span className={cn("text-4xl font-black font-mono tracking-tighter", isOverloaded ? "text-red-400" : "text-sky-300")}>
+                {utilization.toFixed(0)}
+              </span>
+              <span className="text-xs font-black text-slate-600">%</span>
+            </div>
+            <Progress value={utilization} className={cn("h-3 bg-slate-900 border border-white/5", isOverloaded ? "[&>div]:bg-red-500" : "[&>div]:bg-indigo-500 shadow-[0_0_15px_rgba(99,102,241,0.3)]")} />
+            <div className="mt-4 grid grid-cols-2 gap-2 text-[9px] font-black uppercase tracking-widest">
+              <div className="bg-slate-900/50 p-2 rounded-lg border border-white/5 text-center">
+                <span className="text-slate-500 block mb-1">Carga</span>
+                <span className="text-slate-100 font-mono">{totalTimeHours.toFixed(2)}h</span>
+              </div>
+              <div className={cn("p-2 rounded-lg border border-white/5 text-center", isOverloaded ? "bg-red-950/20 text-red-400" : "bg-sky-950/20 text-sky-400")}>
+                <span className="text-slate-500 block mb-1">Cap. Total</span>
+                <span className="font-mono">{capacityHours.toFixed(2)}h</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="flex-1 p-6 flex flex-col bg-slate-50/50">
+        <div className="flex items-center justify-between mb-4">
+          <h4 className="text-[11px] font-black text-slate-800 uppercase tracking-[0.25em] flex items-center gap-2">
+            <ClipboardList className="w-4 h-4 text-indigo-600" /> Plan de Producción
+          </h4>
+          <Badge className="bg-white text-slate-900 border-slate-200 font-mono font-black text-[10px] px-3 py-0.5 rounded-full shadow-sm">{orders.length} <span className="ml-1 text-[8px] opacity-40">ORD</span></Badge>
+        </div>
+        <div className="flex-1 overflow-auto rounded-2xl border border-slate-200 bg-white shadow-inner text-[10px]">
+          <table className="w-full border-collapse">
+            <thead className="bg-slate-100/80 sticky top-0 z-10 text-slate-500 font-black uppercase tracking-widest text-left">
+              <tr>
+                <th className="px-4 py-3 border-b border-slate-200">Material</th>
+                <th className="px-4 py-3 border-b border-slate-200 text-right">Cant.</th>
+                <th className="px-4 py-3 border-b border-slate-200 text-right text-indigo-700 bg-indigo-50/50">T. (h)</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {orders.map((o, i) => {
+                const t = calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || 0), o) / 60;
+                return (
+                  <tr key={i} className="hover:bg-indigo-50/30">
+                    <td className="px-4 py-3 font-mono font-bold text-slate-700 truncate max-w-[150px]" title={o['NOMBRE'] || o['TEXTOMATERIAL']}>{o['CodMaterial'] || normalizeMaterialCode(o['MATERIAL'])}</td>
+                    <td className="px-4 py-3 text-right font-mono font-black text-slate-800">{Number(o['CANTIDAD'] || 0).toLocaleString()}</td>
+                    <td className="px-4 py-3 text-right font-mono font-black text-indigo-600 bg-indigo-50/30">{t.toFixed(2)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Sub-component: TableKPI (extracted)
+const TableKPI = ({ 
+  tiemposProduccion, 
+  mapToHojaRuta 
+}: { 
+  tiemposProduccion: any[];
+  mapToHojaRuta: (name: string) => string;
+}) => (
+  <Card className="rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden shadow-lg">
+    <CardHeader className="bg-slate-950 p-8 border-b border-slate-800">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <div className="bg-indigo-600 p-3 rounded-2xl text-white shadow-lg shadow-indigo-500/20">
+            <Clock className="w-6 h-6" />
+          </div>
+          <div>
+            <CardTitle className="text-2xl font-black text-white uppercase tracking-tight">Maestros Técnicos de Ingeniería</CardTitle>
+            <CardDescription className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-1">Base de datos de Tiempos por Material y Puesto</CardDescription>
+          </div>
+        </div>
+        <div className="flex gap-3">
+           <div className="bg-white/5 border border-white/10 rounded-2xl px-5 py-3 text-center">
+              <span className="block text-[8px] text-slate-500 uppercase font-black tracking-widest">Registros</span>
+              <span className="text-xl font-mono font-black text-sky-400">{tiemposProduccion.length}</span>
+           </div>
+        </div>
+      </div>
+    </CardHeader>
+    <CardContent className="p-0">
+      <div className="overflow-x-auto max-h-[70vh] relative">
+        <table className="w-full text-[11px] border-collapse">
+          <thead className="bg-slate-900 sticky top-0 z-10 text-white text-left uppercase tracking-widest font-black">
+            <tr>
+              <th className="px-6 py-4 bg-slate-950 border-r border-white/5">Cod. Material</th>
+              <th className="px-6 py-4 bg-slate-950 border-r border-white/5 text-sky-400">HOJA DE RUTA</th>
+              <th className="px-6 py-4 border-r border-white/5">Puesto de Trabajo</th>
+              <th className="px-6 py-4 border-r border-white/5">Descripción</th>
+              <th className="px-6 py-4 border-r border-white/5 text-center">Centro</th>
+              <th className="px-6 py-4 border-r border-white/5">Línea</th>
+              <th className="px-6 py-4 text-right bg-indigo-900/40">Min / Und</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100 bg-white">
+            {tiemposProduccion.map((t, i) => (
+              <tr key={i} className="hover:bg-slate-50 group transition-colors">
+                <td className="px-6 py-4 font-mono font-bold text-slate-600 bg-slate-50/30">{t.CodMaterial || t.MATERIAL}</td>
+                <td className="px-6 py-4 font-mono font-black text-indigo-700 bg-sky-50/50 uppercase">{mapToHojaRuta(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '')}</td>
+                <td className="px-6 py-4 font-black text-slate-800 uppercase">{t.PuestoTrabajo || t.nombre_estacion || t.Maquina}</td>
+                <td className="px-6 py-4 text-slate-500 max-w-[200px] truncate">{t.Material || t.DESCRIPCION || '—'}</td>
+                <td className="px-6 py-4 text-center font-bold text-slate-700">{t.Centro || '—'}</td>
+                <td className="px-6 py-4 text-slate-600 font-medium">{t.Linea || '—'}</td>
+                <td className="px-6 py-4 text-right font-mono font-black text-indigo-600 bg-indigo-50/30">
+                  {(t.Tiempo || t.Tiempo_Min || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </CardContent>
+  </Card>
+);
+
 export const TacticalPlanForrosSection: React.FC = () => {
   const { addNotification } = useAppContext();
   const [isMounted, setIsMounted] = useState(false);
@@ -63,8 +246,18 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingTiempos, setIsLoadingTiempos] = useState(false);
   const [isLoadingDaily, setIsLoadingDaily] = useState(false);
+  
+  // Hydration-safe initial state
+  const [executionDate, setExecutionDate] = useState<string>('');
+  const [jornadaDiurnaSel, setJornadaDiurnaSel] = useState("8.75");
+  const [jornadaNocturnaSel, setJornadaNocturnaSel] = useState("0");
+  const [workstationConfigs, setWorkstationConfigs] = useState<Record<string, WorkstationConfig>>({});
 
-  // CONFIGURACIÓN DE JORNADAS
+  useEffect(() => {
+    setIsMounted(true);
+    setExecutionDate(getTodayString());
+  }, []);
+
   const DIURNA_OPTIONS = [
     { label: "07:00 - 15:45 (8.75h)", value: "8.75" },
     { label: "07:00 - 17:00 (10.0h)", value: "10.0" },
@@ -77,18 +270,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
     { label: "19:00 - 05:30 (10.5h)", value: "10.5" }
   ];
 
-  const [jornadaDiurnaSel, setJornadaDiurnaSel] = useState("8.75");
-  const [jornadaNocturnaSel, setJornadaNocturnaSel] = useState("0");
-
   const horasNetasDiurnas = useMemo(() => parseFloat(jornadaDiurnaSel) * 0.84, [jornadaDiurnaSel]);
   const horasNetasNocturnas = useMemo(() => parseFloat(jornadaNocturnaSel) * 0.84, [jornadaNocturnaSel]);
-
-  // PERSONAL & TURNOS
-  const [workstationConfigs, setWorkstationConfigs] = useState<Record<string, WorkstationConfig>>({});
-
-  useEffect(() => {
-    setIsMounted(true);
-  }, []);
 
   const normalizeMaterialCode = useCallback((code: string | number): string => {
     if (!code) return '';
@@ -99,11 +282,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
     const pn = String(puestoName || '').toUpperCase().trim();
     if (!pn || pn === '—' || pn === 'NULL') return '';
     
-    // Mapeos estrictos solicitados
     if (pn === 'ACOLCHADORA09') return 'HR-ACH09';
     if (pn === 'COSEDORA-ACH02') return 'HR-PEF02';
 
-    // Buscar en maestros técnicos la equivalencia real
     const match = tiemposProduccion.find(t => {
       const tp = String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').toUpperCase().trim();
       return tp === pn;
@@ -114,7 +295,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
       if (hr && hr.startsWith('HR-')) return hr;
     }
 
-    // Lógicas de respaldo y equivalencias conocidas
     if (pn.includes('ACOLCHADORA09')) return 'HR-ACH09';
     if (pn.includes('COSEDORA-ACH02')) return 'HR-PEF02';
     if (pn.includes('COSEDORA-ACH08')) return 'HR-PEF08';
@@ -252,7 +432,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     const match = tiemposProduccion.find(t => {
       const mNorm = normalizeMaterialCode(t.CodMaterial || t.Material || '');
       const tPuesto = String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').trim().toUpperCase();
-      return mNorm === mNorm && tPuesto === puesto;
+      return mNorm === normMaterial && tPuesto === puesto;
     }) || tiemposProduccion.find(t => normalizeMaterialCode(t.CodMaterial || t.Material || '') === normMaterial);
     return match ? (Number(match.Tiempo || match.Tiempo_Min || 0) * quantity) : 0;
   }, [tiemposProduccion, normalizeMaterialCode, getResolvedPuesto]);
@@ -278,166 +458,13 @@ export const TacticalPlanForrosSection: React.FC = () => {
     setWorkstationConfigs(prev => ({ ...prev, [p]: { ...prev[p], [field]: value } }));
   };
 
-  const MachineCard = ({ puestoName, small = false }: { puestoName: string, small?: boolean }) => {
-    const orders = dailyOrders.filter(o => getResolvedPuesto(o) === puestoName);
-    const totalTimeHours = orders.reduce((sum, o) => sum + calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || 0), o), 0) / 60;
-    const config = workstationConfigs[puestoName] || { peopleDiurno: 1, peopleNocturno: 0 };
-    const capacityHours = (horasNetasDiurnas * config.peopleDiurno) + (horasNetasNocturnas * config.peopleNocturno);
-    const utilization = capacityHours > 0 ? (totalTimeHours / capacityHours) * 100 : 0;
-    const isOverloaded = utilization > 100;
-
+  if (!isMounted) {
     return (
-      <div className={cn(
-        "flex border border-slate-200 rounded-3xl overflow-hidden shadow-sm bg-white transition-all hover:shadow-lg",
-        small ? "h-[380px]" : "h-[450px]"
-      )}>
-        <div className={cn(
-          "bg-slate-950 p-6 text-white flex flex-col border-r border-slate-800",
-          small ? "w-[42%]" : "w-[38%]"
-        )}>
-          <div className="mb-6">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xl font-black uppercase tracking-tighter text-slate-100 flex items-center gap-2">
-                <Cpu className="w-5 h-5 text-sky-400" />
-                {puestoName}
-              </h3>
-              <Badge variant="outline" className="border-white/20 text-sky-400 font-black text-[8px] uppercase tracking-widest px-2">
-                {mapToHojaRuta(puestoName)}
-              </Badge>
-            </div>
-            <p className="text-[9px] font-bold uppercase tracking-[0.25em] text-slate-500 mt-1">Status Operativo Puesto</p>
-          </div>
-          <div className="flex-1 space-y-4">
-            <div className="bg-white/5 p-3 rounded-2xl border border-white/10">
-              <div className="flex justify-between items-center text-[9px] text-slate-500 uppercase font-black tracking-widest mb-2">Dotación Asignada</div>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="bg-slate-900 rounded-xl p-2 border border-white/5 flex flex-col items-center">
-                  <span className="text-[8px] text-slate-500 mb-1">SOL (D)</span>
-                  <span className="font-mono font-black text-sky-400">{config.peopleDiurno}</span>
-                </div>
-                <div className="bg-slate-900 rounded-xl p-2 border border-white/5 flex flex-col items-center">
-                  <span className="text-[8px] text-slate-500 mb-1">LUNA (N)</span>
-                  <span className="font-mono font-black text-indigo-400">{config.peopleNocturno}</span>
-                </div>
-              </div>
-            </div>
-            <div className="bg-white/5 p-4 rounded-2xl border border-white/10 shadow-inner">
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-xs font-black uppercase text-slate-500 tracking-[0.2em]">Ocupación</p>
-                <span className={cn("text-[10px] font-black px-2 py-0.5 rounded-lg border", isOverloaded ? "bg-red-500/20 border-red-500/30 text-red-400" : "bg-indigo-500/20 border-indigo-500/30 text-indigo-300")}>
-                  {isOverloaded ? "Saturado" : "Estable"}
-                </span>
-              </div>
-              <div className="flex items-baseline gap-1.5 mb-2">
-                <span className={cn("text-4xl font-black font-mono tracking-tighter", isOverloaded ? "text-red-400" : "text-sky-300")}>
-                  {utilization.toFixed(0)}
-                </span>
-                <span className="text-xs font-black text-slate-600">%</span>
-              </div>
-              <Progress value={utilization} className={cn("h-3 bg-slate-900 border border-white/5", isOverloaded ? "[&>div]:bg-red-500" : "[&>div]:bg-indigo-500 shadow-[0_0_15px_rgba(99,102,241,0.3)]")} />
-              <div className="mt-4 grid grid-cols-2 gap-2 text-[9px] font-black uppercase tracking-widest">
-                <div className="bg-slate-900/50 p-2 rounded-lg border border-white/5 text-center">
-                  <span className="text-slate-500 block mb-1">Carga</span>
-                  <span className="text-slate-100 font-mono">{totalTimeHours.toFixed(2)}h</span>
-                </div>
-                <div className={cn("p-2 rounded-lg border border-white/5 text-center", isOverloaded ? "bg-red-950/20 text-red-400" : "bg-sky-950/20 text-sky-400")}>
-                  <span className="text-slate-500 block mb-1">Cap. Total</span>
-                  <span className="font-mono">{capacityHours.toFixed(2)}h</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div className="flex-1 p-6 flex flex-col bg-slate-50/50">
-          <div className="flex items-center justify-between mb-4">
-            <h4 className="text-[11px] font-black text-slate-800 uppercase tracking-[0.25em] flex items-center gap-2">
-              <ClipboardList className="w-4 h-4 text-indigo-600" /> Plan de Producción
-            </h4>
-            <Badge className="bg-white text-slate-900 border-slate-200 font-mono font-black text-[10px] px-3 py-0.5 rounded-full shadow-sm">{orders.length} <span className="ml-1 text-[8px] opacity-40">ORD</span></Badge>
-          </div>
-          <div className="flex-1 overflow-auto rounded-2xl border border-slate-200 bg-white shadow-inner text-[10px]">
-            <table className="w-full border-collapse">
-              <thead className="bg-slate-100/80 sticky top-0 z-10 text-slate-500 font-black uppercase tracking-widest text-left">
-                <tr>
-                  <th className="px-4 py-3 border-b border-slate-200">Material</th>
-                  <th className="px-4 py-3 border-b border-slate-200 text-right">Cant.</th>
-                  <th className="px-4 py-3 border-b border-slate-200 text-right text-indigo-700 bg-indigo-50/50">T. (h)</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {orders.map((o, i) => {
-                  const t = calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || 0), o) / 60;
-                  return (
-                    <tr key={i} className="hover:bg-indigo-50/30">
-                      <td className="px-4 py-3 font-mono font-bold text-slate-700 truncate max-w-[150px]" title={o['NOMBRE'] || o['TEXTOMATERIAL']}>{o['CodMaterial'] || normalizeMaterialCode(o['MATERIAL'])}</td>
-                      <td className="px-4 py-3 text-right font-mono font-black text-slate-800">{Number(o['CANTIDAD'] || 0).toLocaleString()}</td>
-                      <td className="px-4 py-3 text-right font-mono font-black text-indigo-600 bg-indigo-50/30">{t.toFixed(2)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
+      <div className="flex h-screen items-center justify-center bg-slate-50/40">
+        <Loader2 className="h-10 w-10 animate-spin text-indigo-600" />
       </div>
     );
-  };
-
-  const TableKPI = () => (
-    <Card className="rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden shadow-lg">
-      <CardHeader className="bg-slate-950 p-8 border-b border-slate-800">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="bg-indigo-600 p-3 rounded-2xl text-white shadow-lg shadow-indigo-500/20">
-              <Clock className="w-6 h-6" />
-            </div>
-            <div>
-              <CardTitle className="text-2xl font-black text-white uppercase tracking-tight">Maestros Técnicos de Ingeniería</CardTitle>
-              <CardDescription className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-1">Base de datos de Tiempos por Material y Puesto</CardDescription>
-            </div>
-          </div>
-          <div className="flex gap-3">
-             <div className="bg-white/5 border border-white/10 rounded-2xl px-5 py-3 text-center">
-                <span className="block text-[8px] text-slate-500 uppercase font-black tracking-widest">Registros</span>
-                <span className="text-xl font-mono font-black text-sky-400">{tiemposProduccion.length}</span>
-             </div>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent className="p-0">
-        <div className="overflow-x-auto max-h-[70vh] relative">
-          <table className="w-full text-[11px] border-collapse">
-            <thead className="bg-slate-900 sticky top-0 z-10 text-white text-left uppercase tracking-widest font-black">
-              <tr>
-                <th className="px-6 py-4 bg-slate-950 border-r border-white/5">Cod. Material</th>
-                <th className="px-6 py-4 bg-slate-950 border-r border-white/5 text-sky-400">HOJA DE RUTA</th>
-                <th className="px-6 py-4 border-r border-white/5">Puesto de Trabajo</th>
-                <th className="px-6 py-4 border-r border-white/5">Descripción</th>
-                <th className="px-6 py-4 border-r border-white/5 text-center">Centro</th>
-                <th className="px-6 py-4 border-r border-white/5">Línea</th>
-                <th className="px-6 py-4 text-right bg-indigo-900/40">Min / Und</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 bg-white">
-              {tiemposProduccion.map((t, i) => (
-                <tr key={i} className="hover:bg-slate-50 group transition-colors">
-                  <td className="px-6 py-4 font-mono font-bold text-slate-600 bg-slate-50/30">{t.CodMaterial || t.MATERIAL}</td>
-                  <td className="px-6 py-4 font-mono font-black text-indigo-700 bg-sky-50/50 uppercase">{mapToHojaRuta(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '')}</td>
-                  <td className="px-6 py-4 font-black text-slate-800 uppercase">{t.PuestoTrabajo || t.nombre_estacion || t.Maquina}</td>
-                  <td className="px-6 py-4 text-slate-500 max-w-[200px] truncate">{t.Material || t.DESCRIPCION || '—'}</td>
-                  <td className="px-6 py-4 text-center font-bold text-slate-700">{t.Centro || '—'}</td>
-                  <td className="px-6 py-4 text-slate-600 font-medium">{t.Linea || '—'}</td>
-                  <td className="px-6 py-4 text-right font-mono font-black text-indigo-600 bg-indigo-50/30">
-                    {(t.Tiempo || t.Tiempo_Min || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </CardContent>
-    </Card>
-  );
+  }
 
   return (
     <div className="p-6 md:p-8 space-y-6 bg-slate-50/40 min-h-screen font-body">
@@ -576,8 +603,31 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   <span className="text-white font-black text-xs uppercase tracking-[0.3em]">Célula Twin {suffix}</span>
                 </div>
                 <div className="grid grid-cols-1 xl:grid-cols-2 gap-10">
-                  {achNames.length > 0 ? <MachineCard puestoName={achNames[0]} /> : <div className="hidden xl:flex bg-slate-100/30 border-2 border-dashed border-slate-200 rounded-[2.5rem] p-20 text-slate-300 font-black uppercase text-[10px]">ACH No Definida</div>}
-                  {pefNames.length > 0 ? <MachineCard puestoName={pefNames[0]} /> : <div className="hidden xl:flex bg-slate-100/30 border-2 border-dashed border-slate-200 rounded-[2.5rem] p-20 text-slate-300 font-black uppercase text-[10px]">PEF No Definida</div>}
+                  {achNames.length > 0 ? (
+                    <MachineCard 
+                      puestoName={achNames[0]} 
+                      orders={dailyOrders.filter(o => getResolvedPuesto(o) === achNames[0])}
+                      calculateProductionTime={calculateProductionTime}
+                      config={workstationConfigs[achNames[0]] || { machine: achNames[0], peopleDiurno: 1, peopleNocturno: 0 }}
+                      horasNetasDiurnas={horasNetasDiurnas}
+                      horasNetasNocturnas={horasNetasNocturnas}
+                      mapToHojaRuta={mapToHojaRuta}
+                      normalizeMaterialCode={normalizeMaterialCode}
+                    />
+                  ) : <div className="hidden xl:flex bg-slate-100/30 border-2 border-dashed border-slate-200 rounded-[2.5rem] p-20 text-slate-300 font-black uppercase text-[10px]">ACH No Definida</div>}
+                  
+                  {pefNames.length > 0 ? (
+                    <MachineCard 
+                      puestoName={pefNames[0]} 
+                      orders={dailyOrders.filter(o => getResolvedPuesto(o) === pefNames[0])}
+                      calculateProductionTime={calculateProductionTime}
+                      config={workstationConfigs[pefNames[0]] || { machine: pefNames[0], peopleDiurno: 1, peopleNocturno: 0 }}
+                      horasNetasDiurnas={horasNetasDiurnas}
+                      horasNetasNocturnas={horasNetasNocturnas}
+                      mapToHojaRuta={mapToHojaRuta}
+                      normalizeMaterialCode={normalizeMaterialCode}
+                    />
+                  ) : <div className="hidden xl:flex bg-slate-100/30 border-2 border-dashed border-slate-200 rounded-[2.5rem] p-20 text-slate-300 font-black uppercase text-[10px]">PEF No Definida</div>}
                 </div>
               </div>
             );
@@ -586,19 +636,58 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
         <TabsContent value="bandas" className="space-y-10 pb-20">
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-10">
-            {uniquePuestos.filter(p => p.includes('ACH11') || p.includes('ACH12') || p.includes('RMTB') || p.includes('COS3D') || p.includes('ENCBD') || p.includes('BO01')).map((pName) => (<MachineCard key={pName} puestoName={pName} small />))}
+            {uniquePuestos.filter(p => p.includes('ACH11') || p.includes('ACH12') || p.includes('RMTB') || p.includes('COS3D') || p.includes('ENCBD') || p.includes('BO01')).map((pName) => (
+              <MachineCard 
+                key={pName} 
+                puestoName={pName} 
+                small 
+                orders={dailyOrders.filter(o => getResolvedPuesto(o) === pName)}
+                calculateProductionTime={calculateProductionTime}
+                config={workstationConfigs[pName] || { machine: pName, peopleDiurno: 1, peopleNocturno: 0 }}
+                horasNetasDiurnas={horasNetasDiurnas}
+                horasNetasNocturnas={horasNetasNocturnas}
+                mapToHojaRuta={mapToHojaRuta}
+                normalizeMaterialCode={normalizeMaterialCode}
+              />
+            ))}
           </div>
         </TabsContent>
 
         <TabsContent value="interiores-corte" className="space-y-10 pb-20">
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-10">
-            {uniquePuestos.filter(p => p.includes('INTP') || p.includes('MTBS') || p.includes('CT') || p.includes('TTCF') || p.includes('TTSUP') || p.includes('TELAS') || p.includes('FUNDAS')).map((pName) => (<MachineCard key={pName} puestoName={pName} small />))}
+            {uniquePuestos.filter(p => p.includes('INTP') || p.includes('MTBS') || p.includes('CT') || p.includes('TTCF') || p.includes('TTSUP') || p.includes('TELAS') || p.includes('FUNDAS')).map((pName) => (
+              <MachineCard 
+                key={pName} 
+                puestoName={pName} 
+                small 
+                orders={dailyOrders.filter(o => getResolvedPuesto(o) === pName)}
+                calculateProductionTime={calculateProductionTime}
+                config={workstationConfigs[pName] || { machine: pName, peopleDiurno: 1, peopleNocturno: 0 }}
+                horasNetasDiurnas={horasNetasDiurnas}
+                horasNetasNocturnas={horasNetasNocturnas}
+                mapToHojaRuta={mapToHojaRuta}
+                normalizeMaterialCode={normalizeMaterialCode}
+              />
+            ))}
           </div>
         </TabsContent>
 
         <TabsContent value="forros" className="space-y-10 pb-20">
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-10">
-            {uniquePuestos.filter(p => p.includes('FORRO') || p.includes('FBASE')).map((pName) => (<MachineCard key={pName} puestoName={pName} small />))}
+            {uniquePuestos.filter(p => p.includes('FORRO') || p.includes('FBASE')).map((pName) => (
+              <MachineCard 
+                key={pName} 
+                puestoName={pName} 
+                small 
+                orders={dailyOrders.filter(o => getResolvedPuesto(o) === pName)}
+                calculateProductionTime={calculateProductionTime}
+                config={workstationConfigs[pName] || { machine: pName, peopleDiurno: 1, peopleNocturno: 0 }}
+                horasNetasDiurnas={horasNetasDiurnas}
+                horasNetasNocturnas={horasNetasNocturnas}
+                mapToHojaRuta={mapToHojaRuta}
+                normalizeMaterialCode={normalizeMaterialCode}
+              />
+            ))}
           </div>
         </TabsContent>
 
@@ -643,7 +732,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 <CardContent className="p-8">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-h-[40vh] overflow-y-auto pr-2">
                       {uniquePuestos.map(p => {
-                        const config = workstationConfigs[p] || { peopleDiurno: 1, peopleNocturno: 0 };
+                        const config = workstationConfigs[p] || { machine: p, peopleDiurno: 1, peopleNocturno: 0 };
                         return (
                           <div key={`d-${p}`} className="flex items-center justify-between p-5 border-2 border-slate-50 rounded-3xl bg-white hover:border-amber-100 transition-all group">
                             <div>
@@ -672,7 +761,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 <CardContent className="p-8">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-h-[40vh] overflow-y-auto pr-2">
                       {uniquePuestos.map(p => {
-                        const config = workstationConfigs[p] || { peopleDiurno: 1, peopleNocturno: 0 };
+                        const config = workstationConfigs[p] || { machine: p, peopleDiurno: 1, peopleNocturno: 0 };
                         return (
                           <div key={`n-${p}`} className="flex items-center justify-between p-5 border-2 border-slate-50 rounded-3xl bg-white hover:border-indigo-100 transition-all group">
                             <div>
@@ -695,7 +784,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="kpi-tiempos">
-          <TableKPI />
+          <TableKPI tiemposProduccion={tiemposProduccion} mapToHojaRuta={mapToHojaRuta} />
         </TabsContent>
       </Tabs>
     </div>
