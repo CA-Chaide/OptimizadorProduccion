@@ -5,6 +5,7 @@ import React, { useEffect, useState } from 'react';
 import { logger } from '@/services/LogService';
 import { RealDataIcon } from '@/constants/constants';
 import { serviciosService } from '@/services/servicios.service';
+import { Button } from '@/components/ui/button';
 
 interface ColumnInfo {
     column_name: string;
@@ -63,14 +64,22 @@ const DataDictionary: React.FC<DataDictionaryProps> = ({ title, sourceInfo, isLo
                         </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                        {sourceInfo.columns.map(col => (
-                            <tr key={col.column_name} className="hover:bg-gray-50">
-                                <td className="px-4 py-2 whitespace-nowrap font-mono text-indigo-700">{col.column_name}</td>
-                                <td className="px-4 py-2 whitespace-nowrap text-gray-800">{col.friendly_name}</td>
-                                <td className="px-4 py-2 whitespace-normal text-gray-600">{col.description}</td>
-                                <td className="px-4 py-2 whitespace-nowrap font-mono text-gray-500">{col.sample_value || 'N/A'}</td>
+                        {Array.isArray(sourceInfo.columns) && sourceInfo.columns.length > 0 ? (
+                            sourceInfo.columns.map(col => (
+                                <tr key={col.column_name} className="hover:bg-gray-50">
+                                    <td className="px-4 py-2 whitespace-nowrap font-mono text-indigo-700">{col.column_name}</td>
+                                    <td className="px-4 py-2 whitespace-nowrap text-gray-800">{col.friendly_name}</td>
+                                    <td className="px-4 py-2 whitespace-normal text-gray-600">{col.description}</td>
+                                    <td className="px-4 py-2 whitespace-nowrap font-mono text-gray-500">{col.sample_value || 'N/A'}</td>
+                                </tr>
+                            ))
+                        ) : (
+                            <tr>
+                                <td colSpan={4} className="px-4 py-8 text-center text-gray-500 italic">
+                                    Información de columnas no disponible para esta tabla.
+                                </td>
                             </tr>
-                        ))}
+                        )}
                     </tbody>
                 </table>
             </div>
@@ -94,7 +103,9 @@ export const RealDataSection: React.FC = () => {
             setError(null);
             try {
                 const response = await serviciosService.getDiccionarioDeDatos();
-                setDocumentation(response.data || response || null);
+                // Handle different response formats defensively
+                const data = response?.data || response;
+                setDocumentation(data && typeof data === 'object' ? data : null);
             } catch (err) {
                 setError((err as Error).message);
             } finally {
@@ -129,14 +140,20 @@ export const RealDataSection: React.FC = () => {
             
             {!isLoading && !error && (
               <div className="space-y-8">
-                  {dataSources.map(sourceName => (
-                      <DataDictionary
-                          key={sourceName}
-                          title={`Tabla: ${sourceName}`}
-                          sourceInfo={documentation?.[sourceName]}
-                          isLoading={false}
-                      />
-                  ))}
+                  {dataSources.length > 0 ? (
+                      dataSources.map(sourceName => (
+                          <DataDictionary
+                              key={sourceName}
+                              title={`Tabla: ${sourceName}`}
+                              sourceInfo={documentation?.[sourceName]}
+                              isLoading={false}
+                          />
+                      ))
+                  ) : (
+                      <div className="text-center py-20 text-gray-500">
+                          No se cargaron fuentes de datos del diccionario.
+                      </div>
+                  )}
               </div>
             )}
         </div>
