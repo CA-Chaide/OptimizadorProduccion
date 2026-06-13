@@ -26,7 +26,8 @@ import {
   CheckCircle2,
   BarChart3,
   Search,
-  BookOpen
+  BookOpen,
+  Info
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -296,7 +297,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return match ? (Number(match.Tiempo || match.Tiempo_Min || 0) * quantity) : 0;
   }, [tiemposProduccion, normalizeMaterialCode, getResolvedMachine]);
 
-  // GRUPOS TÉCNICOS
+  // CATEGORIZACIÓN TÉCNICA
   const group1Suffixes = ['02', '06', '07', '08', '09', '10'];
 
   const workstationsGroup2 = useMemo(() => {
@@ -340,7 +341,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     if (upperCol === 'MAQUINA') {
       const val = getResolvedMachine(order);
       return val ? (
-        <span className="font-bold text-slate-700 bg-slate-100 px-2.5 py-0.5 rounded-lg border border-slate-200">
+        <span className="font-black text-slate-700 bg-slate-100 px-3 py-1 rounded-lg border border-slate-200 text-[10px]">
           {val}
         </span>
       ) : (
@@ -372,91 +373,110 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
     return (
       <div className={cn(
-        "flex border border-slate-200 rounded-2xl overflow-hidden shadow-sm bg-white transition-all hover:shadow-md",
-        small ? "h-[320px]" : "h-[420px]"
+        "flex border border-slate-200 rounded-3xl overflow-hidden shadow-sm bg-white transition-all hover:shadow-lg",
+        small ? "h-[360px]" : "h-[450px]"
       )}>
-        {/* LADO IZQUIERDO: INFO TÉCNICA (SLATE DARK) */}
+        {/* PANEL IZQUIERDO: INFO TÉCNICA (SLATE/INDIGO) */}
         <div className={cn(
-          "bg-slate-900 p-5 text-white flex flex-col border-r border-slate-800",
-          small ? "w-[40%]" : "w-[35%]"
+          "bg-slate-950 p-6 text-white flex flex-col border-r border-slate-800",
+          small ? "w-[42%]" : "w-[38%]"
         )}>
-          <div className="mb-4">
-            <h3 className="text-lg font-black uppercase tracking-tight text-slate-100 flex items-center gap-2">
-              <Cpu className="w-4 h-4 text-sky-400" />
-              {machineCode}
-            </h3>
-            <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-slate-500">Capacidad Neta (84%)</p>
+          <div className="mb-6">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl font-black uppercase tracking-tighter text-slate-100 flex items-center gap-2">
+                <Cpu className="w-5 h-5 text-sky-400" />
+                {machineCode}
+              </h3>
+              <Badge variant="outline" className="border-white/20 text-sky-400 font-black text-[8px] uppercase tracking-widest px-2">HR-ENG</Badge>
+            </div>
+            <p className="text-[9px] font-bold uppercase tracking-[0.25em] text-slate-500 mt-1">Status Operativo Nivel 1</p>
           </div>
           
-          <div className="flex-1 space-y-4">
-            <div className="bg-white/5 p-3 rounded-xl border border-white/10">
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-[9px] font-black uppercase text-slate-500 tracking-widest">Personal:</span>
-                <div className="flex items-center gap-2 bg-slate-800 rounded-md p-1">
-                  <button onClick={() => handleWorkstationConfigChange(machineCode, 'people', Math.max(1, config.people - 1))} className="w-6 h-6 rounded bg-slate-700 hover:bg-indigo-600 flex items-center justify-center text-xs">-</button>
-                  <span className="font-mono font-bold text-sm w-4 text-center">{config.people}</span>
-                  <button onClick={() => handleWorkstationConfigChange(machineCode, 'people', config.people + 1)} className="w-6 h-6 rounded bg-slate-700 hover:bg-indigo-600 flex items-center justify-center text-xs">+</button>
+          <div className="flex-1 space-y-5">
+            <div className="bg-white/5 p-4 rounded-2xl border border-white/10 shadow-inner">
+              <div className="flex justify-between items-center mb-3">
+                <span className="text-[10px] font-black uppercase text-slate-500 tracking-[0.2em]">Dotación:</span>
+                <div className="flex items-center gap-2.5 bg-slate-900 rounded-xl p-1.5 border border-white/10">
+                  <button onClick={() => handleWorkstationConfigChange(machineCode, 'people', Math.max(1, config.people - 1))} className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-indigo-600 flex items-center justify-center font-black transition-colors">-</button>
+                  <span className="font-mono font-black text-sm w-5 text-center text-sky-300">{config.people}</span>
+                  <button onClick={() => handleWorkstationConfigChange(machineCode, 'people', config.people + 1)} className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-indigo-600 flex items-center justify-center font-black transition-colors">+</button>
                 </div>
               </div>
-              <div className="flex justify-between items-center text-[10px] border-t border-white/5 pt-2">
-                <span className="text-slate-500 font-bold uppercase">Total Disp:</span>
-                <span className="font-mono font-bold text-sky-400">{capacityHours.toFixed(2)}h</span>
+              <div className="flex justify-between items-center text-[10px] border-t border-white/5 pt-3">
+                <span className="text-slate-400 font-black uppercase tracking-widest">Capacidad Neta:</span>
+                <span className="font-mono font-black text-sky-400 text-sm">{capacityHours.toFixed(2)}h</span>
               </div>
             </div>
 
-            <div className="bg-white/5 p-3 rounded-xl border border-white/10">
-              <p className="text-[9px] font-black uppercase text-slate-500 mb-2 tracking-widest">Ocupación</p>
-              <div className="flex items-baseline gap-1 mb-1">
-                <span className={cn("text-3xl font-black font-mono tracking-tighter", isOverloaded ? "text-red-400" : "text-sky-300")}>
+            <div className="bg-white/5 p-4 rounded-2xl border border-white/10 shadow-inner">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-[10px] font-black uppercase text-slate-500 tracking-[0.2em]">Ocupación</p>
+                <span className={cn("text-[10px] font-black px-2 py-0.5 rounded-lg border", isOverloaded ? "bg-red-500/20 border-red-500/30 text-red-400" : "bg-indigo-500/20 border-indigo-500/30 text-indigo-300")}>
+                  {isOverloaded ? "Saturado" : "Estable"}
+                </span>
+              </div>
+              <div className="flex items-baseline gap-1.5 mb-2">
+                <span className={cn("text-4xl font-black font-mono tracking-tighter", isOverloaded ? "text-red-400" : "text-sky-300")}>
                   {utilization.toFixed(0)}
                 </span>
                 <span className="text-xs font-black text-slate-600">%</span>
               </div>
-              <Progress value={utilization} className={cn("h-2 bg-slate-800", isOverloaded ? "[&>div]:bg-red-500" : "[&>div]:bg-indigo-500")} />
-              <div className="mt-3 flex justify-between text-[9px] font-black uppercase tracking-tighter">
-                <div className="text-slate-500">Carga: <span className="text-slate-100">{totalTimeHours.toFixed(2)}h</span></div>
-                <div className={cn(isOverloaded ? "text-red-400" : "text-sky-400")}>Rem: {(capacityHours - totalTimeHours).toFixed(2)}h</div>
+              <Progress value={utilization} className={cn("h-3 bg-slate-900 border border-white/5", isOverloaded ? "[&>div]:bg-red-500" : "[&>div]:bg-indigo-500 shadow-[0_0_15px_rgba(99,102,241,0.3)]")} />
+              <div className="mt-4 grid grid-cols-2 gap-2 text-[9px] font-black uppercase tracking-widest">
+                <div className="bg-slate-900/50 p-2 rounded-lg border border-white/5 text-center">
+                  <span className="text-slate-500 block mb-1">Carga</span>
+                  <span className="text-slate-100 font-mono">{totalTimeHours.toFixed(2)}h</span>
+                </div>
+                <div className={cn("p-2 rounded-lg border border-white/5 text-center", isOverloaded ? "bg-red-950/20 text-red-400" : "bg-sky-950/20 text-sky-400")}>
+                  <span className="text-slate-500 block mb-1">Remanente</span>
+                  <span className="font-mono">{(capacityHours - totalTimeHours).toFixed(2)}h</span>
+                </div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* LADO DERECHO: LISTADO ÓRDENES (WHITE TÉCNICO) */}
-        <div className="flex-1 p-5 flex flex-col bg-slate-50/30">
-          <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-200">
-            <h4 className="text-[10px] font-black text-slate-700 uppercase tracking-widest flex items-center gap-2">
-              <ClipboardList className="w-3.5 h-3.5 text-slate-400" /> Órdenes Planificadas
+        {/* PANEL DERECHO: ÓRDENES (GRIS TÉCNICO) */}
+        <div className="flex-1 p-6 flex flex-col bg-slate-50/50">
+          <div className="flex items-center justify-between mb-4">
+            <h4 className="text-[11px] font-black text-slate-800 uppercase tracking-[0.25em] flex items-center gap-2">
+              <ClipboardList className="w-4 h-4 text-indigo-600" /> Plan de Producción
             </h4>
-            <Badge variant="outline" className="bg-white text-slate-400 border-slate-200 font-mono text-[9px] px-2 py-0">{orders.length}</Badge>
+            <Badge className="bg-white text-slate-900 border-slate-200 font-mono font-black text-[10px] px-3 py-0.5 rounded-full shadow-sm">{orders.length} <span className="ml-1 text-[8px] opacity-40">ORD</span></Badge>
           </div>
           
-          <div className="flex-1 overflow-auto rounded-xl border border-slate-200 bg-white shadow-inner">
+          <div className="flex-1 overflow-auto rounded-2xl border border-slate-200 bg-white shadow-inner">
             <table className="w-full text-[10px] border-collapse">
-              <thead className="bg-slate-50 sticky top-0 z-10">
-                <tr className="text-slate-400 font-black uppercase tracking-widest text-left">
-                  <th className="px-3 py-2 border-b">CodMaterial</th>
-                  <th className="px-3 py-2 border-b">Nombre</th>
-                  <th className="px-3 py-2 border-b text-right">Cant.</th>
-                  <th className="px-3 py-2 border-b text-center">Unid.</th>
-                  <th className="px-3 py-2 border-b text-right text-indigo-700">T. (h)</th>
+              <thead className="bg-slate-100/80 sticky top-0 z-10">
+                <tr className="text-slate-500 font-black uppercase tracking-widest text-left">
+                  <th className="px-4 py-3 border-b border-slate-200">Material</th>
+                  <th className="px-4 py-3 border-b border-slate-200">Descripción</th>
+                  <th className="px-4 py-3 border-b border-slate-200 text-right">Cant.</th>
+                  <th className="px-4 py-3 border-b border-slate-200 text-center">Unid.</th>
+                  <th className="px-4 py-3 border-b border-slate-200 text-right text-indigo-700 bg-indigo-50/50">T. (h)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {orders.map((o, i) => {
                   const t = calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || 0), o) / 60;
                   return (
-                    <tr key={i} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-3 py-2 font-mono font-bold text-slate-500">{o['CodMaterial'] || normalizeMaterialCode(o['MATERIAL'])}</td>
-                      <td className="px-3 py-2 truncate max-w-[120px] font-bold text-slate-400 uppercase" title={o['NOMBRE'] || o['TEXTOMATERIAL']}>{o['NOMBRE'] || o['TEXTOMATERIAL']}</td>
-                      <td className="px-3 py-2 text-right font-mono font-bold text-slate-600">{Number(o['CANTIDAD'] || 0).toLocaleString()}</td>
-                      <td className="px-3 py-2 text-center text-slate-400 font-black uppercase text-[8px]">{o['UNIDAD'] || 'ST'}</td>
-                      <td className="px-3 py-2 text-right font-mono font-black text-indigo-600">{t.toFixed(2)}</td>
+                    <tr key={i} className="hover:bg-indigo-50/30 transition-colors group">
+                      <td className="px-4 py-3 font-mono font-bold text-slate-500 group-hover:text-indigo-600 transition-colors">{o['CodMaterial'] || normalizeMaterialCode(o['MATERIAL'])}</td>
+                      <td className="px-4 py-3 truncate max-w-[140px] font-bold text-slate-400 uppercase text-[9px]" title={o['NOMBRE'] || o['TEXTOMATERIAL']}>{o['NOMBRE'] || o['TEXTOMATERIAL']}</td>
+                      <td className="px-4 py-3 text-right font-mono font-black text-slate-700">{Number(o['CANTIDAD'] || 0).toLocaleString()}</td>
+                      <td className="px-4 py-3 text-center text-slate-400 font-black uppercase text-[8px]">{o['UNIDAD'] || 'ST'}</td>
+                      <td className="px-4 py-3 text-right font-mono font-black text-indigo-600 bg-indigo-50/30 group-hover:bg-indigo-100/50 transition-colors">{t.toFixed(2)}</td>
                     </tr>
                   );
                 })}
                 {orders.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="py-20 text-center text-slate-300 italic font-black uppercase tracking-widest text-[9px]">Sin carga operativa</td>
+                    <td colSpan={5} className="py-24 text-center">
+                      <div className="flex flex-col items-center gap-2 opacity-20">
+                        <Inbox className="w-8 h-8 text-slate-400" />
+                        <span className="font-black uppercase tracking-widest text-[10px]">Sin carga operativa</span>
+                      </div>
+                    </td>
                   </tr>
                 )}
               </tbody>
@@ -486,157 +506,171 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   return (
     <div className="p-6 md:p-8 space-y-6 bg-slate-50/40 min-h-screen">
-      {/* HEADER DE COMANDO */}
-      <div className="flex flex-col xl:flex-row items-center justify-between gap-6 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-        <div className="flex items-center space-x-5">
-          <div className="bg-slate-900 p-4 rounded-2xl text-white shadow-lg">
-            <CalendarClock className="w-8 h-8" />
+      {/* HEADER DE COMANDO (SOBRIO) */}
+      <div className="flex flex-col xl:flex-row items-center justify-between gap-6 bg-white p-7 rounded-[2rem] border border-slate-200 shadow-sm">
+        <div className="flex items-center space-x-6">
+          <div className="bg-slate-950 p-5 rounded-[1.5rem] text-white shadow-xl ring-4 ring-slate-100">
+            <CalendarClock className="w-9 h-9 text-sky-400" />
           </div>
           <div>
-            <h2 className="text-2xl font-black text-slate-800 uppercase tracking-tighter">Programación Táctica Forros</h2>
-            <div className="flex items-center gap-2 mt-1">
-              <Badge variant="outline" className="border-slate-200 text-slate-400 bg-slate-50 font-black uppercase tracking-[0.2em] text-[9px] px-3 py-0.5">Centro de Control Operativo</Badge>
-              <div className="flex items-center gap-1.5 ml-2">
-                <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
-                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Sistema en línea</span>
-              </div>
+            <div className="flex items-center gap-3">
+              <h2 className="text-3xl font-black text-slate-900 uppercase tracking-tighter">Programación Táctica</h2>
+              <Badge className="bg-indigo-600 text-white border-none font-black px-3 py-1 rounded-lg text-[10px] uppercase tracking-widest shadow-sm shadow-indigo-100">Forros</Badge>
+            </div>
+            <div className="flex items-center gap-3 mt-2">
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                Monitor de Planta en Tiempo Real
+              </span>
+              <div className="h-4 w-px bg-slate-200 mx-1" />
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                <Users className="w-3 h-3" /> Eficiencia: 84%
+              </span>
             </div>
           </div>
         </div>
         
         <div className="flex flex-wrap gap-4 items-center">
-          <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex items-center gap-4 min-w-[180px] shadow-inner">
-            <div className="bg-indigo-700 p-2 rounded-xl text-white"><MapPin className="w-4 h-4" /></div>
+          <div className="bg-slate-50 border border-slate-100 rounded-3xl p-5 flex items-center gap-5 min-w-[200px] shadow-inner group hover:bg-indigo-50 transition-colors">
+            <div className="bg-indigo-700 p-3 rounded-2xl text-white shadow-lg group-hover:scale-110 transition-transform"><MapPin className="w-5 h-5" /></div>
             <div>
-              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Resumen GYE (2000)</p>
-              <p className="text-xl font-black text-slate-800 font-mono tracking-tight">{dailyOrders.filter(o => String(o.Centro).trim() === '2000').length.toLocaleString()} <span className="text-[10px] text-slate-400 uppercase">Ord</span></p>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">GYE (2000)</p>
+              <p className="text-2xl font-black text-slate-900 font-mono tracking-tight">{dailyOrders.filter(o => String(o.Centro).trim() === '2000').length.toLocaleString()} <span className="text-xs text-slate-400 opacity-60 font-bold">ORD</span></p>
             </div>
           </div>
-          <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex items-center gap-4 min-w-[180px] shadow-inner">
-            <div className="bg-slate-700 p-2 rounded-xl text-white"><MapPin className="w-4 h-4" /></div>
+          <div className="bg-slate-50 border border-slate-100 rounded-3xl p-5 flex items-center gap-5 min-w-[200px] shadow-inner group hover:bg-slate-900 transition-colors">
+            <div className="bg-slate-800 p-3 rounded-2xl text-white shadow-lg group-hover:bg-indigo-600 transition-colors"><MapPin className="w-5 h-5" /></div>
             <div>
-              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Resumen UIO (1000)</p>
-              <p className="text-xl font-black text-slate-800 font-mono tracking-tight">{dailyOrders.filter(o => String(o.Centro).trim() === '1000').length.toLocaleString()} <span className="text-[10px] text-slate-400 uppercase">Ord</span></p>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 group-hover:text-slate-500 transition-colors">UIO (1000)</p>
+              <p className="text-2xl font-black text-slate-900 font-mono tracking-tight group-hover:text-white transition-colors">{dailyOrders.filter(o => String(o.Centro).trim() === '1000').length.toLocaleString()} <span className="text-xs text-slate-400 opacity-60 font-bold">ORD</span></p>
             </div>
           </div>
         </div>
       </div>
 
-      {/* PANEL DE HORIZONTE TÁCTICO */}
-      <Card className="rounded-2xl shadow-sm border-slate-200 bg-white overflow-hidden">
-        <div className="px-6 py-4 flex flex-col md:flex-row items-center justify-between gap-6 bg-slate-50/30">
-          <div className="flex items-center gap-6">
-            <div className="space-y-1">
-              <label className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] flex items-center gap-2">
-                <Clock className="w-3 h-3 text-indigo-400" /> Inicio Horizonte
+      {/* PANEL DE HORIZONTE (SLATE SOFISTICADO) */}
+      <Card className="rounded-3xl shadow-sm border-slate-200 bg-white overflow-hidden ring-1 ring-slate-100">
+        <div className="px-8 py-5 flex flex-col md:flex-row items-center justify-between gap-8 bg-slate-50/40">
+          <div className="flex flex-wrap items-center gap-10">
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase text-slate-400 tracking-[0.3em] flex items-center gap-2">
+                <Clock className="w-3.5 h-3.5 text-indigo-400" /> Inicio Horizonte
               </label>
               <input 
                 type="date" 
                 value={todayDate} 
                 onChange={(e) => setTodayDate(e.target.value)}
-                className="bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm font-bold text-slate-700 focus:ring-4 focus:ring-indigo-500/5 outline-none transition-all shadow-sm"
+                className="bg-white border border-slate-200 rounded-2xl px-5 py-3 text-sm font-black text-slate-800 focus:ring-8 focus:ring-indigo-500/5 focus:border-indigo-500 outline-none transition-all shadow-sm w-[180px]"
               />
             </div>
-            <div className="flex items-center pt-4">
-              <ArrowRight className="w-4 h-4 text-slate-300" />
+            <div className="flex items-center pt-6">
+              <div className="w-12 h-[2px] bg-gradient-to-r from-transparent via-slate-200 to-transparent" />
+              <ArrowRight className="w-5 h-5 text-slate-300 mx-2" />
+              <div className="w-12 h-[2px] bg-gradient-to-r from-transparent via-slate-200 to-transparent" />
             </div>
-            <div className="space-y-1">
-              <label className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] flex items-center gap-2">
-                <Clock className="w-3 h-3 text-indigo-400" /> Fin Horizonte
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase text-slate-400 tracking-[0.3em] flex items-center gap-2">
+                <Clock className="w-3.5 h-3.5 text-indigo-400" /> Fin Horizonte
               </label>
               <input 
                 type="date" 
                 value={targetDate} 
                 onChange={(e) => setTargetDate(e.target.value)}
-                className="bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm font-bold text-slate-700 focus:ring-4 focus:ring-indigo-500/5 outline-none transition-all shadow-sm"
+                className="bg-white border border-slate-200 rounded-2xl px-5 py-3 text-sm font-black text-slate-800 focus:ring-8 focus:ring-indigo-500/5 focus:border-indigo-500 outline-none transition-all shadow-sm w-[180px]"
               />
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-4">
+            <div className="h-10 w-px bg-slate-200 mr-2 hidden md:block" />
             <Button 
               onClick={() => {
                 setIsHorizonFilterActive(!isHorizonFilterActive);
                 fetchDailyOrders();
               }}
-              variant={isHorizonFilterActive ? "default" : "outline"}
               className={cn(
-                "h-11 px-6 rounded-xl font-black uppercase text-[10px] tracking-widest transition-all gap-2 shadow-sm",
-                isHorizonFilterActive ? "bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-100" : "border-slate-300 text-slate-600 hover:bg-white"
+                "h-14 px-8 rounded-2xl font-black uppercase text-[11px] tracking-[0.2em] transition-all gap-3 shadow-xl",
+                isHorizonFilterActive 
+                  ? "bg-slate-900 hover:bg-slate-800 text-white shadow-slate-200" 
+                  : "bg-white border-2 border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300"
               )}
             >
-              <Filter className="w-3.5 h-3.5" />
+              <Filter className={cn("w-4 h-4", isHorizonFilterActive ? "text-sky-400" : "text-slate-400")} />
               {isHorizonFilterActive ? "Horizonte Activo" : "Aplicar Horizonte"}
             </Button>
             <Button 
               onClick={fetchDailyOrders} 
               disabled={isLoadingDaily}
               variant="outline"
-              className="h-11 w-11 rounded-xl border-slate-300 hover:bg-white text-slate-600 transition-all p-0 shadow-sm"
+              className="h-14 w-14 rounded-2xl border-2 border-slate-200 hover:bg-white text-slate-600 transition-all p-0 shadow-sm active:scale-95"
             >
-              <RefreshCw className={cn("w-4 h-4", isLoadingDaily && "animate-spin")} />
+              <RefreshCw className={cn("w-5 h-5", isLoadingDaily && "animate-spin")} />
             </Button>
           </div>
         </div>
       </Card>
 
       <Tabs defaultValue="resumen-produccion" className="w-full">
-        <TabsList className="flex w-full h-auto bg-white border border-slate-200 p-2 mb-8 rounded-2xl shadow-sm overflow-x-auto justify-start sticky top-0 z-50">
-          <TabsTrigger value="resumen-produccion" className="flex items-center gap-2 px-6 py-3 data-[state=active]:bg-slate-900 data-[state=active]:text-white rounded-xl transition-all text-[10px] font-black uppercase tracking-widest text-slate-500">
-            <BarChart3 className="w-3.5 h-3.5" /> Resumen de Producción
+        <TabsList className="flex w-full h-auto bg-white border border-slate-200 p-2.5 mb-10 rounded-[2rem] shadow-sm overflow-x-auto justify-start sticky top-0 z-50 ring-1 ring-slate-100">
+          <TabsTrigger value="resumen-produccion" className="flex items-center gap-2.5 px-7 py-4 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[11px] font-black uppercase tracking-widest text-slate-500 group">
+            <BarChart3 className="w-4 h-4 group-data-[state=active]:text-sky-400" /> Resumen de Producción
           </TabsTrigger>
-          <TabsTrigger value="acolchado-tapas" className="flex items-center gap-2 px-6 py-3 data-[state=active]:bg-slate-900 data-[state=active]:text-white rounded-xl transition-all text-[10px] font-black uppercase tracking-widest text-slate-500">
-            <Cpu className="w-3.5 h-3.5" /> 1. Acolchado & Tapas
+          <TabsTrigger value="acolchado-tapas" className="flex items-center gap-2.5 px-7 py-4 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[11px] font-black uppercase tracking-widest text-slate-500 group">
+            <Cpu className="w-4 h-4 group-data-[state=active]:text-sky-400" /> 1. Acolchado & Tapas
           </TabsTrigger>
-          <TabsTrigger value="bandas" className="flex items-center gap-2 px-6 py-3 data-[state=active]:bg-slate-900 data-[state=active]:text-white rounded-xl transition-all text-[10px] font-black uppercase tracking-widest text-slate-500">
-            <Layers className="w-3.5 h-3.5" /> 2. Proceso Bandas
+          <TabsTrigger value="bandas" className="flex items-center gap-2.5 px-7 py-4 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[11px] font-black uppercase tracking-widest text-slate-500 group">
+            <Layers className="w-4 h-4 group-data-[state=active]:text-sky-400" /> 2. Proceso Bandas
           </TabsTrigger>
-          <TabsTrigger value="interiores-corte" className="flex items-center gap-2 px-6 py-3 data-[state=active]:bg-slate-900 data-[state=active]:text-white rounded-xl transition-all text-[10px] font-black uppercase tracking-widest text-slate-500">
-            <Settings2 className="w-3.5 h-3.5" /> 3. Interiores & Corte
+          <TabsTrigger value="interiores-corte" className="flex items-center gap-2.5 px-7 py-4 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[11px] font-black uppercase tracking-widest text-slate-500 group">
+            <Settings2 className="w-4 h-4 group-data-[state=active]:text-sky-400" /> 3. Interiores & Corte
           </TabsTrigger>
-          <TabsTrigger value="forros" className="flex items-center gap-2 px-6 py-3 data-[state=active]:bg-slate-900 data-[state=active]:text-white rounded-xl transition-all text-[10px] font-black uppercase tracking-widest text-slate-500">
-            <LayoutGrid className="w-3.5 h-3.5" /> 4. Forros Finales
+          <TabsTrigger value="forros" className="flex items-center gap-2.5 px-7 py-4 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[11px] font-black uppercase tracking-widest text-slate-500 group">
+            <LayoutGrid className="w-4 h-4 group-data-[state=active]:text-sky-400" /> 4. Forros Finales
           </TabsTrigger>
-          <TabsTrigger value="componentes" className="flex items-center gap-2 px-6 py-3 data-[state=active]:bg-slate-900 data-[state=active]:text-white rounded-xl transition-all text-[10px] font-black uppercase tracking-widest text-slate-500">
-            <Inbox className="w-3.5 h-3.5" /> Componentes (Maestro)
+          <TabsTrigger value="componentes" className="flex items-center gap-2.5 px-7 py-4 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[11px] font-black uppercase tracking-widest text-slate-500 group">
+            <Inbox className="w-4 h-4 group-data-[state=active]:text-sky-400" /> Componentes
           </TabsTrigger>
-          <TabsTrigger value="mantenimiento" className="flex items-center gap-2 px-6 py-3 data-[state=active]:bg-slate-900 data-[state=active]:text-white rounded-xl transition-all text-[10px] font-black uppercase tracking-widest text-slate-500">
-            <Wrench className="w-3.5 h-3.5" /> Mantenimiento
+          <TabsTrigger value="mantenimiento" className="flex items-center gap-2.5 px-7 py-4 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[11px] font-black uppercase tracking-widest text-slate-500 group">
+            <Wrench className="w-4 h-4 group-data-[state=active]:text-sky-400" /> Mantenimiento
           </TabsTrigger>
-          <TabsTrigger value="personal-turnos" className="flex items-center gap-2 px-6 py-3 data-[state=active]:bg-slate-900 data-[state=active]:text-white rounded-xl transition-all text-[10px] font-black uppercase tracking-widest text-slate-500">
-            <UserPlus className="w-3.5 h-3.5" /> Config. Capacidad
+          <TabsTrigger value="personal-turnos" className="flex items-center gap-2.5 px-7 py-4 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[11px] font-black uppercase tracking-widest text-slate-500 group">
+            <UserPlus className="w-4 h-4 group-data-[state=active]:text-sky-400" /> Capacidad
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="resumen-produccion">
-          <Card className="rounded-3xl shadow-sm border-slate-200 overflow-hidden bg-white">
-            <CardHeader className="bg-slate-50/50 border-b border-slate-200 p-8">
+          <Card className="rounded-[2.5rem] shadow-sm border-slate-200 overflow-hidden bg-white ring-1 ring-slate-100">
+            <CardHeader className="bg-slate-50/50 border-b border-slate-200 p-10">
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle className="text-xl font-black text-slate-800 uppercase tracking-tight flex items-center gap-3">
-                    <BarChart3 className="w-6 h-6 text-slate-400" /> Matriz de Salud de Planta
-                  </CardTitle>
-                  <CardDescription>Consolidado de carga operativa vs capacidad neta (Hoja de Ruta).</CardDescription>
+                  <div className="flex items-center gap-3">
+                    <BarChart3 className="w-7 h-7 text-indigo-600" />
+                    <CardTitle className="text-2xl font-black text-slate-900 uppercase tracking-tight">Matriz de Salud de Planta</CardTitle>
+                  </div>
+                  <CardDescription className="mt-2 text-slate-500 font-bold uppercase text-[10px] tracking-widest">Análisis de carga operativa vs capacidad neta por Hoja de Ruta</CardDescription>
                 </div>
-                <div className="flex items-center gap-2 bg-slate-900 px-4 py-2 rounded-xl text-white">
-                  <Clock className="w-4 h-4 text-sky-400" />
-                  <span className="text-[10px] font-black uppercase tracking-widest">Turno: {totalHorasNetas.toFixed(2)}h netas</span>
+                <div className="flex items-center gap-3 bg-slate-950 px-6 py-3 rounded-2xl text-white shadow-lg ring-4 ring-slate-100">
+                  <Clock className="w-5 h-5 text-sky-400" />
+                  <div className="flex flex-col">
+                    <span className="text-[10px] font-black uppercase tracking-widest opacity-60">Jornada Neta</span>
+                    <span className="text-sm font-black font-mono">{totalHorasNetas.toFixed(2)}h / Operador</span>
+                  </div>
                 </div>
               </div>
             </CardHeader>
             <CardContent className="p-0">
               <div className="overflow-x-auto">
-                <table className="w-full text-[11px] border-collapse">
-                  <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
-                    <tr className="text-slate-500 font-black uppercase tracking-widest">
-                      <th className="px-6 py-4 text-left bg-slate-100/50">Puesto de Trabajo</th>
-                      <th className="px-6 py-4 text-center">Hoja de Ruta (min/u)</th>
-                      <th className="px-6 py-4 text-right">Órdenes</th>
-                      <th className="px-6 py-4 text-right">Cant. Total</th>
-                      <th className="px-6 py-4 text-right text-indigo-700 bg-indigo-50/30">T. Requerido (h)</th>
-                      <th className="px-6 py-4 text-right text-slate-900">Capacidad (h)</th>
-                      <th className="px-6 py-4 text-center">% Ocupación</th>
-                      <th className="px-6 py-4 text-right">Estatus</th>
+                <table className="w-full text-[12px] border-collapse">
+                  <thead className="bg-slate-900 sticky top-0 z-10">
+                    <tr className="text-slate-400 font-black uppercase tracking-[0.2em]">
+                      <th className="px-8 py-5 text-left bg-slate-950 text-white">Puesto de Trabajo</th>
+                      <th className="px-8 py-5 text-left text-sky-400">HOJA DE RUTA</th>
+                      <th className="px-8 py-5 text-center bg-slate-900/80">Ingeniería (min/u)</th>
+                      <th className="px-8 py-5 text-right">Cant. Total</th>
+                      <th className="px-8 py-5 text-right text-indigo-300 bg-indigo-950/20">T. Requerido (h)</th>
+                      <th className="px-8 py-5 text-right text-slate-200">Capacidad (h)</th>
+                      <th className="px-8 py-5 text-center">% Ocupación</th>
+                      <th className="px-8 py-5 text-right">Estatus</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 bg-white">
@@ -644,7 +678,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       const orders = dailyOrders.filter(o => getResolvedMachine(o) === ws);
                       const totalUnits = orders.reduce((sum, o) => sum + Number(o['CANTIDAD'] || 0), 0);
                       
-                      // Obtener tiempo de hoja de ruta promedio para este puesto
                       const matches = tiemposProduccion.filter(t => 
                         String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').trim().toUpperCase() === ws
                       );
@@ -659,33 +692,46 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       const isOverloaded = utilization > 100;
 
                       return (
-                        <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
-                          <td className="px-6 py-4 font-black text-slate-700 uppercase">
-                            <div className="flex items-center gap-2">
-                              <Settings2 className="w-3.5 h-3.5 text-slate-400" />
+                        <tr key={idx} className="hover:bg-slate-50 transition-all group">
+                          <td className="px-8 py-5 font-black text-slate-900 uppercase">
+                            <div className="flex items-center gap-3">
+                              <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 group-hover:scale-150 transition-transform" />
                               {ws}
                             </div>
                           </td>
-                          <td className="px-6 py-4 text-center font-mono font-bold text-slate-400">
-                            {avgHrMin > 0 ? `${avgHrMin.toFixed(2)} min` : '—'}
+                          <td className="px-8 py-5 font-mono font-black text-indigo-700 bg-indigo-50/20">
+                            {ws.startsWith('HR') ? ws : `HR-${ws}`}
                           </td>
-                          <td className="px-6 py-4 text-right font-mono font-bold text-slate-400">{orders.length}</td>
-                          <td className="px-6 py-4 text-right font-mono font-bold text-slate-600">{totalUnits.toLocaleString()}</td>
-                          <td className="px-6 py-4 text-right font-mono font-black text-indigo-600 bg-indigo-50/30">{totalTimeHours.toFixed(2)}h</td>
-                          <td className="px-6 py-4 text-right font-mono font-bold text-slate-800">{capacityHours.toFixed(2)}h</td>
-                          <td className="px-6 py-4">
-                            <div className="flex items-center gap-3">
-                              <Progress value={utilization} className={cn("h-1.5 w-20 bg-slate-100", isOverloaded ? "[&>div]:bg-red-500" : "[&>div]:bg-indigo-600")} />
-                              <span className={cn("font-mono font-black w-8 text-right", isOverloaded ? "text-red-500" : "text-slate-600")}>{utilization.toFixed(0)}%</span>
+                          <td className="px-8 py-5 text-center font-mono font-bold text-slate-400">
+                            {avgHrMin > 0 ? (
+                              <div className="flex items-center justify-center gap-1.5">
+                                <Info className="w-3 h-3 text-slate-300" />
+                                {avgHrMin.toFixed(2)}
+                              </div>
+                            ) : '—'}
+                          </td>
+                          <td className="px-8 py-5 text-right font-mono font-black text-slate-800">{totalUnits.toLocaleString()}</td>
+                          <td className="px-8 py-5 text-right font-mono font-black text-indigo-700 bg-indigo-50/40">{totalTimeHours.toFixed(2)}h</td>
+                          <td className="px-8 py-5 text-right font-mono font-bold text-slate-900 border-l border-slate-100">{capacityHours.toFixed(2)}h</td>
+                          <td className="px-8 py-5">
+                            <div className="flex items-center justify-center gap-4">
+                              <div className="flex-1 bg-slate-100 h-2 rounded-full overflow-hidden max-w-[100px] border border-slate-200">
+                                <motion.div 
+                                  initial={{ width: 0 }}
+                                  animate={{ width: `${Math.min(utilization, 100)}%` }}
+                                  className={cn("h-full transition-all duration-1000", isOverloaded ? "bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]" : "bg-indigo-600 shadow-[0_0_10px_rgba(79,70,229,0.4)]")}
+                                />
+                              </div>
+                              <span className={cn("font-mono font-black w-10 text-right", isOverloaded ? "text-red-600" : "text-slate-900")}>{utilization.toFixed(0)}%</span>
                             </div>
                           </td>
-                          <td className="px-6 py-4 text-right">
+                          <td className="px-8 py-5 text-right">
                             {isOverloaded ? (
-                              <Badge className="bg-red-100 text-red-700 border-none rounded-lg text-[9px] font-black uppercase px-2 py-0.5">Saturado</Badge>
+                              <Badge className="bg-red-600 text-white border-none rounded-xl text-[9px] font-black uppercase px-3 py-1 shadow-lg shadow-red-100">Crítico</Badge>
                             ) : utilization > 80 ? (
-                              <Badge className="bg-amber-100 text-amber-700 border-none rounded-lg text-[9px] font-black uppercase px-2 py-0.5">Alerta</Badge>
+                              <Badge className="bg-amber-500 text-white border-none rounded-xl text-[9px] font-black uppercase px-3 py-1 shadow-lg shadow-amber-100">Alerta</Badge>
                             ) : (
-                              <Badge className="bg-green-100 text-green-700 border-none rounded-lg text-[9px] font-black uppercase px-2 py-0.5">Óptimo</Badge>
+                              <Badge className="bg-indigo-900 text-white border-none rounded-xl text-[9px] font-black uppercase px-3 py-1 shadow-lg shadow-indigo-100">Óptimo</Badge>
                             )}
                           </td>
                         </tr>
@@ -693,10 +739,12 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     })}
                     {uniqueWorkstations.length === 0 && (
                       <tr>
-                        <td colSpan={8} className="py-24 text-center">
-                          <div className="flex flex-col items-center gap-3 text-slate-300">
-                            <Layers className="w-12 h-12" />
-                            <p className="font-black uppercase tracking-widest text-xs">No se han detectado puestos de trabajo en los maestros</p>
+                        <td colSpan={8} className="py-40 text-center">
+                          <div className="flex flex-col items-center gap-5 text-slate-200">
+                            <div className="bg-slate-50 p-8 rounded-full">
+                              <Layers className="w-16 h-12" />
+                            </div>
+                            <p className="font-black uppercase tracking-[0.3em] text-xs">Aguardando sincronización de maestros técnicos...</p>
                           </div>
                         </td>
                       </tr>
@@ -708,7 +756,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
           </Card>
         </TabsContent>
 
-        <TabsContent value="acolchado-tapas" className="space-y-12 pb-10">
+        <TabsContent value="acolchado-tapas" className="space-y-16 pb-20">
           {group1Suffixes.map(suffix => {
             const achCode = `HR-ACH${suffix}`;
             const pefCode = `HR-PEF${suffix}`;
@@ -719,39 +767,40 @@ export const TacticalPlanForrosSection: React.FC = () => {
             if (!achExists && !pefExists) return null;
 
             return (
-              <div key={suffix} className="space-y-4">
-                <div className="flex items-center gap-3 px-5 py-2 bg-slate-900/5 rounded-full w-fit">
-                  <Badge className="bg-slate-900 text-white font-black px-4 py-1 rounded-full text-[10px] uppercase tracking-widest">
-                    Bloque Técnico Twin {suffix}
-                  </Badge>
+              <div key={suffix} className="space-y-6">
+                <div className="flex items-center gap-4 px-7 py-2.5 bg-slate-900 rounded-full w-fit shadow-xl shadow-slate-200">
+                  <div className="w-2 h-2 rounded-full bg-sky-400 animate-pulse" />
+                  <span className="text-white font-black text-xs uppercase tracking-[0.3em]">
+                    Célula de Producción Twin {suffix}
+                  </span>
                 </div>
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-                  {achExists ? <MachineCard machineCode={achCode} /> : <div className="hidden xl:block bg-slate-100/50 border border-dashed border-slate-200 rounded-3xl" />}
-                  {pefExists ? <MachineCard machineCode={pefCode} /> : <div className="hidden xl:block bg-slate-100/50 border border-dashed border-slate-200 rounded-3xl" />}
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-10">
+                  {achExists ? <MachineCard machineCode={achCode} /> : <div className="hidden xl:flex bg-slate-100/30 border-2 border-dashed border-slate-200 rounded-[2.5rem] items-center justify-center p-20 text-slate-300 font-black uppercase text-[10px] tracking-widest">Recurso {achCode} No Definido</div>}
+                  {pefExists ? <MachineCard machineCode={pefCode} /> : <div className="hidden xl:flex bg-slate-100/30 border-2 border-dashed border-slate-200 rounded-[2.5rem] items-center justify-center p-20 text-slate-300 font-black uppercase text-[10px] tracking-widest">Recurso {pefCode} No Definido</div>}
                 </div>
               </div>
             );
           })}
         </TabsContent>
 
-        <TabsContent value="bandas" className="space-y-8 pb-10">
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+        <TabsContent value="bandas" className="space-y-10 pb-20">
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-10">
             {workstationsGroup2.map((wsCode) => (
               <MachineCard key={wsCode} machineCode={wsCode} small />
             ))}
           </div>
         </TabsContent>
 
-        <TabsContent value="interiores-corte" className="space-y-8 pb-10">
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+        <TabsContent value="interiores-corte" className="space-y-10 pb-20">
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-10">
             {workstationsGroup3.map((wsCode) => (
               <MachineCard key={wsCode} machineCode={wsCode} small />
             ))}
           </div>
         </TabsContent>
 
-        <TabsContent value="forros" className="space-y-8 pb-10">
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+        <TabsContent value="forros" className="space-y-10 pb-20">
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-10">
             {workstationsGroup4.map((wsCode) => (
               <MachineCard key={wsCode} machineCode={wsCode} small />
             ))}
@@ -759,10 +808,15 @@ export const TacticalPlanForrosSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="componentes">
-           <Card className="rounded-3xl shadow-sm border-slate-200 overflow-hidden bg-white">
-             <CardHeader className="bg-slate-50/50 border-b border-slate-200 p-8">
-                <CardTitle className="text-xl font-black text-slate-800 uppercase tracking-tight flex items-center gap-3"><Inbox className="w-6 h-6 text-slate-400" /> Buffer Maestro de Componentes</CardTitle>
-                <CardDescription>Listado global de órdenes previsionales filtrado por responsabilidad técnica.</CardDescription>
+           <Card className="rounded-[2.5rem] shadow-sm border-slate-200 overflow-hidden bg-white ring-1 ring-slate-100">
+             <CardHeader className="bg-slate-50/50 border-b border-slate-200 p-10">
+                <div className="flex items-center gap-4">
+                  <Inbox className="w-8 h-8 text-indigo-600" />
+                  <div>
+                    <CardTitle className="text-2xl font-black text-slate-900 uppercase tracking-tight">Buffer Maestro de Componentes</CardTitle>
+                    <CardDescription className="uppercase text-[9px] font-bold tracking-widest text-slate-400 mt-1">Listado global de órdenes previsionales filtrado por responsabilidad técnica</CardDescription>
+                  </div>
+                </div>
              </CardHeader>
              <CardContent className="p-0">
                 <ProvisionalOrdersTabSection 
@@ -776,53 +830,63 @@ export const TacticalPlanForrosSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="mantenimiento">
-          <Card className="rounded-3xl shadow-sm border-slate-200 overflow-hidden bg-white">
-            <CardHeader className="bg-slate-50/50 border-b border-slate-200 p-8">
+          <Card className="rounded-[2.5rem] shadow-sm border-slate-200 overflow-hidden bg-white ring-1 ring-slate-100">
+            <CardHeader className="bg-slate-50/50 border-b border-slate-200 p-10">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-xl font-black text-slate-800 uppercase tracking-tight flex items-center gap-3"><Wrench className="w-6 h-6 text-slate-400" /> Paradas Programadas</CardTitle>
-                <Button onClick={fetchMantenimientos} disabled={isLoadingMantenimientos} variant="outline" size="sm" className="h-10 px-5 font-black uppercase text-[9px] tracking-widest border-slate-300 rounded-xl">
-                  <RefreshCw className={cn("w-3.5 h-3.5 mr-2", isLoadingMantenimientos && "animate-spin")} /> Actualizar
+                <div className="flex items-center gap-4">
+                  <Wrench className="w-8 h-8 text-slate-400" />
+                  <div>
+                    <CardTitle className="text-2xl font-black text-slate-900 uppercase tracking-tight">Paradas Programadas</CardTitle>
+                    <CardDescription className="uppercase text-[9px] font-bold tracking-widest text-slate-400 mt-1">Mantenimiento preventivo por responsables técnicos</CardDescription>
+                  </div>
+                </div>
+                <Button onClick={fetchMantenimientos} disabled={isLoadingMantenimientos} variant="outline" size="sm" className="h-12 px-6 font-black uppercase text-[10px] tracking-widest border-slate-300 rounded-2xl shadow-sm hover:bg-slate-50">
+                  <RefreshCw className={cn("w-4 h-4 mr-2", isLoadingMantenimientos && "animate-spin")} /> Actualizar
                 </Button>
               </div>
             </CardHeader>
             <CardContent className="p-0">
               <div className="overflow-x-auto">
-                <table className="w-full text-[11px] border-collapse">
-                  <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
-                    <tr className="text-slate-500 font-black uppercase tracking-widest">
-                      <th className="px-6 py-4 text-left bg-slate-100/50">FECHA PROG.</th>
-                      <th className="px-6 py-4 text-left">EQUIPO</th>
-                      <th className="px-6 py-4 text-left">DESCRIPCIÓN</th>
-                      <th className="px-6 py-4 text-left">FRECUENCIA</th>
-                      <th className="px-6 py-4 text-left">ESTADO</th>
+                <table className="w-full text-[12px] border-collapse">
+                  <thead className="bg-slate-950 sticky top-0 z-10">
+                    <tr className="text-slate-400 font-black uppercase tracking-[0.25em]">
+                      <th className="px-8 py-5 text-left bg-slate-900 text-white">FECHA PROG.</th>
+                      <th className="px-8 py-5 text-left">EQUIPO</th>
+                      <th className="px-8 py-5 text-left text-sky-400">DESCRIPCIÓN</th>
+                      <th className="px-8 py-5 text-left">FRECUENCIA</th>
+                      <th className="px-8 py-5 text-left">ESTADO</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 bg-white">
                     {pagedMantenimientos.length > 0 ? pagedMantenimientos.map((m, idx) => (
-                      <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
-                        <td className="px-6 py-4 font-mono font-black text-slate-700">{m.FECHA_PRO ? new Date(m.FECHA_PRO).toLocaleDateString('es-ES') : '—'}</td>
-                        <td className="px-6 py-4 font-mono font-bold text-slate-500">{m.CODIGO_EQ || '—'}</td>
-                        <td className="px-6 py-4 font-black text-slate-400 uppercase">{m.NOMBRE_EQ || '—'}</td>
-                        <td className="px-6 py-4 text-slate-400 font-black uppercase text-[9px]">{m.T_FREC || '—'}</td>
-                        <td className="px-6 py-4"><Badge className="font-black text-[9px] px-3 py-1 border-none rounded-lg shadow-sm bg-indigo-600 text-white">{m.ESTADO || 'PENDIENTE'}</Badge></td>
+                      <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-8 py-5 font-mono font-black text-slate-800">{m.FECHA_PRO ? new Date(m.FECHA_PRO).toLocaleDateString('es-ES') : '—'}</td>
+                        <td className="px-8 py-5 font-mono font-bold text-slate-500">{m.CODIGO_EQ || '—'}</td>
+                        <td className="px-8 py-5 font-black text-slate-700 uppercase tracking-tight">{m.NOMBRE_EQ || '—'}</td>
+                        <td className="px-8 py-5 text-slate-400 font-black uppercase text-[10px] tracking-widest">{m.T_FREC || '—'}</td>
+                        <td className="px-8 py-5">
+                          <Badge className="font-black text-[10px] px-4 py-1.5 border-none rounded-xl shadow-md bg-indigo-600 text-white uppercase tracking-widest">{m.ESTADO || 'PENDIENTE'}</Badge>
+                        </td>
                       </tr>
                     )) : (
-                      <tr><td colSpan={5} className="py-24 text-center font-black text-slate-200 uppercase text-xs tracking-widest">Sin mantenimientos pendientes</td></tr>
+                      <tr><td colSpan={5} className="py-40 text-center font-black text-slate-200 uppercase text-sm tracking-[0.4em]">Sin mantenimientos en calendario</td></tr>
                     )}
                   </tbody>
                 </table>
               </div>
               {totalMaintPages > 1 && (
-                <div className="flex items-center justify-between px-8 py-5 bg-slate-50 border-t border-slate-200">
-                  <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Página {maintPage} de {totalMaintPages}</div>
-                  <div className="flex items-center gap-1.5">
-                    <Button variant="outline" size="icon" onClick={() => setMaintPage(1)} disabled={maintPage === 1} className="h-8 w-8 rounded-lg"><ChevronsLeft className="h-3.5 w-3.5" /></Button>
-                    <Button variant="outline" size="icon" onClick={() => setMaintPage(prev => Math.max(1, prev - 1))} disabled={maintPage === 1} className="h-8 w-8 rounded-lg"><ChevronLeft className="h-3.5 w-3.5" /></Button>
-                    {getPageNumbers(maintPage, totalMaintPages).map((p, idx) => (
-                      <button key={idx} onClick={() => typeof p === 'number' && setMaintPage(p)} className={cn("min-w-[32px] h-8 rounded-lg text-[10px] font-black border", maintPage === p ? "bg-slate-900 text-white" : "bg-white text-slate-500 border-slate-200")}>{p}</button>
-                    ))}
-                    <Button variant="outline" size="icon" onClick={() => setMaintPage(prev => Math.min(totalMaintPages, prev + 1))} disabled={maintPage === totalMaintPages} className="h-8 w-8 rounded-lg"><ChevronRight className="h-3.5 w-3.5" /></Button>
-                    <Button variant="outline" size="icon" onClick={() => setMaintPage(totalMaintPages)} disabled={maintPage === totalMaintPages} className="h-8 w-8 rounded-lg"><ChevronsRight className="h-3.5 w-3.5" /></Button>
+                <div className="flex items-center justify-between px-10 py-6 bg-slate-50/50 border-t border-slate-200">
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Página {maintPage} de {totalMaintPages}</div>
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="icon" onClick={() => setMaintPage(1)} disabled={maintPage === 1} className="h-10 w-10 rounded-xl border-slate-200"><ChevronsLeft className="h-4 h-4" /></Button>
+                    <Button variant="outline" size="icon" onClick={() => setMaintPage(prev => Math.max(1, prev - 1))} disabled={maintPage === 1} className="h-10 w-10 rounded-xl border-slate-200"><ChevronLeft className="h-4 h-4" /></Button>
+                    <div className="flex items-center gap-1 mx-2">
+                      {getPageNumbers(maintPage, totalMaintPages).map((p, idx) => (
+                        <button key={idx} onClick={() => typeof p === 'number' && setMaintPage(p)} className={cn("min-w-[40px] h-10 rounded-xl text-[11px] font-black border-2 transition-all", maintPage === p ? "bg-slate-900 border-slate-900 text-white shadow-lg shadow-slate-200" : "bg-white text-slate-500 border-slate-200 hover:border-slate-300")}>{p}</button>
+                      ))}
+                    </div>
+                    <Button variant="outline" size="icon" onClick={() => setMaintPage(prev => Math.min(totalMaintPages, prev + 1))} disabled={maintPage === totalMaintPages} className="h-10 w-10 rounded-xl border-slate-200"><ChevronRight className="h-4 h-4" /></Button>
+                    <Button variant="outline" size="icon" onClick={() => setMaintPage(totalMaintPages)} disabled={maintPage === totalMaintPages} className="h-10 w-10 rounded-xl border-slate-200"><ChevronsRight className="h-4 h-4" /></Button>
                   </div>
                 </div>
               )}
@@ -831,58 +895,77 @@ export const TacticalPlanForrosSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="personal-turnos">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <Card className="lg:col-span-1 rounded-3xl shadow-sm border-slate-200 overflow-hidden bg-white">
-               <CardHeader className="bg-slate-900 text-white p-6">
-                 <CardTitle className="text-xl font-black uppercase tracking-tight flex items-center gap-3"><Clock className="w-6 h-6 text-sky-400" /> Parámetros de Tiempo</CardTitle>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
+            <Card className="lg:col-span-1 rounded-[2.5rem] shadow-sm border-slate-200 overflow-hidden bg-white ring-1 ring-slate-100">
+               <CardHeader className="bg-slate-950 text-white p-8">
+                 <div className="flex items-center gap-4">
+                   <Clock className="w-7 h-7 text-sky-400" />
+                   <CardTitle className="text-xl font-black uppercase tracking-tight">Parámetros de Jornada</CardTitle>
+                 </div>
                </CardHeader>
-               <CardContent className="p-8 space-y-8">
-                 <div className="space-y-4">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">Jornada Diurna (L-V)</label>
+               <CardContent className="p-10 space-y-10">
+                 <div className="space-y-5">
+                    <label className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em]">Jornada Diurna (L-V)</label>
                     <Select value={jornadaDiurnaSel} onValueChange={setJornadaDiurnaSel}>
-                      <SelectTrigger className="h-11 border border-slate-200 rounded-xl font-bold text-slate-700">
+                      <SelectTrigger className="h-14 border-2 border-slate-100 rounded-2xl font-black text-slate-800 bg-slate-50/50 hover:bg-white transition-all">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {DIURNA_OPTIONS.map(opt => <SelectItem key={opt.value} value={opt.value} className="font-bold">{opt.label}</SelectItem>)}
+                        {DIURNA_OPTIONS.map(opt => <SelectItem key={opt.value} value={opt.value} className="font-black py-3">{opt.label}</SelectItem>)}
                       </SelectContent>
                     </Select>
                  </div>
-                 <div className="space-y-4">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">Jornada Nocturna</label>
+                 <div className="space-y-5">
+                    <label className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em]">Jornada Nocturna</label>
                     <Select value={jornadaNocturnaSel} onValueChange={setJornadaNocturnaSel}>
-                      <SelectTrigger className="h-11 border border-slate-200 rounded-xl font-bold text-slate-700">
+                      <SelectTrigger className="h-14 border-2 border-slate-100 rounded-2xl font-black text-slate-800 bg-slate-50/50 hover:bg-white transition-all">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {NOCTURNA_OPTIONS.map(opt => <SelectItem key={opt.value} value={opt.value} className="font-bold">{opt.label}</SelectItem>)}
+                        {NOCTURNA_OPTIONS.map(opt => <SelectItem key={opt.value} value={opt.value} className="font-black py-3">{opt.label}</SelectItem>)}
                       </SelectContent>
                     </Select>
                  </div>
-                 <div className="p-7 bg-slate-900 rounded-[1.5rem] text-white shadow-xl border border-white/10">
-                    <p className="text-[9px] font-black text-slate-500 uppercase tracking-[0.3em] mb-6">Eficiencia Operativa: 84%</p>
-                    <div className="grid grid-cols-2 gap-6">
-                      <div className="border-l-4 border-sky-400 pl-4"><p className="text-xl font-black font-mono">{horasNetasDiurnas.toFixed(2)}h</p><p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mt-1">Día Neto</p></div>
-                      <div className="border-l-4 border-indigo-500 pl-4"><p className="text-xl font-black font-mono">{horasNetasNocturnas.toFixed(2)}h</p><p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mt-1">Noche Neto</p></div>
+                 <div className="p-8 bg-slate-950 rounded-[2rem] text-white shadow-2xl border border-white/5">
+                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.4em] mb-8">Eficiencia Operativa: 84%</p>
+                    <div className="grid grid-cols-2 gap-8">
+                      <div className="border-l-4 border-sky-500 pl-5"><p className="text-2xl font-black font-mono text-white">{horasNetasDiurnas.toFixed(2)}h</p><p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mt-2">Día Neto</p></div>
+                      <div className="border-l-4 border-indigo-600 pl-5"><p className="text-2xl font-black font-mono text-white">{horasNetasNocturnas.toFixed(2)}h</p><p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mt-2">Noche Neto</p></div>
                     </div>
-                    <div className="mt-8 pt-6 border-t border-white/10"><p className="text-4xl font-black text-sky-300 font-mono">{totalHorasNetas.toFixed(2)}h</p><p className="text-[10px] font-black text-slate-500 uppercase mt-2 tracking-[0.2em]">Potencial Diario / Persona</p></div>
+                    <div className="mt-10 pt-8 border-t border-white/5 flex flex-col items-center">
+                      <span className="text-4xl font-black text-sky-400 font-mono tracking-tighter drop-shadow-[0_0_10px_rgba(56,189,248,0.3)]">{totalHorasNetas.toFixed(2)}h</span>
+                      <span className="text-[11px] font-black text-slate-500 uppercase mt-3 tracking-[0.25em]">Capacidad Diaria / Persona</span>
+                    </div>
                  </div>
                </CardContent>
             </Card>
 
-            <Card className="lg:col-span-2 rounded-3xl shadow-sm border-slate-200 overflow-hidden bg-white">
-               <CardHeader className="bg-slate-50/50 border-b border-slate-200 p-8"><CardTitle className="text-xl font-black text-slate-800 uppercase tracking-tight">Dotación por Estación</CardTitle></CardHeader>
-               <CardContent className="p-8">
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-h-[60vh] overflow-y-auto pr-2 text-slate-900">
+            <Card className="lg:col-span-2 rounded-[2.5rem] shadow-sm border-slate-200 overflow-hidden bg-white ring-1 ring-slate-100">
+               <CardHeader className="bg-slate-50/50 border-b border-slate-200 p-10">
+                  <div className="flex items-center gap-4">
+                    <UserPlus className="w-7 h-7 text-indigo-600" />
+                    <div>
+                      <CardTitle className="text-2xl font-black text-slate-900 uppercase tracking-tight">Dotación de Planta</CardTitle>
+                      <CardDescription className="uppercase text-[9px] font-bold tracking-widest text-slate-400 mt-1">Configuración de personal por puesto de trabajo</CardDescription>
+                    </div>
+                  </div>
+               </CardHeader>
+               <CardContent className="p-10">
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-h-[65vh] overflow-y-auto pr-4 custom-scrollbar">
                     {uniqueWorkstations.map(ws => {
                       const config = workstationConfigs[ws] || { people: 1 };
                       return (
-                        <div key={ws} className="flex items-center justify-between p-5 border border-slate-100 rounded-[1.25rem] bg-white hover:border-slate-300 transition-all shadow-sm group">
-                          <div><p className="font-black text-slate-700 uppercase text-xs tracking-wider group-hover:text-indigo-700 transition-colors">{ws}</p><p className="text-[9px] font-black text-slate-400 uppercase mt-1">Capacidad: {(config.people * totalHorasNetas).toFixed(1)}h/día</p></div>
-                          <div className="flex items-center gap-2.5 bg-slate-50 p-1.5 rounded-xl border border-slate-200">
-                            <button onClick={() => handleWorkstationConfigChange(ws, 'people', Math.max(1, config.people - 1))} className="w-8 h-8 rounded-lg bg-white shadow-sm flex items-center justify-center font-black hover:bg-slate-900 hover:text-white transition-all text-xs">-</button>
-                            <span className="font-mono font-black text-md min-w-[28px] text-center">{config.people}</span>
-                            <button onClick={() => handleWorkstationConfigChange(ws, 'people', config.people + 1)} className="w-8 h-8 rounded-lg bg-white shadow-sm flex items-center justify-center font-black hover:bg-slate-900 hover:text-white transition-all text-xs">+</button>
+                        <div key={ws} className="flex items-center justify-between p-6 border-2 border-slate-50 rounded-[2rem] bg-white hover:border-indigo-100 hover:shadow-md transition-all group">
+                          <div>
+                            <p className="font-black text-slate-800 uppercase text-sm tracking-tighter group-hover:text-indigo-700 transition-colors">{ws}</p>
+                            <div className="flex items-center gap-2 mt-2">
+                              <Badge className="bg-slate-100 text-slate-400 border-none font-mono text-[10px] px-2">CAP: {(config.people * totalHorasNetas).toFixed(1)}h</Badge>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3 bg-slate-50 p-2 rounded-2xl border border-slate-100">
+                            <button onClick={() => handleWorkstationConfigChange(ws, 'people', Math.max(1, config.people - 1))} className="w-9 h-9 rounded-xl bg-white shadow-sm flex items-center justify-center font-black hover:bg-slate-900 hover:text-white transition-all text-sm">-</button>
+                            <span className="font-mono font-black text-lg min-w-[32px] text-center text-indigo-700">{config.people}</span>
+                            <button onClick={() => handleWorkstationConfigChange(ws, 'people', config.people + 1)} className="w-9 h-9 rounded-xl bg-white shadow-sm flex items-center justify-center font-black hover:bg-slate-900 hover:text-white transition-all text-sm">+</button>
                           </div>
                         </div>
                       );
