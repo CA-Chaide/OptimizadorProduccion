@@ -143,7 +143,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [processedSignature, setProcessedSignature] = useState('');
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
-  // Definición de fechas con órdenes para el calendario (CORRECCIÓN DE ERROR)
   const datesWithOrders = useMemo(() => {
     const dates = new Set<string>();
     ordenes.forEach(o => {
@@ -413,39 +412,42 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         </TabsList>
 
         <TabsContent value="resumen" className="space-y-6 animate-in fade-in duration-300">
-           {/* RESUMEN EJECUTIVO SIMPLIFICADO */}
-           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-center bg-[#1e293b] p-6 rounded-3xl border border-white/10 shadow-2xl text-white">
-             <div className="flex flex-col gap-1 border-r border-white/10 pr-6">
-                <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Cantidad Necesaria (KG)</span>
-                <p className="text-2xl font-black font-mono text-red-400 tracking-tighter">
-                  {totalsUnified.kg.toLocaleString(undefined, { maximumFractionDigits: 1 })}
-                </p>
+           {/* DASHBOARD EJECUTIVO SEGÚN IMAGEN 1 */}
+           <div className="flex items-center gap-6 bg-[#1e293b] p-6 rounded-[2rem] border border-white/5 shadow-2xl text-white">
+             <div className="flex-1 flex items-center justify-between">
+                <div className="flex flex-col gap-1 border-r border-white/10 pr-8 flex-1">
+                   <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Cantidad Necesaria (KG)</span>
+                   <p className="text-4xl font-black font-mono text-red-400 tracking-tighter">
+                     {totalsUnified.kg.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).replace('.', ',')}
+                   </p>
+                </div>
+                <div className="flex flex-col gap-1 border-r border-white/10 px-8 flex-1">
+                   <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Cantidad Necesaria (UND)</span>
+                   <p className="text-4xl font-black font-mono text-indigo-400 tracking-tighter">
+                     {Math.round(totalsUnified.un).toLocaleString()}
+                   </p>
+                </div>
+                <div className="flex flex-col gap-1 pl-8 flex-1">
+                   <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Nro de Aperturas o Corridas</span>
+                   <p className="text-4xl font-black font-mono text-yellow-400 tracking-tighter">
+                     {groupedNeeds.length}
+                   </p>
+                </div>
              </div>
-             <div className="flex flex-col gap-1 border-r border-white/10 pr-6 pl-2">
-                <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Cantidad Necesaria (UND)</span>
-                <p className="text-2xl font-black font-mono text-indigo-400 tracking-tighter">
-                  {Math.round(totalsUnified.un).toLocaleString()}
-                </p>
-             </div>
-             <div className="flex flex-col gap-1 pl-2">
-                <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Nro de Aperturas o Corridas</span>
-                <p className="text-2xl font-black font-mono text-yellow-400 tracking-tighter">
-                  {groupedNeeds.length}
-                </p>
-             </div>
-             <div className="flex justify-end ml-auto">
+             
+             <div className="flex flex-col justify-center">
                 <Button 
                   onClick={handleRefresh} 
                   disabled={isProcessingResumen}
-                  className="bg-red-600 hover:bg-red-700 text-white rounded-xl h-10 px-6 text-[10px] font-black uppercase tracking-widest shadow-lg transition-all"
+                  className="bg-red-600 hover:bg-red-700 text-white rounded-[1.2rem] h-14 px-8 text-[11px] font-black uppercase tracking-widest shadow-lg transition-all flex items-center gap-3 active:scale-95"
                 >
-                  {isProcessingResumen ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+                  {isProcessingResumen ? <Loader2 className="w-5 h-5 animate-spin" /> : <RefreshCw className="w-5 h-5" />}
                   Actualizar Datos
                 </Button>
              </div>
            </div>
 
-          <div className="border-2 border-gray-100 rounded-[2.5rem] shadow-2xl overflow-hidden bg-white">
+          <div className="border-2 border-gray-100 rounded-[2.5rem] shadow-2xl overflow-hidden bg-white mt-8">
             <div className="overflow-x-auto max-h-[600px] relative">
               <table className="w-full border-collapse font-sans text-[11px] text-center">
                 <thead className="sticky top-0 z-20">
