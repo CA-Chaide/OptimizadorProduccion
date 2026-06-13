@@ -32,7 +32,9 @@ import {
   CheckCircle2,
   Activity,
   ShieldCheck,
-  ShieldAlert
+  ShieldAlert,
+  Info,
+  ClipboardList
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@radix-ui/react-tabs';
@@ -186,18 +188,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return String(value);
   }, [safeParseDateParts]);
 
-  const getPageNumbers = (current: number, total: number): (number | '...')[] => {
-    if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
-    const pages: (number | '...')[] = [1];
-    const left = Math.max(2, current - 1);
-    const right = Math.min(total - 1, current + 1);
-    if (left > 2) pages.push('...');
-    for (let i = left; i <= right; i++) pages.push(i);
-    if (right < total - 1) pages.push('...');
-    pages.push(total);
-    return pages;
-  };
-
   const fetchBaseData = useCallback(async () => {
     try {
       setIsLoading(true);
@@ -322,11 +312,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
       setHabilidadesPage(1);
     } catch (error) {
       console.error('Error fetching Habilidades OP:', error);
-      addNotification('error', 'No se pudieron cargar las Habilidades OP.');
     } finally {
       setIsLoadingHabilidades(false);
     }
-  }, [addNotification]);
+  }, []);
 
   const fetchMantenimientos = useCallback(async () => {
     setIsLoadingMantenimientos(true);
@@ -340,11 +329,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
       setMaintCurrentPage(1);
     } catch (error) {
       console.error('Error fetching Mantenimientos:', error);
-      addNotification('error', 'No se pudieron cargar los Mantenimientos Preventivos.');
     } finally {
       setIsLoadingMantenimientos(false);
     }
-  }, [addNotification]);
+  }, []);
 
   const uniqueWorkstations = useMemo(() => {
     const wsSet = new Set<string>();
@@ -410,7 +398,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     } finally {
       setIsLoadingDaily(false);
     }
-  }, [externalFilters, targetDate, todayDate, safeParseDateParts, normalizeDateForFilter]);
+  }, [externalFilters, targetDate, todayDate, normalizeDateForFilter]);
 
   const fetchExplosionData = useCallback(async (page: number = 1) => {
     setIsLoadingExplosion(true);
@@ -431,11 +419,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
       }
     } catch (error) {
       console.error('Error fetching explosion data:', error);
-      addNotification('error', 'No se pudo cargar la explosión de materiales.');
     } finally {
       setIsLoadingExplosion(false);
     }
-  }, [centroExplosion, fertExplosion, explosionRowsPerPage, addNotification]);
+  }, [centroExplosion, fertExplosion, explosionRowsPerPage]);
 
   useEffect(() => {
     if (isMounted && forrosGruposList.length > 0) {
@@ -539,42 +526,13 @@ export const TacticalPlanForrosSection: React.FC = () => {
     setTiemposPage(1);
   };
 
-  const dailyColumns = useMemo(() => {
-    const priority = ['ORDENPREVISIONAL', 'MATERIAL', 'TEXTOMATERIAL', 'FECHAINICIO', 'CANTIDAD', 'TIEMPOS DE PRODUCCIÓN', 'MAQUINA', 'VALIDACIÓN TÉCNICA', 'FECHAFIN'];
-    if (dailyOrders.length === 0) return priority;
-    const allKeys = Object.keys(dailyOrders[0]);
-    const usedKeysUpper = new Set(priority.map(p => p.toUpperCase().trim()));
-    const finalColumns = [...priority];
-
-    allKeys.forEach(k => {
-      const kUpper = k.toUpperCase().trim();
-      if (!usedKeysUpper.has(kUpper) && kUpper !== 'CATEGORIA' && kUpper !== 'MAQUINA' && kUpper !== 'PUESTOTRABAJO') {
-        finalColumns.push(k);
-        usedKeysUpper.add(kUpper);
-      }
-    });
-
-    return finalColumns;
-  }, [dailyOrders]);
-
   const processedDailyOrders = useMemo(() => {
     return dailyOrders
       .filter(order => {
         const machine = getResolvedMachine(order);
-        return machine !== 'HR-FORRO' && machine !== 'HR-FBASE';
-      })
-      .sort((a, b) => {
-        const machineA = getResolvedMachine(a);
-        const machineB = getResolvedMachine(b);
-        return machineA.localeCompare(machineB);
+        return machine !== 'HR-FORRO' && machine !== 'HR-FBASE' && machine !== '';
       });
   }, [dailyOrders, getResolvedMachine]);
-
-  const totalDailyPages = Math.max(1, Math.ceil(processedDailyOrders.length / dailyRowsPerPage));
-  const paginatedDailyOrders = useMemo(() => {
-    const start = (dailyPage - 1) * dailyRowsPerPage;
-    return processedDailyOrders.slice(start, start + dailyRowsPerPage);
-  }, [processedDailyOrders, dailyPage, dailyRowsPerPage]);
 
   const handleWorkstationConfigChange = (ws: string, field: keyof WorkstationConfig, value: any) => {
     setWorkstationConfigs(prev => ({
@@ -586,249 +544,138 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }));
   };
 
-  const productionSummary = useMemo(() => {
-    const summaryMap = new Map<string, { machine: string; quantity: number; count: number; totalTime: number }>();
-    const machines = new Set<string>();
-    tiemposProduccion.forEach(t => {
-      const values = Object.values(t).map(v => String(v || '').trim().toUpperCase());
-      const hr = values.find(v => v.startsWith('HR'));
-      if (hr) machines.add(hr);
-    });
-
-    machines.forEach(m => summaryMap.set(m, { machine: m, quantity: 0, count: 0, totalTime: 0 }));
-
-    dailyOrders.forEach(order => {
-      const machine = getResolvedMachine(order) || 'SIN MÁQUINA';
-      const quantity = Number(order['CANTIDAD'] || 0);
-      const timeVal = parseFloat(calculateProductionTime(order['MATERIAL'] || order['CodMaterial'] || '', quantity, order)) || 0;
-      if (!summaryMap.has(machine)) summaryMap.set(machine, { machine, quantity: 0, count: 0, totalTime: 0 });
-      const entry = summaryMap.get(machine)!;
-      entry.quantity += quantity;
-      entry.count += 1;
-      entry.totalTime += timeVal;
-    });
+  const getMachineData = useCallback((machineCode: string) => {
+    const orders = processedDailyOrders.filter(o => getResolvedMachine(o) === machineCode);
+    const quantity = orders.reduce((sum, o) => sum + Number(o['CANTIDAD'] || 0), 0);
+    const totalTimeMin = orders.reduce((sum, o) => {
+      const t = parseFloat(calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || 0), o));
+      return sum + t;
+    }, 0);
+    const totalTimeHours = totalTimeMin / 60;
     
-    return Array.from(summaryMap.values()).sort((a, b) => a.machine.localeCompare(b.machine));
-  }, [dailyOrders, tiemposProduccion, getResolvedMachine, calculateProductionTime]);
+    const config = workstationConfigs[machineCode] || { people: 1 };
+    const capacityHours = totalHorasNetas * config.people;
+    const utilization = capacityHours > 0 ? (totalTimeHours / capacityHours) * 100 : 0;
 
-  // VALIDADOR DE REGLA ESPEJO INTEGRADO
-  const getValidationAlert = useCallback((order: any) => {
-    const machine = getResolvedMachine(order).trim().toUpperCase();
-    const material = normalizeMaterialCode(order['MATERIAL'] || order['CodMaterial'] || '');
-    
-    if (machine.startsWith('HR-ACH')) {
-      const suffix = machine.slice(-2);
-      const targetPef = `HR-PEF${suffix}`;
-      const hasPair = dailyOrders.some(o => 
-        normalizeMaterialCode(o['MATERIAL'] || o['CodMaterial'] || '') === material && 
-        getResolvedMachine(o).toUpperCase() === targetPef
-      );
-      return hasPair ? null : `Falta par ${targetPef}`;
-    }
-    
-    if (machine.startsWith('HR-PEF')) {
-      const suffix = machine.slice(-2);
-      const targetAch = `HR-ACH${suffix}`;
-      const hasPair = dailyOrders.some(o => 
-        normalizeMaterialCode(o['MATERIAL'] || o['CodMaterial'] || '') === material && 
-        getResolvedMachine(o).toUpperCase() === targetAch
-      );
-      return hasPair ? null : `Falta par ${targetAch}`;
-    }
+    return { orders, quantity, totalTimeHours, capacityHours, utilization, config };
+  }, [processedDailyOrders, getResolvedMachine, calculateProductionTime, workstationConfigs, totalHorasNetas]);
 
-    return null;
-  }, [dailyOrders, getResolvedMachine, normalizeMaterialCode]);
+  const machinePairs = useMemo(() => {
+    const suffixes = ["02", "06", "08", "09", "10"];
+    return suffixes.map(s => ({
+      suffix: s,
+      ach: `HR-ACH${s}`,
+      pef: `HR-PEF${s}`
+    }));
+  }, []);
 
-  const filteredHabilidades = useMemo(() => {
-    return habilidadesOpData.filter(item => {
-      return Object.entries(habilidadesFilters).every(([col, val]) => {
-        if (!val) return true;
-        return String(item[col] ?? '').toLowerCase().includes(val.toLowerCase());
-      });
-    });
-  }, [habilidadesOpData, habilidadesFilters]);
+  const MachineCard = ({ machineCode, title }: { machineCode: string, title: string }) => {
+    const data = getMachineData(machineCode);
+    const isOverloaded = data.utilization > 100;
 
-  const totalHabilidadesPages = Math.max(1, Math.ceil(filteredHabilidades.length / habilidadesRowsPerPage));
-  const paginatedHabilidadesData = useMemo(() => {
-    const start = (habilidadesPage - 1) * habilidadesRowsPerPage;
-    return filteredHabilidades.slice(start, start + habilidadesRowsPerPage);
-  }, [filteredHabilidades, habilidadesPage, habilidadesRowsPerPage]);
+    return (
+      <div className="flex border-2 border-slate-800 rounded-lg overflow-hidden h-[450px] shadow-xl w-full">
+        {/* Lado Izquierdo: INFORMACIÓN (AZUL) */}
+        <div className="w-[35%] bg-[#0070c0] p-4 text-white flex flex-col border-r-2 border-slate-800">
+          <div className="mb-4">
+            <h4 className="text-xs font-black uppercase tracking-widest opacity-80 mb-1">{machineCode}</h4>
+            <h3 className="text-xl font-black uppercase leading-tight">{title}</h3>
+          </div>
+          
+          <div className="flex-1 space-y-4">
+            <div className="bg-white/10 p-3 rounded-lg backdrop-blur-sm border border-white/10">
+              <p className="text-[10px] font-bold uppercase opacity-60 mb-2">Información del Puesto</p>
+              <div className="space-y-2">
+                <div className="flex justify-between items-center text-sm">
+                  <span className="flex items-center gap-2"><Users className="w-3.5 h-3.5" /> Personal:</span>
+                  <span className="font-mono font-bold text-lg">{data.config.people}</span>
+                </div>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="flex items-center gap-2"><Activity className="w-3.5 h-3.5" /> Capacidad:</span>
+                  <span className="font-mono font-bold">{data.capacityHours.toFixed(2)}h</span>
+                </div>
+              </div>
+            </div>
 
-  const handleHabilidadesFilterChange = (column: string, value: string) => {
-    setHabilidadesFilters(prev => ({ ...prev, [column]: value }));
-    setHabilidadesPage(1);
-  };
+            <div className="bg-white/10 p-3 rounded-lg backdrop-blur-sm border border-white/10">
+              <p className="text-[10px] font-bold uppercase opacity-60 mb-2">Ocupación del Turno</p>
+              <div className="flex items-baseline gap-2 mb-2">
+                <span className={cn("text-4xl font-black font-mono tracking-tighter", isOverloaded ? "text-red-300" : "text-white")}>
+                  {data.utilization.toFixed(1)}
+                </span>
+                <span className="text-lg font-bold opacity-60">%</span>
+              </div>
+              <Progress value={data.utilization} className={cn("h-3 bg-white/20", isOverloaded ? "[&>div]:bg-red-400" : "[&>div]:bg-green-400")} />
+              <p className="text-[10px] mt-2 font-bold uppercase text-center opacity-70">
+                Uso: {data.totalTimeHours.toFixed(2)}h de {data.capacityHours.toFixed(2)}h
+              </p>
+            </div>
 
-  const filteredMantenimientosFull = useMemo(() => {
-    let result = [...mantenimientosData];
-    const allowedResps = externalFilters['RESPCTRLPROD'] || [];
-    if (allowedResps.length > 0) {
-      result = result.filter(m => {
-        const respKey = Object.keys(m).find(k => 
-          k.toUpperCase().trim() === 'RESP_CONTROL_PROD' || 
-          k.toUpperCase().trim() === 'RESPONSABLE' ||
-          k.toUpperCase().trim() === 'RESPONSABLE_CONTROL'
-        );
-        if (!respKey) return true;
-        const val = String(m[respKey] || '').trim().padStart(3, '0');
-        return allowedResps.includes(val);
-      });
-    }
-    result.sort((a, b) => {
-      const dateA = new Date(a.FECHA_PRO || a.FECHA_INICIO || a.FECHA || 0).getTime();
-      const dateB = new Date(b.FECHA_PRO || b.FECHA_INICIO || b.FECHA || 0).getTime();
-      return dateA - dateB;
-    });
-    return result;
-  }, [mantenimientosData, externalFilters]);
+            <div className="space-y-1 pt-2">
+              <div className="flex items-center gap-2 text-[10px] font-bold text-blue-100/60 uppercase">
+                <div className="w-1.5 h-1.5 rounded-full bg-orange-400"></div>
+                Día: {data.config.dayName || 'Sin asignar'}
+              </div>
+              {parseFloat(jornadaNocturnaSel) > 0 && (
+                <div className="flex items-center gap-2 text-[10px] font-bold text-blue-100/60 uppercase">
+                  <div className="w-1.5 h-1.5 rounded-full bg-indigo-300"></div>
+                  Noche: {data.config.nightName || 'Sin asignar'}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
 
-  const maintTotalPages = Math.max(1, Math.ceil(filteredMantenimientosFull.length / MAINT_ROWS_PER_PAGE));
-  const paginatedMantenimientos = useMemo(() => {
-    const start = (maintCurrentPage - 1) * MAINT_ROWS_PER_PAGE;
-    return filteredMantenimientosFull.slice(start, start + MAINT_ROWS_PER_PAGE);
-  }, [filteredMantenimientosFull, maintCurrentPage]);
-
-  const maintColumnsSorted = useMemo(() => {
-    if (maintColumns.length === 0) return [];
-    const dateCol = maintColumns.find(c => {
-      const norm = c.toUpperCase().replace(/_/g, '');
-      return norm === 'FECHAPRO' || norm === 'FECHAPROGRAMACION';
-    }) || maintColumns.find(c => c.toUpperCase().includes('FECHA'));
-    if (!dateCol) return maintColumns;
-    return [dateCol, ...maintColumns.filter(c => c !== dateCol)];
-  }, [maintColumns]);
-
-  const chnBasesDateTotals = useMemo(() => {
-    const filteredForTab = dailyOrders.filter(order => {
-      const machine = getResolvedMachine(order);
-      return ['HR-FBASE', 'HR-FORRO'].includes(machine);
-    });
-    const totalToday = filteredForTab.filter(order => normalizeDateForFilter(order['FECHAINICIO']) === todayDate).reduce((sum, order) => sum + Number(order['CANTIDAD'] || 0), 0);
-    const totalTarget = filteredForTab.filter(order => normalizeDateForFilter(order['FECHAINICIO']) === targetDate).reduce((sum, order) => sum + Number(order['CANTIDAD'] || 0), 0);
-    return { totalToday, totalTarget };
-  }, [dailyOrders, getResolvedMachine, normalizeDateForFilter, todayDate, targetDate]);
-
-  const displayTodayDate = useMemo(() => {
-    if (!todayDate) return '';
-    const [y, m, d] = todayDate.split('-').map(Number);
-    const date = new Date(y, m - 1, d);
-    date.setDate(date.getDate() + 1);
-    return date.toISOString().split('T')[0];
-  }, [todayDate]);
-
-  const displayTargetDate = useMemo(() => {
-    if (!targetDate) return '';
-    const [y, m, d] = targetDate.split('-').map(Number);
-    const date = new Date(y, m - 1, d);
-    date.setDate(date.getDate() + 1);
-    return date.toISOString().split('T')[0];
-  }, [targetDate]);
-
-  const formattedTodayDisp = displayTodayDate ? formatValueForDisplay('FECHA', displayTodayDate) : '...';
-  const formattedTargetDisp = displayTargetDate ? formatValueForDisplay('FECHA', displayTargetDate) : '...';
-
-  const renderDailyTableBody = () => {
-    if (isLoadingDaily) return <tr><td colSpan={dailyColumns.length} className="py-24 text-center"><Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" /></td></tr>;
-    if (paginatedDailyOrders.length === 0) return <tr><td colSpan={dailyColumns.length} className="py-20 text-center text-gray-400 italic bg-gray-50/50">No hay órdenes para hoy o la fecha objetivo seleccionada en esta página.</td></tr>;
-
-    const rows: React.ReactNode[] = [];
-    let currentGroupQuantity = 0;
-    let currentGroupTime = 0;
-
-    paginatedDailyOrders.forEach((order, idx) => {
-      const machine = getResolvedMachine(order) || 'SIN MÁQUINA';
-      const quantity = Number(order['CANTIDAD'] || 0);
-      const timeVal = parseFloat(calculateProductionTime(order['MATERIAL'] || order['CodMaterial'] || '', quantity, order)) || 0;
-      const alert = getValidationAlert(order);
-
-      currentGroupQuantity += quantity;
-      currentGroupTime += timeVal;
-
-      rows.push(
-        <tr key={`daily-${idx}`} className="hover:bg-blue-50/40 transition-colors">
-          {dailyColumns.map((col, cIdx) => {
-            const upperCol = col.toUpperCase().trim();
-            if (col === 'TIEMPOS DE PRODUCCIÓN') return <td key={`daily-cell-${idx}-${col}-${cIdx}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] font-mono text-gray-600"><span className="font-bold text-emerald-700">{timeVal.toFixed(2)} min</span></td>;
-            if (upperCol === 'MAQUINA') return <td key={`daily-cell-${idx}-${col}-${cIdx}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] font-mono text-gray-600"><span className="font-semibold text-blue-700">{machine}</span></td>;
-            if (upperCol === 'VALIDACIÓN TÉCNICA') return (
-              <td key={`daily-cell-${idx}-${col}`} className="px-4 py-2.5">
-                {alert ? (
-                  <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 text-[9px] font-black uppercase flex items-center gap-1">
-                    <ShieldAlert className="w-2.5 h-2.5" /> {alert}
-                  </Badge>
-                ) : (
-                  <div className="text-green-600"><ShieldCheck className="w-4 h-4" /></div>
+        {/* Lado Derecho: ÓRDENES (VERDE) */}
+        <div className="flex-1 bg-[#1d5c2a] p-4 flex flex-col">
+          <div className="flex items-center justify-between mb-4 pb-2 border-b border-white/10">
+            <h3 className="text-xl font-black text-white uppercase flex items-center gap-2">
+              <ClipboardList className="w-5 h-5 text-green-300" /> ÓRDENES
+            </h3>
+            <Badge className="bg-white/10 text-white border-white/20 font-mono">{data.orders.length} ITEMS</Badge>
+          </div>
+          
+          <div className="flex-1 overflow-auto rounded border border-white/10 bg-black/10">
+            <table className="w-full text-[10px] text-white/90">
+              <thead className="bg-black/20 sticky top-0">
+                <tr>
+                  <th className="px-2 py-2 text-left font-black uppercase text-green-300 border-b border-white/10">Material</th>
+                  <th className="px-2 py-2 text-left font-black uppercase text-green-300 border-b border-white/10">Nombre</th>
+                  <th className="px-2 py-2 text-right font-black uppercase text-green-300 border-b border-white/10">Cant.</th>
+                  <th className="px-2 py-2 text-center font-black uppercase text-green-300 border-b border-white/10">Unid.</th>
+                  <th className="px-2 py-2 text-right font-black uppercase text-green-300 border-b border-white/10">Tiempo (h)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {data.orders.map((o, i) => {
+                  const t = parseFloat(calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || 0), o)) / 60;
+                  return (
+                    <tr key={i} className="hover:bg-white/5 transition-colors">
+                      <td className="px-2 py-1.5 font-mono font-bold text-green-100">{o['CodMaterial'] || normalizeMaterialCode(o['MATERIAL'])}</td>
+                      <td className="px-2 py-1.5 max-w-[120px] truncate" title={o['NOMBRE'] || o['TEXTOMATERIAL']}>{o['NOMBRE'] || o['TEXTOMATERIAL']}</td>
+                      <td className="px-2 py-1.5 text-right font-mono font-bold">{Number(o['CANTIDAD'] || 0).toLocaleString()}</td>
+                      <td className="px-2 py-1.5 text-center opacity-60 uppercase">{o['UNIDAD'] || 'ST'}</td>
+                      <td className="px-2 py-1.5 text-right font-mono font-bold text-green-300">{t.toFixed(2)}h</td>
+                    </tr>
+                  );
+                })}
+                {data.orders.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="py-20 text-center opacity-30 italic text-sm">Sin órdenes para este puesto</td>
+                  </tr>
                 )}
-              </td>
-            );
-            return <td key={`daily-cell-${idx}-${col}-${cIdx}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] font-mono text-gray-600">{formatValueForDisplay(col, order[col])}</td>;
-          })}
-        </tr>
-      );
-
-      const nextOrder = paginatedDailyOrders[idx + 1];
-      const nextMachine = nextOrder ? (getResolvedMachine(nextOrder) || 'SIN MÁQUINA') : null;
-
-      if (machine !== nextMachine) {
-        // Cálculo de capacidad para el subtotal
-        const config = workstationConfigs[machine] || { people: 1 };
-        const cap = totalHorasNetas * config.people;
-        const usedH = currentGroupTime / 60;
-        const percent = cap > 0 ? (usedH / cap) * 100 : 0;
-        const isOverloaded = percent > 100;
-
-        rows.push(
-          <tr key={`subtotal-${machine}-${idx}`} className={cn("bg-gray-100/80 font-bold border-t-2 border-gray-200", isOverloaded && "bg-red-50/50")}>
-            {dailyColumns.map((col, cIdx) => {
-               const upperCol = col.toUpperCase().trim();
-               if (cIdx === 0) return <td key={`sub-${idx}-${cIdx}`} className="px-4 py-2 text-[10px] text-gray-500 uppercase flex items-center gap-2 font-black"><Layers className="w-3 h-3" /> SUBTOTAL {machine}</td>;
-               if (upperCol === 'CANTIDAD') return <td key={`sub-${idx}-${cIdx}`} className="px-4 py-2 text-left font-mono text-blue-800 text-[11px]">{currentGroupQuantity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>;
-               if (col === 'TIEMPOS DE PRODUCCIÓN') return (
-                 <td key={`sub-${idx}-${cIdx}`} className="px-4 py-2 text-left font-mono text-[11px]">
-                   <span className={cn(isOverloaded ? "text-red-700" : "text-emerald-800")}>{currentGroupTime.toFixed(2)} min</span>
-                   <div className="text-[9px] font-normal text-gray-400">({usedH.toFixed(2)}h / {cap.toFixed(2)}h)</div>
-                 </td>
-               );
-               if (upperCol === 'VALIDACIÓN TÉCNICA') return <td key={`sub-${idx}-${cIdx}`} className="px-4 py-2"><Badge variant="outline" className={cn("font-bold text-[9px]", isOverloaded ? "bg-red-600 text-white" : percent > 85 ? "bg-orange-500 text-white" : "bg-green-600 text-white")}>{percent.toFixed(1)}% CARGA</Badge></td>;
-               return <td key={`sub-${idx}-${cIdx}`} className="px-4 py-2"></td>;
-            })}
-          </tr>
-        );
-        currentGroupQuantity = 0;
-        currentGroupTime = 0;
-      }
-    });
-
-    return rows;
+              </tbody>
+            </table>
+          </div>
+          
+          <div className="mt-3 pt-3 border-t border-white/10 flex justify-between items-center">
+            <span className="text-[10px] font-black text-white/40 uppercase">Total Producción:</span>
+            <span className="text-lg font-black text-white font-mono">{data.quantity.toLocaleString()}</span>
+          </div>
+        </div>
+      </div>
+    );
   };
-
-  const tiemposColumns = useMemo(() => {
-    const priority = ['CodMaterial', 'HojaRuta', 'VersionFabricacion_Manual', 'CONTADORHOJARUTA', 'Tiempo_Min', 'Linea', 'PuestoTrabajo', 'PuestoTrabajoLinea', 'centro', 'RespCtrlProd', 'NombRespControlProd', 'TamLoteMin', 'TamLoteMax', 'StockSeguridad', 'StockMaximo', 'ClaseAprovisionam'];
-    if (tiemposProduccion.length === 0) return priority;
-    const allKeys = Object.keys(tiemposProduccion[0]);
-    const toExclude = ['STOCKACTUAL', 'GRUPOSCOMPRAS', 'GRUPOCOMPRAS'];
-    const usedKeysUpper = new Set<string>();
-    const finalColumns: string[] = [];
-
-    priority.forEach(pCol => {
-      const pColUpper = pCol.toUpperCase().trim();
-      const match = allKeys.find(k => k.toUpperCase().trim() === pColUpper);
-      if (match && !usedKeysUpper.has(pColUpper)) {
-        finalColumns.push(match);
-        usedKeysUpper.add(pColUpper);
-      }
-    });
-
-    allKeys.forEach(k => {
-      const kUpper = k.toUpperCase().trim();
-      if (!usedKeysUpper.has(kUpper) && !toExclude.includes(kUpper)) {
-        finalColumns.push(k);
-        usedKeysUpper.add(kUpper);
-      }
-    });
-    
-    return finalColumns;
-  }, [tiemposProduccion]);
 
   if (!isMounted) return null;
 
@@ -839,9 +686,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
         <h2 className="text-2xl font-semibold text-gray-700">Programación Táctica Forros</h2>
       </div>
 
-      <Tabs defaultValue="grupos" className="w-full">
+      <Tabs defaultValue="diaria" className="w-full">
         <div className="relative border-b border-gray-200 mb-8">
           <TabsList className="flex w-full h-auto bg-transparent p-0 overflow-x-auto justify-start scrollbar-hide">
+            <TabsTrigger value="diaria" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><CalendarCheck className="w-4 h-4" /> Programación Componentes</TabsTrigger>
             <TabsTrigger value="grupos" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><Users className="w-4 h-4" /> Grupos</TabsTrigger>
             <TabsTrigger value="restricciones" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><Lock className="w-4 h-4" /> Restricciones</TabsTrigger>
             <TabsTrigger value="tiempos" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><Timer className="w-4 h-4" /> Tiempos de Producción</TabsTrigger>
@@ -850,10 +698,63 @@ export const TacticalPlanForrosSection: React.FC = () => {
             <TabsTrigger value="mantenimiento" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><Wrench className="w-4 h-4" /> Mantenimiento Preventivo</TabsTrigger>
             <TabsTrigger value="explosion" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><ListTree className="w-4 h-4" /> Explosión de Materiales</TabsTrigger>
             <TabsTrigger value="forros-chn-bases" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><Package className="w-4 h-4" /> Forros CHN & Bases</TabsTrigger>
-            <TabsTrigger value="diaria" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><CalendarCheck className="w-4 h-4" /> Programación Componentes</TabsTrigger>
-            <TabsTrigger value="resumen-diario" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><BarChart3 className="w-4 h-4" /> Resumen de producción diaria</TabsTrigger>
           </TabsList>
         </div>
+
+        <TabsContent value="diaria">
+          <div className="space-y-12">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-6 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+              <div className="flex items-center gap-4">
+                <div className="bg-blue-600 p-3 rounded-2xl shadow-lg shadow-blue-200">
+                  <CalendarCheck className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight">Tablero de Control Visual</h3>
+                  <p className="text-sm text-slate-500 font-medium">Planificación Sincronizada: {formattedTodayDisp} y {formattedTargetDisp}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="flex flex-col items-end">
+                   <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 font-black text-[10px] mb-1">REGLA ESPEJO ACH-PEF ACTIVA</Badge>
+                   <p className="text-[10px] text-slate-400 font-bold uppercase">Actualizado hace: 1 min</p>
+                </div>
+                <Button variant="outline" size="sm" onClick={fetchDailyOrders} disabled={isLoadingDaily} className="h-10 px-4 bg-white border-slate-200 hover:bg-slate-50"><RefreshCw className={cn("h-4 w-4 mr-2", isLoadingDaily && "animate-spin")} /> Sincronizar</Button>
+              </div>
+            </div>
+
+            {/* TABLERO DE PARES TÉCNICOS */}
+            <div className="space-y-16 pb-20">
+              {machinePairs.map((pair) => (
+                <div key={pair.suffix} className="space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="h-px flex-1 bg-slate-200"></div>
+                    <Badge className="bg-slate-800 text-white px-6 py-1.5 rounded-full font-black text-sm tracking-widest shadow-lg">LÍNEA TÉCNICA {pair.suffix}</Badge>
+                    <div className="h-px flex-1 bg-slate-200"></div>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+                    <MachineCard machineCode={pair.ach} title={`Acolchadora ${pair.suffix}`} />
+                    <MachineCard machineCode={pair.pef} title={`Pegadora de Tapa ${pair.suffix}`} />
+                  </div>
+                </div>
+              ))}
+
+              {/* MÁQUINAS SIN PAR DIRECTO */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="h-px flex-1 bg-slate-200"></div>
+                  <Badge className="bg-slate-400 text-white px-6 py-1.5 rounded-full font-black text-sm tracking-widest shadow-lg">OTROS PUESTOS TÉCNICOS</Badge>
+                  <div className="h-px flex-1 bg-slate-200"></div>
+                </div>
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+                  {uniqueWorkstations.filter(ws => !ws.startsWith('HR-ACH') && !ws.startsWith('HR-PEF') && ws !== '').map(ws => (
+                    <MachineCard key={ws} machineCode={ws} title={ws.replace('HR-', '')} />
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </TabsContent>
 
         <TabsContent value="grupos">
           <Card>
@@ -926,7 +827,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                           <th key={`filter-t-${col}-${idx}`} className="px-2 py-2 bg-gray-50 border-b border-gray-200">
                             <div className="relative">
                               <Search className="absolute left-2 top-1.5 h-3 w-3 text-gray-400" />
-                              <input type="text" placeholder="Buscar..." value={tiemposFilters[col] || ''} onChange={(e) => setTiemposFilters(prev => ({ ...prev, [col]: e.target.value }))} className="w-full text-[10px] pl-7 pr-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-primary outline-none font-normal bg-white" />
+                              <input type="text" placeholder="Buscar..." value={tiemposFilters[col] || ''} onChange={(e) => handleTiemposFilterChange(col, e.target.value)} className="w-full text-[10px] pl-7 pr-2 py-1 border border-gray-300 rounded focus:ring-1 focus:ring-primary outline-none font-normal bg-white" />
                             </div>
                           </th>
                         ))}
@@ -955,10 +856,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   <span className="px-3 text-[11px] font-bold min-w-[120px] text-center border-x py-1 bg-white rounded">Página {tiemposPage} de {totalTiemposPages}</span>
                   <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setTiemposPage(p => Math.min(totalTiemposPages, p + 1))} disabled={tiemposPage === totalTiemposPages}><ChevronRight className="h-4 w-4" /></Button>
                   <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setTiemposPage(totalTiemposPages)} disabled={tiemposPage === totalTiemposPages}><ChevronsRight className="h-4 w-4" /></Button>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-[10px] text-gray-400 font-bold uppercase">{filteredTiempos.length} registros filtrados</span>
-                  <Button variant="outline" size="sm" onClick={fetchTiemposProduccion} disabled={isLoadingTiempos} className="h-8 px-4 bg-white"><RefreshCw className={cn("h-3 w-3 mr-2", isLoadingTiempos && "animate-spin")} /> Actualizar</Button>
                 </div>
               </div>
             </CardContent>
@@ -1043,11 +940,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 <div className="pt-4 border-t border-white/20 flex items-end justify-between relative z-10">
                   <div className="flex flex-col">
                     <span className="text-[9px] font-black uppercase tracking-tighter text-indigo-200">TOTAL DISPONIBLE:</span>
-                    <span className="text-[10px] text-white/50 italic leading-none">(NETO X TURNO)</span>
-                  </div>
-                  <div className="flex items-baseline gap-1 bg-white/10 px-3 py-1 rounded-xl backdrop-blur-md">
                     <span className="text-4xl font-black font-mono tracking-tighter tabular-nums drop-shadow-md">{totalHorasNetas.toFixed(3)}</span>
-                    <span className="text-xs font-bold opacity-60 ml-0.5">h</span>
                   </div>
                 </div>
               </div>
@@ -1105,14 +998,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     })}
                   </tbody>
                 </table>
-              </div>
-            </div>
-
-            <div className="p-5 bg-indigo-50/80 border border-indigo-100 rounded-2xl flex items-start gap-4">
-              <div className="bg-indigo-600 p-1.5 rounded-lg shadow-sm"><Repeat className="w-4 h-4 text-white" /></div>
-              <div className="text-xs text-indigo-950 leading-relaxed">
-                <p className="font-black uppercase tracking-widest mb-1.5 text-indigo-600">Lógica de Ingeniería de Planta:</p>
-                <p>El sistema aplica un factor de utilización del <span className="font-bold bg-indigo-100 px-1.5 py-0.5 rounded text-indigo-800">84%</span> sobre la jornada bruta seleccionada para descontar paros programados. El valor mostrado es la <strong>Capacidad Neta</strong> disponible por estación considerando la dotación de personal por turno.</p>
               </div>
             </div>
           </div>
@@ -1203,7 +1088,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setHabilidadesPage(p => Math.min(totalHabilidadesPages, p + 1))} disabled={habilidadesPage === totalHabilidadesPages}><ChevronRight className="h-4 w-4" /></Button>
                     <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setHabilidadesPage(totalHabilidadesPages)} disabled={habilidadesPage === totalHabilidadesPages}><ChevronsRight className="h-4 w-4" /></Button>
                   </div>
-                  <span className="text-[10px] text-gray-400 font-bold uppercase">{filteredHabilidades.length} habilidades registradas</span>
                 </div>
               </div>
             </CardContent>
@@ -1251,7 +1135,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                                 const value = row[col];
                                 const upperCol = col.toUpperCase().replace(/_/g, '');
                                 if (upperCol.includes('FECHA')) {
-                                  return (<td key={`${idx}-${col}`} className="px-4 py-3 text-xs font-mono font-bold text-blue-700 whitespace-nowrap">{formatValueForDisplay(col, value)}</td>);
+                                  return (<td key={`${idx}-${col}`} className="px-4 py-3 text-xs font-mono font-bold text-blue-700 whitespace-nowrap">{formatValueForDisplay(col, value) || '—'}</td>);
                                 }
                                 if (upperCol === 'ESTADO' || upperCol === 'STATUS') {
                                   const val = String(value || '').toUpperCase();
@@ -1259,10 +1143,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                                   const isEnProceso = val.includes('PROC') || val.includes('CURSO');
                                   return (<td key={`${idx}-${col}`} className="px-4 py-3"><Badge variant="outline" className={cn("font-bold text-[10px] px-2 py-0.5", isEjecutado ? "bg-green-50 text-green-700 border-green-200" : isEnProceso ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-amber-50 text-amber-700 border-amber-200")}>{val || 'PROGRAMADO'}</Badge></td>);
                                 }
-                                if (upperCol.includes('EQUIPO') || upperCol.includes('MAQUINA')) {
-                                  return (<td key={`${idx}-${col}`} className="px-4 py-3 text-xs font-mono font-bold text-gray-900">{String(value ?? '—')}</td>);
-                                }
-                                return (<td key={`${idx}-${col}`} className="px-4 py-3 text-xs text-gray-600">{typeof value === 'object' ? JSON.stringify(value) : String(value ?? '—')}</td>);
+                                return (<td key={`${idx}-${col}`} className="px-4 py-3 text-xs text-gray-600">{String(value ?? '—')}</td>);
                               })}
                             </tr>
                           ))
@@ -1273,18 +1154,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     </table>
                   </div>
                 </div>
-                {maintTotalPages > 1 && (
-                  <div className="flex flex-col md:flex-row items-center justify-between gap-4 py-3 px-4 bg-gray-50 rounded-lg border border-gray-200 shadow-sm">
-                    <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Mostrando página {maintCurrentPage} de {maintTotalPages}</div>
-                    <div className="flex items-center gap-1">
-                      <Button variant="outline" size="icon" onClick={() => setMaintCurrentPage(1)} disabled={maintCurrentPage === 1} className="h-8 w-8"><ChevronsLeft className="h-4 w-4" /></Button>
-                      <Button variant="outline" size="icon" onClick={() => setMaintCurrentPage(p => Math.max(1, p - 1))} disabled={maintCurrentPage === 1} className="h-8 w-8"><ChevronLeft className="h-4 w-4" /></Button>
-                      <div className="flex items-center gap-1 mx-2">{getPageNumbers(maintCurrentPage, maintTotalPages).map((p, i) => p === '...' ? <span key={`ell-${i}`} className="px-2 text-gray-400 text-xs font-bold">...</span> : <Button key={`p-${p}`} variant={maintCurrentPage === p ? "default" : "outline"} size="sm" onClick={() => setMaintCurrentPage(p as number)} className={cn("h-8 w-8 p-0 text-xs font-bold", maintCurrentPage === p ? "bg-primary text-primary-foreground" : "bg-white")}>{p}</Button>)}</div>
-                      <Button variant="outline" size="icon" onClick={() => setMaintCurrentPage(p => Math.min(maintTotalPages, p + 1))} disabled={maintCurrentPage === maintTotalPages} className="h-8 w-8"><ChevronRight className="h-4 w-4" /></Button>
-                      <Button variant="outline" size="icon" onClick={() => setMaintCurrentPage(maintTotalPages)} disabled={maintCurrentPage === maintTotalPages} className="h-8 w-8"><ChevronsRight className="h-4 w-4" /></Button>
-                    </div>
-                  </div>
-                )}
               </div>
             </CardContent>
           </Card>
@@ -1312,10 +1181,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     </tbody>
                   </table>
                 </div>
-              </div>
-              <div className="flex items-center justify-between gap-4 py-3 px-4 bg-gray-50 rounded-lg border border-gray-200 shadow-sm mt-4">
-                <div className="flex items-center gap-1"><Button variant="outline" size="icon" className="h-8 w-8" onClick={() => fetchExplosionData(1)} disabled={explosionPage === 1 || isLoadingExplosion}><ChevronsLeft className="h-4 w-4" /></Button><Button variant="outline" size="icon" className="h-8 w-8" onClick={() => fetchExplosionData(explosionPage - 1)} disabled={explosionPage === 1 || isLoadingExplosion}><ChevronLeft className="h-4 w-4" /></Button><span className="px-3 text-[11px] font-bold min-w-[120px] text-center border-x py-1 bg-white rounded">Página {explosionPage} de {Math.max(1, Math.ceil(explosionTotal / explosionRowsPerPage))}</span><Button variant="outline" size="icon" className="h-8 w-8" onClick={() => fetchExplosionData(explosionPage + 1)} disabled={explosionPage >= Math.ceil(explosionTotal / explosionRowsPerPage) || isLoadingExplosion}><ChevronRight className="h-4 w-4" /></Button><Button variant="outline" size="icon" className="h-8 w-8" onClick={() => fetchExplosionData(Math.ceil(explosionTotal / explosionRowsPerPage))} disabled={explosionPage >= Math.ceil(explosionTotal / explosionRowsPerPage) || isLoadingExplosion}><ChevronsRight className="h-4 w-4" /></Button></div>
-                <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{explosionTotal.toLocaleString()} registros totales</div>
               </div>
             </CardContent>
           </Card>
@@ -1351,107 +1216,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
             </div>
             <Card><CardHeader><CardTitle>Forros CHN & Bases</CardTitle></CardHeader><CardContent><ProvisionalOrdersTabSection externalFilters={{...externalFilters, MAQUINA: ['HR-FBASE', 'HR-FORRO']}} renderCell={renderResolvedProvisionalCell} groupBy="MAQUINA" resolveValue={resolveLogicValue} /></CardContent></Card>
           </div>
-        </TabsContent>
-
-        <TabsContent value="diaria">
-          <div className="space-y-6">
-            {/* MONITOR DE SALUD DE PLANTA (Optimizado) */}
-            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3">
-              {productionSummary.map((item) => {
-                const config = workstationConfigs[item.machine] || { people: 1 };
-                const cap = totalHorasNetas * config.people;
-                const usedH = item.totalTime / 60;
-                const percent = cap > 0 ? (usedH / cap) * 100 : 0;
-                
-                const statusColor = percent > 100 ? "border-red-500 bg-red-50" : 
-                                   percent > 85 ? "border-orange-500 bg-orange-50" : 
-                                   "border-green-500 bg-green-50";
-                const textStatus = percent > 100 ? "text-red-700" : 
-                                  percent > 85 ? "text-orange-700" : 
-                                  "text-green-700";
-
-                return (
-                  <div key={`health-${item.machine}`} className={cn("border-2 rounded-xl p-3 shadow-sm transition-all hover:scale-105", statusColor)}>
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="text-[10px] font-black text-gray-500 uppercase">{item.machine}</span>
-                      <Activity className={cn("w-3 h-3", textStatus)} />
-                    </div>
-                    <div className="flex items-baseline gap-1">
-                      <span className={cn("text-lg font-black font-mono", textStatus)}>{percent.toFixed(1)}%</span>
-                      <span className="text-[9px] text-gray-400 font-bold">CARGA</span>
-                    </div>
-                    <div className="mt-1 flex justify-between text-[9px] font-bold text-gray-400 uppercase">
-                      <span>{usedH.toFixed(1)}h</span>
-                      <span>/ {cap.toFixed(1)}h</span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <Card className="shadow-lg border-gray-200">
-              <CardHeader className="bg-gray-50/50 border-b flex flex-row items-center justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-2">
-                    <CalendarCheck className="w-5 h-5 text-primary" /> 
-                    Programación Componentes: {formattedTodayDisp} y {formattedTargetDisp}
-                  </CardTitle>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 font-black text-[10px]">REGLA ESPEJO ACTIVA</Badge>
-                  <Button variant="outline" size="sm" onClick={fetchDailyOrders} disabled={isLoadingDaily} className="h-8 px-4 bg-white"><RefreshCw className={cn("h-3 w-3 mr-2", isLoadingDaily && "animate-spin")} /> Sincronizar</Button>
-                </div>
-              </CardHeader>
-              <CardContent className="pt-6 space-y-4">
-                <div className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-inner">
-                  <div className="overflow-auto max-h-[60vh]">
-                    <table className="min-w-full divide-y divide-gray-200 border-collapse">
-                      <thead className="bg-gray-100 sticky top-0 z-10 shadow-sm">
-                        <tr>{dailyColumns.map((col, idx) => (<th key={`daily-head-${col}-${idx}`} className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider whitespace-nowrap bg-gray-100 border-b text-gray-600">{col}</th>))}</tr>
-                      </thead>
-                      <tbody className="divide-y divide-200 bg-white">{renderDailyTableBody()}</tbody>
-                    </table>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between gap-4 py-3 px-4 bg-gray-50 rounded-lg border border-gray-200 shadow-sm">
-                  <div className="flex items-center gap-1">
-                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(1)} disabled={dailyPage === 1}><ChevronsLeft className="h-4 w-4" /></Button>
-                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(p => Math.max(1, p - 1))} disabled={dailyPage === 1}><ChevronLeft className="h-4 w-4" /></Button>
-                    <span className="px-3 text-[11px] font-bold min-w-[120px] text-center border-x py-1 bg-white rounded">Página {dailyPage} de {totalDailyPages}</span>
-                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(p => Math.min(totalDailyPages, p + 1))} disabled={dailyPage === totalDailyPages}><ChevronRight className="h-4 w-4" /></Button>
-                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(totalDailyPages)} disabled={dailyPage === totalDailyPages}><ChevronsRight className="h-4 w-4" /></Button>
-                  </div>
-                  <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{processedDailyOrders.length} registros cargados</div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="resumen-diario">
-          <Card className="shadow-md">
-            <CardHeader className="border-b"><CardTitle className="flex items-center gap-2 text-lg"><BarChart3 className="w-5 h-5 text-primary" /> Carga por Máquina / Puesto Técnico</CardTitle><CardDescription>Consolidado único de unidades y tiempos de carga comparados contra capacidad configurada.</CardDescription></CardHeader>
-            <CardContent className="pt-6">
-              <div className="rounded-md border border-gray-200 overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr><th className="px-6 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Máquina / Puesto</th><th className="px-6 py-3 text-right text-xs font-bold text-gray-600 uppercase tracking-wider">Cant. Órdenes</th><th className="px-6 py-3 text-right text-xs font-bold text-gray-600 uppercase tracking-wider">Total Unidades</th><th className="px-6 py-3 text-right text-xs font-bold text-emerald-700 uppercase tracking-wider">Tiempo Total (min)</th><th className="px-6 py-3 text-right text-xs font-bold text-indigo-600 uppercase tracking-wider">Tiempo Total (h)</th><th className="px-6 py-3 text-right text-xs font-bold text-blue-700 uppercase tracking-wider">Capacidad Máx (h)</th><th className="px-6 py-3 text-right text-xs font-bold text-blue-700 uppercase tracking-wider">Ocupación (%)</th></tr>
-                    </thead>
-                    <tbody className="divide-y divide-200 bg-white">
-                      {isLoadingDaily ? <tr><td colSpan={7} className="py-12 text-center"><Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" /></td></tr> : productionSummary.length > 0 ? productionSummary.map((item, idx) => {
-                          const config = workstationConfigs[item.machine] || { machine: item.machine, shifts: 1, people: 1 };
-                          const plannedCapacityHours = totalHorasNetas * config.people;
-                          const totalTimeHours = item.totalTime / 60;
-                          const utilizationPercent = plannedCapacityHours > 0 ? (totalTimeHours / plannedCapacityHours) * 100 : 0;
-                          return (<tr key={idx} className="hover:bg-gray-50 transition-colors"><td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-700">{item.machine}</td><td className="px-6 py-4 whitespace-nowrap text-sm text-right font-mono">{item.count}</td><td className="px-6 py-4 whitespace-nowrap text-sm text-right font-bold text-blue-700 font-mono">{item.quantity.toLocaleString()}</td><td className="px-6 py-4 whitespace-nowrap text-sm text-right font-bold text-emerald-700 font-mono">{item.totalTime.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td><td className="px-6 py-4 whitespace-nowrap text-sm text-right font-bold text-indigo-600 font-mono">{totalTimeHours.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td><td className="px-6 py-4 whitespace-nowrap text-sm text-right font-mono text-gray-400">{plannedCapacityHours.toFixed(2)} h</td><td className="px-6 py-4 whitespace-nowrap text-sm text-right"><Badge className={cn("font-mono font-bold", utilizationPercent > 100 ? "bg-red-100 text-red-700 hover:bg-red-200" : utilizationPercent > 80 ? "bg-amber-100 text-amber-700 hover:bg-amber-200" : "bg-green-100 text-green-700 hover:bg-green-200")}>{utilizationPercent.toFixed(1)}%</Badge></td></tr>);
-                        }) : <tr><td colSpan={7} className="py-12 text-center text-gray-400 italic">No hay datos para resumir.</td></tr>}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
         </TabsContent>
       </Tabs>
     </div>
