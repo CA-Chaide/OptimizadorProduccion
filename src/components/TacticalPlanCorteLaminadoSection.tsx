@@ -107,14 +107,17 @@ const parseDimensionsEnhanced = (desc: string) => {
   const dimMatch = d.match(/(\d+(?:\.\d+)?)\s*[xX*]\s*(\d+(?:\.\d+)?)/);
   const alturaOriginal = dimMatch ? parseFloat(dimMatch[1]) : 0;
   const espesor = dimMatch ? parseFloat(dimMatch[2]) : 0;
+  
   let alturaFinal = alturaOriginal;
   if (alturaOriginal === 204 && espesor <= 1.2) {
     alturaFinal = 206;
   }
+  
   let distancia = 100; 
   if (espesor === 1.0) distancia = 110;
   else if (espesor === 3.5) distancia = 60;
   else if (espesor === 1.2) distancia = 100;
+  
   return { densidad, distancia, altura: alturaFinal, espesor };
 };
 
@@ -134,14 +137,13 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [fertBusqueda, setFertBusqueda] = useState('');
   const [bomRows, setBomRows] = useState<RawBOMRow[]>([]);
   const [isSearchingBOM, setIsSearchingBOM] = useState(false);
-  const [bomPage, setBomPage] = useState(1);
-  const [bomRowsPerPage, setBomRowsPerPage] = useState(50);
   const [unifiedNeeds, setUnifiedNeeds] = useState<UnifiedNeedRow[]>([]);
   const [isProcessingResumen, setIsProcessingResumen] = useState(false);
   const [resumenProgress, setResumenProgress] = useState({ current: 0, total: 0 });
   const [processedSignature, setProcessedSignature] = useState('');
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
+  // Definición de fechas con órdenes para el calendario (CORRECCIÓN DE ERROR)
   const datesWithOrders = useMemo(() => {
     const dates = new Set<string>();
     ordenes.forEach(o => {
@@ -190,10 +192,12 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       const name = (g.nombre_grupo || '').toLowerCase();
       return (name.includes('corte y laminado') || name.includes('laminado'));
     }).map(g => g.codigo_grupo);
+    
     const allowedResps = restriccionesArray
       .filter(r => (r.nombre_restriccion === 'RESPCTRLPROD' || r.nombre_restriccion === 'Hojas_Rutas_Materiales') && relevantGroups.includes(r.codigo_grupo))
       .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
       .filter(v => v !== '');
+
     return ordenes.filter(o => {
       const centro = String(o.CENTRO || o.Centro || '').trim();
       if (centro === '2000') return false; 
@@ -277,12 +281,14 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         ...row,
         consumoUn: row.peso > 0 ? row.consumoKg / row.peso : 0
       }));
+      
       const groupMap = new Map<string, UnifiedNeedRow[]>();
       finalArray.forEach(row => {
         const k = `${row.densidad}-${row.altura}`;
         if(!groupMap.has(k)) groupMap.set(k, []);
         groupMap.get(k)!.push(row);
       });
+      
       groupMap.forEach(items => {
         const totalKgGroup = items.reduce((s, r) => s + r.consumoKg, 0);
         const targetPlanUn = 40; 
@@ -357,7 +363,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const handleRefresh = () => {
     setProcessedSignature('');
     handleProcessResumen(filteredOrders);
-    addNotification('info', 'Actualizando datos del resumen táctico...');
+    addNotification('info', 'Actualizando datos del resumen técnico...');
   };
 
   const calendarDays = useMemo(() => {
@@ -378,38 +384,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     });
   }, [tiemposEnsamblado]);
 
-  const paginatedBomRows = useMemo(() => bomRows.slice((bomPage - 1) * bomRowsPerPage, bomPage * bomRowsPerPage), [bomRows, bomPage, bomRowsPerPage]);
-
-  const handleSearchBOM = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!fertBusqueda.trim()) return;
-    setIsSearchingBOM(true);
-    setBomRows([]);
-    setBomPage(1);
-    try {
-      const fullCode = fertBusqueda.trim().padStart(18, '0');
-      const response = await serviciosService.getMaestroMaterialesExplosion("1000", fullCode, 1, 5000);
-      const rawData = response?.data?.data || response?.data || [];
-      if (Array.isArray(rawData)) {
-        setBomRows(rawData.filter(row => getProp(row, 'CENTRO') !== '2000' && getProp(row, 'DESCRIPCION_COMPONENTE').toUpperCase().includes('LAMINA CILINDRICA')).map(row => ({
-          NIVEL: getProp(row, 'NIVEL'),
-          CENTRO: getProp(row, 'CENTRO'),
-          FERT_PRINCIPAL: getProp(row, 'FERT_PRINCIPAL'),
-          DESCRIPCION_FERT: getProp(row, 'DESCRIPCION_FERT'),
-          MATERIAL_PADRE: getProp(row, 'MATERIAL_PADRE'),
-          COMPONENTE: getProp(row, 'COMPONENTE'),
-          DESCRIPCION_COMPONENTE: getProp(row, 'DESCRIPCION_COMPONENTE'),
-          CANTIDAD_UNITARIA: getNumProp(row, 'CANTIDAD_UNITARIA'),
-          CANTIDAD_ACUMULADA: getNumProp(row, 'CANTIDAD_ACUMULADA') || getNumProp(row, 'CANTIDAD_UNITARIA')
-        })));
-      }
-    } catch (err) { 
-      addNotification('error', 'Error al consultar la explosión técnica.'); 
-    } finally { 
-      setIsSearchingBOM(false); 
-    }
-  };
-
   if (!mounted) return null;
 
   return (
@@ -427,8 +401,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid grid-cols-4 h-11 bg-gray-100/50 p-1.5 rounded-2xl border border-gray-200 mb-8">
           {[ 
-            { v: 'ordenes', l: 'Órdenes Provisionales', i: Package }, 
             { v: 'resumen', l: 'Resumen Necesidades', i: LayoutDashboard },
+            { v: 'ordenes', l: 'Órdenes Provisionales', i: Package }, 
             { v: 'listaMateriales', l: 'Auditoría BOM', i: ClipboardList },
             { v: 'tiempos', l: 'Procesos Looper', i: Clock }
           ].map(tab => (
@@ -438,12 +412,117 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           ))}
         </TabsList>
 
+        <TabsContent value="resumen" className="space-y-6 animate-in fade-in duration-300">
+           {/* RESUMEN EJECUTIVO SIMPLIFICADO */}
+           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-center bg-[#1e293b] p-6 rounded-3xl border border-white/10 shadow-2xl text-white">
+             <div className="flex flex-col gap-1 border-r border-white/10 pr-6">
+                <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Cantidad Necesaria (KG)</span>
+                <p className="text-2xl font-black font-mono text-red-400 tracking-tighter">
+                  {totalsUnified.kg.toLocaleString(undefined, { maximumFractionDigits: 1 })}
+                </p>
+             </div>
+             <div className="flex flex-col gap-1 border-r border-white/10 pr-6 pl-2">
+                <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Cantidad Necesaria (UND)</span>
+                <p className="text-2xl font-black font-mono text-indigo-400 tracking-tighter">
+                  {Math.round(totalsUnified.un).toLocaleString()}
+                </p>
+             </div>
+             <div className="flex flex-col gap-1 pl-2">
+                <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Nro de Aperturas o Corridas</span>
+                <p className="text-2xl font-black font-mono text-yellow-400 tracking-tighter">
+                  {groupedNeeds.length}
+                </p>
+             </div>
+             <div className="flex justify-end ml-auto">
+                <Button 
+                  onClick={handleRefresh} 
+                  disabled={isProcessingResumen}
+                  className="bg-red-600 hover:bg-red-700 text-white rounded-xl h-10 px-6 text-[10px] font-black uppercase tracking-widest shadow-lg transition-all"
+                >
+                  {isProcessingResumen ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+                  Actualizar Datos
+                </Button>
+             </div>
+           </div>
+
+          <div className="border-2 border-gray-100 rounded-[2.5rem] shadow-2xl overflow-hidden bg-white">
+            <div className="overflow-x-auto max-h-[600px] relative">
+              <table className="w-full border-collapse font-sans text-[11px] text-center">
+                <thead className="sticky top-0 z-20">
+                  <tr className="bg-[#ffff00] text-black uppercase font-black tracking-tighter text-[11px] border-b-2 border-black/10">
+                    <th className="px-4 py-4 border-r border-black/5 text-left w-32">Material</th>
+                    <th className="px-6 py-4 border-r border-black/5 text-left">Descripción</th>
+                    <th className="px-3 py-4 border-r border-black/5">Stock 1006</th>
+                    <th className="px-3 py-4 border-r border-black/5">Stock 1008</th>
+                    <th className="px-4 py-4 border-r border-black/5 text-right bg-orange-100/50">Consumo OF [Kg]</th>
+                    <th className="px-4 py-4 border-r border-black/5 text-right bg-orange-100/50">Consumo OF [Un]</th>
+                    <th className="px-6 py-4 border-r border-black/5 bg-[#cfe2f3]">Peso / Rollo (Kg)</th>
+                    <th className="px-4 py-4 border-r border-black/5 text-center">% Necesidad</th>
+                    <th className="px-4 py-4 border-r border-black/5 text-right font-black bg-red-100/50 text-red-900">PLAN (UN)</th>
+                    <th className="px-4 py-4 text-right font-black bg-red-100/50 text-red-900">PLAN (KG)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 font-bold">
+                  {isProcessingResumen ? (
+                    <tr>
+                      <td colSpan={10} className="py-20 text-center">
+                        <Loader2 className="w-8 h-8 animate-spin mx-auto text-indigo-500 mb-3" />
+                        <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Calculando Ingeniería de Rollos: {resumenProgress.current} / {resumenProgress.total}</p>
+                      </td>
+                    </tr>
+                  ) : groupedNeeds.length === 0 ? (
+                    <tr><td colSpan={10} className="py-24 text-slate-200 font-black uppercase tracking-widest text-center">Sin necesidades técnicas identificadas</td></tr>
+                  ) : (
+                    groupedNeeds.map((group, gIdx) => {
+                      const groupKey = `${group.densidad}-${group.altura}`;
+                      const isExpanded = expandedGroups.has(groupKey);
+                      return (
+                        <React.Fragment key={groupKey}>
+                          <tr className="bg-slate-50/80 hover:bg-slate-100 cursor-pointer transition-all border-l-4 border-l-red-500" onClick={() => toggleGroup(groupKey)}>
+                            <td className="px-4 py-4 flex items-center gap-2">
+                               {isExpanded ? <Minus className="w-3 h-3 text-red-500" /> : <Plus className="w-3 h-3 text-indigo-500" />}
+                               <span className="font-black text-[10px] text-slate-400 uppercase tracking-widest">Apertura {group.altura} - D{group.densidad}</span>
+                            </td>
+                            <td className="px-6 py-4 text-left text-indigo-900 font-black uppercase">Subtotal Corrida</td>
+                            <td className="px-3 py-4 text-slate-400 font-mono">{(group.total1006).toLocaleString()}</td>
+                            <td className="px-3 py-4 text-slate-400 font-mono">{(group.total1008).toLocaleString()}</td>
+                            <td className="px-4 py-4 text-right font-mono font-black text-indigo-900 bg-indigo-50/50">{group.totalKg.toLocaleString(undefined, { minimumFractionDigits: 1 })}</td>
+                            <td className="px-4 py-4 text-right font-mono font-black text-emerald-700 bg-emerald-50/30">{Math.round(group.totalUn).toLocaleString()}</td>
+                            <td className="px-6 py-4 bg-[#cfe2f3]/30 font-mono text-slate-300">—</td>
+                            <td className="px-4 py-4 text-center font-black text-indigo-300">100%</td>
+                            <td className="px-4 py-4 text-right font-mono font-black text-red-900 bg-red-50">{group.totalPlanUn.toLocaleString()}</td>
+                            <td className="px-4 py-4 text-right font-mono font-black text-red-900 bg-red-50">{group.totalPlanKg.toLocaleString(undefined, { minimumFractionDigits: 1 })}</td>
+                          </tr>
+                          {isExpanded && group.items.map((row, iIdx) => (
+                            <tr key={`${groupKey}-${iIdx}`} className="bg-white hover:bg-blue-50/10 transition-colors animate-in slide-in-from-top-1 duration-200">
+                              <td className="px-4 py-3 border-r border-gray-100 font-mono text-indigo-600 text-left pl-8">{row.material}</td>
+                              <td className="px-6 py-3 border-r border-gray-100 text-left text-gray-400 uppercase leading-tight italic text-[10px] truncate max-w-[250px]">{row.descripcion}</td>
+                              <td className="px-3 py-3 border-r border-gray-100 font-mono text-slate-400">{row.stock1006 || '—'}</td>
+                              <td className="px-3 py-3 border-r border-gray-100 font-mono text-slate-400">{row.stock1008 || '—'}</td>
+                              <td className="px-4 py-3 border-r border-gray-100 text-right font-mono font-bold text-indigo-400">{row.consumoKg.toLocaleString(undefined, { minimumFractionDigits: 1 })}</td>
+                              <td className="px-4 py-3 border-r border-gray-100 text-right font-mono font-bold text-emerald-400">{Math.round(row.consumoUn).toLocaleString()}</td>
+                              <td className="px-6 py-3 border-r border-gray-100 bg-[#cfe2f3] font-mono font-black text-indigo-700">{row.peso.toFixed(2)}</td>
+                              <td className="px-4 py-3 border-r border-gray-100 text-center font-black text-slate-300">{(row.porcentajeNecesidad * 100).toFixed(0)}%</td>
+                              <td className="px-4 py-3 border-r border-gray-100 text-right font-mono font-black text-red-500 bg-red-50/20">{row.planUn.toLocaleString()}</td>
+                              <td className="px-4 py-3 text-right font-mono font-black text-red-500 bg-red-50/20">{row.planKg.toLocaleString(undefined, { minimumFractionDigits: 1 })}</td>
+                            </tr>
+                          ))}
+                        </React.Fragment>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </TabsContent>
+
         <TabsContent value="ordenes" className="space-y-6 animate-in fade-in duration-300">
           <div className="flex items-center justify-between bg-white p-4 rounded-3xl border border-gray-100 shadow-xl">
             <div className="flex items-center gap-6 text-left">
               <div className="flex flex-col">
                 <p className="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1.5 flex items-center gap-2">
-                  <UserCheck className="w-3 h-3" /> Responsables Habilitados (Laminado)
+                  <UserCheck className="w-3 h-3" /> Responsables Corte y Laminado
                 </p>
                 <div className="flex gap-2">
                   {restriccionesArray.filter(r => r.nombre_restriccion === 'RESPCTRLPROD' || r.nombre_restriccion === 'Hojas_Rutas_Materiales').map((r, ri) => (
@@ -545,134 +624,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           </div>
         </TabsContent>
 
-        <TabsContent value="resumen" className="space-y-6 animate-in fade-in duration-300">
-           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-3xl border border-gray-100 shadow-sm">
-             <div className="flex items-center gap-4">
-               <div className="p-3 bg-red-600/10 rounded-2xl text-red-600">
-                 <LayoutDashboard className="w-6 h-6" />
-               </div>
-               <div>
-                 <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">Resumen Táctico Consolidado</h3>
-                 <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Auditado vía Almacenes SAP 1006 / 1008</p>
-               </div>
-             </div>
-
-             <div className="flex items-center gap-3">
-                <Button 
-                  onClick={handleRefresh} 
-                  disabled={isProcessingResumen}
-                  className="bg-red-600 hover:bg-red-700 text-white rounded-xl h-11 px-6 text-[10px] font-black uppercase tracking-widest shadow-lg transition-all"
-                >
-                  {isProcessingResumen ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />}
-                  Actualizar Datos
-                </Button>
-             </div>
-           </div>
-
-           {/* DASHBOARD CONSOLIDADO DE TOTALES */}
-           <div className="flex gap-6 items-center bg-[#1e293b] p-6 rounded-[2.5rem] border border-white/5 shadow-2xl text-white">
-             <div className="flex items-center gap-6">
-               <div className="p-4 bg-red-500/10 rounded-2xl text-red-500 shadow-inner">
-                 <BarChart3 className="w-8 h-8" />
-               </div>
-               <div className="flex flex-col gap-1">
-                 <p className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] mb-1">Métricas Consolidadas de Planta</p>
-                 <div className="flex gap-12 items-baseline">
-                   <div className="flex flex-col">
-                     <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-1">Masa Total Producida</span>
-                     <p className="text-3xl font-black font-mono text-red-500 tracking-tighter">
-                       {totalsUnified.kg.toLocaleString(undefined, { maximumFractionDigits: 1 })} <span className="text-xs text-slate-500 ml-1">KG</span>
-                     </p>
-                   </div>
-                   <div className="flex flex-col">
-                     <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-1">Volumen Total de Unidades</span>
-                     <p className="text-3xl font-black font-mono text-indigo-400 tracking-tighter">
-                       {Math.round(totalsUnified.un).toLocaleString()} <span className="text-xs text-slate-500 ml-1">ROLLOS</span>
-                     </p>
-                   </div>
-                   <div className="flex flex-col border-l border-white/5 pl-12">
-                     <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-1">Plan Pendiente en OF</span>
-                     <p className="text-3xl font-black font-mono text-pink-500 tracking-tighter">
-                       {totalsUnified.planUn.toLocaleString()} <span className="text-xs text-slate-500 ml-1">UN</span>
-                     </p>
-                   </div>
-                 </div>
-               </div>
-             </div>
-          </div>
-
-          <div className="border-2 border-gray-100 rounded-[2.5rem] shadow-2xl overflow-hidden bg-white">
-            <div className="overflow-x-auto max-h-[600px] relative">
-              <table className="w-full border-collapse font-sans text-[11px] text-center">
-                <thead className="sticky top-0 z-20">
-                  <tr className="bg-[#ffff00] text-black uppercase font-black tracking-tighter text-[11px] border-b-2 border-black/10">
-                    <th className="px-4 py-4 border-r border-black/5 text-left w-32">Material</th>
-                    <th className="px-6 py-4 border-r border-black/5 text-left">Descripción</th>
-                    <th className="px-3 py-4 border-r border-black/5">Stock 1006 (UN)</th>
-                    <th className="px-3 py-4 border-r border-black/5">Stock 1008 (UN)</th>
-                    <th className="px-4 py-4 border-r border-black/5 text-right bg-orange-100/50">Consumo OF [Kg]</th>
-                    <th className="px-4 py-4 border-r border-black/5 text-right bg-orange-100/50">Consumo OF [Un]</th>
-                    <th className="px-6 py-4 border-r border-black/5 bg-[#cfe2f3]">Peso / Rollo (Kg)</th>
-                    <th className="px-4 py-4 border-r border-black/5 text-center">% Necesidad</th>
-                    <th className="px-4 py-4 border-r border-black/5 text-right font-black bg-red-100/50 text-red-900">PLAN (UN)</th>
-                    <th className="px-4 py-4 text-right font-black bg-red-100/50 text-red-900">PLAN (KG)</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 font-bold">
-                  {isProcessingResumen ? (
-                    <tr>
-                      <td colSpan={10} className="py-20 text-center">
-                        <Loader2 className="w-8 h-8 animate-spin mx-auto text-indigo-500 mb-3" />
-                        <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Sincronizando Ingeniería SAP: {resumenProgress.current} / {resumenProgress.total}</p>
-                      </td>
-                    </tr>
-                  ) : groupedNeeds.length === 0 ? (
-                    <tr><td colSpan={10} className="py-24 text-slate-200 font-black uppercase tracking-widest text-center">Sin necesidades de laminado identificadas</td></tr>
-                  ) : (
-                    groupedNeeds.map((group, gIdx) => {
-                      const groupKey = `${group.densidad}-${group.altura}`;
-                      const isExpanded = expandedGroups.has(groupKey);
-                      return (
-                        <React.Fragment key={groupKey}>
-                          <tr className="bg-slate-50/80 hover:bg-slate-100 cursor-pointer transition-all border-l-4 border-l-red-500" onClick={() => toggleGroup(groupKey)}>
-                            <td className="px-4 py-4 flex items-center gap-2">
-                               {isExpanded ? <Minus className="w-3 h-3 text-red-500" /> : <Plus className="w-3 h-3 text-indigo-500" />}
-                               <span className="font-black text-[10px] text-slate-400 uppercase tracking-widest">D{group.densidad} | H{group.altura}</span>
-                            </td>
-                            <td className="px-6 py-4 text-left text-indigo-900 font-black uppercase">Agrupación Técnica</td>
-                            <td className="px-3 py-4 text-slate-400 font-mono">{(group.total1006).toLocaleString()}</td>
-                            <td className="px-3 py-4 text-slate-400 font-mono">{(group.total1008).toLocaleString()}</td>
-                            <td className="px-4 py-4 text-right font-mono font-black text-indigo-900 bg-indigo-50/50">{group.totalKg.toLocaleString(undefined, { minimumFractionDigits: 1 })}</td>
-                            <td className="px-4 py-4 text-right font-mono font-black text-emerald-700 bg-emerald-50/30">{Math.round(group.totalUn).toLocaleString()}</td>
-                            <td className="px-6 py-4 bg-[#cfe2f3]/30 font-mono text-slate-300">—</td>
-                            <td className="px-4 py-4 text-center font-black text-indigo-300">100%</td>
-                            <td className="px-4 py-4 text-right font-mono font-black text-red-900 bg-red-50">{group.totalPlanUn.toLocaleString()}</td>
-                            <td className="px-4 py-4 text-right font-mono font-black text-red-900 bg-red-50">{group.totalPlanKg.toLocaleString(undefined, { minimumFractionDigits: 1 })}</td>
-                          </tr>
-                          {isExpanded && group.items.map((row, iIdx) => (
-                            <tr key={`${groupKey}-${iIdx}`} className="bg-white hover:bg-blue-50/10 transition-colors animate-in slide-in-from-top-1 duration-200">
-                              <td className="px-4 py-3 border-r border-gray-100 font-mono text-indigo-600 text-left pl-8">{row.material}</td>
-                              <td className="px-6 py-3 border-r border-gray-100 text-left text-gray-400 uppercase leading-tight italic text-[10px] truncate max-w-[250px]">{row.descripcion}</td>
-                              <td className="px-3 py-3 border-r border-gray-100 font-mono text-slate-400">{row.stock1006 || '—'}</td>
-                              <td className="px-3 py-3 border-r border-gray-100 font-mono text-slate-400">{row.stock1008 || '—'}</td>
-                              <td className="px-4 py-3 border-r border-gray-100 text-right font-mono font-bold text-indigo-400">{row.consumoKg.toLocaleString(undefined, { minimumFractionDigits: 1 })}</td>
-                              <td className="px-4 py-3 border-r border-gray-100 text-right font-mono font-bold text-emerald-400">{Math.round(row.consumoUn).toLocaleString()}</td>
-                              <td className="px-6 py-3 border-r border-gray-100 bg-[#cfe2f3] font-mono font-black text-indigo-700">{row.peso.toFixed(2)}</td>
-                              <td className="px-4 py-3 border-r border-gray-100 text-center font-black text-slate-300">{(row.porcentajeNecesidad * 100).toFixed(0)}%</td>
-                              <td className="px-4 py-3 border-r border-gray-100 text-right font-mono font-black text-red-500 bg-red-50/20">{row.planUn.toLocaleString()}</td>
-                              <td className="px-4 py-3 text-right font-mono font-black text-red-500 bg-red-50/20">{row.planKg.toLocaleString(undefined, { minimumFractionDigits: 1 })}</td>
-                            </tr>
-                          ))}
-                        </React.Fragment>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </TabsContent>
-
         <TabsContent value="listaMateriales" className="space-y-6 animate-in fade-in duration-300">
           <div className="flex items-center justify-between bg-white p-5 rounded-3xl border border-gray-100 shadow-xl">
              <div className="flex items-center gap-4">
@@ -682,7 +633,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                  <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest mt-1">Niveles de Explosión SAP | Auditoría Multinivel Directa</p>
                </div>
              </div>
-             <form onSubmit={handleSearchBOM} className="flex gap-3">
+             <form onSubmit={(e) => { e.preventDefault(); if(fertBusqueda.trim()) handleRefresh(); }} className="flex gap-3">
                <div className="relative group">
                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-300 group-hover:text-red-500 transition-colors" />
                  <input type="text" placeholder="Código FERT..." value={fertBusqueda} onChange={e => setFertBusqueda(e.target.value)} className="pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-black w-56 focus:ring-4 focus:ring-red-500/10 focus:bg-white transition-all outline-none" />
@@ -692,43 +643,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                </Button>
              </form>
           </div>
-          {!isSearchingBOM && bomRows.length > 0 && (
-            <div className="space-y-4">
-              <div className="border border-gray-200 rounded-3xl overflow-hidden bg-white shadow-xl">
-                <div className="overflow-x-auto max-h-[550px]">
-                  <table className="w-full border-collapse font-sans text-[10px]">
-                    <thead className="bg-[#f8fafc] text-slate-400 uppercase font-black tracking-widest sticky top-0 z-10 border-b border-slate-100">
-                      <tr>
-                        <th className="px-5 py-4 border-r border-slate-50 text-center w-16">NV</th>
-                        <th className="px-5 py-4 border-r border-slate-50">FERT Principal</th>
-                        <th className="px-5 py-4 border-r border-slate-50">Material Padre</th>
-                        <th className="px-5 py-4 border-r border-slate-50">Componente</th>
-                        <th className="px-5 py-4 border-r border-slate-100 text-left">Descripción del Componente</th>
-                        <th className="px-5 py-4 border-r border-slate-50 text-right w-28">Cant. Unit.</th>
-                        <th className="px-5 py-4 text-right w-28">Cant. Acum.</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50 font-bold">
-                      {paginatedBomRows.map((row, idx) => {
-                        const level = parseInt(row.NIVEL);
-                        return (
-                          <tr key={idx} className="hover:bg-blue-50/20 transition-colors">
-                            <td className={cn("px-5 py-3 border-r border-gray-100 text-center font-mono text-[10px]", level === 1 ? "bg-red-50 text-red-600" : "text-slate-300")}>{ ".".repeat(level) }{level}</td>
-                            <td className="px-5 py-3 border-r border-gray-100 font-mono text-indigo-600">{row.FERT_PRINCIPAL}</td>
-                            <td className="px-5 py-3 border-r border-gray-100 font-mono text-slate-400">{row.MATERIAL_PADRE}</td>
-                            <td className="px-5 py-3 border-r border-gray-100 font-mono text-slate-700 tracking-tighter text-sm">{row.COMPONENTE}</td>
-                            <td className="px-5 py-3 border-r border-gray-100 text-left uppercase font-black text-slate-600 leading-tight">{row.DESCRIPCION_COMPONENTE}</td>
-                            <td className="px-5 py-3 border-r border-gray-100 text-right font-mono text-slate-400">{row.CANTIDAD_UNITARIA.toFixed(3)}</td>
-                            <td className="px-5 py-3 text-right font-mono text-slate-900 bg-slate-50/50">{row.CANTIDAD_ACUMULADA.toFixed(3)}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          )}
         </TabsContent>
 
         <TabsContent value="tiempos" className="animate-in fade-in duration-300 space-y-10">
@@ -749,7 +663,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                       <th className="px-6 py-5 border-r border-white/5 text-blue-200">Almacén</th>
                       <th className="px-6 py-5 border-r border-white/5 text-teal-400">Estándar (Min)</th>
                       <th className="px-6 py-5 text-indigo-300">Stock Actual</th>
-                      <th className="px-6 py-5 text-red-300">Stock Seg.</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 text-[11px] font-black">
@@ -763,8 +676,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                         </td>
                         <td className="px-6 py-4 border-r border-dashed border-gray-100 text-slate-400 font-bold text-center">{t.Almacen || t.ALMACEN || '—'}</td>
                         <td className="px-6 py-4 font-mono text-teal-600 border-r border-dashed border-gray-100 bg-teal-50/10 text-sm">{Number(t.Tiempo || 0).toFixed(4)}</td>
-                        <td className="px-6 py-4 text-slate-400 font-mono border-r border-dashed border-gray-100 text-center">{(t.StockActual || 0).toLocaleString()}</td>
-                        <td className="px-6 py-4 text-red-400 font-mono font-black border-r border-dashed border-gray-100 text-center">{(t.StockSeguridad || 0).toLocaleString()}</td>
+                        <td className="px-6 py-4 text-slate-400 font-mono text-center">{(t.StockActual || 0).toLocaleString()}</td>
                       </tr>
                     ))}
                   </tbody>
