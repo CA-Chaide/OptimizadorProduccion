@@ -22,7 +22,10 @@ import {
   Database,
   Plus,
   Minus,
-  Info
+  Info,
+  RefreshCw,
+  BarChart3,
+  Box
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -69,6 +72,9 @@ interface UnifiedNeedRow {
   stock1006: number;
   stock1008: number;
   stock1015: number;
+  porcentajeNecesidad: number;
+  planUn: number;
+  planKg: number;
 }
 
 const safeNum = (val: any): number => {
@@ -130,7 +136,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const { addNotification } = useAppContext();
 
   const [mounted, setMounted] = useState(false);
-  const [activeTab, setActiveTab] = useState('ordenes');
+  const [activeTab, setActiveTab] = useState('resumen');
   const [grupos, setGrupos] = useState<Grupo[]>([]);
   const [restriccionesArray, setRestriccionesArray] = useState<Restriccion[]>([]);
   const [ordenes, setOrders] = useState<any[]>([]);
@@ -287,7 +293,10 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                       consumoUn: 0,
                       stock1006: s1006,
                       stock1008: s1008,
-                      stock1015: s1015
+                      stock1015: s1015,
+                      porcentajeNecesidad: 0,
+                      planUn: 0,
+                      planKg: 0
                     });
                   }
                 });
@@ -298,11 +307,33 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         }));
         setResumenProgress(prev => ({ ...prev, current: Math.min(i + CONCURRENCY_LIMIT, uniqueMaterials.length) }));
       }
+      
       const finalArray = Array.from(consolidatedMap.values()).map(row => ({
         ...row,
         consumoUn: row.peso > 0 ? row.consumoKg / row.peso : 0
-      })).sort((a, b) => b.consumoKg - a.consumoKg);
-      setUnifiedNeeds(finalArray);
+      }));
+
+      // --- LOGICA DE PLANIFICACION PROPORCIONAL POR GRUPO ---
+      const groupMap = new Map<string, UnifiedNeedRow[]>();
+      finalArray.forEach(row => {
+        const k = `${row.densidad}-${row.altura}`;
+        if(!groupMap.has(k)) groupMap.set(k, []);
+        groupMap.get(k)!.push(row);
+      });
+
+      groupMap.forEach(items => {
+        const totalKgGroup = items.reduce((s, r) => s + r.consumoKg, 0);
+        // Capacidad objetivo por corrida (Ejemplo: 40 rollos según imagen)
+        const targetPlanUn = 40; 
+
+        items.forEach(row => {
+          row.porcentajeNecesidad = totalKgGroup > 0 ? (row.consumoKg / totalKgGroup) : 0;
+          row.planUn = Math.round(targetPlanUn * row.porcentajeNecesidad);
+          row.planKg = row.planUn * row.peso;
+        });
+      });
+
+      setUnifiedNeeds(finalArray.sort((a, b) => b.consumoKg - a.consumoKg));
       inspector.captureVariable('unifiedNeedsLaminado', finalArray);
     } catch (err) {
       console.error('Error procesando resumen:', err);
@@ -331,6 +362,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       total1006: number;
       total1008: number;
       total1015: number;
+      totalPlanUn: number;
+      totalPlanKg: number;
     }>();
 
     unifiedNeeds.forEach(item => {
@@ -344,7 +377,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           totalUn: 0,
           total1006: 0,
           total1008: 0,
-          total1015: 0
+          total1015: 0,
+          totalPlanUn: 0,
+          totalPlanKg: 0
         });
       }
       const group = map.get(key)!;
@@ -354,6 +389,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       group.total1006 += item.stock1006;
       group.total1008 += item.stock1008;
       group.total1015 += item.stock1015;
+      group.totalPlanUn += item.planUn;
+      group.totalPlanKg += item.planKg;
     });
 
     return Array.from(map.values()).sort((a, b) => b.totalKg - a.totalKg);
@@ -368,6 +405,17 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return Array.from(map.entries()).sort((a, b) => a[0] - b[0]);
   }, [groupedNeeds]);
 
+  const totalsUnified = useMemo(() => {
+    return unifiedNeeds.reduce((acc, row) => ({
+      kg: acc.kg + row.consumoKg,
+      un: acc.un + row.consumoUn,
+      planUn: acc.planUn + row.planUn,
+      planKg: acc.planKg + row.planKg,
+      stock1006: acc.stock1006 + row.stock1006,
+      stock1008: acc.stock1008 + row.stock1008
+    }), { kg: 0, un: 0, planUn: 0, planKg: 0, stock1006: 0, stock1008: 0 });
+  }, [unifiedNeeds]);
+
   const toggleGroup = (key: string) => {
     const next = new Set(expandedGroups);
     if (next.has(key)) next.delete(key);
@@ -375,17 +423,11 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     setExpandedGroups(next);
   };
 
-  const datesWithOrders = useMemo(() => {
-    if (!mounted) return new Set<string>();
-    const dates = new Set<string>();
-    ordenes.forEach(o => {
-      const centro = String(o.CENTRO || o.Centro || '').trim();
-      if (centro === '2000') return;
-      const d = String(o.FECHAINICIO || o.FECHA || '').trim();
-      if (d && d !== 'null') dates.add(d.includes('T') ? d.split('T')[0] : d);
-    });
-    return dates;
-  }, [ordenes, mounted]);
+  const handleRefresh = () => {
+    setProcessedSignature('');
+    handleProcessResumen(filteredOrders);
+    addNotification('info', 'Actualizando datos del resumen táctico...');
+  };
 
   const calendarDays = useMemo(() => {
     if (!mounted || !viewDate) return [];
@@ -396,6 +438,16 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     const padding = startDay === 0 ? 6 : startDay - 1;
     return [...Array(padding).fill(null), ...days];
   }, [viewDate, mounted]);
+
+  const looperRecords = useMemo(() => {
+    return tiemposEnsamblado.filter(t => {
+      const linea = String(t.Linea || '').toLowerCase();
+      const puesto = String(t.PuestoTrabajo || '').toLowerCase();
+      return (linea.includes('looper') || puesto.includes('looper'));
+    });
+  }, [tiemposEnsamblado]);
+
+  const paginatedBomRows = useMemo(() => bomRows.slice((bomPage - 1) * bomRowsPerPage, bomPage * bomRowsPerPage), [bomRows, bomPage, bomRowsPerPage]);
 
   const handleSearchBOM = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -426,23 +478,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       setIsSearchingBOM(false); 
     }
   };
-
-  const totalsUnified = useMemo(() => {
-    return unifiedNeeds.reduce((acc, row) => ({
-      kg: acc.kg + row.consumoKg,
-      un: acc.un + row.consumoUn
-    }), { kg: 0, un: 0 });
-  }, [unifiedNeeds]);
-
-  const paginatedBomRows = useMemo(() => bomRows.slice((bomPage - 1) * bomRowsPerPage, bomPage * bomRowsPerPage), [bomRows, bomPage, bomRowsPerPage]);
-
-  const looperRecords = useMemo(() => {
-    return tiemposEnsamblado.filter(t => {
-      const linea = String(t.Linea || '').toLowerCase();
-      const puesto = String(t.PuestoTrabajo || '').toLowerCase();
-      return (linea.includes('looper') || puesto.includes('looper'));
-    });
-  }, [tiemposEnsamblado]);
 
   if (!mounted) return null;
 
@@ -589,29 +624,76 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="resumen" className="space-y-6 animate-in fade-in duration-300">
-           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-             <Card className="p-5 border-none shadow-xl bg-[#0f172a] text-white flex flex-col items-center justify-center text-center">
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">Consolidado Total (Kg)</p>
-                <p className="text-3xl font-black font-mono text-indigo-400">{totalsUnified.kg.toLocaleString(undefined, { maximumFractionDigits: 1 })}</p>
+           {/* BOTONES Y FILTROS DE CABECERA */}
+           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-3xl border border-gray-100 shadow-sm">
+             <div className="flex items-center gap-4">
+               <div className="p-3 bg-red-600/10 rounded-2xl text-red-600">
+                 <LayoutDashboard className="w-6 h-6" />
+               </div>
+               <div>
+                 <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter">Resumen Táctico Proporcional</h3>
+                 <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Auditado vía Almacenes SAP 1006 / 1008</p>
+               </div>
+             </div>
+
+             <div className="flex items-center gap-3">
+                <Button 
+                  onClick={handleRefresh} 
+                  disabled={isProcessingResumen}
+                  className="bg-red-600 hover:bg-red-700 text-white rounded-xl h-11 px-6 text-[10px] font-black uppercase tracking-widest shadow-lg transition-all"
+                >
+                  {isProcessingResumen ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+                  Actualizar Datos
+                </Button>
+             </div>
+           </div>
+
+           {/* DASHBOARD DE RESULTADOS SUPERIOR (Inspirado en la imagen) */}
+           <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+             <Card className="p-4 border-none shadow-xl bg-[#4b5563] text-white flex flex-col items-center justify-center text-center">
+                <p className="text-[9px] font-black uppercase tracking-widest text-slate-300 mb-1">Stock 1006 (UN)</p>
+                <p className="text-2xl font-black font-mono">{totalsUnified.stock1006.toLocaleString()}</p>
              </Card>
-             <Card className="p-5 border-none shadow-xl bg-[#0f172a] text-white flex flex-col items-center justify-center text-center">
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">Total Rollos (Un)</p>
-                <p className="text-3xl font-black font-mono text-emerald-400">{totalsUnified.un.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+             <Card className="p-4 border-none shadow-xl bg-[#71717a] text-white flex flex-col items-center justify-center text-center">
+                <p className="text-[9px] font-black uppercase tracking-widest text-slate-300 mb-1">Stock 1008 (UN)</p>
+                <p className="text-2xl font-black font-mono">{totalsUnified.stock1008.toLocaleString()}</p>
              </Card>
-             <Card className="p-5 border-none shadow-xl bg-white border border-gray-100 flex flex-col items-center justify-center col-span-2 text-center">
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Corridas por Apertura (Densidad)</p>
-                <div className="flex flex-wrap justify-center gap-3">
-                   {corridasPorDensidad.length === 0 ? (
-                     <p className="text-[10px] text-slate-300 uppercase font-black">Esperando datos de ingeniería...</p>
-                   ) : (
-                     corridasPorDensidad.map(([dens, count]) => (
-                       <Badge key={dens} className="bg-indigo-50 text-indigo-700 border-indigo-100 font-black text-[11px] px-3 py-1">
-                         D{dens}: {count} {count === 1 ? 'Corrida' : 'Corridas'}
-                       </Badge>
-                     ))
-                   )}
-                </div>
+             <Card className="p-4 border-none shadow-xl bg-[#991b1b] text-white flex flex-col items-center justify-center text-center">
+                <p className="text-[9px] font-black uppercase tracking-widest text-red-200 mb-1">Consumo Diario (Kg)</p>
+                <p className="text-2xl font-black font-mono text-red-100">{totalsUnified.kg.toLocaleString(undefined, { maximumFractionDigits: 1 })}</p>
              </Card>
+             <Card className="p-4 border-none shadow-xl bg-[#b91c1c] text-white flex flex-col items-center justify-center text-center">
+                <p className="text-[9px] font-black uppercase tracking-widest text-red-200 mb-1">Consumo Diario (UN)</p>
+                <p className="text-2xl font-black font-mono">{Math.round(totalsUnified.un).toLocaleString()}</p>
+             </Card>
+             <Card className="p-4 border-none shadow-xl bg-white border border-gray-100 flex flex-col items-center justify-center text-center">
+                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Utilización (%)</p>
+                <p className="text-2xl font-black font-mono text-slate-800">100%</p>
+             </Card>
+             <Card className="p-4 border-none shadow-xl bg-[#831843] text-white flex flex-col items-center justify-center text-center">
+                <p className="text-[9px] font-black uppercase tracking-widest text-pink-200 mb-1">Plan Pendiente</p>
+                <p className="text-2xl font-black font-mono">{totalsUnified.planUn.toLocaleString()}</p>
+             </Card>
+          </div>
+
+          {/* MONITOR DE CORRIDAS POR APERTURA (DENSIDAD) */}
+          <div className="bg-indigo-50/50 p-4 rounded-3xl border border-indigo-100">
+             <p className="text-[10px] font-black uppercase text-indigo-400 tracking-widest mb-3 flex items-center gap-2">
+               <Activity className="w-3 h-3" /> Monitor de Corridas por Apertura (Densidad)
+             </p>
+             <div className="flex flex-wrap gap-4">
+                {corridasPorDensidad.length === 0 ? (
+                  <p className="text-[10px] text-indigo-300 font-bold uppercase italic">Esperando carga de datos técnicos...</p>
+                ) : (
+                  corridasPorDensidad.map(([dens, count]) => (
+                    <div key={dens} className="bg-white px-4 py-2 rounded-2xl border border-indigo-200 shadow-sm flex items-center gap-3">
+                      <span className="text-[10px] font-black text-indigo-400">D{dens}</span>
+                      <span className="text-lg font-black text-indigo-800">{count}</span>
+                      <span className="text-[9px] font-bold text-indigo-300 uppercase tracking-tighter">{count === 1 ? 'Corrida' : 'Corridas'}</span>
+                    </div>
+                  ))
+                )}
+             </div>
           </div>
 
           <div className="border-2 border-gray-100 rounded-[2.5rem] shadow-2xl overflow-hidden bg-white">
@@ -619,80 +701,95 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               <table className="w-full border-collapse font-sans text-[11px] text-center">
                 <thead className="sticky top-0 z-20">
                   <tr className="bg-[#ffff00] text-black uppercase font-black tracking-tighter text-[11px] border-b-2 border-black/10">
-                    <th className="px-4 py-4 border-r border-black/5 text-left w-32">codigo</th>
-                    <th className="px-6 py-4 border-r border-black/5 text-left">descripción</th>
-                    <th className="px-4 py-4 border-r border-black/5">distancia</th>
-                    <th className="px-4 py-4 border-r border-black/5">altura</th>
-                    <th className="px-4 py-4 border-r border-black/5">espesor</th>
-                    <th className="px-4 py-4 border-r border-black/5">Densidad</th>
-                    <th className="px-6 py-4 border-r border-black/5 bg-[#b4d4ea]">peso</th>
+                    <th className="px-4 py-4 border-r border-black/5 text-left w-32">Material</th>
+                    <th className="px-6 py-4 border-r border-black/5 text-left">Descripción</th>
                     <th className="px-3 py-4 border-r border-black/5">Stock 1006 (UN)</th>
                     <th className="px-3 py-4 border-r border-black/5">Stock 1008 (UN)</th>
-                    <th className="px-3 py-4 border-r border-black/5">Stock 1015 (UN)</th>
-                    <th className="px-4 py-4 border-r border-black/5 text-right font-black">Consumo OF [Kg]</th>
-                    <th className="px-4 py-4 text-right font-black">Consumo OF [Un]</th>
+                    <th className="px-4 py-4 border-r border-black/5 text-right bg-orange-100/50">Consumo OF [Kg]</th>
+                    <th className="px-4 py-4 border-r border-black/5 text-right bg-orange-100/50">Consumo OF [Un]</th>
+                    <th className="px-6 py-4 border-r border-black/5 bg-[#cfe2f3]">Peso / Rollo (Kg)</th>
+                    <th className="px-4 py-4 border-r border-black/5 text-center">% Necesidad</th>
+                    <th className="px-4 py-4 border-r border-black/5 text-right font-black bg-red-100/50 text-red-900">PLAN (UN)</th>
+                    <th className="px-4 py-4 text-right font-black bg-red-100/50 text-red-900">PLAN (KG)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 font-bold">
-                  {groupedNeeds.map((group, gIdx) => {
-                    const groupKey = `${group.densidad}-${group.altura}`;
-                    const isExpanded = expandedGroups.has(groupKey);
-                    
-                    return (
-                      <React.Fragment key={groupKey}>
-                        {/* Fila de Subtotal / Grupo */}
-                        <tr className="bg-slate-50/80 hover:bg-slate-100 cursor-pointer transition-all border-l-4 border-l-red-500" onClick={() => toggleGroup(groupKey)}>
-                          <td className="px-4 py-4 flex items-center gap-2">
-                             {isExpanded ? <Minus className="w-3 h-3 text-red-500" /> : <Plus className="w-3 h-3 text-indigo-500" />}
-                             <span className="font-black text-[10px] text-slate-400 uppercase tracking-widest">SUBTOTAL</span>
-                          </td>
-                          <td className="px-6 py-4 text-left text-indigo-900 font-black uppercase">
-                            Agrupación: D{group.densidad} | H{group.altura}
-                            <span className="ml-3 text-[9px] font-bold text-slate-400">({group.items.length} materiales)</span>
-                          </td>
-                          <td className="px-4 py-4 text-slate-300 font-mono">VAR</td>
-                          <td className="px-4 py-4 text-indigo-700 font-mono font-black">{group.altura}</td>
-                          <td className="px-4 py-4 text-slate-300 font-mono">VAR</td>
-                          <td className="px-4 py-4 text-indigo-700 font-mono font-black">{group.densidad}</td>
-                          <td className="px-6 py-4 bg-[#cfe2f3]/30 font-mono text-slate-300">—</td>
-                          <td className="px-3 py-4 text-slate-400 font-mono">{(group.total1006).toLocaleString()}</td>
-                          <td className="px-3 py-4 text-slate-400 font-mono">{(group.total1008).toLocaleString()}</td>
-                          <td className="px-3 py-4 text-slate-400 font-mono">{(group.total1015).toLocaleString()}</td>
-                          <td className="px-4 py-4 text-right font-mono font-black text-indigo-900 bg-indigo-50/50">
-                            {group.totalKg.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
-                          </td>
-                          <td className="px-4 py-4 text-right font-mono font-black text-emerald-700 bg-emerald-50/30">
-                            {group.totalUn.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                          </td>
-                        </tr>
-                        
-                        {/* Filas de Detalle (si está expandido) */}
-                        {isExpanded && group.items.map((row, iIdx) => (
-                          <tr key={`${groupKey}-${iIdx}`} className="bg-white hover:bg-blue-50/10 transition-colors animate-in slide-in-from-top-1 duration-200">
-                            <td className="px-4 py-3 border-r border-gray-100 font-mono text-indigo-600 text-left pl-8">{row.material}</td>
-                            <td className="px-6 py-3 border-r border-gray-100 text-left text-gray-400 uppercase leading-tight italic text-[10px]">{row.descripcion}</td>
-                            <td className="px-4 py-3 border-r border-gray-100 text-slate-400 font-mono">{row.distancia}</td>
-                            <td className="px-4 py-3 border-r border-gray-100 text-slate-400 font-mono">{row.altura}</td>
-                            <td className="px-4 py-3 border-r border-gray-100 text-slate-400 font-mono">{row.espesor.toFixed(1)}</td>
-                            <td className="px-4 py-3 border-r border-gray-100 text-slate-400 font-mono">{row.densidad}</td>
-                            <td className="px-6 py-3 border-r border-gray-100 bg-[#cfe2f3] font-mono font-black text-indigo-700">{row.peso.toFixed(2)}</td>
-                            <td className="px-3 py-3 border-r border-gray-100 font-mono text-slate-400">{row.stock1006 || '—'}</td>
-                            <td className="px-3 py-3 border-r border-gray-100 font-mono text-slate-400">{row.stock1008 || '—'}</td>
-                            <td className="px-3 py-3 border-r border-gray-100 font-mono text-slate-400">{row.stock1015 || '—'}</td>
-                            <td className="px-4 py-3 border-r border-gray-100 text-right font-mono font-bold text-indigo-400">{row.consumoKg.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</td>
-                            <td className="px-4 py-3 text-right font-mono font-bold text-emerald-400">{row.consumoUn.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</td>
+                  {isProcessingResumen ? (
+                    <tr>
+                      <td colSpan={10} className="py-20 text-center">
+                        <Loader2 className="w-8 h-8 animate-spin mx-auto text-indigo-500 mb-3" />
+                        <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Sincronizando Ingeniería SAP: {resumenProgress.current} / {resumenProgress.total}</p>
+                      </td>
+                    </tr>
+                  ) : groupedNeeds.length === 0 ? (
+                    <tr><td colSpan={10} className="py-24 text-slate-200 font-black uppercase tracking-widest text-center">Sin necesidades de laminado identificadas</td></tr>
+                  ) : (
+                    groupedNeeds.map((group, gIdx) => {
+                      const groupKey = `${group.densidad}-${group.altura}`;
+                      const isExpanded = expandedGroups.has(groupKey);
+                      
+                      return (
+                        <React.Fragment key={groupKey}>
+                          {/* Fila de Subtotal / Grupo */}
+                          <tr className="bg-slate-50/80 hover:bg-slate-100 cursor-pointer transition-all border-l-4 border-l-red-500" onClick={() => toggleGroup(groupKey)}>
+                            <td className="px-4 py-4 flex items-center gap-2">
+                               {isExpanded ? <Minus className="w-3 h-3 text-red-500" /> : <Plus className="w-3 h-3 text-indigo-500" />}
+                               <span className="font-black text-[10px] text-slate-400 uppercase tracking-widest">D{group.densidad} | H{group.altura}</span>
+                            </td>
+                            <td className="px-6 py-4 text-left text-indigo-900 font-black uppercase">
+                              Agrupación Técnica
+                              <span className="ml-3 text-[9px] font-bold text-slate-400">({group.items.length} materiales)</span>
+                            </td>
+                            <td className="px-3 py-4 text-slate-400 font-mono">{(group.total1006).toLocaleString()}</td>
+                            <td className="px-3 py-4 text-slate-400 font-mono">{(group.total1008).toLocaleString()}</td>
+                            <td className="px-4 py-4 text-right font-mono font-black text-indigo-900 bg-indigo-50/50">
+                              {group.totalKg.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+                            </td>
+                            <td className="px-4 py-4 text-right font-mono font-black text-emerald-700 bg-emerald-50/30">
+                              {Math.round(group.totalUn).toLocaleString()}
+                            </td>
+                            <td className="px-6 py-4 bg-[#cfe2f3]/30 font-mono text-slate-300">—</td>
+                            <td className="px-4 py-4 text-center font-black text-indigo-300">100%</td>
+                            <td className="px-4 py-4 text-right font-mono font-black text-red-900 bg-red-50">
+                              {group.totalPlanUn.toLocaleString()}
+                            </td>
+                            <td className="px-4 py-4 text-right font-mono font-black text-red-900 bg-red-50">
+                              {group.totalPlanKg.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+                            </td>
                           </tr>
-                        ))}
-                      </React.Fragment>
-                    );
-                  })}
+                          
+                          {/* Filas de Detalle (si está expandido) */}
+                          {isExpanded && group.items.map((row, iIdx) => (
+                            <tr key={`${groupKey}-${iIdx}`} className="bg-white hover:bg-blue-50/10 transition-colors animate-in slide-in-from-top-1 duration-200">
+                              <td className="px-4 py-3 border-r border-gray-100 font-mono text-indigo-600 text-left pl-8">{row.material}</td>
+                              <td className="px-6 py-3 border-r border-gray-100 text-left text-gray-400 uppercase leading-tight italic text-[10px] truncate max-w-[250px]" title={row.descripcion}>{row.descripcion}</td>
+                              <td className="px-3 py-3 border-r border-gray-100 font-mono text-slate-400">{row.stock1006 || '—'}</td>
+                              <td className="px-3 py-3 border-r border-gray-100 font-mono text-slate-400">{row.stock1008 || '—'}</td>
+                              <td className="px-4 py-3 border-r border-gray-100 text-right font-mono font-bold text-indigo-400">{row.consumoKg.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</td>
+                              <td className="px-4 py-3 border-r border-gray-100 text-right font-mono font-bold text-emerald-400">{Math.round(row.consumoUn).toLocaleString()}</td>
+                              <td className="px-6 py-3 border-r border-gray-100 bg-[#cfe2f3] font-mono font-black text-indigo-700">{row.peso.toFixed(2)}</td>
+                              <td className="px-4 py-3 border-r border-gray-100 text-center font-black text-slate-300">{(row.porcentajeNecesidad * 100).toFixed(0)}%</td>
+                              <td className="px-4 py-3 border-r border-gray-100 text-right font-mono font-black text-red-500 bg-red-50/20">{row.planUn.toLocaleString()}</td>
+                              <td className="px-4 py-3 text-right font-mono font-black text-red-500 bg-red-50/20">{row.planKg.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</td>
+                            </tr>
+                          ))}
+                        </React.Fragment>
+                      );
+                    })
+                  )}
                 </tbody>
-                {unifiedNeeds.length > 0 && (
+                {unifiedNeeds.length > 0 && !isProcessingResumen && (
                   <tfoot className="bg-slate-900 text-white font-black uppercase text-[10px] sticky bottom-0 z-30">
                     <tr>
-                      <td colSpan={10} className="px-6 py-4 text-right tracking-widest text-slate-500 uppercase text-center">Consolidado Total Planificado:</td>
+                      <td colSpan={2} className="px-6 py-4 text-right tracking-widest text-slate-500 uppercase text-center">Consolidado Total Planificado:</td>
+                      <td className="px-3 py-4 font-mono text-indigo-300">{totalsUnified.stock1006.toLocaleString()}</td>
+                      <td className="px-3 py-4 font-mono text-indigo-300">{totalsUnified.stock1008.toLocaleString()}</td>
                       <td className="px-4 py-4 text-right font-mono text-indigo-300 text-sm">{totalsUnified.kg.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} KG</td>
-                      <td className="px-4 py-4 text-right font-mono text-emerald-300 text-sm">{totalsUnified.un.toLocaleString(undefined, { maximumFractionDigits: 0 })} UN</td>
+                      <td className="px-4 py-4 text-right font-mono text-emerald-300 text-sm">{Math.round(totalsUnified.un).toLocaleString()} UN</td>
+                      <td className="bg-slate-950"></td>
+                      <td className="bg-slate-950"></td>
+                      <td className="px-4 py-4 text-right font-mono text-red-400 text-sm bg-red-900/20">{totalsUnified.planUn.toLocaleString()} UN</td>
+                      <td className="px-4 py-4 text-right font-mono text-red-400 text-sm bg-red-900/20">{totalsUnified.planKg.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} KG</td>
                     </tr>
                   </tfoot>
                 )}
@@ -703,7 +800,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           <div className="px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl flex items-center gap-2">
             <Info className="w-4 h-4 text-blue-600" />
             <p className="text-[9px] font-black text-blue-700 uppercase tracking-widest">
-              Nota: El monitor de corridas por apertura indica cuántos grupos técnicos (Densidad/Altura) deben procesarse en el turno actual.
+              Nota: En la columna PLAN (UN), el total de rollos de la corrida se distribuye proporcionalmente a la necesidad técnica por densidad.
             </p>
           </div>
         </TabsContent>
