@@ -359,8 +359,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
   const looperRecords = useMemo(() => {
     return tiemposEnsamblado.filter(t => {
-      const linea = String(t.Linea || '').toLowerCase();
-      const puesto = String(t.PuestoTrabajo || '').toLowerCase();
+      const linea = String(t.Linea || t.Linea || '').toLowerCase();
+      const puesto = String(t.PuestoTrabajo || t.PuestoTrabajo || '').toLowerCase();
       return (linea.includes('looper') || puesto.includes('looper'));
     });
   }, [tiemposEnsamblado]);
@@ -686,7 +686,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="tiempos" className="animate-in fade-in duration-300 space-y-10">
-          {/* SECCIÓN EXCLUSIVA: LOOPER */}
           <div className="space-y-4">
             <div className="flex items-center gap-3 px-2">
               <div className="p-2 bg-indigo-600 rounded-xl text-white shadow-lg"><Activity className="w-4 h-4" /></div>
@@ -700,6 +699,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                       <th className="px-6 py-5 border-r border-white/5 text-left">Material</th>
                       <th className="px-6 py-5 border-r border-white/5 text-left">Descripción Técnica</th>
                       <th className="px-6 py-5 border-r border-white/5">Línea de Proceso</th>
+                      <th className="px-6 py-5 border-r border-white/5">Responsable CP</th>
+                      <th className="px-6 py-5 border-r border-white/5">Almacén</th>
                       <th className="px-6 py-5 border-r border-white/5 text-teal-400">Estándar (Min)</th>
                       <th className="px-6 py-5">Stock</th>
                       <th className="px-6 py-5">Seguridad</th>
@@ -707,7 +708,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   </thead>
                   <tbody className="divide-y divide-gray-100 text-[11px] font-black">
                     {looperRecords.length === 0 ? (
-                      <tr><td colSpan={6} className="py-24 text-center text-slate-300 uppercase tracking-widest opacity-40">No se encontraron registros Looper</td></tr>
+                      <tr><td colSpan={8} className="py-24 text-center text-slate-300 uppercase tracking-widest opacity-40">No se encontraron registros Looper</td></tr>
                     ) : (
                       looperRecords.map((t, i) => {
                         const matCode = String(t.CodMaterial || '').match(/^(\d+)/)?.[1]?.slice(-8) || '—';
@@ -717,6 +718,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                             <td className="px-6 py-4 font-mono text-indigo-600 border-r border-dashed border-gray-100 text-left text-sm">{matCode}</td>
                             <td className="px-6 py-4 text-left border-r border-dashed border-gray-100 text-slate-600 uppercase leading-tight max-w-[300px] truncate">{desc}</td>
                             <td className="px-6 py-4 border-r border-dashed border-gray-100 font-black text-indigo-400 uppercase text-[9px] bg-indigo-50/10">{t.Linea || '—'}</td>
+                            <td className="px-6 py-4 border-r border-dashed border-gray-100 text-slate-400">{t.RespControlProd || t.RESP_CONTROL_PROD || '—'}</td>
+                            <td className="px-6 py-4 border-r border-dashed border-gray-100 text-slate-400">{t.Almacen || t.ALMACEN || '—'}</td>
                             <td className="px-6 py-4 font-mono text-teal-600 border-r border-dashed border-gray-100 bg-teal-50/10 text-sm">
                               {Number(t.Tiempo || 0).toFixed(4)}
                             </td>
