@@ -23,7 +23,9 @@ import {
   ClipboardList,
   UserPlus,
   AlertTriangle,
-  CheckCircle2
+  CheckCircle2,
+  BarChart3,
+  Search
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -267,6 +269,32 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return Array.from(wsSet).sort();
   }, [tiemposProduccion]);
 
+  const getResolvedMachine = useCallback((order: any) => {
+    const orderFields = ['MAQUINA', 'Maquina', 'PuestoTrabajo'];
+    for (const k of orderFields) {
+      const val = order[k];
+      if (val && String(val).trim() !== '' && String(val).toLowerCase() !== 'null') {
+        const sVal = String(val).trim().toUpperCase();
+        if (sVal.startsWith('HR')) return sVal;
+      }
+    }
+    const material = normalizeMaterialCode(order['MATERIAL'] || order['CodMaterial'] || '');
+    const match = tiemposProduccion.find(t => normalizeMaterialCode(t.CodMaterial || t.Material || '') === material);
+    return match ? String(match.PuestoTrabajo || match.nombre_estacion || match.Maquina || '').trim().toUpperCase() : '';
+  }, [tiemposProduccion, normalizeMaterialCode]);
+
+  const calculateProductionTime = useCallback((material: string, quantity: number, order: any) => {
+    if (!material) return 0;
+    const normMaterial = normalizeMaterialCode(material);
+    const machine = getResolvedMachine(order);
+    const match = tiemposProduccion.find(t => 
+      normalizeMaterialCode(t.CodMaterial || t.Material || '') === normMaterial &&
+      String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').trim().toUpperCase() === machine
+    ) || tiemposProduccion.find(t => normalizeMaterialCode(t.CodMaterial || t.Material || '') === normMaterial);
+
+    return match ? (Number(match.Tiempo || match.Tiempo_Min || 0) * quantity) : 0;
+  }, [tiemposProduccion, normalizeMaterialCode, getResolvedMachine]);
+
   // GRUPOS TÉCNICOS
   const group1Suffixes = ['02', '06', '07', '08', '09', '10'];
 
@@ -305,32 +333,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
       fetchMantenimientos();
     }
   }, [isMounted, forrosGruposList, fetchTiemposProduccion, fetchDailyOrders, fetchMantenimientos]);
-
-  const getResolvedMachine = useCallback((order: any) => {
-    const orderFields = ['MAQUINA', 'Maquina', 'PuestoTrabajo'];
-    for (const k of orderFields) {
-      const val = order[k];
-      if (val && String(val).trim() !== '' && String(val).toLowerCase() !== 'null') {
-        const sVal = String(val).trim().toUpperCase();
-        if (sVal.startsWith('HR')) return sVal;
-      }
-    }
-    const material = normalizeMaterialCode(order['MATERIAL'] || order['CodMaterial'] || '');
-    const match = tiemposProduccion.find(t => normalizeMaterialCode(t.CodMaterial || t.Material || '') === material);
-    return match ? String(match.PuestoTrabajo || match.nombre_estacion || match.Maquina || '').trim().toUpperCase() : '';
-  }, [tiemposProduccion, normalizeMaterialCode]);
-
-  const calculateProductionTime = useCallback((material: string, quantity: number, order: any) => {
-    if (!material) return 0;
-    const normMaterial = normalizeMaterialCode(material);
-    const machine = getResolvedMachine(order);
-    const match = tiemposProduccion.find(t => 
-      normalizeMaterialCode(t.CodMaterial || t.Material || '') === normMaterial &&
-      String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').trim().toUpperCase() === machine
-    ) || tiemposProduccion.find(t => normalizeMaterialCode(t.CodMaterial || t.Material || '') === normMaterial);
-
-    return match ? (Number(match.Tiempo || match.Tiempo_Min || 0) * quantity) : 0;
-  }, [tiemposProduccion, normalizeMaterialCode, getResolvedMachine]);
 
   const renderResolvedProvisionalCell = useCallback((column: string, order: any) => {
     const upperCol = column.toUpperCase().trim();
@@ -577,8 +579,11 @@ export const TacticalPlanForrosSection: React.FC = () => {
         </div>
       </Card>
 
-      <Tabs defaultValue="acolchado-tapas" className="w-full">
+      <Tabs defaultValue="resumen-produccion" className="w-full">
         <TabsList className="flex w-full h-auto bg-white border border-slate-200 p-2 mb-8 rounded-2xl shadow-sm overflow-x-auto justify-start sticky top-0 z-50">
+          <TabsTrigger value="resumen-produccion" className="flex items-center gap-2 px-6 py-3 data-[state=active]:bg-slate-900 data-[state=active]:text-white rounded-xl transition-all text-[10px] font-black uppercase tracking-widest text-slate-500">
+            <BarChart3 className="w-3.5 h-3.5" /> Resumen de Producción
+          </TabsTrigger>
           <TabsTrigger value="acolchado-tapas" className="flex items-center gap-2 px-6 py-3 data-[state=active]:bg-slate-900 data-[state=active]:text-white rounded-xl transition-all text-[10px] font-black uppercase tracking-widest text-slate-500">
             <Cpu className="w-3.5 h-3.5" /> 1. Acolchado & Tapas
           </TabsTrigger>
@@ -602,12 +607,83 @@ export const TacticalPlanForrosSection: React.FC = () => {
           </TabsTrigger>
         </TabsList>
 
+        <TabsContent value="resumen-produccion">
+          <Card className="rounded-3xl shadow-sm border-slate-200 overflow-hidden bg-white">
+            <CardHeader className="bg-slate-50/50 border-b border-slate-200 p-8">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-xl font-black text-slate-800 uppercase tracking-tight flex items-center gap-3">
+                    <BarChart3 className="w-6 h-6 text-slate-400" /> Matriz de Salud de Planta
+                  </CardTitle>
+                  <CardDescription>Consolidado de carga operativa vs capacidad neta (Hoja de Ruta).</CardDescription>
+                </div>
+                <div className="flex items-center gap-2 bg-slate-900 px-4 py-2 rounded-xl text-white">
+                  <Clock className="w-4 h-4 text-sky-400" />
+                  <span className="text-[10px] font-black uppercase tracking-widest">Turno: {totalHorasNetas.toFixed(2)}h netas</span>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full text-[11px] border-collapse">
+                  <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
+                    <tr className="text-slate-500 font-black uppercase tracking-widest">
+                      <th className="px-6 py-4 text-left bg-slate-100/50">Puesto de Trabajo</th>
+                      <th className="px-6 py-4 text-center">Órdenes</th>
+                      <th className="px-6 py-4 text-right">Cant. Total</th>
+                      <th className="px-6 py-4 text-right text-indigo-700 bg-indigo-50/30">T. Requerido (h)</th>
+                      <th className="px-6 py-4 text-right text-slate-900">Capacidad (h)</th>
+                      <th className="px-6 py-4 text-center">% Ocupación</th>
+                      <th className="px-6 py-4 text-right">Estatus</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 bg-white">
+                    {uniqueWorkstations.map((ws, idx) => {
+                      const orders = dailyOrders.filter(o => getResolvedMachine(o) === ws);
+                      const totalUnits = orders.reduce((sum, o) => sum + Number(o['CANTIDAD'] || 0), 0);
+                      const totalTimeHours = orders.reduce((sum, o) => sum + calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || 0), o), 0) / 60;
+                      const config = workstationConfigs[ws] || { people: 1 };
+                      const capacityHours = totalHorasNetas * config.people;
+                      const utilization = capacityHours > 0 ? (totalTimeHours / capacityHours) * 100 : 0;
+                      const isOverloaded = utilization > 100;
+
+                      return (
+                        <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="px-6 py-4 font-black text-slate-700 uppercase">{ws}</td>
+                          <td className="px-6 py-4 text-center font-mono font-bold text-slate-400">{orders.length}</td>
+                          <td className="px-6 py-4 text-right font-mono font-bold text-slate-600">{totalUnits.toLocaleString()}</td>
+                          <td className="px-6 py-4 text-right font-mono font-black text-indigo-600 bg-indigo-50/30">{totalTimeHours.toFixed(2)}h</td>
+                          <td className="px-6 py-4 text-right font-mono font-bold text-slate-800">{capacityHours.toFixed(2)}h</td>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-3">
+                              <Progress value={utilization} className={cn("h-1.5 w-20 bg-slate-100", isOverloaded ? "[&>div]:bg-red-500" : "[&>div]:bg-indigo-600")} />
+                              <span className={cn("font-mono font-black w-8 text-right", isOverloaded ? "text-red-500" : "text-slate-600")}>{utilization.toFixed(0)}%</span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            {isOverloaded ? (
+                              <Badge className="bg-red-100 text-red-700 border-none rounded-lg text-[9px] font-black uppercase px-2 py-0.5">Saturado</Badge>
+                            ) : utilization > 80 ? (
+                              <Badge className="bg-amber-100 text-amber-700 border-none rounded-lg text-[9px] font-black uppercase px-2 py-0.5">Alerta</Badge>
+                            ) : (
+                              <Badge className="bg-green-100 text-green-700 border-none rounded-lg text-[9px] font-black uppercase px-2 py-0.5">Óptimo</Badge>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         <TabsContent value="acolchado-tapas" className="space-y-12 pb-10">
           {group1Suffixes.map(suffix => {
             const achCode = `HR-ACH${suffix}`;
             const pefCode = `HR-PEF${suffix}`;
             
-            // Determinar si existen máquinas para este sufijo
             const achExists = uniqueWorkstations.includes(achCode);
             const pefExists = uniqueWorkstations.includes(pefCode);
 
