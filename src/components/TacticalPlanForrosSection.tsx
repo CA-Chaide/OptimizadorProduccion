@@ -243,12 +243,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
           });
         }
         
-        if (isHorizonFilterActive) {
-          filtered = filtered.filter((order: any) => {
-            const normalizedOrderDate = normalizeDateForFilter(order['FECHAINICIO']);
-            return normalizedOrderDate >= todayDate && normalizedOrderDate <= targetDate;
-          });
-        }
+        // Se elimina la restricción de fecha según solicitud del usuario
+        // Muestra todas las órdenes previsionales disponibles en el buffer
         
         setDailyOrders(filtered);
       }
@@ -257,7 +253,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     } finally {
       setIsLoadingDaily(false);
     }
-  }, [isMounted, externalFilters, todayDate, targetDate, normalizeDateForFilter, isHorizonFilterActive]);
+  }, [isMounted, externalFilters]);
 
   const fetchMantenimientos = useCallback(async () => {
     setIsLoadingMantenimientos(true);
@@ -573,7 +569,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
       <Card className="rounded-3xl shadow-sm border-slate-200 bg-white overflow-hidden ring-1 ring-slate-100">
         <div className="px-8 py-5 flex flex-col md:flex-row items-center justify-between gap-8 bg-slate-50/40">
-          <div className="flex flex-wrap items-center gap-10">
+          <div className="flex flex-wrap items-center gap-10 opacity-40 grayscale pointer-events-none">
             <div className="space-y-2">
               <label className="text-[10px] font-black uppercase text-slate-400 tracking-[0.3em] flex items-center gap-2">
                 <Clock className="w-3.5 h-3.5 text-indigo-400" /> Inicio Horizonte
@@ -583,6 +579,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 value={todayDate} 
                 onChange={(e) => setTodayDate(e.target.value)}
                 className="bg-white border border-slate-200 rounded-2xl px-5 py-3 text-sm font-black text-slate-800 focus:ring-8 focus:ring-indigo-500/5 focus:border-indigo-500 outline-none transition-all shadow-sm w-[180px]"
+                disabled
               />
             </div>
             <div className="flex items-center pt-6">
@@ -599,27 +596,18 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 value={targetDate} 
                 onChange={(e) => setTargetDate(e.target.value)}
                 className="bg-white border border-slate-200 rounded-2xl px-5 py-3 text-sm font-black text-slate-800 focus:ring-8 focus:ring-indigo-500/5 focus:border-indigo-500 outline-none transition-all shadow-sm w-[180px]"
+                disabled
               />
             </div>
           </div>
 
           <div className="flex items-center gap-4">
             <div className="h-10 w-px bg-slate-200 mr-2 hidden md:block" />
-            <Button 
-              onClick={() => {
-                setIsHorizonFilterActive(!isHorizonFilterActive);
-                fetchDailyOrders();
-              }}
-              className={cn(
-                "h-14 px-8 rounded-2xl font-black uppercase text-[11px] tracking-[0.2em] transition-all gap-3 shadow-xl",
-                isHorizonFilterActive 
-                  ? "bg-slate-900 hover:bg-slate-800 text-white shadow-slate-200" 
-                  : "bg-white border-2 border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300"
-              )}
-            >
-              <Filter className={cn("w-4 h-4", isHorizonFilterActive ? "text-sky-400" : "text-slate-400")} />
-              {isHorizonFilterActive ? "Horizonte Activo" : "Aplicar Horizonte"}
-            </Button>
+            <div className="bg-indigo-50 border border-indigo-100 px-5 py-3 rounded-2xl">
+              <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4" /> Buffer Maestro Total Activado
+              </span>
+            </div>
             <Button 
               onClick={fetchDailyOrders} 
               disabled={isLoadingDaily}
@@ -669,7 +657,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     <BarChart3 className="w-7 h-7 text-indigo-600" />
                     <CardTitle className="text-2xl font-black text-slate-900 uppercase tracking-tight">Matriz de Salud de Planta</CardTitle>
                   </div>
-                  <CardDescription className="mt-2 text-slate-500 font-bold uppercase text-[10px] tracking-widest">Análisis de carga operativa vs capacidad neta por Hoja de Ruta</CardDescription>
+                  <CardDescription className="mt-2 text-slate-500 font-bold uppercase text-[10px] tracking-widest">Análisis de carga total vs capacidad neta por Hoja de Ruta</CardDescription>
                 </div>
                 <div className="flex items-center gap-3 bg-slate-950 px-6 py-3 rounded-2xl text-white shadow-lg ring-4 ring-slate-100">
                   <Clock className="w-5 h-5 text-sky-400" />
