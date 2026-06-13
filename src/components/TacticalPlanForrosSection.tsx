@@ -25,7 +25,8 @@ import {
   AlertTriangle,
   CheckCircle2,
   BarChart3,
-  Search
+  Search,
+  BookOpen
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -485,7 +486,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   return (
     <div className="p-6 md:p-8 space-y-6 bg-slate-50/40 min-h-screen">
-      {/* HEADER DE COMANDO (SOBRIO) */}
+      {/* HEADER DE COMANDO */}
       <div className="flex flex-col xl:flex-row items-center justify-between gap-6 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
         <div className="flex items-center space-x-5">
           <div className="bg-slate-900 p-4 rounded-2xl text-white shadow-lg">
@@ -629,7 +630,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
                     <tr className="text-slate-500 font-black uppercase tracking-widest">
                       <th className="px-6 py-4 text-left bg-slate-100/50">Puesto de Trabajo</th>
-                      <th className="px-6 py-4 text-center">Órdenes</th>
+                      <th className="px-6 py-4 text-center">Hoja de Ruta (min/u)</th>
+                      <th className="px-6 py-4 text-right">Órdenes</th>
                       <th className="px-6 py-4 text-right">Cant. Total</th>
                       <th className="px-6 py-4 text-right text-indigo-700 bg-indigo-50/30">T. Requerido (h)</th>
                       <th className="px-6 py-4 text-right text-slate-900">Capacidad (h)</th>
@@ -641,6 +643,15 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     {uniqueWorkstations.map((ws, idx) => {
                       const orders = dailyOrders.filter(o => getResolvedMachine(o) === ws);
                       const totalUnits = orders.reduce((sum, o) => sum + Number(o['CANTIDAD'] || 0), 0);
+                      
+                      // Obtener tiempo de hoja de ruta promedio para este puesto
+                      const matches = tiemposProduccion.filter(t => 
+                        String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').trim().toUpperCase() === ws
+                      );
+                      const avgHrMin = matches.length > 0 
+                        ? matches.reduce((sum, t) => sum + Number(t.Tiempo || t.Tiempo_Min || 0), 0) / matches.length 
+                        : 0;
+
                       const totalTimeHours = orders.reduce((sum, o) => sum + calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || 0), o), 0) / 60;
                       const config = workstationConfigs[ws] || { people: 1 };
                       const capacityHours = totalHorasNetas * config.people;
@@ -649,8 +660,16 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
                       return (
                         <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
-                          <td className="px-6 py-4 font-black text-slate-700 uppercase">{ws}</td>
-                          <td className="px-6 py-4 text-center font-mono font-bold text-slate-400">{orders.length}</td>
+                          <td className="px-6 py-4 font-black text-slate-700 uppercase">
+                            <div className="flex items-center gap-2">
+                              <Settings2 className="w-3.5 h-3.5 text-slate-400" />
+                              {ws}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-center font-mono font-bold text-slate-400">
+                            {avgHrMin > 0 ? `${avgHrMin.toFixed(2)} min` : '—'}
+                          </td>
+                          <td className="px-6 py-4 text-right font-mono font-bold text-slate-400">{orders.length}</td>
                           <td className="px-6 py-4 text-right font-mono font-bold text-slate-600">{totalUnits.toLocaleString()}</td>
                           <td className="px-6 py-4 text-right font-mono font-black text-indigo-600 bg-indigo-50/30">{totalTimeHours.toFixed(2)}h</td>
                           <td className="px-6 py-4 text-right font-mono font-bold text-slate-800">{capacityHours.toFixed(2)}h</td>
@@ -672,6 +691,16 @@ export const TacticalPlanForrosSection: React.FC = () => {
                         </tr>
                       );
                     })}
+                    {uniqueWorkstations.length === 0 && (
+                      <tr>
+                        <td colSpan={8} className="py-24 text-center">
+                          <div className="flex flex-col items-center gap-3 text-slate-300">
+                            <Layers className="w-12 h-12" />
+                            <p className="font-black uppercase tracking-widest text-xs">No se han detectado puestos de trabajo en los maestros</p>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -733,7 +762,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
            <Card className="rounded-3xl shadow-sm border-slate-200 overflow-hidden bg-white">
              <CardHeader className="bg-slate-50/50 border-b border-slate-200 p-8">
                 <CardTitle className="text-xl font-black text-slate-800 uppercase tracking-tight flex items-center gap-3"><Inbox className="w-6 h-6 text-slate-400" /> Buffer Maestro de Componentes</CardTitle>
-                <CardDescription>Listado global de órdenes previsionales para distribución técnica.</CardDescription>
+                <CardDescription>Listado global de órdenes previsionales filtrado por responsabilidad técnica.</CardDescription>
              </CardHeader>
              <CardContent className="p-0">
                 <ProvisionalOrdersTabSection 
@@ -811,15 +840,23 @@ export const TacticalPlanForrosSection: React.FC = () => {
                  <div className="space-y-4">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">Jornada Diurna (L-V)</label>
                     <Select value={jornadaDiurnaSel} onValueChange={setJornadaDiurnaSel}>
-                      <SelectTrigger className="h-11 border border-slate-200 rounded-xl font-bold text-slate-700"><SelectValue /></SelectTrigger>
-                      <SelectContent>{DIURNA_OPTIONS.map(opt => <SelectItem key={opt.value} value={opt.value} className="font-bold">{opt.label}</SelectItem>)}</SelectContent>
+                      <SelectTrigger className="h-11 border border-slate-200 rounded-xl font-bold text-slate-700">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {DIURNA_OPTIONS.map(opt => <SelectItem key={opt.value} value={opt.value} className="font-bold">{opt.label}</SelectItem>)}
+                      </SelectContent>
                     </Select>
                  </div>
                  <div className="space-y-4">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">Jornada Nocturna</label>
                     <Select value={jornadaNocturnaSel} onValueChange={setJornadaNocturnaSel}>
-                      <SelectTrigger className="h-11 border border-slate-200 rounded-xl font-bold text-slate-700"><SelectValue /></SelectTrigger>
-                      <SelectContent>{NOCTURNA_OPTIONS.map(opt => <SelectItem key={opt.value} value={opt.value} className="font-bold">{opt.label}</SelectItem>)}</SelectContent>
+                      <SelectTrigger className="h-11 border border-slate-200 rounded-xl font-bold text-slate-700">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {NOCTURNA_OPTIONS.map(opt => <SelectItem key={opt.value} value={opt.value} className="font-bold">{opt.label}</SelectItem>)}
+                      </SelectContent>
                     </Select>
                  </div>
                  <div className="p-7 bg-slate-900 rounded-[1.5rem] text-white shadow-xl border border-white/10">
@@ -836,7 +873,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
             <Card className="lg:col-span-2 rounded-3xl shadow-sm border-slate-200 overflow-hidden bg-white">
                <CardHeader className="bg-slate-50/50 border-b border-slate-200 p-8"><CardTitle className="text-xl font-black text-slate-800 uppercase tracking-tight">Dotación por Estación</CardTitle></CardHeader>
                <CardContent className="p-8">
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-h-[60vh] overflow-y-auto pr-2">
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-h-[60vh] overflow-y-auto pr-2 text-slate-900">
                     {uniqueWorkstations.map(ws => {
                       const config = workstationConfigs[ws] || { people: 1 };
                       return (
