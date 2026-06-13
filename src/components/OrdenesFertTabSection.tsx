@@ -68,6 +68,8 @@ const MultiSelect: React.FC<{
     onChange(newSelected);
   };
 
+  const isAllSelected = options.length > 0 && selected.length === options.length;
+
   return (
     <div className="flex flex-col items-start w-full">
       <Popover open={open} onOpenChange={setOpen}>
@@ -81,9 +83,11 @@ const MultiSelect: React.FC<{
             <span className="truncate">
               {selected.length === 0
                 ? placeholder || 'Seleccionar...'
+                : isAllSelected
+                ? 'Todas las fechas'
                 : `${selected.length} seleccionada(s)`}
             </span>
-            <Check className="ml-1 h-4 w-4 shrink-0 opacity-50" />
+            <ChevronsUpDown className="ml-1 h-4 w-4 shrink-0 opacity-50" />
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-[250px] p-0">
@@ -91,6 +95,24 @@ const MultiSelect: React.FC<{
             <CommandInput placeholder="Buscar fecha..." className="h-9" />
             <CommandEmpty>No se encontraron fechas.</CommandEmpty>
             <CommandGroup className="max-h-60 overflow-y-auto">
+              <CommandItem
+                onSelect={() => {
+                  if (isAllSelected) {
+                    onChange([]);
+                  } else {
+                    onChange(options.map(o => o.value));
+                  }
+                }}
+                className="font-bold border-b mb-1"
+              >
+                <Check
+                  className={cn(
+                    'mr-2 h-4 w-4',
+                    isAllSelected ? 'opacity-100' : 'opacity-0'
+                  )}
+                />
+                {isAllSelected ? "Desmarcar Todas" : "Seleccionar Todas"}
+              </CommandItem>
               {options.map((option) => (
                 <CommandItem
                   key={option.value}
@@ -112,7 +134,7 @@ const MultiSelect: React.FC<{
           </Command>
         </PopoverContent>
       </Popover>
-      {selected.length > 0 && (
+      {selected.length > 0 && !isAllSelected && (
           <div className="pt-1 text-left w-full min-h-[22px]">
             {selected.slice(0, 3).map(value => (
               <Badge key={value} variant="secondary" className="mr-1 mb-1 max-w-[100px] truncate" title={value}>
@@ -121,6 +143,13 @@ const MultiSelect: React.FC<{
             ))}
             {selected.length > 3 && <Badge variant="secondary">+{selected.length - 3}</Badge>}
           </div>
+      )}
+      {isAllSelected && (
+        <div className="pt-1 text-left w-full min-h-[22px]">
+           <Badge variant="secondary" className="bg-indigo-50 text-indigo-700 border-indigo-200">
+             Mostrando todo el horizonte
+           </Badge>
+        </div>
       )}
     </div>
   );
