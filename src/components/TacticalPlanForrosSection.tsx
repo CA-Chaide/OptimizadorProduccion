@@ -366,13 +366,13 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   const workstationsGroup3 = useMemo(() => {
     return uniqueWorkstations.filter(m => 
-      m.includes('INTP') || m.includes('MTBS') || m.includes('CT')
+      m.includes('INTP') || m.includes('MTBS') || m.includes('CT') || m.includes('TTCF') || m.includes('TTSUP')
     );
   }, [uniqueWorkstations]);
 
   const workstationsGroup4 = useMemo(() => {
     return uniqueWorkstations.filter(m => 
-      m.includes('FORRO') || m.includes('FBASE') || m.includes('TTCF') || m.includes('TTSUP')
+      m.includes('FORRO') || m.includes('FBASE')
     );
   }, [uniqueWorkstations]);
 
