@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { serviciosService } from '@/services/servicios.service';
 import { useAppContext } from '@/context/AppProvider';
-import { Package, Check, ChevronsUpDown, Loader2 } from 'lucide-react';
+import { Package, Check, ChevronsUpDown, Loader2, BellRing, AlertTriangle } from 'lucide-react';
 import type { OrdenFert, Restriccion } from '@/types/interfaces';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -315,6 +315,18 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
       });
   }, [baseFilteredOrders, selectedDates]);
   
+  // ALERTA DE TIEMPOS FALTANTES
+  const missingTimesCount = useMemo(() => {
+    const missing = new Set<string>();
+    filteredOrders.forEach(order => {
+      const materialCode = normalizeMaterialCode(order.MATERIAL);
+      if (!tiemposMap.has(materialCode)) {
+        missing.add(materialCode);
+      }
+    });
+    return missing.size;
+  }, [filteredOrders, tiemposMap]);
+
   const totalCantidadPendienteGeneral = useMemo(() => {
     return baseFilteredOrders.reduce((sum, order) => sum + (Number(order.CANTPENDIENTE) || 0), 0);
   }, [baseFilteredOrders]);
@@ -487,6 +499,26 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
 
   return (
     <div className="space-y-4">
+      {/* ALERTA DE TIEMPOS FALTANTES */}
+      {displayMode === 'plan' && missingTimesCount > 0 && (
+        <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-4 flex items-center gap-4 shadow-md animate-pulse">
+          <div className="flex-shrink-0 bg-red-100 p-2 rounded-full">
+            <BellRing className="h-6 w-6 text-red-600" />
+          </div>
+          <div className="flex-1">
+            <h3 className="text-sm font-bold text-red-800 uppercase tracking-tight flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4" /> Alerta de Consistencia de Datos
+            </h3>
+            <p className="text-xs text-red-700 font-medium mt-0.5">
+              Se han detectado <span className="underline decoration-2">{missingTimesCount}</span> materiales en la fecha seleccionada que <span className="font-bold">no tienen información de tiempo</span> en la pestaña "TIEMPO".
+            </p>
+            <p className="text-[10px] text-red-600 italic mt-1">
+              Esto impide el cálculo exacto de la capacidad ocupada. Por favor, valide los datos maestros.
+            </p>
+          </div>
+        </div>
+      )}
+
       {!hideControls && (
         <div className="flex flex-col space-y-6 mb-4">
           <div className="flex items-start justify-between">
@@ -693,7 +725,8 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
                           if (col === 'TIEMPO') {
                               return (
                                  <td key={col} className={cn(
-                                   "px-2 py-4 whitespace-nowrap text-sm text-center font-mono font-semibold text-blue-700",
+                                   "px-2 py-4 whitespace-nowrap text-sm text-center font-mono font-semibold",
+                                   tiempoCalculado === '-' ? "text-red-500" : "text-blue-700",
                                    colIndex < COLUMNS_TO_DISPLAY.length - 1 ? 'border-r border-dashed border-gray-300' : ''
                                  )}>
                                    {tiempoCalculado}
