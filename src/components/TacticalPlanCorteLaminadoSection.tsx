@@ -19,12 +19,10 @@ import {
   PlayCircle,
   UserCheck,
   Check,
-  Database,
   Plus,
   Minus,
   Info,
   RefreshCw,
-  BarChart3,
   Box
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
@@ -46,18 +44,6 @@ import type { Grupo, Restriccion } from '@/types/interfaces';
 import { cn } from '@/lib/utils';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, parseISO, addMonths, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
-
-interface RawBOMRow {
-  NIVEL: string;
-  CENTRO: string;
-  FERT_PRINCIPAL: string;
-  DESCRIPCION_FERT: string;
-  MATERIAL_PADRE: string;
-  COMPONENTE: string;
-  DESCRIPCION_COMPONENTE: string;
-  CANTIDAD_UNITARIA: number;
-  CANTIDAD_ACUMULADA: number;
-}
 
 interface UnifiedNeedRow {
   material: string;
@@ -142,7 +128,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [processedSignature, setProcessedSignature] = useState('');
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
-  // CORRECCIÓN: Definición de datesWithOrders para evitar error de ejecución
   const datesWithOrders = useMemo(() => {
     const dates = new Set<string>();
     ordenes.forEach(o => {
@@ -227,51 +212,50 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     const uniqueMaterials = Array.from(materialGroups.entries());
     setResumenProgress({ current: 0, total: uniqueMaterials.length });
     const consolidatedMap = new Map<string, UnifiedNeedRow>();
-    const CONCURRENCY_LIMIT = 5; 
+    
     try {
-      for (let i = 0; i < uniqueMaterials.length; i += CONCURRENCY_LIMIT) {
-        const batch = uniqueMaterials.slice(i, i + CONCURRENCY_LIMIT);
-        await Promise.all(batch.map(async ([matCode, data]) => {
-          const fullCode = matCode.padStart(18, '0');
-          const totalQtyForMaterial = data.totalQty;
-          try {
-            const response = await serviciosService.getMaestroMaterialesExplosion("1000", fullCode, 1, 500);
-            const rawData = response?.data?.data || response?.data || [];
-            if (Array.isArray(rawData)) {
-              rawData
-                .filter(row => {
-                  const descComp = getProp(row, 'DESCRIPCION_COMPONENTE').toUpperCase();
-                  const centroComp = getProp(row, 'CENTRO');
-                  return centroComp !== '2000' && descComp.includes('LAMINA CILINDRICA');
-                })
-                .forEach(comp => {
-                  const code = cleanCode(getProp(comp, 'COMPONENTE'));
-                  const desc = getProp(comp, 'DESCRIPCION_COMPONENTE').toUpperCase();
-                  const cantAcum = getNumProp(comp, 'CANTIDAD_ACUMULADA') || getNumProp(comp, 'CANTIDAD_UNITARIA');
-                  const kgTotal = totalQtyForMaterial * cantAcum;
-                  if (consolidatedMap.has(code)) {
-                    const ex = consolidatedMap.get(code)!;
-                    ex.consumoKg += kgTotal;
-                  } else {
-                    const dims = parseDimensionsEnhanced(desc);
-                    const pesoCalculado = (dims.distancia * dims.altura * dims.espesor * dims.densidad) / 10000;
-                    const s1006 = tiemposEnsamblado.filter(t => cleanCode(t.CodMaterial) === code && String(t.Almacen || t.ALMACEN) === '1006').reduce((s, t) => s + safeNum(t.StockActual), 0);
-                    const s1008 = tiemposEnsamblado.filter(t => cleanCode(t.CodMaterial) === code && String(t.Almacen || t.ALMACEN) === '1008').reduce((s, t) => s + safeNum(t.StockActual), 0);
-                    const s1015 = tiemposEnsamblado.filter(t => cleanCode(t.CodMaterial) === code && String(t.Almacen || t.ALMACEN) === '1015').reduce((s, t) => s + safeNum(t.StockActual), 0);
-                    consolidatedMap.set(code, {
-                      material: code, descripcion: desc, distancia: dims.distancia, altura: dims.altura, espesor: dims.espesor, densidad: dims.densidad,
-                      peso: pesoCalculado, consumoKg: kgTotal, consumoUn: 0, stock1006: s1006, stock1008: s1008, stock1015: s1015,
-                      porcentajeNecesidad: 0, planUn: 0, planKg: 0
-                    });
-                  }
-                });
-            }
-          } catch (e) {
-            console.warn(`[Laminado] Error procesando material ${matCode}:`, (e as Error).message);
+      for (let i = 0; i < uniqueMaterials.length; i++) {
+        const [matCode, data] = uniqueMaterials[i];
+        const fullCode = matCode.padStart(18, '0');
+        const totalQtyForMaterial = data.totalQty;
+        
+        try {
+          const response = await serviciosService.getMaestroMaterialesExplosion("1000", fullCode, 1, 500);
+          const rawData = response?.data?.data || response?.data || [];
+          if (Array.isArray(rawData)) {
+            rawData
+              .filter(row => {
+                const descComp = getProp(row, 'DESCRIPCION_COMPONENTE').toUpperCase();
+                return descComp.includes('LAMINA CILINDRICA');
+              })
+              .forEach(comp => {
+                const code = cleanCode(getProp(comp, 'COMPONENTE'));
+                const desc = getProp(comp, 'DESCRIPCION_COMPONENTE').toUpperCase();
+                const cantAcum = getNumProp(comp, 'CANTIDAD_ACUMULADA') || getNumProp(comp, 'CANTIDAD_UNITARIA');
+                const kgTotal = totalQtyForMaterial * cantAcum;
+                if (consolidatedMap.has(code)) {
+                  const ex = consolidatedMap.get(code)!;
+                  ex.consumoKg += kgTotal;
+                } else {
+                  const dims = parseDimensionsEnhanced(desc);
+                  const pesoCalculado = (dims.distancia * dims.altura * dims.espesor * dims.densidad) / 10000;
+                  const s1006 = tiemposEnsamblado.filter(t => cleanCode(t.CodMaterial) === code && String(t.Almacen || t.ALMACEN) === '1006').reduce((s, t) => s + safeNum(t.StockActual), 0);
+                  const s1008 = tiemposEnsamblado.filter(t => cleanCode(t.CodMaterial) === code && String(t.Almacen || t.ALMACEN) === '1008').reduce((s, t) => s + safeNum(t.StockActual), 0);
+                  const s1015 = tiemposEnsamblado.filter(t => cleanCode(t.CodMaterial) === code && String(t.Almacen || t.ALMACEN) === '1015').reduce((s, t) => s + safeNum(t.StockActual), 0);
+                  consolidatedMap.set(code, {
+                    material: code, descripcion: desc, distancia: dims.distancia, altura: dims.altura, espesor: dims.espesor, densidad: dims.densidad,
+                    peso: pesoCalculado, consumoKg: kgTotal, consumoUn: 0, stock1006: s1006, stock1008: s1008, stock1015: s1015,
+                    porcentajeNecesidad: 0, planUn: 0, planKg: 0
+                  });
+                }
+              });
           }
-        }));
-        setResumenProgress(prev => ({ ...prev, current: Math.min(i + CONCURRENCY_LIMIT, uniqueMaterials.length) }));
+        } catch (e) {
+          console.warn(`Error material ${matCode}:`, (e as Error).message);
+        }
+        setResumenProgress({ current: i + 1, total: uniqueMaterials.length });
       }
+
       const finalArray = Array.from(consolidatedMap.values()).map(row => ({
         ...row,
         consumoUn: row.peso > 0 ? row.consumoKg / row.peso : 0
@@ -294,8 +278,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         });
       });
       setUnifiedNeeds(finalArray.sort((a, b) => b.consumoKg - a.consumoKg));
-    } catch (err) {
-      console.error('Error procesando resumen:', err);
     } finally { 
       setIsProcessingResumen(false); 
     }
@@ -348,7 +330,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     }), { kg: 0, un: 0, planUn: 0, planKg: 0, stock1006: 0, stock1008: 0 });
   }, [unifiedNeeds]);
 
-  // Monitor de corridas por densidad para el dashboard superior
   const densityBreakdown = useMemo(() => {
     const map = new Map<number, number>();
     groupedNeeds.forEach(g => {
@@ -367,7 +348,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const handleRefresh = () => {
     setProcessedSignature('');
     handleProcessResumen(filteredOrders);
-    addNotification('info', 'Actualizando datos del resumen técnico...');
+    addNotification('info', 'Actualizando datos técnicos...');
   };
 
   const calendarDays = useMemo(() => {
@@ -397,7 +378,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           <div className="p-2 bg-red-600/10 rounded-xl shadow-inner"><Scissors className="w-6 h-6 text-red-600" /></div>
           <div>
             <h2 className="text-xl font-black text-gray-800 uppercase tracking-tighter">Programación Táctica Laminado</h2>
-            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Explosión Técnica SAP | Gestión de Rollos y Auditoría Multinivel</p>
+            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Ingeniería SAP | Gestión de Rollos y Auditoría de Corridas</p>
           </div>
         </div>
       </div>
@@ -417,12 +398,12 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         </TabsList>
 
         <TabsContent value="resumen" className="space-y-6 animate-in fade-in duration-300">
-           {/* DASHBOARD EJECUTIVO SEGÚN IMAGEN 1 */}
-           <div className="flex items-center gap-6 bg-[#1e293b] p-6 rounded-[2rem] border border-white/5 shadow-2xl text-white">
+           {/* DASHBOARD EJECUTIVO SEGÚN REFERENCIA */}
+           <div className="flex items-center gap-6 bg-[#1e293b] p-6 rounded-[2.5rem] border border-white/5 shadow-2xl text-white">
              <div className="flex-1 flex items-center justify-between">
                 <div className="flex flex-col gap-1 border-r border-white/10 pr-8 flex-1">
                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Cantidad necesaria (KG)</span>
-                   <p className="text-4xl font-black font-mono text-red-400 tracking-tighter">
+                   <p className="text-4xl font-black font-mono text-coral-400 text-[#f87171] tracking-tighter">
                      {totalsUnified.kg.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).replace('.', ',')}
                    </p>
                 </div>
@@ -434,15 +415,16 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 </div>
                 <div className="flex flex-col gap-1 pl-8 flex-1">
                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Nro de Aperturas o corridas</span>
-                   <div className="flex items-baseline gap-3">
+                   <div className="flex items-center gap-6">
                      <p className="text-4xl font-black font-mono text-yellow-400 tracking-tighter">
                        {groupedNeeds.length}
                      </p>
-                     <div className="flex gap-2 flex-wrap max-w-[200px]">
+                     <div className="flex flex-col gap-1">
                         {densityBreakdown.map(([dens, count]) => (
-                          <Badge key={dens} variant="outline" className="bg-white/5 border-white/10 text-white text-[8px] font-black px-2 py-0">
-                            D{dens}: {count}
-                          </Badge>
+                          <div key={dens} className="flex items-center gap-2">
+                             <div className="w-1.5 h-1.5 rounded-full bg-white/20" />
+                             <span className="text-[9px] font-black text-slate-400 uppercase">D{dens}: <span className="text-white font-mono">{count}</span></span>
+                          </div>
                         ))}
                      </div>
                    </div>
@@ -453,7 +435,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 <Button 
                   onClick={handleRefresh} 
                   disabled={isProcessingResumen}
-                  className="bg-red-600 hover:bg-red-700 text-white rounded-[1.2rem] h-14 px-8 text-[11px] font-black uppercase tracking-widest shadow-lg transition-all flex items-center gap-3 active:scale-95"
+                  className="bg-red-600 hover:bg-red-700 text-white rounded-[1.5rem] h-14 px-8 text-[11px] font-black uppercase tracking-widest shadow-xl transition-all flex items-center gap-3 active:scale-95"
                 >
                   {isProcessingResumen ? <Loader2 className="w-5 h-5 animate-spin" /> : <RefreshCw className="w-5 h-5" />}
                   ACTUALIZAR DATOS
@@ -470,8 +452,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     <th className="px-6 py-4 border-r border-black/5 text-left">Descripción</th>
                     <th className="px-3 py-4 border-r border-black/5">Stock 1006</th>
                     <th className="px-3 py-4 border-r border-black/5">Stock 1008</th>
-                    <th className="px-4 py-4 border-r border-black/5 text-right bg-orange-100/50">Consumo OF [Kg]</th>
-                    <th className="px-4 py-4 border-r border-black/5 text-right bg-orange-100/50">Consumo OF [Un]</th>
+                    <th className="px-4 py-4 border-r border-black/5 text-right bg-orange-100/30">Consumo OF [Kg]</th>
+                    <th className="px-4 py-4 border-r border-black/5 text-right bg-orange-100/30">Consumo OF [Un]</th>
                     <th className="px-6 py-4 border-r border-black/5 bg-[#cfe2f3]">Peso / Rollo (Kg)</th>
                     <th className="px-4 py-4 border-r border-black/5 text-center">% Necesidad</th>
                     <th className="px-4 py-4 border-r border-black/5 text-right font-black bg-red-100/50 text-red-900">PLAN (UN)</th>
@@ -483,11 +465,11 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     <tr>
                       <td colSpan={10} className="py-20 text-center">
                         <Loader2 className="w-8 h-8 animate-spin mx-auto text-indigo-500 mb-3" />
-                        <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Calculando Ingeniería de Rollos: {resumenProgress.current} / {resumenProgress.total}</p>
+                        <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Sincronizando Ingeniería: {resumenProgress.current} / {resumenProgress.total}</p>
                       </td>
                     </tr>
                   ) : groupedNeeds.length === 0 ? (
-                    <tr><td colSpan={10} className="py-24 text-slate-200 font-black uppercase tracking-widest text-center">Sin necesidades técnicas identificadas</td></tr>
+                    <tr><td colSpan={10} className="py-24 text-slate-200 font-black uppercase tracking-widest text-center italic">Sin necesidades registradas para la fecha</td></tr>
                   ) : (
                     groupedNeeds.map((group, gIdx) => {
                       const groupKey = `${group.densidad}-${group.altura}`;
@@ -510,7 +492,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                             <td className="px-4 py-4 text-right font-mono font-black text-red-900 bg-red-50">{group.totalPlanKg.toLocaleString(undefined, { minimumFractionDigits: 1 })}</td>
                           </tr>
                           {isExpanded && group.items.map((row, iIdx) => (
-                            <tr key={`${groupKey}-${iIdx}`} className="bg-white hover:bg-blue-50/10 transition-colors animate-in slide-in-from-top-1 duration-200">
+                            <tr key={`${groupKey}-${iIdx}`} className="bg-white hover:bg-blue-50/10 transition-colors">
                               <td className="px-4 py-3 border-r border-gray-100 font-mono text-indigo-600 text-left pl-8">{row.material}</td>
                               <td className="px-6 py-3 border-r border-gray-100 text-left text-gray-400 uppercase leading-tight italic text-[10px] truncate max-w-[250px]">{row.descripcion}</td>
                               <td className="px-3 py-3 border-r border-gray-100 font-mono text-slate-400">{row.stock1006 || '—'}</td>
@@ -607,7 +589,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-50 font-bold">
                   {filteredOrders.length === 0 ? (
-                    <tr><td colSpan={8} className="py-24 text-slate-200 font-black uppercase tracking-widest text-center">Sin registros para el filtro seleccionado</td></tr>
+                    <tr><td colSpan={8} className="py-24 text-slate-200 font-black uppercase tracking-widest text-center italic">Sin registros técnicos para el filtro actual</td></tr>
                   ) : (
                     filteredOrders.map((o, i) => {
                       const matCode = cleanCode(String(o.MATERIAL || '').match(/^(\d+)/)?.[1]);
