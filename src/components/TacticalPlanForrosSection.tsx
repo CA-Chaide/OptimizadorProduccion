@@ -28,7 +28,9 @@ import {
   TestTube,
   FileSpreadsheet,
   GraduationCap,
-  Wrench
+  Wrench,
+  AlertTriangle,
+  CheckCircle2
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@radix-ui/react-tabs';
@@ -42,6 +44,7 @@ import {
   SelectTrigger, 
   SelectValue 
 } from "@/components/ui/select";
+import { Progress } from "@/components/ui/progress";
 import { ProvisionalOrdersTabSection } from './ProvisionalOrdersTabSection';
 import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
@@ -405,7 +408,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     } finally {
       setIsLoadingDaily(false);
     }
-  }, [externalFilters, targetDate, todayDate, normalizeDateForFilter]);
+  }, [externalFilters, targetDate, todayDate, safeParseDateParts]);
 
   const fetchExplosionData = useCallback(async (page: number = 1) => {
     setIsLoadingExplosion(true);
@@ -471,21 +474,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return '';
   }, [tiemposProduccion, normalizeMaterialCode]);
 
-  const renderResolvedProvisionalCell = useCallback((column: string, order: any) => {
-    const upperCol = column.toUpperCase().trim();
-    if (upperCol === 'MAQUINA') {
-      const val = getResolvedMachine(order);
-      return val ? (
-        <span className="font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
-          {val}
-        </span>
-      ) : (
-        <span className="text-gray-400 italic">—</span>
-      );
-    }
-    return undefined;
-  }, [getResolvedMachine]);
-
   const calculateProductionTime = useCallback((material: string, quantity: number, order: any) => {
     if (!material) return '0.00';
     const normMaterial = normalizeMaterialCode(material);
@@ -503,6 +491,21 @@ export const TacticalPlanForrosSection: React.FC = () => {
     const unitTime = Number(match.Tiempo || match.Tiempo_Min || 0);
     return (unitTime * quantity).toFixed(2);
   }, [tiemposProduccion, normalizeMaterialCode, getResolvedMachine]);
+
+  const renderResolvedProvisionalCell = useCallback((column: string, order: any) => {
+    const upperCol = column.toUpperCase().trim();
+    if (upperCol === 'MAQUINA') {
+      const val = getResolvedMachine(order);
+      return val ? (
+        <span className="font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
+          {val}
+        </span>
+      ) : (
+        <span className="text-gray-400 italic">—</span>
+      );
+    }
+    return undefined;
+  }, [getResolvedMachine]);
 
   const resolveLogicValue = useCallback((column: string, order: any) => {
     const upperCol = column.toUpperCase().trim();
@@ -628,32 +631,24 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   const filteredMantenimientosFull = useMemo(() => {
     let result = [...mantenimientosData];
-
-    // FILTRO POR RESPONSABLE DE FORROS (SEGÚN RESTRICCIÓN)
     const allowedResps = externalFilters['RESPCTRLPROD'] || [];
     if (allowedResps.length > 0) {
       result = result.filter(m => {
-        // Encontrar la columna del responsable (puede variar el nombre)
         const respKey = Object.keys(m).find(k => 
           k.toUpperCase().trim() === 'RESP_CONTROL_PROD' || 
           k.toUpperCase().trim() === 'RESPONSABLE' ||
           k.toUpperCase().trim() === 'RESPONSABLE_CONTROL'
         );
         if (!respKey) return true;
-        
-        // Normalizar el valor de la fila a 3 dígitos para comparar
         const val = String(m[respKey] || '').trim().padStart(3, '0');
         return allowedResps.includes(val);
       });
     }
-
-    // Ordenar cronológicamente por FECHA_PRO
     result.sort((a, b) => {
       const dateA = new Date(a.FECHA_PRO || a.FECHA_INICIO || a.FECHA || 0).getTime();
       const dateB = new Date(b.FECHA_PRO || b.FECHA_INICIO || b.FECHA || 0).getTime();
       return dateA - dateB;
     });
-
     return result;
   }, [mantenimientosData, externalFilters]);
 
@@ -663,19 +658,13 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return filteredMantenimientosFull.slice(start, start + MAINT_ROWS_PER_PAGE);
   }, [filteredMantenimientosFull, maintCurrentPage]);
 
-  // COLUMNAS DE MANTENIMIENTO ORDENADAS (FECHA AL INICIO)
   const maintColumnsSorted = useMemo(() => {
     if (maintColumns.length === 0) return [];
-    
-    // Identificar la columna de fecha de programación
     const dateCol = maintColumns.find(c => {
       const norm = c.toUpperCase().replace(/_/g, '');
       return norm === 'FECHAPRO' || norm === 'FECHAPROGRAMACION';
     }) || maintColumns.find(c => c.toUpperCase().includes('FECHA'));
-
     if (!dateCol) return maintColumns;
-
-    // Crear nueva lista con la fecha primero
     return [dateCol, ...maintColumns.filter(c => c !== dateCol)];
   }, [maintColumns]);
 
@@ -768,6 +757,30 @@ export const TacticalPlanForrosSection: React.FC = () => {
       return machineA.localeCompare(machineB);
     });
   }, [dailyOrders, getResolvedMachine]);
+
+  // VALIDADOR DE REGLA ESPEJO (Extra)
+  const mirrorRuleViolations = useMemo(() => {
+    const achOrders = pruebasOrders.filter(o => getResolvedMachine(o).startsWith('HR-ACH'));
+    const pefOrders = pruebasOrders.filter(o => getResolvedMachine(o).startsWith('HR-PEF'));
+    const violations: { material: string; achMachine: string; pefMachine: string; status: 'missing_pair' | 'mismatch' }[] = [];
+
+    achOrders.forEach(ach => {
+      const mat = normalizeMaterialCode(ach['MATERIAL'] || ach['CodMaterial'] || '');
+      const suffix = getResolvedMachine(ach).slice(-2);
+      const targetPef = `HR-PEF${suffix}`;
+      
+      const pefMatch = pefOrders.find(p => 
+        normalizeMaterialCode(p['MATERIAL'] || p['CodMaterial'] || '') === mat && 
+        getResolvedMachine(p) === targetPef
+      );
+
+      if (!pefMatch) {
+        violations.push({ material: mat, achMachine: getResolvedMachine(ach), pefMachine: targetPef, status: 'missing_pair' });
+      }
+    });
+
+    return violations;
+  }, [pruebasOrders, getResolvedMachine, normalizeMaterialCode]);
 
   const renderPruebasTableBody = () => {
     if (isLoadingDaily) return <tr><td colSpan={dailyColumns.length} className="py-12 text-center"><Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" /></td></tr>;
@@ -1234,7 +1247,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                   <CardTitle>Mantenimientos Preventivos Programados</CardTitle>
-                  <CardDescription>Paros técnicos organizados cronológicamente y filtrados para el área de Forros (según RespCtrlProd).</CardDescription>
+                  <CardDescription>Paros técnicos organizados cronológicamente y filtrados para el área de Forros.</CardDescription>
                 </div>
                 <Button variant="outline" size="sm" onClick={fetchMantenimientos} disabled={isLoadingMantenimientos}>
                   <RefreshCw className={cn("h-4 w-4 mr-2", isLoadingMantenimientos && "animate-spin")} />
@@ -1268,130 +1281,38 @@ export const TacticalPlanForrosSection: React.FC = () => {
                               {maintColumnsSorted.map((col) => {
                                 const value = row[col];
                                 const upperCol = col.toUpperCase().replace(/_/g, '');
-                                
                                 if (upperCol.includes('FECHA')) {
-                                  return (
-                                    <td key={`${idx}-${col}`} className="px-4 py-3 text-xs font-mono font-bold text-blue-700 whitespace-nowrap">
-                                      {formatValueForDisplay(col, value)}
-                                    </td>
-                                  );
+                                  return (<td key={`${idx}-${col}`} className="px-4 py-3 text-xs font-mono font-bold text-blue-700 whitespace-nowrap">{formatValueForDisplay(col, value)}</td>);
                                 }
-                                
                                 if (upperCol === 'ESTADO' || upperCol === 'STATUS') {
                                   const val = String(value || '').toUpperCase();
                                   const isEjecutado = val.includes('EJEC') || val.includes('OK') || val.includes('TERMINADO');
                                   const isEnProceso = val.includes('PROC') || val.includes('CURSO');
-                                  
-                                  return (
-                                    <td key={`${idx}-${col}`} className="px-4 py-3">
-                                      <Badge variant="outline" className={cn(
-                                        "font-bold text-[10px] px-2 py-0.5",
-                                        isEjecutado ? "bg-green-50 text-green-700 border-green-200" :
-                                        isEnProceso ? "bg-blue-50 text-blue-700 border-blue-200" :
-                                        "bg-amber-50 text-amber-700 border-amber-200"
-                                      )}>
-                                        {val || 'PROGRAMADO'}
-                                      </Badge>
-                                    </td>
-                                  );
+                                  return (<td key={`${idx}-${col}`} className="px-4 py-3"><Badge variant="outline" className={cn("font-bold text-[10px] px-2 py-0.5", isEjecutado ? "bg-green-50 text-green-700 border-green-200" : isEnProceso ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-amber-50 text-amber-700 border-amber-200")}>{val || 'PROGRAMADO'}</Badge></td>);
                                 }
-
                                 if (upperCol.includes('EQUIPO') || upperCol.includes('MAQUINA')) {
-                                  return (
-                                    <td key={`${idx}-${col}`} className="px-4 py-3 text-xs font-mono font-bold text-gray-900">
-                                      {String(value ?? '—')}
-                                    </td>
-                                  );
+                                  return (<td key={`${idx}-${col}`} className="px-4 py-3 text-xs font-mono font-bold text-gray-900">{String(value ?? '—')}</td>);
                                 }
-                                
-                                return (
-                                  <td key={`${idx}-${col}`} className="px-4 py-3 text-xs text-gray-600">
-                                    {typeof value === 'object' ? JSON.stringify(value) : String(value ?? '—')}
-                                  </td>
-                                );
+                                return (<td key={`${idx}-${col}`} className="px-4 py-3 text-xs text-gray-600">{typeof value === 'object' ? JSON.stringify(value) : String(value ?? '—')}</td>);
                               })}
                             </tr>
                           ))
                         ) : (
-                          <tr>
-                            <td colSpan={maintColumnsSorted.length || 6} className="text-center py-20 text-gray-500 italic">
-                              No hay registros de mantenimientos programados para los responsables técnicos de Forros.
-                            </td>
-                          </tr>
+                          <tr><td colSpan={maintColumnsSorted.length || 6} className="text-center py-20 text-gray-500 italic">No hay registros de mantenimientos programados.</td></tr>
                         )}
                       </tbody>
                     </table>
                   </div>
                 </div>
-
-                {/* Pagination Controls with Page Numbers */}
                 {maintTotalPages > 1 && (
                   <div className="flex flex-col md:flex-row items-center justify-between gap-4 py-3 px-4 bg-gray-50 rounded-lg border border-gray-200 shadow-sm">
-                    <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">
-                      Mostrando página {maintCurrentPage} de {maintTotalPages} ({filteredMantenimientosFull.length} registros)
-                    </div>
-
+                    <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Mostrando página {maintCurrentPage} de {maintTotalPages}</div>
                     <div className="flex items-center gap-1">
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={() => setMaintCurrentPage(1)}
-                        disabled={maintCurrentPage === 1 || isLoadingMantenimientos}
-                        className="h-8 w-8"
-                      >
-                        <ChevronsLeft className="h-4 w-4" />
-                      </Button>
-
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={() => setMaintCurrentPage(prev => Math.max(1, prev - 1))}
-                        disabled={maintCurrentPage === 1 || isLoadingMantenimientos}
-                        className="h-8 w-8"
-                      >
-                        <ChevronLeft className="h-4 w-4" />
-                      </Button>
-
-                      <div className="flex items-center gap-1 mx-2">
-                        {getPageNumbers(maintCurrentPage, maintTotalPages).map((pageNum, idx) => (
-                          pageNum === '...' ? (
-                            <span key={`ell-${idx}`} className="px-2 text-gray-400 text-xs font-bold">...</span>
-                          ) : (
-                            <Button
-                              key={`p-${pageNum}`}
-                              variant={maintCurrentPage === pageNum ? "default" : "outline"}
-                              size="sm"
-                              onClick={() => setMaintCurrentPage(pageNum as number)}
-                              className={cn(
-                                "h-8 w-8 p-0 text-xs font-bold",
-                                maintCurrentPage === pageNum ? "bg-primary text-primary-foreground shadow-sm" : "bg-white hover:bg-gray-100"
-                              )}
-                            >
-                              {pageNum}
-                            </Button>
-                          )
-                        ))}
-                      </div>
-
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={() => setMaintCurrentPage(prev => Math.min(maintTotalPages, prev + 1))}
-                        disabled={maintCurrentPage === maintTotalPages || isLoadingMantenimientos}
-                        className="h-8 w-8"
-                      >
-                        <ChevronRight className="h-4 w-4" />
-                      </Button>
-
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={() => setMaintCurrentPage(maintTotalPages)}
-                        disabled={maintCurrentPage === maintTotalPages || isLoadingMantenimientos}
-                        className="h-8 w-8"
-                      >
-                        <ChevronsRight className="h-4 w-4" />
-                      </Button>
+                      <Button variant="outline" size="icon" onClick={() => setMaintCurrentPage(1)} disabled={maintCurrentPage === 1} className="h-8 w-8"><ChevronsLeft className="h-4 w-4" /></Button>
+                      <Button variant="outline" size="icon" onClick={() => setMaintCurrentPage(p => Math.max(1, p - 1))} disabled={maintCurrentPage === 1} className="h-8 w-8"><ChevronLeft className="h-4 w-4" /></Button>
+                      <div className="flex items-center gap-1 mx-2">{getPageNumbers(maintCurrentPage, maintTotalPages).map((p, i) => p === '...' ? <span key={`ell-${i}`} className="px-2 text-gray-400 text-xs font-bold">...</span> : <Button key={`p-${p}`} variant={maintCurrentPage === p ? "default" : "outline"} size="sm" onClick={() => setMaintCurrentPage(p as number)} className={cn("h-8 w-8 p-0 text-xs font-bold", maintCurrentPage === p ? "bg-primary text-primary-foreground" : "bg-white")}>{p}</Button>)}</div>
+                      <Button variant="outline" size="icon" onClick={() => setMaintCurrentPage(p => Math.min(maintTotalPages, p + 1))} disabled={maintCurrentPage === maintTotalPages} className="h-8 w-8"><ChevronRight className="h-4 w-4" /></Button>
+                      <Button variant="outline" size="icon" onClick={() => setMaintCurrentPage(maintTotalPages)} disabled={maintCurrentPage === maintTotalPages} className="h-8 w-8"><ChevronsRight className="h-4 w-4" /></Button>
                     </div>
                   </div>
                 )}
@@ -1522,19 +1443,79 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
         <TabsContent value="pruebas">
           <div className="space-y-6">
-            <Card className="border-indigo-200 shadow-lg">
+            {/* ALERTAS DE REGLA ESPEJO (Valor Agregado) */}
+            {mirrorRuleViolations.length > 0 && (
+              <div className="p-4 bg-red-50 border border-red-200 rounded-xl flex items-start gap-4">
+                <div className="bg-red-600 p-2 rounded-lg text-white shadow-md">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+                <div className="flex-1">
+                  <h4 className="text-sm font-black text-red-900 uppercase tracking-widest mb-1">Inconsistencia detected en Regla Espejo (Mirror Rule)</h4>
+                  <p className="text-xs text-red-800 mb-3">Se han detectado órdenes de acolchado (ACH) sin su correspondiente orden de confección de tapas (PEF) en la misma máquina sufijo. Esto viola la restricción técnica mandatoria.</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {mirrorRuleViolations.map((v, i) => (
+                      <div key={`viol-${i}`} className="bg-white/60 p-2 rounded-lg border border-red-100 text-[10px] font-bold flex flex-col">
+                        <span className="text-gray-500 uppercase tracking-tighter mb-1">Material: {v.material}</span>
+                        <div className="flex items-center justify-between">
+                          <span className="text-red-700">{v.achMachine}</span>
+                          <span className="text-gray-400">→</span>
+                          <span className="text-red-400 italic">Falta {v.pefMachine}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {mirrorRuleViolations.length === 0 && pruebasOrders.length > 0 && (
+              <div className="p-4 bg-green-50 border border-green-200 rounded-xl flex items-center gap-4">
+                <div className="bg-green-600 p-2 rounded-lg text-white shadow-md">
+                  <CheckCircle2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-black text-green-900 uppercase tracking-widest leading-none">Regla Espejo Validada</h4>
+                  <p className="text-xs text-green-800 mt-1">Todas las órdenes de acolchado tienen su par técnico sincronizado correctamente.</p>
+                </div>
+              </div>
+            )}
+
+            <Card className="border-indigo-200 shadow-lg overflow-hidden">
               <CardHeader className="bg-indigo-50/50 border-b">
                 <div className="flex items-center gap-3">
                   <div className="bg-indigo-600 p-2 rounded-lg text-white">
                     <TestTube className="w-5 h-5" />
                   </div>
                   <div>
-                    <CardTitle>Validación Técnica: ACH/PEF 02 y 06</CardTitle>
-                    <CardDescription>Simulación técnica agrupada por máquina (Carga vs Capacidad).</CardDescription>
+                    <CardTitle>Simulación de Carga ACH/PEF (Pares 02 y 06)</CardTitle>
+                    <CardDescription>Análisis JIT: Los componentes deben estar listos el mismo día del forro o máximo uno antes.</CardDescription>
                   </div>
                 </div>
               </CardHeader>
               <CardContent className="pt-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                  {['HR-ACH02', 'HR-PEF02', 'HR-ACH06', 'HR-PEF06'].map(m => {
+                    const stats = productionSummary.find(s => s.machine === m) || { totalTime: 0 };
+                    const config = workstationConfigs[m] || { people: 1 };
+                    const cap = totalHorasNetas * config.people;
+                    const usedH = stats.totalTime / 60;
+                    const percent = cap > 0 ? (usedH / cap) * 100 : 0;
+                    return (
+                      <div key={`sat-${m}`} className="bg-white border rounded-xl p-3 shadow-sm">
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-xs font-black text-gray-500 uppercase">{m}</span>
+                          <span className={cn("text-[10px] font-bold px-1.5 py-0.5 rounded", percent > 100 ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700")}>{percent.toFixed(1)}%</span>
+                        </div>
+                        <Progress value={Math.min(percent, 100)} className={cn("h-1.5", percent > 100 ? "bg-red-100" : "bg-blue-100")} />
+                        <div className="mt-2 text-[10px] flex justify-between font-mono text-gray-400">
+                          <span>{usedH.toFixed(2)}h</span>
+                          <span>Cap: {cap.toFixed(2)}h</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
                 <div className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm">
                   <div className="overflow-auto max-h-[60vh]">
                     <table className="min-w-full divide-y divide-gray-200 border-collapse">
@@ -1557,18 +1538,18 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl space-y-2">
                     <h5 className="text-xs font-bold text-blue-900 uppercase flex items-center gap-2">
-                      <FileSpreadsheet className="w-4 h-4" /> Notas de Simulación
+                      <FileSpreadsheet className="w-4 h-4" /> Notas de Simulación JIT
                     </h5>
                     <p className="text-[11px] text-blue-800 leading-relaxed">
-                      Este par de máquinas tiene una <strong>regla espejo mandatoria</strong>. Cualquier ajuste en la programación de acolchado debe verse reflejado en la confección de tapas.
+                      El motor garantiza el suministro <strong>Just-In-Time</strong>. Si una máquina de acolchado se satura, el planificador debe evaluar el adelanto de producción a la jornada inmediatamente anterior, manteniendo siempre el vínculo técnico con el padre (Forro).
                     </p>
                   </div>
                   <div className="p-4 bg-indigo-50 border border-indigo-100 rounded-xl space-y-2">
                     <h5 className="text-xs font-bold text-indigo-900 uppercase flex items-center gap-2">
-                      <Users className="w-4 h-4" /> Capacidad de Prueba
+                      <Users className="w-4 h-4" /> Capacidad Técnica (84% Eficiencia)
                     </h5>
                     <p className="text-[11px] text-blue-800 leading-relaxed">
-                      La capacidad neta actual configurada es de <strong>{totalHorasNetas.toFixed(3)}h</strong> por turno (eficiencia 84%). Verifica en la pestaña "Resumen" que el tiempo total de carga no exceda el tiempo neto disponible.
+                      La carga se calcula sumando el tiempo unitario de cada SKU multiplicado por su cantidad. Si la ocupación excede el 100%, el sistema resalta el puesto en rojo en el monitor de saturación superior.
                     </p>
                   </div>
                 </div>
