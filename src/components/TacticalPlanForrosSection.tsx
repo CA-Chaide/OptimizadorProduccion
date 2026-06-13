@@ -761,7 +761,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const pruebasOrders = useMemo(() => {
     return dailyOrders.filter(order => {
       const machine = getResolvedMachine(order);
-      return ['HR-ACH02', 'HR-PEF02'].includes(machine);
+      return ['HR-ACH02', 'HR-PEF02', 'HR-ACH06', 'HR-PEF06'].includes(machine);
     }).sort((a, b) => {
       const machineA = getResolvedMachine(a);
       const machineB = getResolvedMachine(b);
@@ -771,7 +771,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   const renderPruebasTableBody = () => {
     if (isLoadingDaily) return <tr><td colSpan={dailyColumns.length} className="py-12 text-center"><Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" /></td></tr>;
-    if (pruebasOrders.length === 0) return <tr><td colSpan={dailyColumns.length} className="py-20 text-center text-gray-400 italic">No se encontraron órdenes para HR-ACH02 o HR-PEF02.</td></tr>;
+    if (pruebasOrders.length === 0) return <tr><td colSpan={dailyColumns.length} className="py-20 text-center text-gray-400 italic">No se encontraron órdenes para HR-ACH02, HR-PEF02, HR-ACH06 o HR-PEF06.</td></tr>;
 
     const rows: React.ReactNode[] = [];
     let currentGroupQuantity = 0;
@@ -1529,7 +1529,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     <TestTube className="w-5 h-5" />
                   </div>
                   <div>
-                    <CardTitle>Validación Técnica: HR-ACH02 y HR-PEF02</CardTitle>
+                    <CardTitle>Validación Técnica: ACH/PEF 02 y 06</CardTitle>
                     <CardDescription>Simulación técnica agrupada por máquina (Carga vs Capacidad).</CardDescription>
                   </div>
                 </div>
