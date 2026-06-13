@@ -67,8 +67,6 @@ interface UnifiedNeedRow {
   pesoRollo: number;
 }
 
-const RESPONSABLES_VALIDOS = ["009", "018", "022", "014", "042", "043"];
-
 const safeNum = (val: any): number => {
   const n = Number(val);
   return isNaN(n) ? 0 : n;
@@ -159,8 +157,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         
         const [restrs, provs, times] = await Promise.all([
           restriccionService.getAll(),
-          serviciosService.OrdenesProvisionalesPaginados(1, 20000),
-          serviciosService.getTiemposEnsamblado(1, 15000)
+          serviciosService.OrdenesProvisionalesPaginados(1, 20000).catch(() => ({ data: [] })),
+          serviciosService.getTiemposEnsamblado(1, 15000).catch(() => ({ data: [] }))
         ]);
 
         setRestriccionesArray((restrs.data || []).filter((r: any) => ids.includes(r.codigo_grupo)));
@@ -176,11 +174,16 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   }, []);
 
   const filteredOrders = useMemo(() => {
+    const relevantGroups = grupos.map(g => g.codigo_grupo);
+    const allowedResps = restriccionesArray
+      .filter(r => r.nombre_restriccion === 'RESPCTRLPROD' && relevantGroups.includes(r.codigo_grupo))
+      .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()));
+
     return ordenes.filter(o => {
       const centro = String(o.CENTRO || o.Centro || '').trim();
       if (centro === '2000') return false; 
       const responsable = String(o.RESPCONTROLPROD || o.RespControlProd || o.RESP_CONTROL_PROD || '').trim();
-      if (!RESPONSABLES_VALIDOS.includes(responsable)) return false;
+      if (allowedResps.length > 0 && !allowedResps.includes(responsable)) return false;
       if (selectedDate !== 'all') {
         const dateRaw = String(o.FECHAINICIO || o.FECHA || '').trim();
         const date = dateRaw.includes('T') ? dateRaw.split('T')[0] : dateRaw;
@@ -188,7 +191,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       }
       return true;
     });
-  }, [ordenes, selectedDate]);
+  }, [ordenes, selectedDate, grupos, restriccionesArray]);
 
   const handleProcessResumen = useCallback(async (ordersToProcess: any[]) => {
     if (ordersToProcess.length === 0) {
@@ -299,8 +302,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     ordenes.forEach(o => {
       const centro = String(o.CENTRO || o.Centro || '').trim();
       if (centro === '2000') return;
-      const resp = String(o.RESPCONTROLPROD || o.RespControlProd || '').trim();
-      if (!RESPONSABLES_VALIDOS.includes(resp)) return;
       const d = String(o.FECHAINICIO || o.FECHA || '').trim();
       if (d && d !== 'null') dates.add(d.includes('T') ? d.split('T')[0] : d);
     });
@@ -356,6 +357,21 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
   const paginatedBomRows = useMemo(() => bomRows.slice((bomPage - 1) * bomRowsPerPage, bomPage * bomRowsPerPage), [bomRows, bomPage, bomRowsPerPage]);
 
+  const { looperRecords, otherRecords } = useMemo(() => {
+    const looper: any[] = [];
+    const others: any[] = [];
+    tiemposEnsamblado.forEach(t => {
+      const linea = String(t.Linea || '').toLowerCase();
+      const puesto = String(t.PuestoTrabajo || '').toLowerCase();
+      if (linea.includes('looper') || puesto.includes('looper')) {
+        looper.push(t);
+      } else {
+        others.push(t);
+      }
+    });
+    return { looperRecords: looper, otherRecords: others };
+  }, [tiemposEnsamblado]);
+
   if (!mounted) return null;
 
   if (isLoading) {
@@ -385,7 +401,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             { v: 'ordenes', l: 'Órdenes Provisionales', i: Package }, 
             { v: 'resumen', l: 'Resumen Necesidades', i: LayoutDashboard },
             { v: 'listaMateriales', l: 'Auditoría BOM', i: ClipboardList },
-            { v: 'tiempos', l: 'Tiempos Ensamblado', i: Clock }
+            { v: 'tiempos', l: 'Catálogo Tiempos', i: Clock }
           ].map(tab => (
             <TabsTrigger key={tab.v} value={tab.v} className="gap-2 text-[10px] font-black uppercase transition-all data-[state=active]:bg-white data-[state=active]:shadow-lg data-[state=active]:text-red-600 rounded-xl">
               <tab.i className="w-4 h-4" /> {tab.l}
@@ -398,10 +414,12 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             <div className="flex items-center gap-6 text-left">
               <div className="flex flex-col">
                 <p className="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1.5 flex items-center gap-2">
-                  <UserCheck className="w-3 h-3" /> Responsables Críticos
+                  <UserCheck className="w-3 h-3" /> Responsables Habilitados
                 </p>
                 <div className="flex gap-2">
-                  {RESPONSABLES_VALIDOS.map(c => <Badge key={c} variant="outline" className="text-[10px] font-black bg-slate-50 border-slate-200 px-3 py-0.5 rounded-lg">{c}</Badge>)}
+                  {restriccionesArray.filter(r => r.nombre_restriccion === 'RESPCTRLPROD').map((r, ri) => (
+                    <Badge key={ri} variant="outline" className="text-[10px] font-black bg-slate-50 border-slate-200 px-3 py-0.5 rounded-lg">{r.valor_restriccion}</Badge>
+                  ))}
                 </div>
               </div>
             </div>
@@ -485,9 +503,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                             <Badge variant="outline" className="text-[10px] font-black bg-blue-50 text-blue-700 border-blue-100">{String(o.RESPCONTROLPROD || '—')}</Badge>
                           </td>
                           <td className="px-6 py-4 font-bold text-slate-400 border-r border-gray-50 text-[10px] uppercase">
-                            {String(o.MAQUINA || o.Maquina || o.RECURSO || '—')}
+                            {String(o.MAQUINA || o.RECURSO || '—')}
                           </td>
-                          <td className="px-6 py-4 font-bold text-slate-200 text-[10px]">{o.Almacen || o.ALMACEN || '—'}</td>
+                          <td className="px-6 py-4 font-bold text-slate-200 text-[10px]">{o.Almacen || '—'}</td>
                         </tr>
                       );
                     })
@@ -565,16 +583,16 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                           <td className="px-8 py-4 border-r border-gray-100 font-mono text-indigo-600 text-left bg-slate-50/50 font-black">
                             {row.densidad}
                           </td>
-                          <td className="px-8 py-4 border-r border-gray-100 text-center text-slate-700 font-black">
+                          <td className="px-8 py-4 border-r border-black/10 text-center text-slate-700 font-black">
                             {row.largoMtrs}
                           </td>
-                          <td className="px-8 py-4 border-r border-gray-100 text-center text-slate-700 font-black">
+                          <td className="px-8 py-4 border-r border-black/10 text-center text-slate-700 font-black">
                             {row.ancho}
                           </td>
-                          <td className="px-8 py-4 border-r border-gray-100 text-center text-slate-700 font-black">
+                          <td className="px-8 py-4 border-r border-black/10 text-center text-slate-700 font-black">
                             {row.espesor.toFixed(1)}
                           </td>
-                          <td className="px-8 py-4 border-r border-gray-100 font-mono text-slate-900 bg-indigo-50/30 text-right font-black text-sm">
+                          <td className="px-8 py-4 border-r border-black/10 font-mono text-slate-900 bg-indigo-50/30 text-right font-black text-sm">
                             {row.consumoKg.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </td>
                           <td className="px-8 py-4 font-mono text-emerald-600 bg-emerald-50/30 text-right font-black text-sm">
@@ -674,45 +692,93 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           )}
         </TabsContent>
 
-        <TabsContent value="tiempos" className="animate-in fade-in duration-300">
-           <Card className="rounded-3xl border border-gray-100 shadow-xl overflow-hidden bg-white">
-            <div className="overflow-x-auto max-h-[700px]">
-              <table className="w-full border-collapse text-center">
-                <thead className="bg-[#1e293b] text-white sticky top-0 z-10 text-[10px] font-black uppercase tracking-tight border-b border-white/5">
-                  <tr>
-                    <th className="px-6 py-5 border-r border-white/5 text-left">Material</th>
-                    <th className="px-6 py-5 border-r border-white/5 text-left">Descripción Técnica</th>
-                    <th className="px-6 py-5 border-r border-white/5">Línea</th>
-                    <th className="px-6 py-5 border-r border-white/5 text-teal-400">Estándar (Min)</th>
-                    <th className="px-6 py-5">Stock Actual</th>
-                    <th className="px-6 py-5">Seguridad</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 text-[11px] font-black">
-                  {tiemposEnsamblado.length === 0 ? (
-                    <tr><td colSpan={7} className="py-24 text-slate-200 font-black uppercase tracking-widest opacity-40 text-center">Cargando base de tiempos...</td></tr>
-                  ) : (
-                    tiemposEnsamblado.map((t, i) => {
-                      const matCode = String(t.CodMaterial || '').match(/^(\d+)/)?.[1]?.slice(-8) || '—';
-                      const desc = String(t.Material || t.Descripcion || '—').toUpperCase();
-                      return (
-                        <tr key={i} className="hover:bg-slate-50/5 transition-colors">
-                          <td className="px-6 py-4 font-mono text-indigo-600 border-r border-dashed border-gray-100 text-left text-sm">{matCode}</td>
-                          <td className="px-6 py-4 text-left border-r border-dashed border-gray-100 text-slate-600 uppercase leading-tight max-w-[300px] truncate">{desc}</td>
-                          <td className="px-6 py-4 border-r border-dashed border-gray-100 font-black text-slate-400 uppercase text-[9px]">{t.Linea || '—'}</td>
-                          <td className="px-6 py-4 font-mono text-teal-600 border-r border-dashed border-gray-100 bg-teal-50/10 text-sm">
-                            {Number(t.Tiempo || 0).toFixed(4)}
-                          </td>
-                          <td className="px-6 py-4 text-slate-400 font-mono border-r border-dashed border-gray-100">{(t.StockActual || 0).toLocaleString()}</td>
-                          <td className="px-6 py-4 text-slate-900 font-mono font-black">{(t.StockSeguridad || 0).toLocaleString()}</td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
+        <TabsContent value="tiempos" className="animate-in fade-in duration-300 space-y-10">
+          {/* SECCIÓN ESPECIAL: LOOPER */}
+          {looperRecords.length > 0 && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 px-2">
+                <div className="p-2 bg-indigo-600 rounded-xl text-white shadow-lg"><Activity className="w-4 h-4" /></div>
+                <h3 className="text-sm font-black uppercase tracking-widest text-slate-800">Procesos de Costura Especial (LOOPER)</h3>
+              </div>
+              <Card className="rounded-3xl border border-indigo-100 shadow-xl overflow-hidden bg-white">
+                <div className="overflow-x-auto max-h-[400px]">
+                  <table className="w-full border-collapse text-center">
+                    <thead className="bg-[#1e293b] text-white sticky top-0 z-10 text-[10px] font-black uppercase tracking-tight border-b border-white/5">
+                      <tr>
+                        <th className="px-6 py-5 border-r border-white/5 text-left">Material</th>
+                        <th className="px-6 py-5 border-r border-white/5 text-left">Descripción Técnica</th>
+                        <th className="px-6 py-5 border-r border-white/5">Línea de Proceso</th>
+                        <th className="px-6 py-5 border-r border-white/5 text-teal-400">Estándar (Min)</th>
+                        <th className="px-6 py-5">Stock</th>
+                        <th className="px-6 py-5">Seguridad</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 text-[11px] font-black">
+                      {looperRecords.map((t, i) => {
+                        const matCode = String(t.CodMaterial || '').match(/^(\d+)/)?.[1]?.slice(-8) || '—';
+                        const desc = String(t.Material || t.Descripcion || '—').toUpperCase();
+                        return (
+                          <tr key={i} className="hover:bg-indigo-50/30 transition-colors">
+                            <td className="px-6 py-4 font-mono text-indigo-600 border-r border-dashed border-gray-100 text-left text-sm">{matCode}</td>
+                            <td className="px-6 py-4 text-left border-r border-dashed border-gray-100 text-slate-600 uppercase leading-tight max-w-[300px] truncate">{desc}</td>
+                            <td className="px-6 py-4 border-r border-dashed border-gray-100 font-black text-indigo-400 uppercase text-[9px] bg-indigo-50/10">{t.Linea || '—'}</td>
+                            <td className="px-6 py-4 font-mono text-teal-600 border-r border-dashed border-gray-100 bg-teal-50/10 text-sm">
+                              {Number(t.Tiempo || 0).toFixed(4)}
+                            </td>
+                            <td className="px-6 py-4 text-slate-400 font-mono border-r border-dashed border-gray-100">{(t.StockActual || 0).toLocaleString()}</td>
+                            <td className="px-6 py-4 text-slate-900 font-mono font-black">{(t.StockSeguridad || 0).toLocaleString()}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
             </div>
-          </Card>
+          )}
+
+          {/* RESTO DEL CATÁLOGO */}
+          <div className="space-y-4">
+            <h3 className="text-[11px] font-black uppercase text-gray-400 text-left tracking-widest px-2">Catálogo General de Tiempos Ensamblado</h3>
+            <Card className="rounded-3xl border border-gray-100 shadow-xl overflow-hidden bg-white">
+              <div className="overflow-x-auto max-h-[500px]">
+                <table className="w-full border-collapse text-center">
+                  <thead className="bg-slate-50 text-slate-400 sticky top-0 z-10 text-[10px] font-black uppercase tracking-tight border-b border-gray-100">
+                    <tr>
+                      <th className="px-6 py-5 border-r border-gray-50 text-left">Material</th>
+                      <th className="px-6 py-5 border-r border-gray-50 text-left">Descripción Técnica</th>
+                      <th className="px-6 py-5 border-r border-gray-50">Línea</th>
+                      <th className="px-6 py-5 border-r border-gray-50 text-teal-600">Estándar (Min)</th>
+                      <th className="px-6 py-5">Stock</th>
+                      <th className="px-6 py-5">Seguridad</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 text-[11px] font-bold">
+                    {otherRecords.length === 0 ? (
+                      <tr><td colSpan={7} className="py-24 text-slate-200 font-black uppercase tracking-widest opacity-40 text-center">Cargando base de tiempos...</td></tr>
+                    ) : (
+                      otherRecords.map((t, i) => {
+                        const matCode = String(t.CodMaterial || '').match(/^(\d+)/)?.[1]?.slice(-8) || '—';
+                        const desc = String(t.Material || t.Descripcion || '—').toUpperCase();
+                        return (
+                          <tr key={i} className="hover:bg-slate-50/50 transition-colors">
+                            <td className="px-6 py-4 font-mono text-indigo-600 border-r border-gray-50 text-left text-sm">{matCode}</td>
+                            <td className="px-6 py-4 text-left border-r border-gray-50 text-slate-500 uppercase leading-tight max-w-[300px] truncate">{desc}</td>
+                            <td className="px-6 py-4 border-r border-gray-50 font-black text-slate-400 uppercase text-[9px]">{t.Linea || '—'}</td>
+                            <td className="px-6 py-4 font-mono text-teal-600 border-r border-gray-50 bg-teal-50/10 text-sm">
+                              {Number(t.Tiempo || 0).toFixed(4)}
+                            </td>
+                            <td className="px-6 py-4 text-slate-400 font-mono border-r border-gray-50">{(t.StockActual || 0).toLocaleString()}</td>
+                            <td className="px-6 py-4 text-slate-700 font-mono">{(t.StockSeguridad || 0).toLocaleString()}</td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          </div>
         </TabsContent>
       </Tabs>
     </div>
