@@ -45,7 +45,7 @@ interface WorkstationConfig {
 /**
  * Componente: MachineCard
  * Representa el estado y carga de una estación de trabajo específica.
- * Ahora incluye la columna "Nombre" en el listado de órdenes.
+ * Ahora con diseño claro y columna HR en el listado.
  */
 const MachineCard = ({ 
   puestoName, 
@@ -68,6 +68,7 @@ const MachineCard = ({
   mapToHojaRuta: (name: string) => string;
   normalizeMaterialCode: (code: string | number) => string;
 }) => {
+  const hrCode = mapToHojaRuta(puestoName);
   const totalTimeHours = orders.reduce((sum, o) => sum + calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || 0), o), 0) / 60;
   const capacityHours = (horasNetasDiurnas * config.peopleDiurno) + (horasNetasNocturnas * config.peopleNocturno);
   const utilization = capacityHours > 0 ? (totalTimeHours / capacityHours) * 100 : 0;
@@ -76,58 +77,60 @@ const MachineCard = ({
   return (
     <div className={cn(
       "flex border border-slate-200 rounded-3xl overflow-hidden shadow-sm bg-white transition-all hover:shadow-lg",
-      small ? "h-[380px]" : "h-[450px]"
+      small ? "h-[420px]" : "h-[480px]"
     )}>
+      {/* PANEL IZQUIERDO - DISEÑO CLARO */}
       <div className={cn(
-        "bg-slate-950 p-6 text-white flex flex-col border-r border-slate-800",
+        "bg-indigo-50/50 p-6 text-slate-900 flex flex-col border-r border-indigo-100",
         small ? "w-[42%]" : "w-[38%]"
       )}>
         <div className="mb-6">
           <div className="flex items-center justify-between">
-            <h3 className="text-xl font-black uppercase tracking-tighter text-slate-100 flex items-center gap-2">
-              <Cpu className="w-5 h-5 text-sky-400" />
+            <h3 className="text-xl font-black uppercase tracking-tighter text-indigo-950 flex items-center gap-2">
+              <Cpu className="w-5 h-5 text-indigo-600" />
               {puestoName}
             </h3>
-            <Badge variant="outline" className="border-white/20 text-sky-400 font-black text-[8px] uppercase tracking-widest px-2">
-              {mapToHojaRuta(puestoName)}
+            {/* BADGE HR MÁS VISIBLE */}
+            <Badge className="bg-indigo-600 text-white font-black text-[10px] uppercase tracking-widest px-3 py-1 rounded-lg border-none shadow-md shadow-indigo-200">
+              {hrCode}
             </Badge>
           </div>
           <p className="text-[9px] font-bold uppercase tracking-[0.25em] text-slate-500 mt-1">Status Operativo Puesto</p>
         </div>
         <div className="flex-1 space-y-4">
-          <div className="bg-white/5 p-3 rounded-2xl border border-white/10">
+          <div className="bg-white p-3 rounded-2xl border border-indigo-100 shadow-sm">
             <div className="flex justify-between items-center text-[9px] text-slate-500 uppercase font-black tracking-widest mb-2">Dotación Asignada</div>
             <div className="grid grid-cols-2 gap-2">
-              <div className="bg-slate-900 rounded-xl p-2 border border-white/5 flex flex-col items-center">
+              <div className="bg-slate-50 rounded-xl p-2 border border-slate-100 flex flex-col items-center">
                 <span className="text-[8px] text-slate-500 mb-1">SOL (D)</span>
-                <span className="font-mono font-black text-sky-400">{config.peopleDiurno}</span>
+                <span className="font-mono font-black text-indigo-700">{config.peopleDiurno}</span>
               </div>
-              <div className="bg-slate-900 rounded-xl p-2 border border-white/5 flex flex-col items-center">
+              <div className="bg-slate-50 rounded-xl p-2 border border-slate-100 flex flex-col items-center">
                 <span className="text-[8px] text-slate-500 mb-1">LUNA (N)</span>
-                <span className="font-mono font-black text-indigo-400">{config.peopleNocturno}</span>
+                <span className="font-mono font-black text-indigo-700">{config.peopleNocturno}</span>
               </div>
             </div>
           </div>
-          <div className="bg-white/5 p-4 rounded-2xl border border-white/10 shadow-inner">
+          <div className="bg-white p-4 rounded-2xl border border-indigo-100 shadow-sm">
             <div className="flex items-center justify-between mb-3">
               <p className="text-xs font-black uppercase text-slate-500 tracking-[0.2em]">Ocupación</p>
-              <span className={cn("text-[10px] font-black px-2 py-0.5 rounded-lg border", isOverloaded ? "bg-red-500/20 border-red-500/30 text-red-400" : "bg-indigo-500/20 border-indigo-500/30 text-indigo-300")}>
+              <span className={cn("text-[10px] font-black px-2 py-0.5 rounded-lg border", isOverloaded ? "bg-red-100 border-red-200 text-red-700" : "bg-green-100 border-green-200 text-green-700")}>
                 {isOverloaded ? "Saturado" : "Estable"}
               </span>
             </div>
             <div className="flex items-baseline gap-1.5 mb-2">
-              <span className={cn("text-4xl font-black font-mono tracking-tighter", isOverloaded ? "text-red-400" : "text-sky-300")}>
+              <span className={cn("text-4xl font-black font-mono tracking-tighter", isOverloaded ? "text-red-600" : "text-indigo-800")}>
                 {utilization.toFixed(0)}
               </span>
-              <span className="text-xs font-black text-slate-600">%</span>
+              <span className="text-xs font-black text-slate-400">%</span>
             </div>
-            <Progress value={utilization} className={cn("h-3 bg-slate-900 border border-white/5", isOverloaded ? "[&>div]:bg-red-500" : "[&>div]:bg-indigo-500 shadow-[0_0_15px_rgba(99,102,241,0.3)]")} />
+            <Progress value={utilization} className={cn("h-3 bg-slate-100 border border-slate-200", isOverloaded ? "[&>div]:bg-red-500" : "[&>div]:bg-indigo-600 shadow-[0_0_10px_rgba(79,70,229,0.2)]")} />
             <div className="mt-4 grid grid-cols-2 gap-2 text-[9px] font-black uppercase tracking-widest">
-              <div className="bg-slate-900/50 p-2 rounded-lg border border-white/5 text-center">
+              <div className="bg-slate-50 p-2 rounded-lg border border-slate-100 text-center">
                 <span className="text-slate-500 block mb-1">Carga</span>
-                <span className="text-slate-100 font-mono">{totalTimeHours.toFixed(2)}h</span>
+                <span className="text-slate-900 font-mono">{totalTimeHours.toFixed(2)}h</span>
               </div>
-              <div className={cn("p-2 rounded-lg border border-white/5 text-center", isOverloaded ? "bg-red-950/20 text-red-400" : "bg-sky-950/20 text-sky-400")}>
+              <div className={cn("p-2 rounded-lg border border-slate-100 text-center", isOverloaded ? "bg-red-50 text-red-700" : "bg-sky-50 text-sky-700")}>
                 <span className="text-slate-500 block mb-1">Cap. Total</span>
                 <span className="font-mono">{capacityHours.toFixed(2)}h</span>
               </div>
@@ -135,6 +138,8 @@ const MachineCard = ({
           </div>
         </div>
       </div>
+      
+      {/* PANEL DERECHO - TABLA DE ÓRDENES */}
       <div className="flex-1 p-6 flex flex-col bg-slate-50/50">
         <div className="flex items-center justify-between mb-4">
           <h4 className="text-[11px] font-black text-slate-800 uppercase tracking-[0.25em] flex items-center gap-2">
@@ -148,6 +153,7 @@ const MachineCard = ({
               <tr>
                 <th className="px-4 py-3 border-b border-slate-200">Material</th>
                 <th className="px-4 py-3 border-b border-slate-200">Nombre</th>
+                <th className="px-4 py-3 border-b border-slate-200 text-indigo-600 bg-indigo-50/50">HR</th>
                 <th className="px-4 py-3 border-b border-slate-200 text-right">Cant.</th>
                 <th className="px-4 py-3 border-b border-slate-200 text-right text-indigo-700 bg-indigo-50/50">T. (h)</th>
               </tr>
@@ -156,9 +162,10 @@ const MachineCard = ({
               {orders.map((o, i) => {
                 const t = calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || 0), o) / 60;
                 return (
-                  <tr key={i} className="hover:bg-indigo-50/30">
+                  <tr key={i} className="hover:bg-indigo-50/30 transition-colors">
                     <td className="px-4 py-3 font-mono font-bold text-slate-700 truncate max-w-[100px]" title={o['CodMaterial'] || normalizeMaterialCode(o['MATERIAL'])}>{o['CodMaterial'] || normalizeMaterialCode(o['MATERIAL'])}</td>
-                    <td className="px-4 py-3 text-slate-600 truncate max-w-[200px]" title={o['NOMBRE'] || o['TEXTOMATERIAL']}>{o['NOMBRE'] || o['TEXTOMATERIAL'] || '—'}</td>
+                    <td className="px-4 py-3 text-slate-600 truncate max-w-[180px]" title={o['NOMBRE'] || o['TEXTOMATERIAL']}>{o['NOMBRE'] || o['TEXTOMATERIAL'] || '—'}</td>
+                    <td className="px-4 py-3 font-bold text-indigo-700 bg-indigo-50/20">{hrCode}</td>
                     <td className="px-4 py-3 text-right font-mono font-black text-slate-800">{Number(o['CANTIDAD'] || 0).toLocaleString()}</td>
                     <td className="px-4 py-3 text-right font-mono font-black text-indigo-600 bg-indigo-50/30">{t.toFixed(2)}</td>
                   </tr>
@@ -283,7 +290,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     const pn = String(puestoName || '').toUpperCase().trim();
     if (!pn || pn === '—' || pn === 'NULL') return '';
     
-    // Mapeos específicos prioritarios
     if (pn === 'ACOLCHADORA09') return 'HR-ACH09';
     if (pn === 'COSEDORA-ACH02') return 'HR-PEF02';
 
@@ -456,13 +462,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     setWorkstationConfigs(prev => ({ ...prev, [p]: { ...prev[p], [field]: value } }));
   };
 
-  if (!isMounted) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-slate-50/40">
-        <Loader2 className="h-10 w-10 animate-spin text-indigo-600" />
-      </div>
-    );
-  }
+  if (!isMounted) return null;
 
   return (
     <div className="p-6 md:p-8 space-y-6 bg-slate-50/40 min-h-screen font-body" suppressHydrationWarning>
