@@ -42,14 +42,10 @@ interface WorkstationConfig {
   peopleNocturno: number;
 }
 
-// Helper para fecha estable fuera del componente
-const getInitialTodayString = () => {
-  return ''; // Inicialmente vacío para evitar desajustes de hidratación
-};
-
 /**
  * Componente: MachineCard
  * Representa el estado y carga de una estación de trabajo específica.
+ * Ahora incluye la columna "Nombre" en el listado de órdenes.
  */
 const MachineCard = ({ 
   puestoName, 
@@ -151,6 +147,7 @@ const MachineCard = ({
             <thead className="bg-slate-100/80 sticky top-0 z-10 text-slate-500 font-black uppercase tracking-widest text-left">
               <tr>
                 <th className="px-4 py-3 border-b border-slate-200">Material</th>
+                <th className="px-4 py-3 border-b border-slate-200">Nombre</th>
                 <th className="px-4 py-3 border-b border-slate-200 text-right">Cant.</th>
                 <th className="px-4 py-3 border-b border-slate-200 text-right text-indigo-700 bg-indigo-50/50">T. (h)</th>
               </tr>
@@ -160,7 +157,8 @@ const MachineCard = ({
                 const t = calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || 0), o) / 60;
                 return (
                   <tr key={i} className="hover:bg-indigo-50/30">
-                    <td className="px-4 py-3 font-mono font-bold text-slate-700 truncate max-w-[150px]" title={o['NOMBRE'] || o['TEXTOMATERIAL']}>{o['CodMaterial'] || normalizeMaterialCode(o['MATERIAL'])}</td>
+                    <td className="px-4 py-3 font-mono font-bold text-slate-700 truncate max-w-[100px]" title={o['CodMaterial'] || normalizeMaterialCode(o['MATERIAL'])}>{o['CodMaterial'] || normalizeMaterialCode(o['MATERIAL'])}</td>
+                    <td className="px-4 py-3 text-slate-600 truncate max-w-[200px]" title={o['NOMBRE'] || o['TEXTOMATERIAL']}>{o['NOMBRE'] || o['TEXTOMATERIAL'] || '—'}</td>
                     <td className="px-4 py-3 text-right font-mono font-black text-slate-800">{Number(o['CANTIDAD'] || 0).toLocaleString()}</td>
                     <td className="px-4 py-3 text-right font-mono font-black text-indigo-600 bg-indigo-50/30">{t.toFixed(2)}</td>
                   </tr>
@@ -251,13 +249,11 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [isLoadingTiempos, setIsLoadingTiempos] = useState(false);
   const [isLoadingDaily, setIsLoadingDaily] = useState(false);
   
-  // Hydration-safe initial states
   const [executionDate, setExecutionDate] = useState<string>('');
   const [jornadaDiurnaSel, setJornadaDiurnaSel] = useState("8.75");
   const [jornadaNocturnaSel, setJornadaNocturnaSel] = useState("0");
   const [workstationConfigs, setWorkstationConfigs] = useState<Record<string, WorkstationConfig>>({});
 
-  // Efecto de montaje para evitar errores de hidratación
   useEffect(() => {
     setIsMounted(true);
     setExecutionDate(new Date().toISOString().split('T')[0]);
@@ -287,11 +283,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
     const pn = String(puestoName || '').toUpperCase().trim();
     if (!pn || pn === '—' || pn === 'NULL') return '';
     
-    // Mapeos específicos solicitados
+    // Mapeos específicos prioritarios
     if (pn === 'ACOLCHADORA09') return 'HR-ACH09';
     if (pn === 'COSEDORA-ACH02') return 'HR-PEF02';
 
-    // Búsqueda en maestros de producción
     const match = tiemposProduccion.find(t => {
       const tp = String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').toUpperCase().trim();
       return tp === pn;
@@ -302,7 +297,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
       if (hr && hr.startsWith('HR-')) return hr;
     }
 
-    // Lógica de respaldo por patrones
     const numMatch = pn.match(/\d+/);
     const num = numMatch ? numMatch[0].padStart(2, '0') : '';
     if (pn.includes('COSEDORA') || pn.includes('PEGADORA')) return `HR-PEF${num}`;
@@ -462,7 +456,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     setWorkstationConfigs(prev => ({ ...prev, [p]: { ...prev[p], [field]: value } }));
   };
 
-  // Mantenemos el loader durante la hidratación inicial para evitar errores de Next.js
   if (!isMounted) {
     return (
       <div className="flex h-screen items-center justify-center bg-slate-50/40">
@@ -470,8 +463,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
       </div>
     );
   }
-
-  const targetDate = executionDate;
 
   return (
     <div className="p-6 md:p-8 space-y-6 bg-slate-50/40 min-h-screen font-body" suppressHydrationWarning>
