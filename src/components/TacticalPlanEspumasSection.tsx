@@ -251,7 +251,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       .reduce((sum, m) => sum + safeNum(m.TIEMPO), 0);
   };
 
-  const getPlannedHours = (centro: string, maquinaCode: string) => {
+  const getPlannedHoursForMachine = (centro: string, maquinaCode: string) => {
     const data = centro === '1000' ? provC1000 : provC2000;
     return data
       .filter(o => {
@@ -259,6 +259,11 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         return oM.includes(maquinaCode.toUpperCase()) || maquinaCode.toUpperCase().includes(oM);
       })
       .reduce((sum, o) => sum + calculateEngineering(o).hours, 0);
+  };
+
+  const getCenterPlannedHoursTotal = (centro: string) => {
+    const data = centro === '1000' ? provC1000 : provC2000;
+    return data.reduce((sum, o) => sum + calculateEngineering(o).hours, 0);
   };
 
   if (!mounted) return null;
@@ -405,7 +410,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                 return sum + (base * m.rendimiento);
               }, 0);
 
-              const totalPlanificado = machines.reduce((sum, m) => sum + getPlannedHours(centro, m.code), 0);
+              const totalPlanificado = getCenterPlannedHoursTotal(centro);
               const totalOcupacion = totalDisponibleReal > 0 ? (totalPlanificado / totalDisponibleReal) * 100 : 0;
 
               return (
@@ -461,44 +466,25 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                             <td className="px-6 py-2 border-r border-white/5 uppercase font-black">Disponibilidad Neta</td>
                             {machines.map(m => {
                               const mtto = getMachineMTTO(m.code);
-                              const total = m.t1 + m.t2 - PARO_PROG_T1 - PARO_PROG_T2 - mtto;
-                              return <td key={`${m.code}-net`} className="px-4 py-2 border-r border-white/5 text-center font-mono">{total.toFixed(2)}</td>;
+                              const net = m.t1 + m.t2 - PARO_PROG_T1 - PARO_PROG_T2 - mtto;
+                              return <td key={`${m.code}-net`} className="px-4 py-2 border-r border-white/5 text-center font-mono">{net.toFixed(2)}</td>;
                             })}
                             <td className="px-4 py-2 text-center font-black font-mono border-l-2 border-indigo-500/30 text-indigo-300">{totalDisponibleBruto.toFixed(2)}</td>
                           </tr>
-                          <tr className="bg-yellow-400/20">
-                            <td className="px-6 py-3 border-r border-gray-200 uppercase font-black text-slate-800">T. TOTAL DISPONIBLE [H]</td>
-                            {machines.map(m => {
-                              const mtto = getMachineMTTO(m.code);
-                              const total = m.t1 + m.t2 - PARO_PROG_T1 - PARO_PROG_T2 - mtto;
-                              const disp = total * m.rendimiento;
-                              return <td key={`${m.code}-disp`} className="px-4 py-3 border-r border-gray-200 text-center font-black font-mono bg-yellow-400 text-black">{disp.toFixed(1)}</td>;
-                            })}
-                            <td className="px-4 py-3 text-center font-black font-mono bg-yellow-400 text-black border-l-2 border-black/10">{totalDisponibleReal.toFixed(1)}</td>
+                          <tr className="bg-yellow-400">
+                            <td className="px-6 py-3 border-r border-black/10 uppercase font-black text-slate-800">T. TOTAL DISPONIBLE [H]</td>
+                            {machines.map(m => <td key={`${m.code}-disp-cell`} className="px-4 py-3 border-r border-black/10 text-center font-black font-mono">—</td>)}
+                            <td className="px-4 py-3 text-center font-black font-mono bg-yellow-400 text-black border-l-2 border-black/20">{totalDisponibleReal.toFixed(1)}</td>
                           </tr>
                           <tr className="bg-blue-50/50">
-                            <td className="px-6 py-3 border-r border-blue-100 uppercase font-black text-blue-900">TIEMPO PLANIFICADO [H]</td>
-                            {machines.map(m => {
-                              const planned = getPlannedHours(centro, m.code);
-                              return <td key={`${m.code}-plan`} className="px-4 py-3 border-r border-blue-100 text-center font-black font-mono text-indigo-700">{planned > 0 ? planned.toFixed(1) : '—'}</td>;
-                            })}
-                            <td className="px-4 py-3 text-center font-black font-mono text-indigo-900 bg-indigo-100 border-l-2 border-indigo-500/30">{totalPlanificado > 0 ? totalPlanificado.toFixed(1) : '—'}</td>
+                            <td className="px-6 py-3 border-r border-blue-100 uppercase font-black text-indigo-900">TIEMPO PLANIFICADO [H]</td>
+                            {machines.map(m => <td key={`${m.code}-plan-cell`} className="px-4 py-3 border-r border-blue-100 text-center font-black font-mono text-indigo-300">—</td>)}
+                            <td className="px-4 py-3 text-center font-black font-mono text-indigo-900 bg-indigo-100 border-l-2 border-indigo-500/30">{totalPlanificado > 0 ? totalPlanificado.toFixed(1) : '0.0'}</td>
                           </tr>
-                          <tr className="bg-slate-50">
+                          <tr className="bg-slate-50 border-t-2 border-gray-200">
                             <td className="px-6 py-3 border-r border-gray-200 uppercase font-black text-slate-700">% OCUPACIÓN</td>
-                            {machines.map(m => {
-                              const mtto = getMachineMTTO(m.code);
-                              const total = m.t1 + m.t2 - PARO_PROG_T1 - PARO_PROG_T2 - mtto;
-                              const disp = total * m.rendimiento;
-                              const planned = getPlannedHours(centro, m.code);
-                              const perc = disp > 0 ? (planned / disp) * 100 : 0;
-                              return (
-                                <td key={`${m.code}-perc`} className={cn("px-4 py-3 border-r border-gray-100 text-center font-black text-xs", perc > 100 ? "text-red-600" : "text-emerald-700")}>
-                                  {perc > 0 ? `${perc.toFixed(1)}%` : '0%'}
-                                </td>
-                              );
-                            })}
-                            <td className={cn("px-4 py-3 text-center font-black border-l-2 border-indigo-500/30", totalOcupacion > 100 ? "text-red-700" : "text-emerald-700")}>
+                            {machines.map(m => <td key={`${m.code}-perc-cell`} className="px-4 py-3 border-r border-gray-100 text-center font-black text-xs text-slate-300">—</td>)}
+                            <td className={cn("px-4 py-3 text-center font-black border-l-2 border-indigo-500/30 text-base", totalOcupacion > 100 ? "text-red-700" : "text-emerald-700")}>
                               {totalOcupacion > 0 ? `${totalOcupacion.toFixed(1)}%` : '0%'}
                             </td>
                           </tr>
@@ -537,7 +523,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
            <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
             <div className="overflow-x-auto max-h-[600px] relative text-center">
               <table className="w-full border-collapse font-sans text-[9px]">
-                <thead className="bg-[#fef3c7] sticky top-0 z-20 text-amber-900 uppercase font-black tracking-widest border-b border-amber-200">
+                <thead className="bg-[#fef3c7] sticky top-0 z-10 text-amber-900 uppercase font-black tracking-widest border-b border-amber-200">
                   <tr>
                     <th className="px-4 py-4 border-r border-amber-100">ID Planta</th>
                     <th className="px-4 py-4 border-r border-amber-100 text-left">Máquina</th>
