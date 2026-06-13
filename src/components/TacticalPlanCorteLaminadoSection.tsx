@@ -101,7 +101,6 @@ const parseDimensionsEnhanced = (desc: string) => {
   const densidad = densMatch ? parseInt(densMatch[1]) : 0;
 
   // 2. Dimensions from pattern like 90M X 200CM X 1.2
-  // We extract numbers after the density part
   const suffix = d.split(/D\d+/)[1] || d;
   const nums = suffix.match(/(\d+(?:\.\d+)?)/g) || [];
   
@@ -173,10 +172,15 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   }, []);
 
   const filteredOrders = useMemo(() => {
-    const relevantGroups = grupos.map(g => g.codigo_grupo);
+    const relevantGroups = grupos.filter(g => {
+      const name = (g.nombre_grupo || '').toLowerCase();
+      return (name.includes('corte y laminado') || name.includes('laminado'));
+    }).map(g => g.codigo_grupo);
+
     const allowedResps = restriccionesArray
-      .filter(r => r.nombre_restriccion === 'RESPCTRLPROD' && relevantGroups.includes(r.codigo_grupo))
-      .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()));
+      .filter(r => (r.nombre_restriccion === 'RESPCTRLPROD' || r.nombre_restriccion === 'Hojas_Rutas_Materiales') && relevantGroups.includes(r.codigo_grupo))
+      .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
+      .filter(v => v !== '');
 
     return ordenes.filter(o => {
       const centro = String(o.CENTRO || o.Centro || '').trim();
@@ -249,10 +253,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     ex.consumoKg += kgTotal;
                   } else {
                     const dims = parseDimensionsEnhanced(desc);
-                    // Formula: (Distancia * Altura * Espesor * Densidad) / 10000
                     const pesoCalculado = (dims.distancia * dims.altura * dims.espesor * dims.densidad) / 10000;
                     
-                    // Stock audit by warehouse
                     const s1006 = tiemposEnsamblado.filter(t => cleanCode(t.CodMaterial) === code && String(t.Almacen || t.ALMACEN) === '1006').reduce((s, t) => s + safeNum(t.StockActual), 0);
                     const s1008 = tiemposEnsamblado.filter(t => cleanCode(t.CodMaterial) === code && String(t.Almacen || t.ALMACEN) === '1008').reduce((s, t) => s + safeNum(t.StockActual), 0);
                     const s1015 = tiemposEnsamblado.filter(t => cleanCode(t.CodMaterial) === code && String(t.Almacen || t.ALMACEN) === '1015').reduce((s, t) => s + safeNum(t.StockActual), 0);
@@ -414,10 +416,10 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             <div className="flex items-center gap-6 text-left">
               <div className="flex flex-col">
                 <p className="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1.5 flex items-center gap-2">
-                  <UserCheck className="w-3 h-3" /> Responsables Habilitados
+                  <UserCheck className="w-3 h-3" /> Responsables Habilitados (Laminado)
                 </p>
                 <div className="flex gap-2">
-                  {restriccionesArray.filter(r => r.nombre_restriccion === 'RESPCTRLPROD').map((r, ri) => (
+                  {restriccionesArray.filter(r => r.nombre_restriccion === 'RESPCTRLPROD' || r.nombre_restriccion === 'Hojas_Rutas_Materiales').map((r, ri) => (
                     <Badge key={ri} variant="outline" className="text-[10px] font-black bg-slate-50 border-slate-200 px-3 py-0.5 rounded-lg">{r.valor_restriccion}</Badge>
                   ))}
                 </div>
@@ -469,15 +471,15 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           <div className="border border-gray-100 rounded-3xl shadow-xl overflow-hidden bg-white">
             <div className="overflow-x-auto">
               <table className="min-w-full border-collapse font-sans text-[11px] text-center">
-                <thead className="bg-[#f8fafc] text-slate-400 border-b border-gray-100 uppercase font-black tracking-widest text-[9px]">
+                <thead className="bg-[#1e293b] text-white border-b border-gray-100 uppercase font-black tracking-widest text-[9px] sticky top-0 z-10">
                   <tr>
-                    <th className="px-6 py-5 border-r border-gray-50">Orden</th>
-                    <th className="px-6 py-5 border-r border-gray-50">Fecha Inicio</th>
-                    <th className="px-6 py-5 border-r border-gray-50">Código FERT</th>
-                    <th className="px-6 py-5 border-r border-gray-100 text-left">Descripción del Producto</th>
-                    <th className="px-6 py-5 border-r border-gray-50">Cantidad</th>
-                    <th className="px-6 py-5 border-r border-gray-50">Responsable</th>
-                    <th className="px-6 py-5 border-r border-gray-50">Máquina</th>
+                    <th className="px-6 py-5 border-r border-white/5">Orden</th>
+                    <th className="px-6 py-5 border-r border-white/5">Fecha Inicio</th>
+                    <th className="px-6 py-5 border-r border-white/5">Código FERT</th>
+                    <th className="px-6 py-5 border-r border-white/10 text-left">Descripción del Producto</th>
+                    <th className="px-6 py-5 border-r border-white/5">Cantidad</th>
+                    <th className="px-6 py-5 border-r border-white/5">Responsable</th>
+                    <th className="px-6 py-5 border-r border-white/5">Máquina</th>
                     <th className="px-6 py-5">Almacén</th>
                   </tr>
                 </thead>
@@ -493,7 +495,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                           <td className="px-6 py-4 font-black text-slate-800 border-r border-gray-50">{o.ORDENPREVISIONAL || '—'}</td>
                           <td className="px-6 py-4 border-r border-gray-50 font-mono text-[9px] text-slate-400">{o.FECHAINICIO || '—'}</td>
                           <td className="px-6 py-4 font-mono font-black text-red-600 border-r border-gray-50 tracking-tighter text-sm">{matCode}</td>
-                          <td className="px-6 py-4 text-left border-r border-gray-100 text-slate-600 font-black uppercase leading-tight max-w-[350px]">
+                          <td className="px-6 py-4 text-left border-r border-gray-100 text-slate-600 font-black uppercase leading-tight max-w-[450px]">
                             {description}
                           </td>
                           <td className="px-6 py-4 font-black text-slate-900 border-r border-gray-50 font-mono text-sm">
