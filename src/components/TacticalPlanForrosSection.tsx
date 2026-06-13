@@ -131,9 +131,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
     const n = String(name || '').toUpperCase().trim();
     if (n === '' || n === 'NULL' || n === '—' || n === '-') return '';
     
-    // Explicit Overrides
+    // Explicit Overrides solicitados por el usuario
     if (n === 'ACOLCHADORA09' || n === 'ACOLCHADORA 09') return 'HR-ACH09';
     if (n === 'COSEDORA-ACH08' || n === 'COSEDORA ACH 08') return 'HR-PEF08';
+    if (n === 'COSEDORA-ACH02' || n === 'COSEDORA ACH 02') return 'HR-PEF02';
 
     // 1. Prioridad: Buscar en el mapa de equivalencias de la base de datos
     if (workstationToHojaRutaMap.has(n)) {
@@ -547,6 +548,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   return (
     <div className="p-6 md:p-8 space-y-6 bg-slate-50/40 min-h-screen">
+      {/* HEADER PRINCIPAL */}
       <div className="flex flex-col xl:flex-row items-center justify-between gap-6 bg-white p-7 rounded-[2rem] border border-slate-200 shadow-sm">
         <div className="flex items-center space-x-6">
           <div className="bg-slate-950 p-5 rounded-[1.5rem] text-white shadow-xl ring-4 ring-slate-100">
@@ -635,6 +637,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
           </TabsTrigger>
         </TabsList>
 
+        {/* CONTENIDO DE PESTAÑAS */}
         <TabsContent value="resumen-produccion">
           <Card className="rounded-[2.5rem] shadow-sm border-slate-200 overflow-hidden bg-white ring-1 ring-slate-100">
             <CardHeader className="bg-slate-50/50 border-b border-slate-200 p-10">
@@ -878,6 +881,13 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   </tbody>
                 </table>
               </div>
+              <div className="p-8 border-t flex items-center justify-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => setMaintPage(p => Math.max(1, p - 1))} disabled={maintPage === 1} className="rounded-xl"><ChevronLeft className="w-4 h-4" /></Button>
+                {getPageNumbers(maintPage, totalMaintPages).map((p, i) => (
+                  <Button key={i} variant={maintPage === p ? 'default' : 'outline'} size="sm" onClick={() => typeof p === 'number' && setMaintPage(p)} className={cn("rounded-xl w-10", typeof p !== 'number' && "pointer-events-none")}>{p}</Button>
+                ))}
+                <Button variant="outline" size="sm" onClick={() => setMaintPage(p => Math.min(totalMaintPages, p + 1))} disabled={maintPage === totalMaintPages} className="rounded-xl"><ChevronRight className="w-4 h-4" /></Button>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -892,6 +902,13 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     <Select value={jornadaDiurnaSel} onValueChange={setJornadaDiurnaSel}>
                       <SelectTrigger className="h-14 border-2 rounded-2xl font-black text-slate-800"><SelectValue /></SelectTrigger>
                       <SelectContent>{DIURNA_OPTIONS.map(opt => <SelectItem key={opt.value} value={opt.value} className="font-black py-3">{opt.label}</SelectItem>)}</SelectContent>
+                    </Select>
+                 </div>
+                 <div className="space-y-5">
+                    <label className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em]">Jornada Nocturna</label>
+                    <Select value={jornadaNocturnaSel} onValueChange={setJornadaNocturnaSel}>
+                      <SelectTrigger className="h-14 border-2 rounded-2xl font-black text-slate-800"><SelectValue /></SelectTrigger>
+                      <SelectContent>{NOCTURNA_OPTIONS.map(opt => <SelectItem key={opt.value} value={opt.value} className="font-black py-3">{opt.label}</SelectItem>)}</SelectContent>
                     </Select>
                  </div>
                  <div className="p-8 bg-slate-950 rounded-[2rem] text-white">
