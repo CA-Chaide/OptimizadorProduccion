@@ -193,6 +193,18 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     init();
   }, []);
 
+  const datesWithOrders = useMemo(() => {
+    const dates = new Set<string>();
+    ordenes.forEach(o => {
+      const d = String(o.FECHAINICIO || o.FECHA || '').trim();
+      if (d && d !== 'null') {
+        const normalized = d.includes('T') ? d.split('T')[0] : d;
+        dates.add(normalized);
+      }
+    });
+    return dates;
+  }, [ordenes]);
+
   const filteredOrders = useMemo(() => {
     const relevantGroups = grupos.filter(g => {
       const name = (g.nombre_grupo || '').toLowerCase();
