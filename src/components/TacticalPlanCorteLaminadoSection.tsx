@@ -135,7 +135,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState<string>('all');
   const [viewDate, setViewDate] = useState<Date | null>(null);
   const [fertBusqueda, setFertBusqueda] = useState('');
-  const [bomRows, setBomRows] = useState<RawBOMRow[]>([]);
   const [isSearchingBOM, setIsSearchingBOM] = useState(false);
   const [unifiedNeeds, setUnifiedNeeds] = useState<UnifiedNeedRow[]>([]);
   const [isProcessingResumen, setIsProcessingResumen] = useState(false);
@@ -143,6 +142,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [processedSignature, setProcessedSignature] = useState('');
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
+  // CORRECCIÓN: Definición de datesWithOrders para evitar error de ejecución
   const datesWithOrders = useMemo(() => {
     const dates = new Set<string>();
     ordenes.forEach(o => {
@@ -187,11 +187,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   }, []);
 
   const filteredOrders = useMemo(() => {
-    const relevantGroups = grupos.filter(g => {
-      const name = (g.nombre_grupo || '').toLowerCase();
-      return (name.includes('corte y laminado') || name.includes('laminado'));
-    }).map(g => g.codigo_grupo);
-    
+    const relevantGroups = grupos.map(g => g.codigo_grupo);
     const allowedResps = restriccionesArray
       .filter(r => (r.nombre_restriccion === 'RESPCTRLPROD' || r.nombre_restriccion === 'Hojas_Rutas_Materiales') && relevantGroups.includes(r.codigo_grupo))
       .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
@@ -352,6 +348,15 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     }), { kg: 0, un: 0, planUn: 0, planKg: 0, stock1006: 0, stock1008: 0 });
   }, [unifiedNeeds]);
 
+  // Monitor de corridas por densidad para el dashboard superior
+  const densityBreakdown = useMemo(() => {
+    const map = new Map<number, number>();
+    groupedNeeds.forEach(g => {
+      map.set(g.densidad, (map.get(g.densidad) || 0) + 1);
+    });
+    return Array.from(map.entries()).sort((a,b) => a[0] - b[0]);
+  }, [groupedNeeds]);
+
   const toggleGroup = (key: string) => {
     const next = new Set(expandedGroups);
     if (next.has(key)) next.delete(key);
@@ -416,22 +421,31 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
            <div className="flex items-center gap-6 bg-[#1e293b] p-6 rounded-[2rem] border border-white/5 shadow-2xl text-white">
              <div className="flex-1 flex items-center justify-between">
                 <div className="flex flex-col gap-1 border-r border-white/10 pr-8 flex-1">
-                   <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Cantidad Necesaria (KG)</span>
+                   <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Cantidad necesaria (KG)</span>
                    <p className="text-4xl font-black font-mono text-red-400 tracking-tighter">
                      {totalsUnified.kg.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).replace('.', ',')}
                    </p>
                 </div>
                 <div className="flex flex-col gap-1 border-r border-white/10 px-8 flex-1">
-                   <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Cantidad Necesaria (UND)</span>
+                   <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Cantidad Necesaria (und)</span>
                    <p className="text-4xl font-black font-mono text-indigo-400 tracking-tighter">
                      {Math.round(totalsUnified.un).toLocaleString()}
                    </p>
                 </div>
                 <div className="flex flex-col gap-1 pl-8 flex-1">
-                   <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Nro de Aperturas o Corridas</span>
-                   <p className="text-4xl font-black font-mono text-yellow-400 tracking-tighter">
-                     {groupedNeeds.length}
-                   </p>
+                   <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Nro de Aperturas o corridas</span>
+                   <div className="flex items-baseline gap-3">
+                     <p className="text-4xl font-black font-mono text-yellow-400 tracking-tighter">
+                       {groupedNeeds.length}
+                     </p>
+                     <div className="flex gap-2 flex-wrap max-w-[200px]">
+                        {densityBreakdown.map(([dens, count]) => (
+                          <Badge key={dens} variant="outline" className="bg-white/5 border-white/10 text-white text-[8px] font-black px-2 py-0">
+                            D{dens}: {count}
+                          </Badge>
+                        ))}
+                     </div>
+                   </div>
                 </div>
              </div>
              
@@ -442,7 +456,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   className="bg-red-600 hover:bg-red-700 text-white rounded-[1.2rem] h-14 px-8 text-[11px] font-black uppercase tracking-widest shadow-lg transition-all flex items-center gap-3 active:scale-95"
                 >
                   {isProcessingResumen ? <Loader2 className="w-5 h-5 animate-spin" /> : <RefreshCw className="w-5 h-5" />}
-                  Actualizar Datos
+                  ACTUALIZAR DATOS
                 </Button>
              </div>
            </div>
