@@ -25,12 +25,14 @@ import {
   UserPlus,
   Repeat,
   Calculator,
-  TestTube,
   FileSpreadsheet,
   GraduationCap,
   Wrench,
   AlertTriangle,
-  CheckCircle2
+  CheckCircle2,
+  Activity,
+  ShieldCheck,
+  ShieldAlert
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@radix-ui/react-tabs';
@@ -347,7 +349,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const uniqueWorkstations = useMemo(() => {
     const wsSet = new Set<string>();
     tiemposProduccion.forEach(t => {
-      const ws = String(t.PuestoTrabajo || '').trim();
+      const ws = String(t.PuestoTrabajo || t.nombre_estacion || '').trim();
       if (ws && ws !== 'null' && ws.toUpperCase() !== 'MARCOSUIO') {
         wsSet.add(ws);
       }
@@ -408,7 +410,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     } finally {
       setIsLoadingDaily(false);
     }
-  }, [externalFilters, targetDate, todayDate, safeParseDateParts]);
+  }, [externalFilters, targetDate, todayDate, safeParseDateParts, normalizeDateForFilter]);
 
   const fetchExplosionData = useCallback(async (page: number = 1) => {
     setIsLoadingExplosion(true);
@@ -538,7 +540,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   };
 
   const dailyColumns = useMemo(() => {
-    const priority = ['ORDENPREVISIONAL', 'MATERIAL', 'TEXTOMATERIAL', 'FECHAINICIO', 'CANTIDAD', 'TIEMPOS DE PRODUCCIÓN', 'MAQUINA', 'FECHAFIN'];
+    const priority = ['ORDENPREVISIONAL', 'MATERIAL', 'TEXTOMATERIAL', 'FECHAINICIO', 'CANTIDAD', 'TIEMPOS DE PRODUCCIÓN', 'MAQUINA', 'VALIDACIÓN TÉCNICA', 'FECHAFIN'];
     if (dailyOrders.length === 0) return priority;
     const allKeys = Object.keys(dailyOrders[0]);
     const usedKeysUpper = new Set(priority.map(p => p.toUpperCase().trim()));
@@ -608,6 +610,34 @@ export const TacticalPlanForrosSection: React.FC = () => {
     
     return Array.from(summaryMap.values()).sort((a, b) => a.machine.localeCompare(b.machine));
   }, [dailyOrders, tiemposProduccion, getResolvedMachine, calculateProductionTime]);
+
+  // VALIDADOR DE REGLA ESPEJO INTEGRADO
+  const getValidationAlert = useCallback((order: any) => {
+    const machine = getResolvedMachine(order).trim().toUpperCase();
+    const material = normalizeMaterialCode(order['MATERIAL'] || order['CodMaterial'] || '');
+    
+    if (machine.startsWith('HR-ACH')) {
+      const suffix = machine.slice(-2);
+      const targetPef = `HR-PEF${suffix}`;
+      const hasPair = dailyOrders.some(o => 
+        normalizeMaterialCode(o['MATERIAL'] || o['CodMaterial'] || '') === material && 
+        getResolvedMachine(o).toUpperCase() === targetPef
+      );
+      return hasPair ? null : `Falta par ${targetPef}`;
+    }
+    
+    if (machine.startsWith('HR-PEF')) {
+      const suffix = machine.slice(-2);
+      const targetAch = `HR-ACH${suffix}`;
+      const hasPair = dailyOrders.some(o => 
+        normalizeMaterialCode(o['MATERIAL'] || o['CodMaterial'] || '') === material && 
+        getResolvedMachine(o).toUpperCase() === targetAch
+      );
+      return hasPair ? null : `Falta par ${targetAch}`;
+    }
+
+    return null;
+  }, [dailyOrders, getResolvedMachine, normalizeMaterialCode]);
 
   const filteredHabilidades = useMemo(() => {
     return habilidadesOpData.filter(item => {
@@ -694,6 +724,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return date.toISOString().split('T')[0];
   }, [targetDate]);
 
+  const formattedTodayDisp = displayTodayDate ? formatValueForDisplay('FECHA', displayTodayDate) : '...';
+  const formattedTargetDisp = displayTargetDate ? formatValueForDisplay('FECHA', displayTargetDate) : '...';
+
   const renderDailyTableBody = () => {
     if (isLoadingDaily) return <tr><td colSpan={dailyColumns.length} className="py-24 text-center"><Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" /></td></tr>;
     if (paginatedDailyOrders.length === 0) return <tr><td colSpan={dailyColumns.length} className="py-20 text-center text-gray-400 italic bg-gray-50/50">No hay órdenes para hoy o la fecha objetivo seleccionada en esta página.</td></tr>;
@@ -706,6 +739,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
       const machine = getResolvedMachine(order) || 'SIN MÁQUINA';
       const quantity = Number(order['CANTIDAD'] || 0);
       const timeVal = parseFloat(calculateProductionTime(order['MATERIAL'] || order['CodMaterial'] || '', quantity, order)) || 0;
+      const alert = getValidationAlert(order);
 
       currentGroupQuantity += quantity;
       currentGroupTime += timeVal;
@@ -716,6 +750,17 @@ export const TacticalPlanForrosSection: React.FC = () => {
             const upperCol = col.toUpperCase().trim();
             if (col === 'TIEMPOS DE PRODUCCIÓN') return <td key={`daily-cell-${idx}-${col}-${cIdx}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] font-mono text-gray-600"><span className="font-bold text-emerald-700">{timeVal.toFixed(2)} min</span></td>;
             if (upperCol === 'MAQUINA') return <td key={`daily-cell-${idx}-${col}-${cIdx}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] font-mono text-gray-600"><span className="font-semibold text-blue-700">{machine}</span></td>;
+            if (upperCol === 'VALIDACIÓN TÉCNICA') return (
+              <td key={`daily-cell-${idx}-${col}`} className="px-4 py-2.5">
+                {alert ? (
+                  <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 text-[9px] font-black uppercase flex items-center gap-1">
+                    <ShieldAlert className="w-2.5 h-2.5" /> {alert}
+                  </Badge>
+                ) : (
+                  <div className="text-green-600"><ShieldCheck className="w-4 h-4" /></div>
+                )}
+              </td>
+            );
             return <td key={`daily-cell-${idx}-${col}-${cIdx}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] font-mono text-gray-600">{formatValueForDisplay(col, order[col])}</td>;
           })}
         </tr>
@@ -725,102 +770,27 @@ export const TacticalPlanForrosSection: React.FC = () => {
       const nextMachine = nextOrder ? (getResolvedMachine(nextOrder) || 'SIN MÁQUINA') : null;
 
       if (machine !== nextMachine) {
+        // Cálculo de capacidad para el subtotal
+        const config = workstationConfigs[machine] || { people: 1 };
+        const cap = totalHorasNetas * config.people;
+        const usedH = currentGroupTime / 60;
+        const percent = cap > 0 ? (usedH / cap) * 100 : 0;
+        const isOverloaded = percent > 100;
+
         rows.push(
-          <tr key={`subtotal-${machine}-${idx}`} className="bg-gray-100/80 font-bold border-t-2 border-gray-200">
+          <tr key={`subtotal-${machine}-${idx}`} className={cn("bg-gray-100/80 font-bold border-t-2 border-gray-200", isOverloaded && "bg-red-50/50")}>
             {dailyColumns.map((col, cIdx) => {
                const upperCol = col.toUpperCase().trim();
-               if (cIdx === 0) return <td key={`sub-${idx}-${cIdx}`} className="px-4 py-2 text-[10px] text-gray-500 uppercase flex items-center gap-2"><Layers className="w-3 h-3" /> SUBTOTAL {machine}</td>;
+               if (cIdx === 0) return <td key={`sub-${idx}-${cIdx}`} className="px-4 py-2 text-[10px] text-gray-500 uppercase flex items-center gap-2 font-black"><Layers className="w-3 h-3" /> SUBTOTAL {machine}</td>;
                if (upperCol === 'CANTIDAD') return <td key={`sub-${idx}-${cIdx}`} className="px-4 py-2 text-left font-mono text-blue-800 text-[11px]">{currentGroupQuantity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>;
-               if (col === 'TIEMPOS DE PRODUCCIÓN') return <td key={`sub-${idx}-${cIdx}`} className="px-4 py-2 text-left font-mono text-emerald-800 text-[11px]">{currentGroupTime.toFixed(2)} min</td>;
+               if (col === 'TIEMPOS DE PRODUCCIÓN') return (
+                 <td key={`sub-${idx}-${cIdx}`} className="px-4 py-2 text-left font-mono text-[11px]">
+                   <span className={cn(isOverloaded ? "text-red-700" : "text-emerald-800")}>{currentGroupTime.toFixed(2)} min</span>
+                   <div className="text-[9px] font-normal text-gray-400">({usedH.toFixed(2)}h / {cap.toFixed(2)}h)</div>
+                 </td>
+               );
+               if (upperCol === 'VALIDACIÓN TÉCNICA') return <td key={`sub-${idx}-${cIdx}`} className="px-4 py-2"><Badge variant="outline" className={cn("font-bold text-[9px]", isOverloaded ? "bg-red-600 text-white" : percent > 85 ? "bg-orange-500 text-white" : "bg-green-600 text-white")}>{percent.toFixed(1)}% CARGA</Badge></td>;
                return <td key={`sub-${idx}-${cIdx}`} className="px-4 py-2"></td>;
-            })}
-          </tr>
-        );
-        currentGroupQuantity = 0;
-        currentGroupTime = 0;
-      }
-    });
-
-    return rows;
-  };
-
-  const formattedTodayDisp = displayTodayDate ? formatValueForDisplay('FECHA', displayTodayDate) : '...';
-  const formattedTargetDisp = displayTargetDate ? formatValueForDisplay('FECHA', displayTargetDate) : '...';
-
-  const pruebasOrders = useMemo(() => {
-    return dailyOrders.filter(order => {
-      const machine = getResolvedMachine(order);
-      return ['HR-ACH02', 'HR-PEF02', 'HR-ACH06', 'HR-PEF06'].includes(machine);
-    }).sort((a, b) => {
-      const machineA = getResolvedMachine(a);
-      const machineB = getResolvedMachine(b);
-      return machineA.localeCompare(machineB);
-    });
-  }, [dailyOrders, getResolvedMachine]);
-
-  // VALIDADOR DE REGLA ESPEJO (Extra)
-  const mirrorRuleViolations = useMemo(() => {
-    const achOrders = pruebasOrders.filter(o => getResolvedMachine(o).startsWith('HR-ACH'));
-    const pefOrders = pruebasOrders.filter(o => getResolvedMachine(o).startsWith('HR-PEF'));
-    const violations: { material: string; achMachine: string; pefMachine: string; status: 'missing_pair' | 'mismatch' }[] = [];
-
-    achOrders.forEach(ach => {
-      const mat = normalizeMaterialCode(ach['MATERIAL'] || ach['CodMaterial'] || '');
-      const suffix = getResolvedMachine(ach).slice(-2);
-      const targetPef = `HR-PEF${suffix}`;
-      
-      const pefMatch = pefOrders.find(p => 
-        normalizeMaterialCode(p['MATERIAL'] || p['CodMaterial'] || '') === mat && 
-        getResolvedMachine(p) === targetPef
-      );
-
-      if (!pefMatch) {
-        violations.push({ material: mat, achMachine: getResolvedMachine(ach), pefMachine: targetPef, status: 'missing_pair' });
-      }
-    });
-
-    return violations;
-  }, [pruebasOrders, getResolvedMachine, normalizeMaterialCode]);
-
-  const renderPruebasTableBody = () => {
-    if (isLoadingDaily) return <tr><td colSpan={dailyColumns.length} className="py-12 text-center"><Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" /></td></tr>;
-    if (pruebasOrders.length === 0) return <tr><td colSpan={dailyColumns.length} className="py-20 text-center text-gray-400 italic">No se encontraron órdenes para HR-ACH02, HR-PEF02, HR-ACH06 o HR-PEF06.</td></tr>;
-
-    const rows: React.ReactNode[] = [];
-    let currentGroupQuantity = 0;
-    let currentGroupTime = 0;
-
-    pruebasOrders.forEach((order, idx) => {
-      const machine = getResolvedMachine(order) || 'SIN MÁQUINA';
-      const quantity = Number(order['CANTIDAD'] || 0);
-      const timeVal = parseFloat(calculateProductionTime(order['MATERIAL'] || order['CodMaterial'] || '', quantity, order)) || 0;
-
-      currentGroupQuantity += quantity;
-      currentGroupTime += timeVal;
-
-      rows.push(
-        <tr key={`pruebas-row-${idx}`} className="hover:bg-indigo-50/20 transition-colors">
-          {dailyColumns.map((col, cIdx) => {
-            const upperCol = col.toUpperCase().trim();
-            if (col === 'TIEMPOS DE PRODUCCIÓN') return <td key={`pruebas-cell-${idx}-${col}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] font-mono font-bold text-emerald-700">{timeVal.toFixed(2)} min</td>;
-            if (upperCol === 'MAQUINA') return <td key={`pruebas-cell-${idx}-${col}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] font-mono font-bold text-indigo-700">{machine}</td>;
-            return <td key={`pruebas-cell-${idx}-${col}`} className="px-4 py-2.5 whitespace-nowrap text-[11px] font-mono text-gray-600">{formatValueForDisplay(col, order[col])}</td>;
-          })}
-        </tr>
-      );
-
-      const nextOrder = pruebasOrders[idx + 1];
-      const nextMachine = nextOrder ? (getResolvedMachine(nextOrder) || 'SIN MÁQUINA') : null;
-
-      if (machine !== nextMachine) {
-        rows.push(
-          <tr key={`pruebas-subtotal-${machine}-${idx}`} className="bg-indigo-50 font-bold border-t-2 border-indigo-100">
-            {dailyColumns.map((col, cIdx) => {
-               const upperCol = col.toUpperCase().trim();
-               if (cIdx === 0) return <td key={`p-sub-${idx}-${cIdx}`} className="px-4 py-2 text-[10px] text-indigo-600 uppercase flex items-center gap-2 font-black"><Layers className="w-3 h-3" /> TOTAL {machine}</td>;
-               if (upperCol === 'CANTIDAD') return <td key={`p-sub-${idx}-${cIdx}`} className="px-4 py-2 text-left font-mono text-blue-800 text-[11px]">{currentGroupQuantity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>;
-               if (col === 'TIEMPOS DE PRODUCCIÓN') return <td key={`p-sub-${idx}-${cIdx}`} className="px-4 py-2 text-left font-mono text-emerald-800 text-[11px]">{currentGroupTime.toFixed(2)} min</td>;
-               return <td key={`p-sub-${idx}-${cIdx}`} className="px-4 py-2"></td>;
             })}
           </tr>
         );
@@ -882,7 +852,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
             <TabsTrigger value="forros-chn-bases" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><Package className="w-4 h-4" /> Forros CHN & Bases</TabsTrigger>
             <TabsTrigger value="diaria" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><CalendarCheck className="w-4 h-4" /> Programación Componentes</TabsTrigger>
             <TabsTrigger value="resumen-diario" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><BarChart3 className="w-4 h-4" /> Resumen de producción diaria</TabsTrigger>
-            <TabsTrigger value="pruebas" className="flex items-center gap-2 px-6 py-3 data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent rounded-none whitespace-nowrap text-sm font-medium transition-all text-gray-500 hover:text-gray-900"><TestTube className="w-4 h-4" /> PRUEBAS</TabsTrigger>
           </TabsList>
         </div>
 
@@ -1385,34 +1354,78 @@ export const TacticalPlanForrosSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="diaria">
-          <Card>
-            <CardHeader><CardTitle className="flex items-center gap-2"><CalendarCheck className="w-5 h-5 text-primary" /> Programación Componentes (Ecuador): {formattedTodayDisp} (GYE) y {formattedTargetDisp} (Quito)</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              <div className="rounded-md border border-gray-200 bg-white overflow-hidden">
-                <div className="overflow-auto max-h-[65vh]">
-                  <table className="min-w-full divide-y divide-gray-200 border-collapse">
-                    <thead className="bg-gray-100 sticky top-0 z-10 shadow-sm">
-                      <tr>{dailyColumns.map((col, idx) => (<th key={`daily-head-${col}-${idx}`} className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider whitespace-nowrap bg-gray-50 border-b text-gray-600">{col}</th>))}</tr>
-                    </thead>
-                    <tbody className="divide-y divide-200 bg-white">{renderDailyTableBody()}</tbody>
-                  </table>
+          <div className="space-y-6">
+            {/* MONITOR DE SALUD DE PLANTA (Optimizado) */}
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3">
+              {productionSummary.map((item) => {
+                const config = workstationConfigs[item.machine] || { people: 1 };
+                const cap = totalHorasNetas * config.people;
+                const usedH = item.totalTime / 60;
+                const percent = cap > 0 ? (usedH / cap) * 100 : 0;
+                
+                const statusColor = percent > 100 ? "border-red-500 bg-red-50" : 
+                                   percent > 85 ? "border-orange-500 bg-orange-50" : 
+                                   "border-green-500 bg-green-50";
+                const textStatus = percent > 100 ? "text-red-700" : 
+                                  percent > 85 ? "text-orange-700" : 
+                                  "text-green-700";
+
+                return (
+                  <div key={`health-${item.machine}`} className={cn("border-2 rounded-xl p-3 shadow-sm transition-all hover:scale-105", statusColor)}>
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-[10px] font-black text-gray-500 uppercase">{item.machine}</span>
+                      <Activity className={cn("w-3 h-3", textStatus)} />
+                    </div>
+                    <div className="flex items-baseline gap-1">
+                      <span className={cn("text-lg font-black font-mono", textStatus)}>{percent.toFixed(1)}%</span>
+                      <span className="text-[9px] text-gray-400 font-bold">CARGA</span>
+                    </div>
+                    <div className="mt-1 flex justify-between text-[9px] font-bold text-gray-400 uppercase">
+                      <span>{usedH.toFixed(1)}h</span>
+                      <span>/ {cap.toFixed(1)}h</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <Card className="shadow-lg border-gray-200">
+              <CardHeader className="bg-gray-50/50 border-b flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <CalendarCheck className="w-5 h-5 text-primary" /> 
+                    Programación Componentes: {formattedTodayDisp} y {formattedTargetDisp}
+                  </CardTitle>
                 </div>
-              </div>
-              <div className="flex items-center justify-between gap-4 py-3 px-4 bg-gray-50 rounded-lg border border-gray-200 shadow-sm">
-                <div className="flex items-center gap-1">
-                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(1)} disabled={dailyPage === 1}><ChevronsLeft className="h-4 w-4" /></Button>
-                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(p => Math.max(1, p - 1))} disabled={dailyPage === 1}><ChevronLeft className="h-4 w-4" /></Button>
-                  <span className="px-3 text-[11px] font-bold min-w-[120px] text-center border-x py-1 bg-white rounded">Página {dailyPage} de {totalDailyPages}</span>
-                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(p => Math.min(totalDailyPages, p + 1))} disabled={dailyPage === totalDailyPages}><ChevronRight className="h-4 w-4" /></Button>
-                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(totalDailyPages)} disabled={dailyPage === totalDailyPages}><ChevronsRight className="h-4 w-4" /></Button>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 font-black text-[10px]">REGLA ESPEJO ACTIVA</Badge>
+                  <Button variant="outline" size="sm" onClick={fetchDailyOrders} disabled={isLoadingDaily} className="h-8 px-4 bg-white"><RefreshCw className={cn("h-3 w-3 mr-2", isLoadingDaily && "animate-spin")} /> Sincronizar</Button>
                 </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{processedDailyOrders.length} componentes ordenados por Hoja de Ruta</span>
-                  <Button variant="outline" size="sm" onClick={fetchDailyOrders} disabled={isLoadingDaily} className="h-8 px-4 bg-white"><RefreshCw className={cn("h-3 w-3 mr-2", isLoadingDaily && "animate-spin")} /> Actualizar</Button>
+              </CardHeader>
+              <CardContent className="pt-6 space-y-4">
+                <div className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-inner">
+                  <div className="overflow-auto max-h-[60vh]">
+                    <table className="min-w-full divide-y divide-gray-200 border-collapse">
+                      <thead className="bg-gray-100 sticky top-0 z-10 shadow-sm">
+                        <tr>{dailyColumns.map((col, idx) => (<th key={`daily-head-${col}-${idx}`} className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider whitespace-nowrap bg-gray-100 border-b text-gray-600">{col}</th>))}</tr>
+                      </thead>
+                      <tbody className="divide-y divide-200 bg-white">{renderDailyTableBody()}</tbody>
+                    </table>
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+                <div className="flex items-center justify-between gap-4 py-3 px-4 bg-gray-50 rounded-lg border border-gray-200 shadow-sm">
+                  <div className="flex items-center gap-1">
+                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(1)} disabled={dailyPage === 1}><ChevronsLeft className="h-4 w-4" /></Button>
+                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(p => Math.max(1, p - 1))} disabled={dailyPage === 1}><ChevronLeft className="h-4 w-4" /></Button>
+                    <span className="px-3 text-[11px] font-bold min-w-[120px] text-center border-x py-1 bg-white rounded">Página {dailyPage} de {totalDailyPages}</span>
+                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(p => Math.min(totalDailyPages, p + 1))} disabled={dailyPage === totalDailyPages}><ChevronRight className="h-4 w-4" /></Button>
+                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setDailyPage(totalDailyPages)} disabled={dailyPage === totalDailyPages}><ChevronsRight className="h-4 w-4" /></Button>
+                  </div>
+                  <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{processedDailyOrders.length} registros cargados</div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         <TabsContent value="resumen-diario">
@@ -1439,123 +1452,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
               </div>
             </CardContent>
           </Card>
-        </TabsContent>
-
-        <TabsContent value="pruebas">
-          <div className="space-y-6">
-            {/* ALERTAS DE REGLA ESPEJO (Valor Agregado) */}
-            {mirrorRuleViolations.length > 0 && (
-              <div className="p-4 bg-red-50 border border-red-200 rounded-xl flex items-start gap-4">
-                <div className="bg-red-600 p-2 rounded-lg text-white shadow-md">
-                  <AlertTriangle className="w-5 h-5" />
-                </div>
-                <div className="flex-1">
-                  <h4 className="text-sm font-black text-red-900 uppercase tracking-widest mb-1">Inconsistencia detected en Regla Espejo (Mirror Rule)</h4>
-                  <p className="text-xs text-red-800 mb-3">Se han detectado órdenes de acolchado (ACH) sin su correspondiente orden de confección de tapas (PEF) en la misma máquina sufijo. Esto viola la restricción técnica mandatoria.</p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                    {mirrorRuleViolations.map((v, i) => (
-                      <div key={`viol-${i}`} className="bg-white/60 p-2 rounded-lg border border-red-100 text-[10px] font-bold flex flex-col">
-                        <span className="text-gray-500 uppercase tracking-tighter mb-1">Material: {v.material}</span>
-                        <div className="flex items-center justify-between">
-                          <span className="text-red-700">{v.achMachine}</span>
-                          <span className="text-gray-400">→</span>
-                          <span className="text-red-400 italic">Falta {v.pefMachine}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {mirrorRuleViolations.length === 0 && pruebasOrders.length > 0 && (
-              <div className="p-4 bg-green-50 border border-green-200 rounded-xl flex items-center gap-4">
-                <div className="bg-green-600 p-2 rounded-lg text-white shadow-md">
-                  <CheckCircle2 className="w-5 h-5" />
-                </div>
-                <div>
-                  <h4 className="text-sm font-black text-green-900 uppercase tracking-widest leading-none">Regla Espejo Validada</h4>
-                  <p className="text-xs text-green-800 mt-1">Todas las órdenes de acolchado tienen su par técnico sincronizado correctamente.</p>
-                </div>
-              </div>
-            )}
-
-            <Card className="border-indigo-200 shadow-lg overflow-hidden">
-              <CardHeader className="bg-indigo-50/50 border-b">
-                <div className="flex items-center gap-3">
-                  <div className="bg-indigo-600 p-2 rounded-lg text-white">
-                    <TestTube className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <CardTitle>Simulación de Carga ACH/PEF (Pares 02 y 06)</CardTitle>
-                    <CardDescription>Análisis JIT: Los componentes deben estar listos el mismo día del forro o máximo uno antes.</CardDescription>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="pt-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                  {['HR-ACH02', 'HR-PEF02', 'HR-ACH06', 'HR-PEF06'].map(m => {
-                    const stats = productionSummary.find(s => s.machine === m) || { totalTime: 0 };
-                    const config = workstationConfigs[m] || { people: 1 };
-                    const cap = totalHorasNetas * config.people;
-                    const usedH = stats.totalTime / 60;
-                    const percent = cap > 0 ? (usedH / cap) * 100 : 0;
-                    return (
-                      <div key={`sat-${m}`} className="bg-white border rounded-xl p-3 shadow-sm">
-                        <div className="flex justify-between items-center mb-2">
-                          <span className="text-xs font-black text-gray-500 uppercase">{m}</span>
-                          <span className={cn("text-[10px] font-bold px-1.5 py-0.5 rounded", percent > 100 ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700")}>{percent.toFixed(1)}%</span>
-                        </div>
-                        <Progress value={Math.min(percent, 100)} className={cn("h-1.5", percent > 100 ? "bg-red-100" : "bg-blue-100")} />
-                        <div className="mt-2 text-[10px] flex justify-between font-mono text-gray-400">
-                          <span>{usedH.toFixed(2)}h</span>
-                          <span>Cap: {cap.toFixed(2)}h</span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <div className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm">
-                  <div className="overflow-auto max-h-[60vh]">
-                    <table className="min-w-full divide-y divide-gray-200 border-collapse">
-                      <thead className="bg-gray-100/80 sticky top-0 z-10 shadow-sm">
-                        <tr>
-                          {dailyColumns.map((col, idx) => (
-                            <th key={`pruebas-head-${col}-${idx}`} className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider whitespace-nowrap text-gray-600 border-b">
-                              {col}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-100 bg-white">
-                        {renderPruebasTableBody()}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-                
-                <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl space-y-2">
-                    <h5 className="text-xs font-bold text-blue-900 uppercase flex items-center gap-2">
-                      <FileSpreadsheet className="w-4 h-4" /> Notas de Simulación JIT
-                    </h5>
-                    <p className="text-[11px] text-blue-800 leading-relaxed">
-                      El motor garantiza el suministro <strong>Just-In-Time</strong>. Si una máquina de acolchado se satura, el planificador debe evaluar el adelanto de producción a la jornada inmediatamente anterior, manteniendo siempre el vínculo técnico con el padre (Forro).
-                    </p>
-                  </div>
-                  <div className="p-4 bg-indigo-50 border border-indigo-100 rounded-xl space-y-2">
-                    <h5 className="text-xs font-bold text-indigo-900 uppercase flex items-center gap-2">
-                      <Users className="w-4 h-4" /> Capacidad Técnica (84% Eficiencia)
-                    </h5>
-                    <p className="text-[11px] text-blue-800 leading-relaxed">
-                      La carga se calcula sumando el tiempo unitario de cada SKU multiplicado por su cantidad. Si la ocupación excede el 100%, el sistema resalta el puesto en rojo en el monitor de saturación superior.
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
         </TabsContent>
       </Tabs>
     </div>
