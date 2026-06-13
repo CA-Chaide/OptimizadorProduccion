@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   CalendarClock, 
   Loader2, 
@@ -376,7 +377,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
         "flex border border-slate-200 rounded-3xl overflow-hidden shadow-sm bg-white transition-all hover:shadow-lg",
         small ? "h-[360px]" : "h-[450px]"
       )}>
-        {/* PANEL IZQUIERDO: INFO TÉCNICA (SLATE/INDIGO) */}
         <div className={cn(
           "bg-slate-950 p-6 text-white flex flex-col border-r border-slate-800",
           small ? "w-[42%]" : "w-[38%]"
@@ -436,7 +436,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
           </div>
         </div>
 
-        {/* PANEL DERECHO: ÓRDENES (GRIS TÉCNICO) */}
         <div className="flex-1 p-6 flex flex-col bg-slate-50/50">
           <div className="flex items-center justify-between mb-4">
             <h4 className="text-[11px] font-black text-slate-800 uppercase tracking-[0.25em] flex items-center gap-2">
@@ -469,16 +468,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     </tr>
                   );
                 })}
-                {orders.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="py-24 text-center">
-                      <div className="flex flex-col items-center gap-2 opacity-20">
-                        <Inbox className="w-8 h-8 text-slate-400" />
-                        <span className="font-black uppercase tracking-widest text-[10px]">Sin carga operativa</span>
-                      </div>
-                    </td>
-                  </tr>
-                )}
               </tbody>
             </table>
           </div>
@@ -506,7 +495,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   return (
     <div className="p-6 md:p-8 space-y-6 bg-slate-50/40 min-h-screen">
-      {/* HEADER DE COMANDO (SOBRIO) */}
       <div className="flex flex-col xl:flex-row items-center justify-between gap-6 bg-white p-7 rounded-[2rem] border border-slate-200 shadow-sm">
         <div className="flex items-center space-x-6">
           <div className="bg-slate-950 p-5 rounded-[1.5rem] text-white shadow-xl ring-4 ring-slate-100">
@@ -548,7 +536,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
         </div>
       </div>
 
-      {/* PANEL DE HORIZONTE (SLATE SOFISTICADO) */}
       <Card className="rounded-3xl shadow-sm border-slate-200 bg-white overflow-hidden ring-1 ring-slate-100">
         <div className="px-8 py-5 flex flex-col md:flex-row items-center justify-between gap-8 bg-slate-50/40">
           <div className="flex flex-wrap items-center gap-10">
@@ -737,18 +724,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
                         </tr>
                       );
                     })}
-                    {uniqueWorkstations.length === 0 && (
-                      <tr>
-                        <td colSpan={8} className="py-40 text-center">
-                          <div className="flex flex-col items-center gap-5 text-slate-200">
-                            <div className="bg-slate-50 p-8 rounded-full">
-                              <Layers className="w-16 h-12" />
-                            </div>
-                            <p className="font-black uppercase tracking-[0.3em] text-xs">Aguardando sincronización de maestros técnicos...</p>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
                   </tbody>
                 </table>
               </div>
