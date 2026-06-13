@@ -357,19 +357,12 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
   const paginatedBomRows = useMemo(() => bomRows.slice((bomPage - 1) * bomRowsPerPage, bomPage * bomRowsPerPage), [bomRows, bomPage, bomRowsPerPage]);
 
-  const { looperRecords, otherRecords } = useMemo(() => {
-    const looper: any[] = [];
-    const others: any[] = [];
-    tiemposEnsamblado.forEach(t => {
+  const looperRecords = useMemo(() => {
+    return tiemposEnsamblado.filter(t => {
       const linea = String(t.Linea || '').toLowerCase();
       const puesto = String(t.PuestoTrabajo || '').toLowerCase();
-      if (linea.includes('looper') || puesto.includes('looper')) {
-        looper.push(t);
-      } else {
-        others.push(t);
-      }
+      return (linea.includes('looper') || puesto.includes('looper'));
     });
-    return { looperRecords: looper, otherRecords: others };
   }, [tiemposEnsamblado]);
 
   if (!mounted) return null;
@@ -693,28 +686,30 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="tiempos" className="animate-in fade-in duration-300 space-y-10">
-          {/* SECCIÓN ESPECIAL: LOOPER */}
-          {looperRecords.length > 0 && (
-            <div className="space-y-4">
-              <div className="flex items-center gap-3 px-2">
-                <div className="p-2 bg-indigo-600 rounded-xl text-white shadow-lg"><Activity className="w-4 h-4" /></div>
-                <h3 className="text-sm font-black uppercase tracking-widest text-slate-800">Procesos de Costura Especial (LOOPER)</h3>
-              </div>
-              <Card className="rounded-3xl border border-indigo-100 shadow-xl overflow-hidden bg-white">
-                <div className="overflow-x-auto max-h-[400px]">
-                  <table className="w-full border-collapse text-center">
-                    <thead className="bg-[#1e293b] text-white sticky top-0 z-10 text-[10px] font-black uppercase tracking-tight border-b border-white/5">
-                      <tr>
-                        <th className="px-6 py-5 border-r border-white/5 text-left">Material</th>
-                        <th className="px-6 py-5 border-r border-white/5 text-left">Descripción Técnica</th>
-                        <th className="px-6 py-5 border-r border-white/5">Línea de Proceso</th>
-                        <th className="px-6 py-5 border-r border-white/5 text-teal-400">Estándar (Min)</th>
-                        <th className="px-6 py-5">Stock</th>
-                        <th className="px-6 py-5">Seguridad</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100 text-[11px] font-black">
-                      {looperRecords.map((t, i) => {
+          {/* SECCIÓN EXCLUSIVA: LOOPER */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-3 px-2">
+              <div className="p-2 bg-indigo-600 rounded-xl text-white shadow-lg"><Activity className="w-4 h-4" /></div>
+              <h3 className="text-sm font-black uppercase tracking-widest text-slate-800">Procesos de Costura Especial (LOOPER)</h3>
+            </div>
+            <Card className="rounded-3xl border border-indigo-100 shadow-xl overflow-hidden bg-white">
+              <div className="overflow-x-auto max-h-[600px]">
+                <table className="w-full border-collapse text-center">
+                  <thead className="bg-[#1e293b] text-white sticky top-0 z-10 text-[10px] font-black uppercase tracking-tight border-b border-white/5">
+                    <tr>
+                      <th className="px-6 py-5 border-r border-white/5 text-left">Material</th>
+                      <th className="px-6 py-5 border-r border-white/5 text-left">Descripción Técnica</th>
+                      <th className="px-6 py-5 border-r border-white/5">Línea de Proceso</th>
+                      <th className="px-6 py-5 border-r border-white/5 text-teal-400">Estándar (Min)</th>
+                      <th className="px-6 py-5">Stock</th>
+                      <th className="px-6 py-5">Seguridad</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 text-[11px] font-black">
+                    {looperRecords.length === 0 ? (
+                      <tr><td colSpan={6} className="py-24 text-center text-slate-300 uppercase tracking-widest opacity-40">No se encontraron registros Looper</td></tr>
+                    ) : (
+                      looperRecords.map((t, i) => {
                         const matCode = String(t.CodMaterial || '').match(/^(\d+)/)?.[1]?.slice(-8) || '—';
                         const desc = String(t.Material || t.Descripcion || '—').toUpperCase();
                         return (
@@ -727,49 +722,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                             </td>
                             <td className="px-6 py-4 text-slate-400 font-mono border-r border-dashed border-gray-100">{(t.StockActual || 0).toLocaleString()}</td>
                             <td className="px-6 py-4 text-slate-900 font-mono font-black">{(t.StockSeguridad || 0).toLocaleString()}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </Card>
-            </div>
-          )}
-
-          {/* RESTO DEL CATÁLOGO */}
-          <div className="space-y-4">
-            <h3 className="text-[11px] font-black uppercase text-gray-400 text-left tracking-widest px-2">Catálogo General de Tiempos Ensamblado</h3>
-            <Card className="rounded-3xl border border-gray-100 shadow-xl overflow-hidden bg-white">
-              <div className="overflow-x-auto max-h-[500px]">
-                <table className="w-full border-collapse text-center">
-                  <thead className="bg-slate-50 text-slate-400 sticky top-0 z-10 text-[10px] font-black uppercase tracking-tight border-b border-gray-100">
-                    <tr>
-                      <th className="px-6 py-5 border-r border-gray-50 text-left">Material</th>
-                      <th className="px-6 py-5 border-r border-gray-50 text-left">Descripción Técnica</th>
-                      <th className="px-6 py-5 border-r border-gray-50">Línea</th>
-                      <th className="px-6 py-5 border-r border-gray-50 text-teal-600">Estándar (Min)</th>
-                      <th className="px-6 py-5">Stock</th>
-                      <th className="px-6 py-5">Seguridad</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100 text-[11px] font-bold">
-                    {otherRecords.length === 0 ? (
-                      <tr><td colSpan={7} className="py-24 text-slate-200 font-black uppercase tracking-widest opacity-40 text-center">Cargando base de tiempos...</td></tr>
-                    ) : (
-                      otherRecords.map((t, i) => {
-                        const matCode = String(t.CodMaterial || '').match(/^(\d+)/)?.[1]?.slice(-8) || '—';
-                        const desc = String(t.Material || t.Descripcion || '—').toUpperCase();
-                        return (
-                          <tr key={i} className="hover:bg-slate-50/50 transition-colors">
-                            <td className="px-6 py-4 font-mono text-indigo-600 border-r border-gray-50 text-left text-sm">{matCode}</td>
-                            <td className="px-6 py-4 text-left border-r border-gray-50 text-slate-500 uppercase leading-tight max-w-[300px] truncate">{desc}</td>
-                            <td className="px-6 py-4 border-r border-gray-50 font-black text-slate-400 uppercase text-[9px]">{t.Linea || '—'}</td>
-                            <td className="px-6 py-4 font-mono text-teal-600 border-r border-gray-50 bg-teal-50/10 text-sm">
-                              {Number(t.Tiempo || 0).toFixed(4)}
-                            </td>
-                            <td className="px-6 py-4 text-slate-400 font-mono border-r border-gray-50">{(t.StockActual || 0).toLocaleString()}</td>
-                            <td className="px-6 py-4 text-slate-700 font-mono">{(t.StockSeguridad || 0).toLocaleString()}</td>
                           </tr>
                         );
                       })
