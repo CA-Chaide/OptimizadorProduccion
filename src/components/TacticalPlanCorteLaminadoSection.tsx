@@ -18,14 +18,11 @@ import {
   Activity,
   PlayCircle,
   UserCheck,
-  TrendingUp,
-  Info,
-  Box,
   Check,
   Database,
-  ChevronDown,
   Plus,
-  Minus
+  Minus,
+  Info
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -99,8 +96,7 @@ const cleanCode = (code: any): string => {
 
 /**
  * MOTOR DE PARSING MEJORADO:
- * Basado en el patrón de catálogo provisto: 204X1.2, 204X1.0, 204X3.5
- * Implementa la inferencia técnica para la Distancia cuando no está en la descripción.
+ * Implementa la inferencia técnica para la Distancia basada en el patrón de catálogo.
  */
 const parseDimensionsEnhanced = (desc: string) => {
   const d = desc.toUpperCase();
@@ -114,15 +110,13 @@ const parseDimensionsEnhanced = (desc: string) => {
   const alturaOriginal = dimMatch ? parseFloat(dimMatch[1]) : 0;
   const espesor = dimMatch ? parseFloat(dimMatch[2]) : 0;
 
-  // 3. Ajuste Técnico de Altura (Patrón imagen: 204 en desc -> 206 o 204 en tabla)
-  // Generalmente se agregan 2cm de refile si el espesor es bajo
+  // 3. Ajuste Técnico de Altura (Patrón institucional)
   let alturaFinal = alturaOriginal;
   if (alturaOriginal === 204 && espesor <= 1.2) {
     alturaFinal = 206;
   }
 
-  // 4. Inferencia de Distancia (Patrón imagen: no está en desc, se unifica por catálogo)
-  // Basado en el patrón de su imagen: 100 para 1.2, 110 para 1.0, 60 para 3.5
+  // 4. Inferencia de Distancia (Patrón de Catálogo)
   let distancia = 100; // Valor base
   if (espesor === 1.0) distancia = 110;
   else if (espesor === 3.5) distancia = 60;
@@ -157,7 +151,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [resumenProgress, setResumenProgress] = useState({ current: 0, total: 0 });
   const [processedSignature, setProcessedSignature] = useState('');
   
-  // Control de expansión de grupos
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -276,10 +269,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     ex.consumoKg += kgTotal;
                   } else {
                     const dims = parseDimensionsEnhanced(desc);
-                    // Formula: (Distancia * Altura * Espesor * Densidad) / 10000
                     const pesoCalculado = (dims.distancia * dims.altura * dims.espesor * dims.densidad) / 10000;
                     
-                    // Integración de Stocks desde TiemposEnsamblado
                     const s1006 = tiemposEnsamblado.filter(t => cleanCode(t.CodMaterial) === code && String(t.Almacen || t.ALMACEN) === '1006').reduce((s, t) => s + safeNum(t.StockActual), 0);
                     const s1008 = tiemposEnsamblado.filter(t => cleanCode(t.CodMaterial) === code && String(t.Almacen || t.ALMACEN) === '1008').reduce((s, t) => s + safeNum(t.StockActual), 0);
                     const s1015 = tiemposEnsamblado.filter(t => cleanCode(t.CodMaterial) === code && String(t.Almacen || t.ALMACEN) === '1015').reduce((s, t) => s + safeNum(t.StockActual), 0);
@@ -330,7 +321,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     }
   }, [activeTab, filteredOrders, selectedDate, isProcessingResumen, processedSignature, handleProcessResumen]);
 
-  // Lógica de agrupamiento por Densidad y Altura
   const groupedNeeds = useMemo(() => {
     const map = new Map<string, { 
       densidad: number; 
@@ -368,6 +358,15 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
     return Array.from(map.values()).sort((a, b) => b.totalKg - a.totalKg);
   }, [unifiedNeeds]);
+
+  // Monitor de Corridas por Apertura (Densidad)
+  const corridasPorDensidad = useMemo(() => {
+    const map = new Map<number, number>();
+    groupedNeeds.forEach(group => {
+      map.set(group.densidad, (map.get(group.densidad) || 0) + 1);
+    });
+    return Array.from(map.entries()).sort((a, b) => a[0] - b[0]);
+  }, [groupedNeeds]);
 
   const toggleGroup = (key: string) => {
     const next = new Set(expandedGroups);
@@ -564,7 +563,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                       return (
                         <tr key={i} className="hover:bg-slate-50/50 transition-colors">
                           <td className="px-6 py-4 font-black text-slate-800 border-r border-gray-50">{o.ORDENPREVISIONAL || '—'}</td>
-                          <td className="px-6 py-4 border-r border-gray-50 font-mono text-[9px] text-slate-400">{o.FECHAINICIO || '—'}</td>
+                          <td className="px-6 py-4 border-r border-gray-50 font-mono text-[9px] text-slate-400">{o.FECHAINICIO || o.FECHA || '—'}</td>
                           <td className="px-6 py-4 font-mono font-black text-red-600 border-r border-gray-50 tracking-tighter text-sm">{matCode}</td>
                           <td className="px-6 py-4 text-left border-r border-gray-100 text-slate-600 font-black uppercase leading-tight max-w-[450px]">
                             {description}
@@ -591,31 +590,27 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
         <TabsContent value="resumen" className="space-y-6 animate-in fade-in duration-300">
            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-             <Card className="p-5 border-none shadow-xl bg-[#0f172a] text-white flex flex-col items-center justify-center">
+             <Card className="p-5 border-none shadow-xl bg-[#0f172a] text-white flex flex-col items-center justify-center text-center">
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">Consolidado Total (Kg)</p>
                 <p className="text-3xl font-black font-mono text-indigo-400">{totalsUnified.kg.toLocaleString(undefined, { maximumFractionDigits: 1 })}</p>
              </Card>
-             <Card className="p-5 border-none shadow-xl bg-[#0f172a] text-white flex flex-col items-center justify-center">
+             <Card className="p-5 border-none shadow-xl bg-[#0f172a] text-white flex flex-col items-center justify-center text-center">
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">Total Rollos (Un)</p>
                 <p className="text-3xl font-black font-mono text-emerald-400">{totalsUnified.un.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
              </Card>
-             <Card className="p-5 border-none shadow-xl bg-white border border-gray-100 flex flex-col items-center justify-center col-span-2">
-                {isProcessingResumen ? (
-                  <div className="w-full px-10 space-y-3 text-center">
-                    <div className="flex justify-between text-[10px] font-black uppercase text-indigo-600">
-                      <span>Procesando Ingeniería...</span>
-                      <span>{resumenProgress.current} / {resumenProgress.total}</span>
-                    </div>
-                    <Progress value={(resumenProgress.current / resumenProgress.total) * 100} className="h-2.5 bg-indigo-50" />
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center">
-                    <p className="text-sm font-black text-slate-700 uppercase tracking-tighter">Auditoría Técnica por Dimensiones</p>
-                    <p className="text-[10px] font-bold text-emerald-600 uppercase mt-1 flex items-center gap-1.5">
-                      <Check className="w-3 h-3" /> Cálculos sincronizados SAP multinivel
-                    </p>
-                  </div>
-                )}
+             <Card className="p-5 border-none shadow-xl bg-white border border-gray-100 flex flex-col items-center justify-center col-span-2 text-center">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Corridas por Apertura (Densidad)</p>
+                <div className="flex flex-wrap justify-center gap-3">
+                   {corridasPorDensidad.length === 0 ? (
+                     <p className="text-[10px] text-slate-300 uppercase font-black">Esperando datos de ingeniería...</p>
+                   ) : (
+                     corridasPorDensidad.map(([dens, count]) => (
+                       <Badge key={dens} className="bg-indigo-50 text-indigo-700 border-indigo-100 font-black text-[11px] px-3 py-1">
+                         D{dens}: {count} {count === 1 ? 'Corrida' : 'Corridas'}
+                       </Badge>
+                     ))
+                   )}
+                </div>
              </Card>
           </div>
 
@@ -695,7 +690,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 {unifiedNeeds.length > 0 && (
                   <tfoot className="bg-slate-900 text-white font-black uppercase text-[10px] sticky bottom-0 z-30">
                     <tr>
-                      <td colSpan={10} className="px-6 py-4 text-right tracking-widest text-slate-500 uppercase">Consolidado Total Planificado:</td>
+                      <td colSpan={10} className="px-6 py-4 text-right tracking-widest text-slate-500 uppercase text-center">Consolidado Total Planificado:</td>
                       <td className="px-4 py-4 text-right font-mono text-indigo-300 text-sm">{totalsUnified.kg.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} KG</td>
                       <td className="px-4 py-4 text-right font-mono text-emerald-300 text-sm">{totalsUnified.un.toLocaleString(undefined, { maximumFractionDigits: 0 })} UN</td>
                     </tr>
@@ -708,7 +703,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           <div className="px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl flex items-center gap-2">
             <Info className="w-4 h-4 text-blue-600" />
             <p className="text-[9px] font-black text-blue-700 uppercase tracking-widest">
-              Nota: Use los botones + / - para auditar el detalle de materiales por cada especificación de Densidad y Altura.
+              Nota: El monitor de corridas por apertura indica cuántos grupos técnicos (Densidad/Altura) deben procesarse en el turno actual.
             </p>
           </div>
         </TabsContent>
@@ -772,7 +767,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex items-center justify-between px-2">
+              <div className="flex items-center justify-between px-2 text-center">
                  <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Mostrando {paginatedBomRows.length} de {bomRows.length} registros</p>
                  <div className="flex gap-2">
                     <Button variant="outline" size="sm" onClick={() => setBomPage(prev => Math.max(1, prev - 1))} disabled={bomPage === 1} className="rounded-xl">Anterior</Button>
@@ -783,14 +778,14 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           ) : !isSearchingBOM && (
             <div className="py-24 text-center bg-gray-50/30 rounded-[3rem] border-2 border-dashed border-gray-100">
               <Database className="w-16 h-16 text-indigo-100 mx-auto" />
-              <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest mt-6">Ingrese un código FERT de Colchón o Panel para auditar su estructura técnica</p>
+              <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest mt-6">Ingrese un código FERT para auditar su estructura técnica</p>
             </div>
           )}
         </TabsContent>
 
         <TabsContent value="tiempos" className="animate-in fade-in duration-300 space-y-10">
           <div className="space-y-4">
-            <div className="flex items-center gap-3 px-2">
+            <div className="flex items-center gap-3 px-2 text-left">
               <div className="p-2 bg-indigo-600 rounded-xl text-white shadow-lg"><Activity className="w-4 h-4" /></div>
               <h3 className="text-sm font-black uppercase tracking-widest text-slate-800">Procesos de Costura Especial (LOOPER)</h3>
             </div>
@@ -811,7 +806,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   </thead>
                   <tbody className="divide-y divide-gray-100 text-[11px] font-black">
                     {looperRecords.length === 0 ? (
-                      <tr><td colSpan={8} className="py-24 text-center text-slate-300 uppercase tracking-widest opacity-40">No se encontraron registros Looper</td></tr>
+                      <tr><td colSpan={8} className="py-24 text-center text-slate-300 uppercase tracking-widest opacity-40 italic">No se encontraron registros Looper</td></tr>
                     ) : (
                       looperRecords.map((t, i) => {
                         const matCode = cleanCode(t.CodMaterial);
@@ -821,15 +816,15 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                             <td className="px-6 py-4 font-mono text-indigo-600 border-r border-dashed border-gray-100 text-left text-sm">{matCode}</td>
                             <td className="px-6 py-4 text-left border-r border-dashed border-gray-100 text-slate-600 uppercase leading-tight max-w-[300px] truncate">{desc}</td>
                             <td className="px-6 py-4 border-r border-dashed border-gray-100 font-black text-indigo-400 uppercase text-[9px] bg-indigo-50/10">{t.Linea || '—'}</td>
-                            <td className="px-6 py-4 border-r border-dashed border-gray-100">
+                            <td className="px-6 py-4 border-r border-dashed border-gray-100 text-center">
                                <Badge variant="outline" className="bg-slate-50 text-slate-400 border-slate-200 font-mono px-2 py-0">{t.RespControlProd || t.RESP_CONTROL_PROD || '—'}</Badge>
                             </td>
-                            <td className="px-6 py-4 border-r border-dashed border-gray-100 text-slate-400 font-bold">{t.Almacen || t.ALMACEN || '—'}</td>
+                            <td className="px-6 py-4 border-r border-dashed border-gray-100 text-slate-400 font-bold text-center">{t.Almacen || t.ALMACEN || '—'}</td>
                             <td className="px-6 py-4 font-mono text-teal-600 border-r border-dashed border-gray-100 bg-teal-50/10 text-sm">
                               {Number(t.Tiempo || 0).toFixed(4)}
                             </td>
-                            <td className="px-6 py-4 text-slate-400 font-mono border-r border-dashed border-gray-100">{(t.StockActual || 0).toLocaleString()}</td>
-                            <td className="px-6 py-4 text-red-400 font-mono font-black border-r border-dashed border-gray-100">{(t.StockSeguridad || 0).toLocaleString()}</td>
+                            <td className="px-6 py-4 text-slate-400 font-mono border-r border-dashed border-gray-100 text-center">{(t.StockActual || 0).toLocaleString()}</td>
+                            <td className="px-6 py-4 text-red-400 font-mono font-black border-r border-dashed border-gray-100 text-center">{(t.StockSeguridad || 0).toLocaleString()}</td>
                           </tr>
                         );
                       })

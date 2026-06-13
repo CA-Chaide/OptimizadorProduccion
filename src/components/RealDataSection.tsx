@@ -103,7 +103,6 @@ export const RealDataSection: React.FC = () => {
             setError(null);
             try {
                 const response = await serviciosService.getDiccionarioDeDatos();
-                // Handle different response formats defensively
                 const data = response?.data || response;
                 setDocumentation(data && typeof data === 'object' ? data : null);
             } catch (err) {
