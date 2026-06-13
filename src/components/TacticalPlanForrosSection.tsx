@@ -5,7 +5,6 @@ import {
   CalendarClock, 
   Loader2, 
   Users, 
-  Timer, 
   RefreshCw, 
   ChevronLeft, 
   ChevronRight, 
@@ -23,8 +22,8 @@ import {
   LayoutGrid,
   ClipboardList,
   UserPlus,
-  ShieldCheck,
-  AlertTriangle
+  AlertTriangle,
+  CheckCircle2
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -207,9 +206,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
         let filtered = response.data;
         
         if (externalFilters.RESPCTRLPROD) {
+          const allowedCodes = externalFilters.RESPCTRLPROD.map(c => c.trim().padStart(3, '0'));
           filtered = filtered.filter((o: any) => {
-            const resp = String(o.RESPCONTROLPROD || '').trim();
-            return externalFilters.RESPCTRLPROD.includes(resp);
+            const resp = String(o.RESPCONTROLPROD || '').trim().padStart(3, '0');
+            return allowedCodes.includes(resp);
           });
         }
         
@@ -261,22 +261,14 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const uniqueWorkstations = useMemo(() => {
     const wsSet = new Set<string>();
     tiemposProduccion.forEach(t => {
-      const ws = String(t.PuestoTrabajo || t.nombre_estacion || '').trim().toUpperCase();
-      if (ws && ws !== 'NULL') wsSet.add(ws);
+      const ws = String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').trim().toUpperCase();
+      if (ws && ws !== 'NULL' && ws !== '-') wsSet.add(ws);
     });
     return Array.from(wsSet).sort();
   }, [tiemposProduccion]);
 
-  // CATEGORIZACIÓN DE PUESTOS SEGÚN REQUERIMIENTO (ACOLCHADO Y TAPAS)
-  const workstationsGroup1 = useMemo(() => {
-    const achAllowed = ['02', '06', '07', '08', '09', '10'];
-    return uniqueWorkstations.filter(m => {
-      if (m.startsWith('HR-ACH')) {
-        return achAllowed.includes(m.slice(-2));
-      }
-      return m.startsWith('HR-PEF');
-    });
-  }, [uniqueWorkstations]);
+  // GRUPOS TÉCNICOS
+  const group1Suffixes = ['02', '06', '07', '08', '09', '10'];
 
   const workstationsGroup2 = useMemo(() => {
     return uniqueWorkstations.filter(m => 
@@ -325,7 +317,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
     const material = normalizeMaterialCode(order['MATERIAL'] || order['CodMaterial'] || '');
     const match = tiemposProduccion.find(t => normalizeMaterialCode(t.CodMaterial || t.Material || '') === material);
-    return match ? String(match.PuestoTrabajo || match.nombre_estacion || '').trim().toUpperCase() : '';
+    return match ? String(match.PuestoTrabajo || match.nombre_estacion || match.Maquina || '').trim().toUpperCase() : '';
   }, [tiemposProduccion, normalizeMaterialCode]);
 
   const calculateProductionTime = useCallback((material: string, quantity: number, order: any) => {
@@ -334,7 +326,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     const machine = getResolvedMachine(order);
     const match = tiemposProduccion.find(t => 
       normalizeMaterialCode(t.CodMaterial || t.Material || '') === normMaterial &&
-      String(t.PuestoTrabajo || t.nombre_estacion || '').trim().toUpperCase() === machine
+      String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').trim().toUpperCase() === machine
     ) || tiemposProduccion.find(t => normalizeMaterialCode(t.CodMaterial || t.Material || '') === normMaterial);
 
     return match ? (Number(match.Tiempo || match.Tiempo_Min || 0) * quantity) : 0;
@@ -367,7 +359,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     setWorkstationConfigs(prev => ({ ...prev, [ws]: { ...prev[ws], [field]: value } }));
   };
 
-  const MachineCard = ({ machineCode }: { machineCode: string }) => {
+  const MachineCard = ({ machineCode, small = false }: { machineCode: string, small?: boolean }) => {
     const orders = dailyOrders.filter(o => getResolvedMachine(o) === machineCode);
     const totalTimeHours = orders.reduce((sum, o) => sum + calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || 0), o), 0) / 60;
     const config = workstationConfigs[machineCode] || { people: 1 };
@@ -376,47 +368,49 @@ export const TacticalPlanForrosSection: React.FC = () => {
     const isOverloaded = utilization > 100;
 
     return (
-      <div className="flex border border-slate-200 rounded-2xl overflow-hidden h-[420px] shadow-sm w-full bg-white transition-all hover:shadow-md">
-        <div className="w-[38%] bg-slate-900 p-6 text-white flex flex-col border-r border-slate-800">
-          <div className="mb-6">
-            <h3 className="text-xl font-black uppercase leading-tight tracking-tight text-slate-100 flex items-center gap-2">
-              <Cpu className="w-5 h-5 text-sky-400" />
+      <div className={cn(
+        "flex border border-slate-200 rounded-2xl overflow-hidden shadow-sm bg-white transition-all hover:shadow-md",
+        small ? "h-[320px]" : "h-[420px]"
+      )}>
+        {/* LADO IZQUIERDO: INFO TÉCNICA (SLATE DARK) */}
+        <div className={cn(
+          "bg-slate-900 p-5 text-white flex flex-col border-r border-slate-800",
+          small ? "w-[40%]" : "w-[35%]"
+        )}>
+          <div className="mb-4">
+            <h3 className="text-lg font-black uppercase tracking-tight text-slate-100 flex items-center gap-2">
+              <Cpu className="w-4 h-4 text-sky-400" />
               {machineCode}
             </h3>
-            <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-slate-500 mt-1">Capacidad Neta</p>
+            <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-slate-500">Capacidad Neta (84%)</p>
           </div>
           
-          <div className="flex-1 space-y-5">
-            <div className="bg-white/5 p-4 rounded-2xl border border-white/10 shadow-inner">
-              <p className="text-[9px] font-bold uppercase text-slate-400 mb-3 tracking-[0.2em] flex items-center gap-2">
-                <Users className="w-3 h-3 text-indigo-400" /> Personal Asignado
-              </p>
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <span className="font-bold uppercase text-[10px] text-slate-500">Operadores:</span>
-                  <div className="flex items-center gap-2 bg-slate-800 rounded-lg p-1">
-                    <button onClick={() => handleWorkstationConfigChange(machineCode, 'people', Math.max(1, config.people - 1))} className="w-7 h-7 rounded-md bg-slate-700 hover:bg-indigo-600 flex items-center justify-center text-white transition-colors">-</button>
-                    <span className="font-mono font-bold text-lg text-white w-6 text-center">{config.people}</span>
-                    <button onClick={() => handleWorkstationConfigChange(machineCode, 'people', config.people + 1)} className="w-7 h-7 rounded-md bg-slate-700 hover:bg-indigo-600 flex items-center justify-center text-white transition-colors">+</button>
-                  </div>
+          <div className="flex-1 space-y-4">
+            <div className="bg-white/5 p-3 rounded-xl border border-white/10">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-[9px] font-black uppercase text-slate-500 tracking-widest">Personal:</span>
+                <div className="flex items-center gap-2 bg-slate-800 rounded-md p-1">
+                  <button onClick={() => handleWorkstationConfigChange(machineCode, 'people', Math.max(1, config.people - 1))} className="w-6 h-6 rounded bg-slate-700 hover:bg-indigo-600 flex items-center justify-center text-xs">-</button>
+                  <span className="font-mono font-bold text-sm w-4 text-center">{config.people}</span>
+                  <button onClick={() => handleWorkstationConfigChange(machineCode, 'people', config.people + 1)} className="w-6 h-6 rounded bg-slate-700 hover:bg-indigo-600 flex items-center justify-center text-xs">+</button>
                 </div>
-                <div className="pt-2 border-t border-white/5 flex justify-between items-center text-xs">
-                  <span className="font-bold uppercase text-[10px] text-slate-500">Capacidad Total:</span>
-                  <span className="font-mono font-bold text-sky-400">{capacityHours.toFixed(2)}h</span>
-                </div>
+              </div>
+              <div className="flex justify-between items-center text-[10px] border-t border-white/5 pt-2">
+                <span className="text-slate-500 font-bold uppercase">Total Disp:</span>
+                <span className="font-mono font-bold text-sky-400">{capacityHours.toFixed(2)}h</span>
               </div>
             </div>
 
-            <div className="bg-white/5 p-4 rounded-2xl border border-white/10 shadow-inner">
-              <p className="text-[9px] font-bold uppercase text-slate-400 mb-3 tracking-[0.2em]">Ocupación de Recurso</p>
-              <div className="flex items-baseline gap-1 mb-2">
-                <span className={cn("text-5xl font-black font-mono tracking-tighter", isOverloaded ? "text-red-400" : "text-sky-300")}>
+            <div className="bg-white/5 p-3 rounded-xl border border-white/10">
+              <p className="text-[9px] font-black uppercase text-slate-500 mb-2 tracking-widest">Ocupación</p>
+              <div className="flex items-baseline gap-1 mb-1">
+                <span className={cn("text-3xl font-black font-mono tracking-tighter", isOverloaded ? "text-red-400" : "text-sky-300")}>
                   {utilization.toFixed(0)}
                 </span>
-                <span className="text-xl font-black text-slate-600">%</span>
+                <span className="text-xs font-black text-slate-600">%</span>
               </div>
-              <Progress value={utilization} className={cn("h-4 bg-slate-800 border border-white/5", isOverloaded ? "[&>div]:bg-red-500" : "[&>div]:bg-indigo-500")} />
-              <div className="mt-4 flex justify-between text-[10px] font-bold uppercase">
+              <Progress value={utilization} className={cn("h-2 bg-slate-800", isOverloaded ? "[&>div]:bg-red-500" : "[&>div]:bg-indigo-500")} />
+              <div className="mt-3 flex justify-between text-[9px] font-black uppercase tracking-tighter">
                 <div className="text-slate-500">Carga: <span className="text-slate-100">{totalTimeHours.toFixed(2)}h</span></div>
                 <div className={cn(isOverloaded ? "text-red-400" : "text-sky-400")}>Rem: {(capacityHours - totalTimeHours).toFixed(2)}h</div>
               </div>
@@ -424,39 +418,42 @@ export const TacticalPlanForrosSection: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex-1 bg-slate-50/30 p-6 flex flex-col">
-          <div className="flex items-center justify-between mb-5 pb-3 border-b border-slate-200">
-            <h3 className="text-xs font-black text-slate-700 uppercase flex items-center gap-2 tracking-widest">
-              <ClipboardList className="w-4 h-4 text-slate-400" /> Detalle de Órdenes
-            </h3>
-            <Badge variant="outline" className="bg-white text-slate-500 border-slate-200 font-mono text-[10px] px-2.5 py-0.5">{orders.length} ITEMS</Badge>
+        {/* LADO DERECHO: LISTADO ÓRDENES (WHITE TÉCNICO) */}
+        <div className="flex-1 p-5 flex flex-col bg-slate-50/30">
+          <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-200">
+            <h4 className="text-[10px] font-black text-slate-700 uppercase tracking-widest flex items-center gap-2">
+              <ClipboardList className="w-3.5 h-3.5 text-slate-400" /> Órdenes Planificadas
+            </h4>
+            <Badge variant="outline" className="bg-white text-slate-400 border-slate-200 font-mono text-[9px] px-2 py-0">{orders.length}</Badge>
           </div>
           
-          <div className="flex-1 overflow-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-            <table className="w-full text-[11px] border-collapse">
-              <thead className="bg-slate-100/50 sticky top-0 z-10">
-                <tr className="text-slate-400 font-black uppercase tracking-widest">
-                  <th className="px-4 py-3 text-left border-b border-slate-200">Material</th>
-                  <th className="px-4 py-3 text-left border-b border-slate-200">Nombre</th>
-                  <th className="px-4 py-3 text-right border-b border-slate-200">Cant.</th>
-                  <th className="px-4 py-3 text-right border-b border-slate-200 text-indigo-700">Tiempo (h)</th>
+          <div className="flex-1 overflow-auto rounded-xl border border-slate-200 bg-white shadow-inner">
+            <table className="w-full text-[10px] border-collapse">
+              <thead className="bg-slate-50 sticky top-0 z-10">
+                <tr className="text-slate-400 font-black uppercase tracking-widest text-left">
+                  <th className="px-3 py-2 border-b">CodMaterial</th>
+                  <th className="px-3 py-2 border-b">Nombre</th>
+                  <th className="px-3 py-2 border-b text-right">Cant.</th>
+                  <th className="px-3 py-2 border-b text-center">Unid.</th>
+                  <th className="px-3 py-2 border-b text-right text-indigo-700">T. (h)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {orders.map((o, i) => {
                   const t = calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || 0), o) / 60;
                   return (
-                    <tr key={i} className="hover:bg-slate-50/80 transition-colors group">
-                      <td className="px-4 py-3 font-mono font-bold text-slate-500 group-hover:text-indigo-700">{o['CodMaterial'] || normalizeMaterialCode(o['MATERIAL'])}</td>
-                      <td className="px-4 py-3 max-w-[140px] truncate font-bold uppercase text-slate-400 group-hover:text-slate-600" title={o['NOMBRE'] || o['TEXTOMATERIAL']}>{o['NOMBRE'] || o['TEXTOMATERIAL']}</td>
-                      <td className="px-4 py-3 text-right font-mono font-bold text-slate-600">{Number(o['CANTIDAD'] || 0).toLocaleString()}</td>
-                      <td className="px-4 py-3 text-right font-mono font-black text-indigo-600">{t.toFixed(2)}</td>
+                    <tr key={i} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-3 py-2 font-mono font-bold text-slate-500">{o['CodMaterial'] || normalizeMaterialCode(o['MATERIAL'])}</td>
+                      <td className="px-3 py-2 truncate max-w-[120px] font-bold text-slate-400 uppercase" title={o['NOMBRE'] || o['TEXTOMATERIAL']}>{o['NOMBRE'] || o['TEXTOMATERIAL']}</td>
+                      <td className="px-3 py-2 text-right font-mono font-bold text-slate-600">{Number(o['CANTIDAD'] || 0).toLocaleString()}</td>
+                      <td className="px-3 py-2 text-center text-slate-400 font-black uppercase text-[8px]">{o['UNIDAD'] || 'ST'}</td>
+                      <td className="px-3 py-2 text-right font-mono font-black text-indigo-600">{t.toFixed(2)}</td>
                     </tr>
                   );
                 })}
                 {orders.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="py-20 text-center text-slate-300 italic font-black uppercase tracking-[0.3em] text-[10px]">Sin carga de producción</td>
+                    <td colSpan={5} className="py-20 text-center text-slate-300 italic font-black uppercase tracking-widest text-[9px]">Sin carga operativa</td>
                   </tr>
                 )}
               </tbody>
@@ -486,7 +483,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   return (
     <div className="p-6 md:p-8 space-y-6 bg-slate-50/40 min-h-screen">
-      {/* HEADER TÁCTICO */}
+      {/* HEADER DE COMANDO (SOBRIO) */}
       <div className="flex flex-col xl:flex-row items-center justify-between gap-6 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
         <div className="flex items-center space-x-5">
           <div className="bg-slate-900 p-4 rounded-2xl text-white shadow-lg">
@@ -496,6 +493,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
             <h2 className="text-2xl font-black text-slate-800 uppercase tracking-tighter">Programación Táctica Forros</h2>
             <div className="flex items-center gap-2 mt-1">
               <Badge variant="outline" className="border-slate-200 text-slate-400 bg-slate-50 font-black uppercase tracking-[0.2em] text-[9px] px-3 py-0.5">Centro de Control Operativo</Badge>
+              <div className="flex items-center gap-1.5 ml-2">
+                <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
+                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Sistema en línea</span>
+              </div>
             </div>
           </div>
         </div>
@@ -504,20 +505,27 @@ export const TacticalPlanForrosSection: React.FC = () => {
           <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex items-center gap-4 min-w-[180px] shadow-inner">
             <div className="bg-indigo-700 p-2 rounded-xl text-white"><MapPin className="w-4 h-4" /></div>
             <div>
-              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Órdenes Totales</p>
-              <p className="text-xl font-black text-slate-800 font-mono tracking-tight">{dailyOrders.length.toLocaleString()}</p>
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Resumen GYE (2000)</p>
+              <p className="text-xl font-black text-slate-800 font-mono tracking-tight">{dailyOrders.filter(o => String(o.Centro).trim() === '2000').length.toLocaleString()} <span className="text-[10px] text-slate-400 uppercase">Ord</span></p>
+            </div>
+          </div>
+          <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex items-center gap-4 min-w-[180px] shadow-inner">
+            <div className="bg-slate-700 p-2 rounded-xl text-white"><MapPin className="w-4 h-4" /></div>
+            <div>
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Resumen UIO (1000)</p>
+              <p className="text-xl font-black text-slate-800 font-mono tracking-tight">{dailyOrders.filter(o => String(o.Centro).trim() === '1000').length.toLocaleString()} <span className="text-[10px] text-slate-400 uppercase">Ord</span></p>
             </div>
           </div>
         </div>
       </div>
 
-      {/* PANEL DE HORIZONTE */}
+      {/* PANEL DE HORIZONTE TÁCTICO */}
       <Card className="rounded-2xl shadow-sm border-slate-200 bg-white overflow-hidden">
         <div className="px-6 py-4 flex flex-col md:flex-row items-center justify-between gap-6 bg-slate-50/30">
           <div className="flex items-center gap-6">
             <div className="space-y-1">
               <label className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] flex items-center gap-2">
-                <Clock className="w-3 h-3" /> Inicio Horizonte
+                <Clock className="w-3 h-3 text-indigo-400" /> Inicio Horizonte
               </label>
               <input 
                 type="date" 
@@ -531,7 +539,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
             </div>
             <div className="space-y-1">
               <label className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] flex items-center gap-2">
-                <Clock className="w-3 h-3" /> Fin Horizonte
+                <Clock className="w-3 h-3 text-indigo-400" /> Fin Horizonte
               </label>
               <input 
                 type="date" 
@@ -555,7 +563,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
               )}
             >
               <Filter className="w-3.5 h-3.5" />
-              {isHorizonFilterActive ? "Filtro Aplicado" : "Aplicar Horizonte"}
+              {isHorizonFilterActive ? "Horizonte Activo" : "Aplicar Horizonte"}
             </Button>
             <Button 
               onClick={fetchDailyOrders} 
@@ -584,7 +592,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
             <LayoutGrid className="w-3.5 h-3.5" /> 4. Forros Finales
           </TabsTrigger>
           <TabsTrigger value="componentes" className="flex items-center gap-2 px-6 py-3 data-[state=active]:bg-slate-900 data-[state=active]:text-white rounded-xl transition-all text-[10px] font-black uppercase tracking-widest text-slate-500">
-            <Inbox className="w-3.5 h-3.5" /> Buffer Maestro
+            <Inbox className="w-3.5 h-3.5" /> Componentes (Maestro)
           </TabsTrigger>
           <TabsTrigger value="mantenimiento" className="flex items-center gap-2 px-6 py-3 data-[state=active]:bg-slate-900 data-[state=active]:text-white rounded-xl transition-all text-[10px] font-black uppercase tracking-widest text-slate-500">
             <Wrench className="w-3.5 h-3.5" /> Mantenimiento
@@ -594,18 +602,37 @@ export const TacticalPlanForrosSection: React.FC = () => {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="acolchado-tapas" className="space-y-8 pb-10">
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-            {workstationsGroup1.map((wsCode) => (
-              <MachineCard key={wsCode} machineCode={wsCode} />
-            ))}
-          </div>
+        <TabsContent value="acolchado-tapas" className="space-y-12 pb-10">
+          {group1Suffixes.map(suffix => {
+            const achCode = `HR-ACH${suffix}`;
+            const pefCode = `HR-PEF${suffix}`;
+            
+            // Determinar si existen máquinas para este sufijo
+            const achExists = uniqueWorkstations.includes(achCode);
+            const pefExists = uniqueWorkstations.includes(pefCode);
+
+            if (!achExists && !pefExists) return null;
+
+            return (
+              <div key={suffix} className="space-y-4">
+                <div className="flex items-center gap-3 px-5 py-2 bg-slate-900/5 rounded-full w-fit">
+                  <Badge className="bg-slate-900 text-white font-black px-4 py-1 rounded-full text-[10px] uppercase tracking-widest">
+                    Bloque Técnico Twin {suffix}
+                  </Badge>
+                </div>
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+                  {achExists ? <MachineCard machineCode={achCode} /> : <div className="hidden xl:block bg-slate-100/50 border border-dashed border-slate-200 rounded-3xl" />}
+                  {pefExists ? <MachineCard machineCode={pefCode} /> : <div className="hidden xl:block bg-slate-100/50 border border-dashed border-slate-200 rounded-3xl" />}
+                </div>
+              </div>
+            );
+          })}
         </TabsContent>
 
         <TabsContent value="bandas" className="space-y-8 pb-10">
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
             {workstationsGroup2.map((wsCode) => (
-              <MachineCard key={wsCode} machineCode={wsCode} />
+              <MachineCard key={wsCode} machineCode={wsCode} small />
             ))}
           </div>
         </TabsContent>
@@ -613,7 +640,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
         <TabsContent value="interiores-corte" className="space-y-8 pb-10">
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
             {workstationsGroup3.map((wsCode) => (
-              <MachineCard key={wsCode} machineCode={wsCode} />
+              <MachineCard key={wsCode} machineCode={wsCode} small />
             ))}
           </div>
         </TabsContent>
@@ -621,16 +648,16 @@ export const TacticalPlanForrosSection: React.FC = () => {
         <TabsContent value="forros" className="space-y-8 pb-10">
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
             {workstationsGroup4.map((wsCode) => (
-              <MachineCard key={wsCode} machineCode={wsCode} />
+              <MachineCard key={wsCode} machineCode={wsCode} small />
             ))}
           </div>
         </TabsContent>
 
         <TabsContent value="componentes">
-           <Card className="rounded-2xl shadow-sm border-slate-200 overflow-hidden bg-white">
+           <Card className="rounded-3xl shadow-sm border-slate-200 overflow-hidden bg-white">
              <CardHeader className="bg-slate-50/50 border-b border-slate-200 p-8">
-                <CardTitle className="text-xl font-black text-slate-800 uppercase tracking-tight flex items-center gap-3"><Inbox className="w-6 h-6 text-slate-400" /> Listado Maestro de Componentes</CardTitle>
-                <CardDescription>Órdenes previsionales disponibles para asignación técnica.</CardDescription>
+                <CardTitle className="text-xl font-black text-slate-800 uppercase tracking-tight flex items-center gap-3"><Inbox className="w-6 h-6 text-slate-400" /> Buffer Maestro de Componentes</CardTitle>
+                <CardDescription>Listado global de órdenes previsionales para distribución técnica.</CardDescription>
              </CardHeader>
              <CardContent className="p-0">
                 <ProvisionalOrdersTabSection 
@@ -644,7 +671,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="mantenimiento">
-          <Card className="rounded-2xl shadow-sm border-slate-200 overflow-hidden bg-white">
+          <Card className="rounded-3xl shadow-sm border-slate-200 overflow-hidden bg-white">
             <CardHeader className="bg-slate-50/50 border-b border-slate-200 p-8">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-xl font-black text-slate-800 uppercase tracking-tight flex items-center gap-3"><Wrench className="w-6 h-6 text-slate-400" /> Paradas Programadas</CardTitle>
@@ -700,7 +727,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
         <TabsContent value="personal-turnos">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <Card className="lg:col-span-1 rounded-2xl shadow-sm border-slate-200 overflow-hidden bg-white">
+            <Card className="lg:col-span-1 rounded-3xl shadow-sm border-slate-200 overflow-hidden bg-white">
                <CardHeader className="bg-slate-900 text-white p-6">
                  <CardTitle className="text-xl font-black uppercase tracking-tight flex items-center gap-3"><Clock className="w-6 h-6 text-sky-400" /> Parámetros de Tiempo</CardTitle>
                </CardHeader>
@@ -730,7 +757,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                </CardContent>
             </Card>
 
-            <Card className="lg:col-span-2 rounded-2xl shadow-sm border-slate-200 overflow-hidden bg-white">
+            <Card className="lg:col-span-2 rounded-3xl shadow-sm border-slate-200 overflow-hidden bg-white">
                <CardHeader className="bg-slate-50/50 border-b border-slate-200 p-8"><CardTitle className="text-xl font-black text-slate-800 uppercase tracking-tight">Dotación por Estación</CardTitle></CardHeader>
                <CardContent className="p-8">
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-h-[60vh] overflow-y-auto pr-2">
