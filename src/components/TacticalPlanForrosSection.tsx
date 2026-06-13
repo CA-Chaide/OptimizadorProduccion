@@ -112,16 +112,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return String(code).trim().replace(/^0+/, '');
   }, []);
 
-  const safeParseDateParts = useCallback((value: any) => {
-    if (!value) return null;
-    const str = String(value).trim();
-    const ymd = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (ymd) return { y: ymd[1], m: ymd[2], d: ymd[3] };
-    const dmy = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-    if (dmy) return { y: dmy[3], m: dmy[2].padStart(2, '0'), d: dmy[1].padStart(2, '0') };
-    return null;
-  }, []);
-
   const fetchBaseData = useCallback(async () => {
     try {
       setIsLoading(true);
@@ -461,7 +451,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   const t = calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || 0), o) / 60;
                   return (
                     <tr key={i} className="hover:bg-indigo-50/30 transition-colors group">
-                      <td className="px-4 py-3 font-mono font-bold text-slate-500 group-hover:text-indigo-600 transition-colors">{o['CodMaterial'] || normalizeMaterialCode(o['MATERIAL'])}</td>
+                      <td className="px-4 py-3 font-mono font-bold text-slate-700 group-hover:text-indigo-600 transition-colors">{o['CodMaterial'] || normalizeMaterialCode(o['MATERIAL'])}</td>
                       <td className="px-4 py-3 truncate max-w-[140px] font-bold text-slate-400 uppercase text-[9px]" title={o['NOMBRE'] || o['TEXTOMATERIAL']}>{o['NOMBRE'] || o['TEXTOMATERIAL']}</td>
                       <td className="px-4 py-3 text-right font-mono font-black text-slate-700">{Number(o['CANTIDAD'] || 0).toLocaleString()}</td>
                       <td className="px-4 py-3 text-center text-slate-400 font-black uppercase text-[8px]">{o['UNIDAD'] || 'ST'}</td>
@@ -689,25 +679,31 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       <th className="px-6 py-4 text-left">Descripción</th>
                       <th className="px-6 py-4 text-center">Centro</th>
                       <th className="px-6 py-4 text-left">Línea</th>
-                      <th className="px-6 py-4 text-left text-sky-400">Puesto (Hoja de Ruta)</th>
+                      <th className="px-6 py-4 text-left text-sky-400">HOJA DE RUTA</th>
+                      <th className="px-6 py-4 text-left">Puesto de Trabajo</th>
                       <th className="px-6 py-4 text-right">Tiempo (min)</th>
                       <th className="px-6 py-4 text-center">Resp.</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 bg-white">
-                    {tiemposProduccion.map((t, idx) => (
-                      <tr key={idx} className="hover:bg-indigo-50/30 transition-colors">
-                        <td className="px-6 py-3 font-mono font-bold text-slate-700">{t.CodMaterial || t.Material || '—'}</td>
-                        <td className="px-6 py-3 uppercase text-slate-500 truncate max-w-[250px]" title={t.Material || t.NOMBRE}>{t.Material || t.NOMBRE || '—'}</td>
-                        <td className="px-6 py-3 text-center font-bold text-slate-400">{t.Centro || '—'}</td>
-                        <td className="px-6 py-3 text-slate-600 font-medium">{t.Linea || '—'}</td>
-                        <td className="px-6 py-3 font-black text-indigo-700">{t.PuestoTrabajo || t.nombre_estacion || '—'}</td>
-                        <td className="px-6 py-3 text-right font-mono font-black text-sky-600 bg-sky-50/30">{Number(t.Tiempo || t.Tiempo_Min || 0).toFixed(2)}</td>
-                        <td className="px-6 py-3 text-center text-slate-400 font-bold">{t.RespControlProd || t.RESPCONTROLPROD || '—'}</td>
-                      </tr>
-                    ))}
+                    {tiemposProduccion.map((t, idx) => {
+                      const ws = String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').trim().toUpperCase();
+                      const hr = t.HojaRuta || t['HOJA DE RUTA'] || t.HOJA_DE_RUTA || (ws.startsWith('HR') ? ws : `HR-${ws}`);
+                      return (
+                        <tr key={idx} className="hover:bg-indigo-50/30 transition-colors">
+                          <td className="px-6 py-3 font-mono font-bold text-slate-700">{t.CodMaterial || t.Material || '—'}</td>
+                          <td className="px-6 py-3 uppercase text-slate-500 truncate max-w-[250px]" title={t.Material || t.NOMBRE}>{t.Material || t.NOMBRE || '—'}</td>
+                          <td className="px-6 py-3 text-center font-bold text-slate-400">{t.Centro || '—'}</td>
+                          <td className="px-6 py-3 text-slate-600 font-medium">{t.Linea || '—'}</td>
+                          <td className="px-6 py-3 font-black text-indigo-700 bg-indigo-50/20">{hr}</td>
+                          <td className="px-6 py-3 font-medium text-slate-600">{ws}</td>
+                          <td className="px-6 py-3 text-right font-mono font-black text-sky-600 bg-sky-50/30">{Number(t.Tiempo || t.Tiempo_Min || 0).toFixed(2)}</td>
+                          <td className="px-6 py-3 text-center text-slate-400 font-bold">{t.RespControlProd || t.RESPCONTROLPROD || '—'}</td>
+                        </tr>
+                      );
+                    })}
                     {tiemposProduccion.length === 0 && (
-                      <tr><td colSpan={7} className="py-32 text-center text-slate-300 font-black uppercase text-sm tracking-widest">No se encontraron datos técnicos para este grupo</td></tr>
+                      <tr><td colSpan={8} className="py-32 text-center text-slate-300 font-black uppercase text-sm tracking-widest">No se encontraron datos técnicos para este grupo</td></tr>
                     )}
                   </tbody>
                 </table>
