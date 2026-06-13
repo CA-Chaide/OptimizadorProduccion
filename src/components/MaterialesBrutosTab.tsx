@@ -1,13 +1,13 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { serviciosService } from '@/services/servicios.service';
 import { useAppContext } from '@/context/AppProvider';
-import { Database, Loader2, Search, Filter, PlayCircle, StopCircle, UserCheck } from 'lucide-react';
+import { Database, Loader2, Search, PlayCircle, StopCircle, UserCheck } from 'lucide-react';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { cn } from '@/lib/utils';
 
 interface MaterialBrutoItem {
   [key: string]: any;
