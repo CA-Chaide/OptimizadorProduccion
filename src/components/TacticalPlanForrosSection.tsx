@@ -387,7 +387,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     } catch (error) {
       console.error('Error al cargar tiempos:', error);
     } finally {
-      setIsLoadingTiempos(false);
+      setIsLoading(false);
     }
   }, [forrosGruposList, externalFilters]);
 
@@ -480,13 +480,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }));
   };
 
-  // Hydration guard: ensures identical first render on server and client
   if (!isMounted) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-slate-50/40">
-        <Loader2 className="w-12 h-12 animate-spin text-indigo-600" />
-      </div>
-    );
+    return null;
   }
 
   return (
