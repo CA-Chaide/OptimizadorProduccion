@@ -45,7 +45,7 @@ interface WorkstationConfig {
 /**
  * Componente: MachineCard
  * Representa el estado y carga de una estación de trabajo específica.
- * Ahora con diseño claro (Indigo-50) y columna HR en la tabla de órdenes.
+ * Ahora con diseño claro (Indigo-50) y columnas NOMBRE y HR.
  */
 const MachineCard = ({ 
   puestoName, 
@@ -90,7 +90,6 @@ const MachineCard = ({
               <Cpu className="w-5 h-5 text-indigo-600" />
               {puestoName}
             </h3>
-            {/* BADGE HR MÁS VISIBLE EN LA ESQUINA */}
             <Badge className="bg-indigo-600 text-white font-black text-[10px] uppercase tracking-widest px-3 py-1 rounded-lg border-none shadow-md shadow-indigo-200">
               {hrCode}
             </Badge>
@@ -139,7 +138,7 @@ const MachineCard = ({
         </div>
       </div>
       
-      {/* PANEL DERECHO - TABLA DE ÓRDENES CON COLUMNA HR */}
+      {/* PANEL DERECHO - TABLA DE ÓRDENES */}
       <div className="flex-1 p-6 flex flex-col bg-slate-50/50">
         <div className="flex items-center justify-between mb-4">
           <h4 className="text-[11px] font-black text-slate-800 uppercase tracking-[0.25em] flex items-center gap-2">
@@ -164,7 +163,7 @@ const MachineCard = ({
                 return (
                   <tr key={i} className="hover:bg-indigo-50/30 transition-colors">
                     <td className="px-4 py-3 font-mono font-bold text-slate-700 truncate max-w-[80px]" title={o['CodMaterial'] || normalizeMaterialCode(o['MATERIAL'])}>{o['CodMaterial'] || normalizeMaterialCode(o['MATERIAL'])}</td>
-                    <td className="px-4 py-3 text-slate-600 truncate max-w-[150px]" title={o['NOMBRE'] || o['TEXTOMATERIAL']}>{o['NOMBRE'] || o['TEXTOMATERIAL'] || '—'}</td>
+                    <td className="px-4 py-3 text-slate-600 truncate max-w-[150px]" title={o['NOMBRE'] || o['TEXTOMATERIAL'] || o['Material']}>{o['NOMBRE'] || o['TEXTOMATERIAL'] || o['Material'] || '—'}</td>
                     <td className="px-4 py-3 font-bold text-indigo-700 bg-indigo-50/20">{hrCode}</td>
                     <td className="px-4 py-3 text-right font-mono font-black text-slate-800">{Number(o['CANTIDAD'] || 0).toLocaleString()}</td>
                     <td className="px-4 py-3 text-right font-mono font-black text-indigo-600 bg-indigo-50/30">{t.toFixed(2)}</td>
@@ -228,7 +227,7 @@ const TableKPI = ({
                 <td className="px-6 py-4 font-mono font-bold text-slate-600 bg-slate-50/30">{t.CodMaterial || t.MATERIAL}</td>
                 <td className="px-6 py-4 font-mono font-black text-indigo-700 bg-sky-50/50 uppercase">{mapToHojaRuta(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '')}</td>
                 <td className="px-6 py-4 font-black text-slate-800 uppercase">{t.PuestoTrabajo || t.nombre_estacion || t.Maquina}</td>
-                <td className="px-6 py-4 text-slate-500 max-w-[200px] truncate">{t.Material || t.DESCRIPCION || '—'}</td>
+                <td className="px-6 py-4 text-slate-500 max-w-[200px] truncate">{t.Material || t.DESCRIPCION || t.NOMBRE || '—'}</td>
                 <td className="px-6 py-4 text-center font-bold text-slate-700">{t.Centro || '—'}</td>
                 <td className="px-6 py-4 text-slate-600 font-medium">{t.Linea || '—'}</td>
                 <td className="px-6 py-4 text-right font-mono font-black text-indigo-600 bg-indigo-50/30">
@@ -291,6 +290,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     // Reglas de negocio explícitas
     if (pn === 'ACOLCHADORA09') return 'HR-ACH09';
     if (pn === 'COSEDORA-ACH02') return 'HR-PEF02';
+    if (pn === 'COSEDORA-ACH08') return 'HR-PEF08';
 
     // Búsqueda en maestros
     const match = tiemposProduccion.find(t => {
@@ -465,11 +465,15 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   // Hydration guard: ensures identical first render on server and client
   if (!isMounted) {
-    return null;
+    return (
+      <div className="flex h-screen items-center justify-center bg-slate-50/40">
+        <Loader2 className="w-12 h-12 animate-spin text-indigo-600" />
+      </div>
+    );
   }
 
   return (
-    <div className="p-6 md:p-8 space-y-6 bg-slate-50/40 min-h-screen font-body" suppressHydrationWarning>
+    <div className="p-6 md:p-8 space-y-6 bg-slate-50/40 min-h-screen font-body">
       <div className="flex flex-col xl:flex-row items-center justify-between gap-6 bg-white p-7 rounded-[2rem] border border-slate-200 shadow-sm">
         <div className="flex items-center space-x-6">
           <div className="bg-slate-950 p-5 rounded-[1.5rem] text-white shadow-xl ring-4 ring-slate-100">
@@ -527,7 +531,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
             <LayoutGrid className="w-4 h-4" /> 4. Forros Finales
           </TabsTrigger>
           <TabsTrigger value="personal-turnos" className="flex items-center gap-2 px-7 py-4 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[11px] font-black uppercase tracking-widest text-slate-500">
-            <UserPlus className="w-4 h-4" /> Dotación de Planta
+            <UserPlus className="w-4 h-4" /> Personal & Turnos
           </TabsTrigger>
           <TabsTrigger value="kpi-tiempos" className="flex items-center gap-2 px-7 py-4 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[11px] font-black uppercase tracking-widest text-slate-500">
             <ClipboardList className="w-4 h-4" /> KPI TIEMPOS
