@@ -47,6 +47,7 @@ interface WorkstationConfig {
 /**
  * Componente: MachineCard
  * Representa el estado y carga de una estación de trabajo específica.
+ * Ahora con nombres de materiales y puestos más visibles.
  */
 const MachineCard = ({ 
   puestoName, 
@@ -85,21 +86,22 @@ const MachineCard = ({
     )}>
       {/* PANEL IZQUIERDO - DISEÑO CLARO (INDIGO-50) */}
       <div className={cn(
-        "bg-indigo-50/50 p-6 text-slate-900 flex flex-col border-r border-indigo-100",
+        "bg-indigo-50/40 p-6 text-slate-900 flex flex-col border-r border-indigo-100",
         small ? "w-[42%]" : "w-[38%]"
       )}>
         <div className="mb-6">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xl font-black uppercase tracking-tighter text-indigo-950 flex items-center gap-2">
-              <Cpu className="w-5 h-5 text-indigo-600" />
-              {puestoName}
-            </h3>
-            <Badge className="bg-indigo-600 text-white font-black text-[10px] uppercase tracking-widest px-3 py-1 rounded-lg border-none shadow-md shadow-indigo-200">
+          <div className="flex flex-col gap-2">
+            <Badge className="w-fit bg-indigo-600 text-white font-black text-[10px] uppercase tracking-widest px-3 py-1 rounded-lg border-none shadow-md shadow-indigo-200">
               {hrCode}
             </Badge>
+            <h3 className="text-xl font-black uppercase tracking-tighter text-indigo-950 flex items-center gap-2">
+              <Cpu className="w-5 h-5 text-indigo-600 shrink-0" />
+              <span className="truncate">{puestoName}</span>
+            </h3>
           </div>
-          <p className="text-[9px] font-bold uppercase tracking-[0.25em] text-slate-500 mt-1">Status Operativo Puesto</p>
+          <p className="text-[9px] font-bold uppercase tracking-[0.25em] text-slate-500 mt-2">Status Operativo Puesto</p>
         </div>
+
         <div className="flex-1 space-y-4">
           <div className="bg-white p-3 rounded-2xl border border-indigo-100 shadow-sm">
             <div className="flex justify-between items-center text-[9px] text-slate-500 uppercase font-black tracking-widest mb-2">Turnos Activos</div>
@@ -120,6 +122,7 @@ const MachineCard = ({
               </div>
             </div>
           </div>
+
           <div className="bg-white p-4 rounded-2xl border border-indigo-100 shadow-sm">
             <div className="flex items-center justify-between mb-3">
               <p className="text-xs font-black uppercase text-slate-500 tracking-[0.2em]">Ocupación</p>
@@ -133,7 +136,8 @@ const MachineCard = ({
               </span>
               <span className="text-xs font-black text-slate-400">%</span>
             </div>
-            <Progress value={utilization} className={cn("h-3 bg-slate-100 border border-slate-200", isOverloaded ? "[&>div]:bg-red-500" : "[&>div]:bg-indigo-600 shadow-[0_0_10px_rgba(79,70,229,0.2)]")} />
+            <Progress value={utilization} className={cn("h-3 bg-slate-100 border border-slate-200", isOverloaded ? "[&>div]:bg-red-500" : "[&>div]:bg-indigo-600")} />
+            
             <div className="mt-4 grid grid-cols-2 gap-2 text-[9px] font-black uppercase tracking-widest">
               <div className="bg-slate-50 p-2 rounded-lg border border-slate-100 text-center">
                 <span className="text-slate-500 block mb-1">Carga</span>
@@ -149,12 +153,12 @@ const MachineCard = ({
       </div>
       
       {/* PANEL DERECHO - TABLA DE ÓRDENES */}
-      <div className="flex-1 p-6 flex flex-col bg-slate-50/50">
+      <div className="flex-1 p-6 flex flex-col bg-slate-50/30">
         <div className="flex items-center justify-between mb-4">
           <h4 className="text-[11px] font-black text-slate-800 uppercase tracking-[0.25em] flex items-center gap-2">
             <ClipboardList className="w-4 h-4 text-indigo-600" /> Plan de Producción
           </h4>
-          <Badge className="bg-white text-slate-900 border-slate-200 font-mono font-black text-[10px] px-3 py-0.5 rounded-full shadow-sm">{orders.length} <span className="ml-1 text-[8px] opacity-40">ORD</span></Badge>
+          <Badge className="bg-white text-slate-900 border-slate-200 font-mono font-black text-[10px] px-3 py-0.5 rounded-full shadow-sm">{orders.length} <span className="ml-1 text-[8px] opacity-40 uppercase">ORD</span></Badge>
         </div>
         <div className="flex-1 overflow-auto rounded-2xl border border-slate-200 bg-white shadow-inner text-[10px]">
           <table className="w-full border-collapse">
@@ -162,24 +166,33 @@ const MachineCard = ({
               <tr>
                 <th className="px-4 py-3 border-b border-slate-200">Material</th>
                 <th className="px-4 py-3 border-b border-slate-200">Nombre</th>
-                <th className="px-4 py-3 border-b border-slate-200 text-indigo-600 bg-indigo-50/50">HR</th>
+                <th className="px-4 py-3 border-b border-slate-200 text-indigo-600 bg-indigo-50/30">HR</th>
                 <th className="px-4 py-3 border-b border-slate-200 text-right">Cant.</th>
-                <th className="px-4 py-3 border-b border-slate-200 text-right text-indigo-700 bg-indigo-50/50">T. (h)</th>
+                <th className="px-4 py-3 border-b border-slate-200 text-right text-indigo-700 bg-indigo-50/30">T. (h)</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {orders.map((o, i) => {
+              {orders.length > 0 ? orders.map((o, i) => {
                 const t = calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || 0), o) / 60;
+                const materialCode = o['CodMaterial'] || normalizeMaterialCode(o['MATERIAL']);
+                const materialName = o['NOMBRE'] || o['TEXTOMATERIAL'] || o['Material'] || '—';
+                
                 return (
                   <tr key={i} className="hover:bg-indigo-50/30 transition-colors">
-                    <td className="px-4 py-3 font-mono font-bold text-slate-700 truncate max-w-[80px]" title={o['CodMaterial'] || normalizeMaterialCode(o['MATERIAL'])}>{o['CodMaterial'] || normalizeMaterialCode(o['MATERIAL'])}</td>
-                    <td className="px-4 py-3 text-slate-600 truncate max-w-[150px]" title={o['NOMBRE'] || o['TEXTOMATERIAL'] || o['Material']}>{o['NOMBRE'] || o['TEXTOMATERIAL'] || o['Material'] || '—'}</td>
-                    <td className="px-4 py-3 font-bold text-indigo-700 bg-indigo-50/20">{mapToHojaRuta(puestoName)}</td>
+                    <td className="px-4 py-3 font-mono font-bold text-slate-700 whitespace-nowrap">{materialCode}</td>
+                    <td className="px-4 py-3 text-slate-600 truncate max-w-[180px] font-medium" title={materialName}>
+                      {materialName}
+                    </td>
+                    <td className="px-4 py-3 font-bold text-indigo-700 bg-indigo-50/10">{hrCode}</td>
                     <td className="px-4 py-3 text-right font-mono font-black text-slate-800">{Number(o['CANTIDAD'] || 0).toLocaleString()}</td>
-                    <td className="px-4 py-3 text-right font-mono font-black text-indigo-600 bg-indigo-50/30">{t.toFixed(2)}</td>
+                    <td className="px-4 py-3 text-right font-mono font-black text-indigo-600 bg-indigo-50/20">{t.toFixed(2)}</td>
                   </tr>
                 );
-              })}
+              }) : (
+                <tr>
+                  <td colSpan={5} className="py-20 text-center text-slate-400 uppercase font-black tracking-widest text-[9px] opacity-40">Sin carga de trabajo</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -199,7 +212,7 @@ const TableKPI = ({
   tiemposProduccion: any[];
   mapToHojaRuta: (name: string) => string;
 }) => (
-  <Card className="rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden shadow-lg">
+  <Card className="rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden shadow-lg border-none">
     <CardHeader className="bg-slate-950 p-8 border-b border-slate-800">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
@@ -222,29 +235,33 @@ const TableKPI = ({
         <table className="w-full text-[11px] border-collapse">
           <thead className="bg-slate-900 sticky top-0 z-10 text-white text-left uppercase tracking-widest font-black">
             <tr>
-              <th className="px-6 py-4 bg-slate-950 border-r border-white/5">Cod. Material</th>
-              <th className="px-6 py-4 bg-slate-950 border-r border-white/5 text-sky-400">HOJA DE RUTA</th>
-              <th className="px-6 py-4 border-r border-white/5">Puesto de Trabajo</th>
-              <th className="px-6 py-4 border-r border-white/5">Descripción</th>
-              <th className="px-6 py-4 border-r border-white/5 text-center">Centro</th>
-              <th className="px-6 py-4 border-r border-white/5">Línea</th>
-              <th className="px-6 py-4 text-right bg-indigo-900/40">Min / Und</th>
+              <th className="px-6 py-4 bg-slate-950 border-r border-white/5 whitespace-nowrap">Cod. Material</th>
+              <th className="px-6 py-4 bg-slate-950 border-r border-white/5 text-sky-400 whitespace-nowrap">HOJA DE RUTA</th>
+              <th className="px-6 py-4 border-r border-white/5 whitespace-nowrap">Puesto de Trabajo</th>
+              <th className="px-6 py-4 border-r border-white/5 whitespace-nowrap">Descripción</th>
+              <th className="px-6 py-4 border-r border-white/5 text-center whitespace-nowrap">Centro</th>
+              <th className="px-6 py-4 border-r border-white/5 whitespace-nowrap">Línea</th>
+              <th className="px-6 py-4 text-right bg-indigo-900/40 whitespace-nowrap">Min / Und</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 bg-white">
-            {tiemposProduccion.map((t, i) => (
+            {tiemposProduccion.length > 0 ? tiemposProduccion.map((t, i) => (
               <tr key={i} className="hover:bg-slate-50 group transition-colors">
-                <td className="px-6 py-4 font-mono font-bold text-slate-600 bg-slate-50/30">{t.CodMaterial || t.MATERIAL}</td>
-                <td className="px-6 py-4 font-mono font-black text-indigo-700 bg-sky-50/50 uppercase">{mapToHojaRuta(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '')}</td>
-                <td className="px-6 py-4 font-black text-slate-800 uppercase">{t.PuestoTrabajo || t.nombre_estacion || t.Maquina}</td>
-                <td className="px-6 py-4 text-slate-500 max-w-[200px] truncate">{t.Material || t.DESCRIPCION || t.NOMBRE || '—'}</td>
-                <td className="px-6 py-4 text-center font-bold text-slate-700">{t.Centro || '—'}</td>
-                <td className="px-6 py-4 text-slate-600 font-medium">{t.Linea || '—'}</td>
-                <td className="px-6 py-4 text-right font-mono font-black text-indigo-600 bg-indigo-50/30">
+                <td className="px-6 py-4 font-mono font-bold text-slate-600 bg-slate-50/30 whitespace-nowrap">{t.CodMaterial || t.MATERIAL}</td>
+                <td className="px-6 py-4 font-mono font-black text-indigo-700 bg-sky-50/50 uppercase whitespace-nowrap">{mapToHojaRuta(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '')}</td>
+                <td className="px-6 py-4 font-black text-slate-800 uppercase whitespace-nowrap">{t.PuestoTrabajo || t.nombre_estacion || t.Maquina}</td>
+                <td className="px-6 py-4 text-slate-500 max-w-[250px] truncate font-medium">{t.Material || t.DESCRIPCION || t.NOMBRE || '—'}</td>
+                <td className="px-6 py-4 text-center font-bold text-slate-700 whitespace-nowrap">{t.Centro || '—'}</td>
+                <td className="px-6 py-4 text-slate-600 font-medium whitespace-nowrap">{t.Linea || '—'}</td>
+                <td className="px-6 py-4 text-right font-mono font-black text-indigo-600 bg-indigo-50/30 whitespace-nowrap">
                   {(t.Tiempo || t.Tiempo_Min || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </td>
               </tr>
-            ))}
+            )) : (
+              <tr>
+                <td colSpan={7} className="py-20 text-center text-slate-300 uppercase font-black tracking-[0.2em]">Cargando maestros de ingeniería...</td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
@@ -268,6 +285,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [jornadaNocturnaSel, setJornadaNocturnaSel] = useState("0");
   const [workstationConfigs, setWorkstationConfigs] = useState<Record<string, WorkstationConfig>>({});
 
+  // Estabilizar hidratación
   useEffect(() => {
     setIsMounted(true);
     setExecutionDate(new Date().toISOString().split('T')[0]);
@@ -387,7 +405,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     } catch (error) {
       console.error('Error al cargar tiempos:', error);
     } finally {
-      setIsLoading(false);
+      setIsLoadingTiempos(false);
     }
   }, [forrosGruposList, externalFilters]);
 
@@ -456,7 +474,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     if (uniquePuestos.length > 0 && Object.keys(workstationConfigs).length === 0) {
       const initial: Record<string, WorkstationConfig> = {};
       uniquePuestos.forEach(p => {
-        // Por defecto: Día ON, Noche OFF
         initial[p] = { machine: p, isDayActive: true, isNightActive: false };
       });
       setWorkstationConfigs(initial);
@@ -471,17 +488,29 @@ export const TacticalPlanForrosSection: React.FC = () => {
   }, [isMounted, forrosGruposList, fetchTiemposProduccion, fetchDailyOrders]);
 
   const toggleWorkstationShift = (p: string, shift: 'day' | 'night') => {
-    setWorkstationConfigs(prev => ({
-      ...prev,
-      [p]: {
-        ...prev[p],
-        [shift === 'day' ? 'isDayActive' : 'isNightActive']: !prev[p][shift === 'day' ? 'isDayActive' : 'isNightActive']
-      }
-    }));
+    setWorkstationConfigs(prev => {
+      const current = prev[p] || { machine: p, isDayActive: true, isNightActive: false };
+      return {
+        ...prev,
+        [p]: {
+          ...current,
+          [shift === 'day' ? 'isDayActive' : 'isNightActive']: !current[shift === 'day' ? 'isDayActive' : 'isNightActive']
+        }
+      };
+    });
   };
 
-  if (!isMounted) {
-    return null;
+  if (!isMounted) return null;
+
+  if (isLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-slate-50/40">
+        <div className="text-center">
+          <Loader2 className="w-10 h-10 animate-spin text-indigo-600 mx-auto mb-4" />
+          <p className="text-slate-500 font-black uppercase text-[10px] tracking-widest">Sincronizando sistema...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -495,7 +524,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
           <div>
             <div className="flex items-center gap-3">
               <h2 className="text-3xl font-black text-slate-900 uppercase tracking-tighter">Programación Táctica</h2>
-              <Badge className="bg-indigo-600 text-white border-none font-black px-3 py-1 rounded-lg text-[10px] uppercase tracking-widest shadow-sm shadow-indigo-100">Forros</Badge>
+              <Badge className="bg-indigo-600 text-white border-none font-black px-3 py-1 rounded-lg text-[10px] uppercase tracking-widest shadow-sm">Forros</Badge>
             </div>
             <div className="flex items-center gap-3 mt-2">
               <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] flex items-center gap-1.5">
@@ -513,14 +542,14 @@ export const TacticalPlanForrosSection: React.FC = () => {
             <div className="bg-indigo-700 p-3 rounded-2xl text-white shadow-lg"><MapPin className="w-5 h-5" /></div>
             <div>
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">GYE (2000)</p>
-              <p className="text-2xl font-black text-slate-900 font-mono tracking-tight">{dailyOrders.filter(o => String(o.Centro).trim() === '2000').length.toLocaleString()} <span className="text-xs text-slate-400 opacity-60 font-bold">ORD</span></p>
+              <p className="text-2xl font-black text-slate-900 font-mono tracking-tight">{dailyOrders.filter(o => String(o.Centro).trim() === '2000').length.toLocaleString()} <span className="text-xs text-slate-400 opacity-60 font-bold uppercase">ORD</span></p>
             </div>
           </div>
           <div className="bg-slate-50 border border-slate-100 rounded-3xl p-5 flex items-center gap-5 min-w-[200px] shadow-inner">
             <div className="bg-slate-800 p-3 rounded-2xl text-white shadow-lg"><MapPin className="w-5 h-5" /></div>
             <div>
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">UIO (1000)</p>
-              <p className="text-2xl font-black text-slate-900 font-mono tracking-tight">{dailyOrders.filter(o => String(o.Centro).trim() === '1000').length.toLocaleString()} <span className="text-xs text-slate-400 opacity-60 font-bold">ORD</span></p>
+              <p className="text-2xl font-black text-slate-900 font-mono tracking-tight">{dailyOrders.filter(o => String(o.Centro).trim() === '1000').length.toLocaleString()} <span className="text-xs text-slate-400 opacity-60 font-bold uppercase">ORD</span></p>
             </div>
           </div>
         </div>
@@ -583,22 +612,20 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       const totalUnits = orders.reduce((sum, o) => sum + Number(o['CANTIDAD'] || 0), 0);
                       const totalTimeHours = orders.reduce((sum, o) => sum + calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || 0), o), 0) / 60;
                       const config = workstationConfigs[p] || { machine: p, isDayActive: true, isNightActive: false };
-                      
-                      // Capacidad ponderada por activación binaria
                       const capacityHours = (config.isDayActive ? horasNetasDiurnas : 0) + (config.isNightActive ? horasNetasNocturnas : 0);
-                      
                       const utilization = capacityHours > 0 ? (totalTimeHours / capacityHours) * 100 : 0;
+                      
                       return (
                         <tr key={idx} className="hover:bg-slate-50 transition-all group">
-                          <td className="px-8 py-5 font-black text-slate-900 bg-slate-50/20 uppercase">{p}</td>
-                          <td className="px-8 py-5 font-mono font-black text-indigo-700 uppercase">{mapToHojaRuta(p)}</td>
+                          <td className="px-8 py-5 font-black text-slate-900 bg-slate-50/20 uppercase whitespace-nowrap">{p}</td>
+                          <td className="px-8 py-5 font-mono font-black text-indigo-700 uppercase whitespace-nowrap">{mapToHojaRuta(p)}</td>
                           <td className="px-8 py-5 text-right font-mono font-black text-slate-800">{totalUnits.toLocaleString()}</td>
                           <td className="px-8 py-5 text-right font-mono font-black text-indigo-700 bg-indigo-50/40">{totalTimeHours.toFixed(2)}h</td>
                           <td className="px-8 py-5 text-right font-mono font-bold text-slate-900">{capacityHours.toFixed(2)}h</td>
                           <td className="px-8 py-5 text-center">
                              <div className="flex items-center justify-center gap-4">
                                <div className="flex-1 bg-slate-100 h-2 rounded-full overflow-hidden max-w-[100px] border border-slate-200">
-                                 <div className={cn("h-full transition-all duration-1000", utilization > 100 ? "bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]" : "bg-indigo-600 shadow-[0_0_10px_rgba(79,70,229,0.4)]")} style={{ width: `${Math.min(utilization, 100)}%` }} />
+                                 <div className={cn("h-full transition-all duration-1000", utilization > 100 ? "bg-red-500" : "bg-indigo-600")} style={{ width: `${Math.min(utilization, 100)}%` }} />
                                </div>
                                <span className={cn("font-mono font-black text-[10px] min-w-[30px]", utilization > 100 ? "text-red-600" : "text-slate-900")}>{utilization.toFixed(0)}%</span>
                              </div>
@@ -716,7 +743,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
         <TabsContent value="personal-turnos">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
             {/* CONFIGURACIÓN DE JORNADAS */}
-            <Card className="lg:col-span-1 rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden">
+            <Card className="lg:col-span-1 rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden border-none shadow-sm">
                <CardHeader className="bg-slate-950 text-white p-8"><CardTitle className="text-xl font-black uppercase">Configuración de Jornada</CardTitle></CardHeader>
                <CardContent className="p-10 space-y-10">
                  <div className="space-y-5">
@@ -746,7 +773,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
             {/* CONTROL DE ACTIVACIÓN POR PUESTO */}
             <div className="lg:col-span-2 space-y-10">
-              <Card className="rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden">
+              <Card className="rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden border-none shadow-sm">
                 <CardHeader className="bg-slate-50/50 p-8 border-b flex flex-row items-center justify-between">
                   <div>
                     <CardTitle className="text-xl font-black uppercase tracking-tight flex items-center gap-2">Asignación Operativa por Máquina</CardTitle>
@@ -779,7 +806,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                                 title={config.isDayActive ? "Turno Día Encendido" : "Turno Día Apagado"}
                               >
                                 <Sun className="w-4 h-4 mb-0.5" />
-                                <span className="text-[8px] font-black uppercase">D</span>
+                                <span className="text-[8px] font-black uppercase">Día</span>
                               </button>
                               
                               {/* TOGGLE NOCHE */}
@@ -792,7 +819,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                                 title={config.isNightActive ? "Turno Noche Encendido" : "Turno Noche Apagado"}
                               >
                                 <Moon className="w-4 h-4 mb-0.5" />
-                                <span className="text-[8px] font-black uppercase">N</span>
+                                <span className="text-[8px] font-black uppercase">Noc</span>
                               </button>
                             </div>
                           </div>
@@ -808,8 +835,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 <div>
                   <h4 className="text-xs font-black text-blue-900 uppercase mb-2">Lógica de Capacidad</h4>
                   <ul className="text-[10px] text-blue-800/80 space-y-1 font-medium leading-relaxed">
-                    <li>• <span className="font-black">DÍA (D):</span> Suma {horasNetasDiurnas.toFixed(2)}h netas si está activa.</li>
-                    <li>• <span className="font-black">NOCHE (N):</span> Suma {horasNetasNocturnas.toFixed(2)}h netas si está activa.</li>
+                    <li>• <span className="font-black uppercase">Día (Día):</span> Suma {horasNetasDiurnas.toFixed(2)}h netas si está activa.</li>
+                    <li>• <span className="font-black uppercase">Noc (Noche):</span> Suma {horasNetasNocturnas.toFixed(2)}h netas si está activa.</li>
                     <li>• <span className="font-black">EFICIENCIA:</span> Los valores ya consideran el 84% de rendimiento estándar.</li>
                   </ul>
                 </div>
