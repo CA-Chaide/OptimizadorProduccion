@@ -412,7 +412,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
       const mNorm = normalizeMaterialCode(t.CodMaterial || t.Material || '');
       const tPuesto = String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').trim().toUpperCase();
       return mNorm === normMaterial && tPuesto === puesto;
-    }) || tiemposProduccion.find(t => normalizeMaterialCode(t.CodMaterial || t.Material || '') === mNorm);
+    }) || tiemposProduccion.find(t => normalizeMaterialCode(t.CodMaterial || t.Material || '') === normMaterial);
     return match ? (Number(match.Tiempo || match.Tiempo_Min || 0) * quantity) : 0;
   }, [tiemposProduccion, normalizeMaterialCode, getResolvedPuesto]);
 
