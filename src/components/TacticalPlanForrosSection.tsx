@@ -20,7 +20,6 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Progress } from "@/components/ui/progress";
 import { 
   Select, 
@@ -44,7 +43,7 @@ interface WorkstationConfig {
 
 /**
  * Componente: MachineCard
- * Representa el estado y carga de una estación de trabajo específica.
+ * Tarjeta de control de carga para cada puesto de trabajo en los tableros técnicos.
  */
 const MachineCard = ({ 
   puestoName, 
@@ -183,6 +182,10 @@ const MachineCard = ({
   );
 };
 
+/**
+ * Componente: TableKPI
+ * Auditoría técnica de los tiempos base por material.
+ */
 const TableKPI = ({ tiemposProduccion, mapToHojaRuta }: { tiemposProduccion: any[]; mapToHojaRuta: (name: string) => string; }) => (
   <Card className="rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden shadow-lg border-none">
     <CardHeader className="bg-slate-950 p-8 border-b border-slate-800">
@@ -409,7 +412,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
       const mNorm = normalizeMaterialCode(t.CodMaterial || t.Material || '');
       const tPuesto = String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').trim().toUpperCase();
       return mNorm === normMaterial && tPuesto === puesto;
-    }) || tiemposProduccion.find(t => normalizeMaterialCode(t.CodMaterial || t.Material || '') === normMaterial);
+    }) || tiemposProduccion.find(t => normalizeMaterialCode(t.CodMaterial || t.Material || '') === mNorm);
     return match ? (Number(match.Tiempo || match.Tiempo_Min || 0) * quantity) : 0;
   }, [tiemposProduccion, normalizeMaterialCode, getResolvedPuesto]);
 
@@ -430,6 +433,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   return (
     <div className="p-6 md:p-8 space-y-6 bg-slate-50/40 min-h-screen font-body">
+      {/* Header Principal */}
       <div className="flex flex-col xl:flex-row items-center justify-between gap-6 bg-white p-7 rounded-[2rem] border border-slate-200 shadow-sm">
         <div className="flex items-center space-x-6">
           <div className="bg-slate-950 p-5 rounded-[1.5rem] text-white shadow-xl ring-4 ring-slate-100">
@@ -646,8 +650,12 @@ export const TacticalPlanForrosSection: React.FC = () => {
                  <div className="space-y-5">
                     <label className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em] flex items-center gap-2"><Sun className="w-4 h-4 text-amber-500" /> Jornada Diurna</label>
                     <Select value={jornadaDiurnaSel} onValueChange={setJornadaDiurnaSel}>
-                      <SelectTrigger className="h-14 border-2 rounded-2xl font-black text-slate-800"><SelectValue /></SelectTrigger>
-                      <SelectContent>{DIURNA_OPTIONS.map(opt => <SelectItem key={opt.value} value={opt.value} className="font-black py-3">{opt.label}</SelectItem>)}</SelectContent>
+                      <SelectTrigger className="h-14 border-2 rounded-2xl font-black text-slate-800">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {DIURNA_OPTIONS.map(opt => <SelectItem key={opt.value} value={opt.value} className="font-black py-3">{opt.label}</SelectItem>)}
+                      </SelectContent>
                     </Select>
                     <div className="bg-amber-50 border border-amber-100 p-4 rounded-2xl flex justify-between items-center">
                       <span className="text-[10px] font-black text-amber-700 uppercase">Capacidad Neta (D)</span>
@@ -657,8 +665,12 @@ export const TacticalPlanForrosSection: React.FC = () => {
                  <div className="space-y-5">
                     <label className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em] flex items-center gap-2"><Moon className="w-4 h-4 text-indigo-500" /> Jornada Nocturna</label>
                     <Select value={jornadaNocturnaSel} onValueChange={setJornadaNocturnaSel}>
-                      <SelectTrigger className="h-14 border-2 rounded-2xl font-black text-slate-800"><SelectValue /></SelectTrigger>
-                      <SelectContent>{NOCTURNA_OPTIONS.map(opt => <SelectItem key={opt.value} value={opt.value} className="font-black py-3">{opt.label}</SelectItem>)}</SelectContent>
+                      <SelectTrigger className="h-14 border-2 rounded-2xl font-black text-slate-800">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {NOCTURNA_OPTIONS.map(opt => <SelectItem key={opt.value} value={opt.value} className="font-black py-3">{opt.label}</SelectItem>)}
+                      </SelectContent>
                     </Select>
                     <div className="bg-indigo-50 border border-indigo-100 p-4 rounded-2xl flex justify-between items-center">
                       <span className="text-[10px] font-black text-indigo-700 uppercase">Capacidad Neta (N)</span>
@@ -671,7 +683,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
             <div className="lg:col-span-2 space-y-10">
               <Card className="rounded-[2.5rem] bg-white border-none shadow-sm ring-1 ring-slate-100">
                 <CardHeader className="bg-slate-50/50 p-8 border-b">
-                  <CardTitle className="text-xl font-black uppercase tracking-tight">Asignación Operativa por Máquina</CardTitle>
+                  <CardTitle className="text-xl font-black uppercase tracking-tight">Activación de Máquinas por Turno</CardTitle>
                 </CardHeader>
                 <CardContent className="p-8">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-h-[60vh] overflow-y-auto pr-2">
@@ -679,36 +691,47 @@ export const TacticalPlanForrosSection: React.FC = () => {
                         const config = workstationConfigs[p] || { machine: p, isDayActive: true, isNightActive: false };
                         const capPuesto = (config.isDayActive ? horasNetasDiurnas : 0) + (config.isNightActive ? horasNetasNocturnas : 0);
                         return (
-                          <div key={p} className="flex items-center justify-between p-5 border-2 border-slate-50 rounded-3xl bg-white hover:border-indigo-100 transition-all">
-                            <div className="flex-1 min-w-0 mr-4">
-                              <p className="font-black text-slate-800 uppercase text-sm leading-tight mb-2">{p}</p>
-                              <div className="flex flex-wrap gap-2">
-                                <Badge className="bg-indigo-50 text-indigo-700 border-indigo-100 font-mono text-[9px] uppercase font-bold tracking-widest">{mapToHojaRuta(p)}</Badge>
-                                <Badge className="bg-emerald-50 text-emerald-700 border-emerald-100 font-mono text-[9px] font-black">{capPuesto.toFixed(2)}h Disp.</Badge>
+                          <div key={p} className="flex flex-col p-6 border-2 border-slate-100 rounded-[2rem] bg-white hover:border-indigo-200 transition-all shadow-sm">
+                            <div className="flex items-center justify-between mb-4">
+                              <div className="min-w-0">
+                                <p className="font-black text-indigo-950 uppercase text-lg leading-none mb-2">{p}</p>
+                                <div className="flex flex-wrap gap-2">
+                                  <Badge className="bg-indigo-600 text-white border-none font-mono text-[10px] uppercase font-bold tracking-widest px-2.5 py-0.5 rounded-lg shadow-sm">
+                                    {mapToHojaRuta(p)}
+                                  </Badge>
+                                  <div className="flex items-center gap-1.5 bg-emerald-50 text-emerald-700 px-3 py-1 rounded-xl border border-emerald-100 shadow-sm">
+                                    <Clock className="w-3 h-3" />
+                                    <span className="font-mono text-[10px] font-black uppercase tracking-wider">{capPuesto.toFixed(2)}h Disponibles</span>
+                                  </div>
+                                </div>
                               </div>
                             </div>
                             
-                            <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-2xl border border-slate-100">
+                            <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-100">
                               <button 
                                 onClick={() => toggleWorkstationShift(p, 'day')}
                                 className={cn(
-                                  "w-12 h-12 rounded-xl flex flex-col items-center justify-center transition-all shadow-sm",
-                                  config.isDayActive ? "bg-amber-500 text-white shadow-amber-200" : "bg-white text-slate-300"
+                                  "flex-1 h-12 rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm border-2",
+                                  config.isDayActive 
+                                    ? "bg-amber-500 text-white border-amber-600 shadow-amber-200" 
+                                    : "bg-white text-slate-300 border-slate-100"
                                 )}
                               >
-                                <Sun className="w-4 h-4 mb-0.5" />
-                                <span className="text-[8px] font-black uppercase">Día</span>
+                                <Sun className="w-4 h-4" />
+                                <span className="text-[10px] font-black uppercase tracking-widest">{config.isDayActive ? 'Día ON' : 'Día OFF'}</span>
                               </button>
                               
                               <button 
                                 onClick={() => toggleWorkstationShift(p, 'night')}
                                 className={cn(
-                                  "w-12 h-12 rounded-xl flex flex-col items-center justify-center transition-all shadow-sm",
-                                  config.isNightActive ? "bg-indigo-600 text-white shadow-indigo-200" : "bg-white text-slate-300"
+                                  "flex-1 h-12 rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm border-2",
+                                  config.isNightActive 
+                                    ? "bg-indigo-700 text-white border-indigo-800 shadow-indigo-200" 
+                                    : "bg-white text-slate-300 border-slate-100"
                                 )}
                               >
-                                <Moon className="w-4 h-4 mb-0.5" />
-                                <span className="text-[8px] font-black uppercase">Noc</span>
+                                <Moon className="w-4 h-4" />
+                                <span className="text-[10px] font-black uppercase tracking-widest">{config.isNightActive ? 'Noc ON' : 'Noc OFF'}</span>
                               </button>
                             </div>
                           </div>
