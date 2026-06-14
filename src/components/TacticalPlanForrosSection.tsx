@@ -78,7 +78,7 @@ const MachineCard = ({
       small ? "h-[420px]" : "h-[480px]"
     )}>
       <div className={cn(
-        "bg-indigo-50/40 p-6 text-slate-900 flex flex-col border-r border-indigo-100",
+        "bg-indigo-50/50 p-6 text-slate-900 flex flex-col border-r border-indigo-100",
         small ? "w-[42%]" : "w-[38%]"
       )}>
         <div className="mb-6">
@@ -283,6 +283,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const mapToHojaRuta = useCallback((puestoName: string): string => {
     const pn = String(puestoName || '').toUpperCase().trim();
     if (!pn || pn === '—' || pn === 'NULL') return '';
+    
+    // Mapeos explícitos solicitados
     if (pn === 'ACOLCHADORA09') return 'HR-ACH09';
     if (pn === 'COSEDORA-ACH02') return 'HR-PEF02';
     if (pn === 'COSEDORA-ACH08') return 'HR-PEF08';
@@ -408,11 +410,14 @@ export const TacticalPlanForrosSection: React.FC = () => {
     if (!material) return 0;
     const normMaterial = normalizeMaterialCode(material);
     const puesto = getResolvedPuesto(order);
+    
+    // Corregido: mNorm reemplazado por normMaterial que es accesible en este scope
     const match = tiemposProduccion.find(t => {
-      const mNorm = normalizeMaterialCode(t.CodMaterial || t.Material || '');
+      const mNormInternal = normalizeMaterialCode(t.CodMaterial || t.Material || '');
       const tPuesto = String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').trim().toUpperCase();
-      return mNorm === normMaterial && tPuesto === puesto;
+      return mNormInternal === normMaterial && tPuesto === puesto;
     }) || tiemposProduccion.find(t => normalizeMaterialCode(t.CodMaterial || t.Material || '') === normMaterial);
+    
     return match ? (Number(match.Tiempo || match.Tiempo_Min || 0) * quantity) : 0;
   }, [tiemposProduccion, normalizeMaterialCode, getResolvedPuesto]);
 
@@ -429,7 +434,56 @@ export const TacticalPlanForrosSection: React.FC = () => {
     });
   };
 
-  if (!isMounted) return null;
+  /**
+   * Definición de grupos visuales solicitados
+   */
+  const workstationGroups = [
+    { 
+      title: "ACOLCHADORAS DE TAPAS Y PEGADORAS DE FALSO", 
+      items: [
+        "ACOLCHADORA02", "COSEDORA-ACH02", "ACOLCHADORA06", "COSEDORA-ACH06", 
+        "ACOLCHADORA07", "COSEDORA-ACH07", "ACOLCHADORA08", "COSEDORA-ACH08", 
+        "ACOLCHADORA09", "COSEDORA-ACH09", "ACOLCHADORA10", "COSEDORA-ACH10", 
+        "COSEDORA-ACH11", "COSEDORA-ACH12", "COSEDORA-ACH13"
+      ] 
+    },
+    { 
+      title: "BANDAS", 
+      items: ["ACOLCHADORA11", "ACOLCHADORA12", "COSEDORA-BANDA3D", "COSEDORA-BO01", "COSEDORA-ENCINTADOBD"] 
+    },
+    { 
+      title: "REMATADORADAS DE BANDAS", 
+      items: ["COSEDORA-RMTB1", "COSEDORA-RMTB2", "COSEDORA-RMTB3", "COSEDORA-RMTBM"] 
+    },
+    { 
+      title: "CORTADORA DE TELA", 
+      items: ["CORTELA10", "CORTE-ESPUMA"] 
+    },
+    { 
+      title: "INTERIORES", 
+      items: ["COSEDORA-INTPF", "COSEDORA-INTPF1", "COSEDORA-INTPF2", "COSEDORA-INTPR", "COSEDORA-INTPT"] 
+    },
+    { 
+      title: "BASES", 
+      items: ["COSEDORA-BSCTP", "COSEDORA-BSC-CC"] 
+    },
+    { 
+      title: "TAPAS TELAS Y TAPAS SUPERIORES", 
+      items: ["COSEDORA-TTCHN", "COSEDORA-TTSUP-CHN"] 
+    },
+    { 
+      title: "FORROS CHN Y BASES", 
+      items: ["FORRO-BASE-BCAMAS", "FORRO-COLCHONES"] 
+    }
+  ];
+
+  if (!isMounted) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-slate-50/40">
+        <Loader2 className="w-10 h-10 animate-spin text-indigo-600" />
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 md:p-8 space-y-6 bg-slate-50/40 min-h-screen font-body">
@@ -643,7 +697,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="personal-turnos">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-10">
             <Card className="lg:col-span-1 rounded-[2.5rem] bg-white border-none shadow-sm ring-1 ring-slate-100">
                <CardHeader className="bg-slate-950 text-white p-8 rounded-t-[2.5rem]"><CardTitle className="text-xl font-black uppercase">Configuración de Jornada</CardTitle></CardHeader>
                <CardContent className="p-10 space-y-10">
@@ -680,14 +734,20 @@ export const TacticalPlanForrosSection: React.FC = () => {
                </CardContent>
             </Card>
 
-            <div className="lg:col-span-2 space-y-10">
-              <Card className="rounded-[2.5rem] bg-white border-none shadow-sm ring-1 ring-slate-100">
-                <CardHeader className="bg-slate-50/50 p-8 border-b">
-                  <CardTitle className="text-xl font-black uppercase tracking-tight">Activación de Máquinas por Turno</CardTitle>
-                </CardHeader>
-                <CardContent className="p-8">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-h-[60vh] overflow-y-auto pr-2">
-                      {uniquePuestos.map(p => {
+            <div className="lg:col-span-3 space-y-12">
+              {workstationGroups.map((group, gIdx) => {
+                const availableItems = group.items.filter(item => uniquePuestos.includes(item));
+                if (availableItems.length === 0) return null;
+
+                return (
+                  <div key={gIdx} className="space-y-6">
+                    <div className="flex items-center gap-4">
+                      <div className="h-8 w-1.5 bg-indigo-600 rounded-full" />
+                      <h3 className="text-lg font-black text-indigo-950 uppercase tracking-tighter">{group.title}</h3>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                      {availableItems.map(p => {
                         const config = workstationConfigs[p] || { machine: p, isDayActive: true, isNightActive: false };
                         const capPuesto = (config.isDayActive ? horasNetasDiurnas : 0) + (config.isNightActive ? horasNetasNocturnas : 0);
                         return (
@@ -737,9 +797,78 @@ export const TacticalPlanForrosSection: React.FC = () => {
                           </div>
                         );
                       })}
+                    </div>
                   </div>
-                </CardContent>
-              </Card>
+                );
+              })}
+
+              {/* Otros puestos no categorizados */}
+              {(() => {
+                const categorizedItems = workstationGroups.flatMap(g => g.items);
+                const otherItems = uniquePuestos.filter(p => !categorizedItems.includes(p));
+                if (otherItems.length === 0) return null;
+
+                return (
+                  <div className="space-y-6">
+                    <div className="flex items-center gap-4">
+                      <div className="h-8 w-1.5 bg-slate-400 rounded-full" />
+                      <h3 className="text-lg font-black text-slate-500 uppercase tracking-tighter">Otros Puestos</h3>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                      {otherItems.map(p => {
+                        const config = workstationConfigs[p] || { machine: p, isDayActive: true, isNightActive: false };
+                        const capPuesto = (config.isDayActive ? horasNetasDiurnas : 0) + (config.isNightActive ? horasNetasNocturnas : 0);
+                        return (
+                          <div key={p} className="flex flex-col p-6 border-2 border-slate-100 rounded-[2rem] bg-white hover:border-indigo-200 transition-all shadow-sm opacity-80">
+                            <div className="flex items-center justify-between mb-4">
+                              <div className="min-w-0">
+                                <p className="font-black text-indigo-950 uppercase text-lg leading-none mb-2">{p}</p>
+                                <div className="flex flex-wrap gap-2">
+                                  <Badge className="bg-slate-500 text-white border-none font-mono text-[10px] uppercase font-bold tracking-widest px-2.5 py-0.5 rounded-lg shadow-sm">
+                                    {mapToHojaRuta(p)}
+                                  </Badge>
+                                  <div className="flex items-center gap-1.5 bg-emerald-50 text-emerald-700 px-3 py-1 rounded-xl border border-emerald-100 shadow-sm">
+                                    <Clock className="w-3 h-3" />
+                                    <span className="font-mono text-[10px] font-black uppercase tracking-wider">{capPuesto.toFixed(2)}h Disponibles</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                            
+                            <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                              <button 
+                                onClick={() => toggleWorkstationShift(p, 'day')}
+                                className={cn(
+                                  "flex-1 h-12 rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm border-2",
+                                  config.isDayActive 
+                                    ? "bg-amber-500 text-white border-amber-600 shadow-amber-200" 
+                                    : "bg-white text-slate-300 border-slate-100"
+                                )}
+                              >
+                                <Sun className="w-4 h-4" />
+                                <span className="text-[10px] font-black uppercase tracking-widest">{config.isDayActive ? 'Día ON' : 'Día OFF'}</span>
+                              </button>
+                              
+                              <button 
+                                onClick={() => toggleWorkstationShift(p, 'night')}
+                                className={cn(
+                                  "flex-1 h-12 rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm border-2",
+                                  config.isNightActive 
+                                    ? "bg-indigo-700 text-white border-indigo-800 shadow-indigo-200" 
+                                    : "bg-white text-slate-300 border-slate-100"
+                                )}
+                              >
+                                <Moon className="w-4 h-4" />
+                                <span className="text-[10px] font-black uppercase tracking-widest">{config.isNightActive ? 'Noc ON' : 'Noc OFF'}</span>
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </TabsContent>
