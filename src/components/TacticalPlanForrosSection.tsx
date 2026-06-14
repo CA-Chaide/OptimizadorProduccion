@@ -15,7 +15,9 @@ import {
   UserPlus,
   BarChart3,
   Sun,
-  Moon
+  Moon,
+  Power,
+  PowerOff
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -38,14 +40,13 @@ import { useAppContext } from '@/context/AppProvider';
 
 interface WorkstationConfig {
   machine: string;
-  peopleDiurno: number;
-  peopleNocturno: number;
+  isDayActive: boolean;
+  isNightActive: boolean;
 }
 
 /**
  * Componente: MachineCard
  * Representa el estado y carga de una estación de trabajo específica.
- * Ahora con diseño claro (Indigo-50) y columnas NOMBRE y HR.
  */
 const MachineCard = ({ 
   puestoName, 
@@ -70,7 +71,10 @@ const MachineCard = ({
 }) => {
   const hrCode = mapToHojaRuta(puestoName);
   const totalTimeHours = orders.reduce((sum, o) => sum + calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || 0), o), 0) / 60;
-  const capacityHours = (horasNetasDiurnas * config.peopleDiurno) + (horasNetasNocturnas * config.peopleNocturno);
+  
+  // Capacidad basada en encendido/apagado de turnos
+  const capacityHours = (config.isDayActive ? horasNetasDiurnas : 0) + (config.isNightActive ? horasNetasNocturnas : 0);
+  
   const utilization = capacityHours > 0 ? (totalTimeHours / capacityHours) * 100 : 0;
   const isOverloaded = utilization > 100;
 
@@ -98,15 +102,21 @@ const MachineCard = ({
         </div>
         <div className="flex-1 space-y-4">
           <div className="bg-white p-3 rounded-2xl border border-indigo-100 shadow-sm">
-            <div className="flex justify-between items-center text-[9px] text-slate-500 uppercase font-black tracking-widest mb-2">Dotación Asignada</div>
+            <div className="flex justify-between items-center text-[9px] text-slate-500 uppercase font-black tracking-widest mb-2">Turnos Activos</div>
             <div className="grid grid-cols-2 gap-2">
-              <div className="bg-slate-50 rounded-xl p-2 border border-slate-100 flex flex-col items-center">
-                <span className="text-[8px] text-slate-500 mb-1">SOL (D)</span>
-                <span className="font-mono font-black text-indigo-700">{config.peopleDiurno}</span>
+              <div className={cn(
+                "rounded-xl p-2 border flex flex-col items-center transition-colors",
+                config.isDayActive ? "bg-amber-50 border-amber-200" : "bg-slate-50 border-slate-100 opacity-40"
+              )}>
+                <Sun className={cn("w-3 h-3 mb-1", config.isDayActive ? "text-amber-600" : "text-slate-400")} />
+                <span className={cn("text-[8px] font-black uppercase", config.isDayActive ? "text-amber-700" : "text-slate-400")}>Día</span>
               </div>
-              <div className="bg-slate-50 rounded-xl p-2 border border-slate-100 flex flex-col items-center">
-                <span className="text-[8px] text-slate-500 mb-1">LUNA (N)</span>
-                <span className="font-mono font-black text-indigo-700">{config.peopleNocturno}</span>
+              <div className={cn(
+                "rounded-xl p-2 border flex flex-col items-center transition-colors",
+                config.isNightActive ? "bg-indigo-50 border-indigo-200" : "bg-slate-50 border-slate-100 opacity-40"
+              )}>
+                <Moon className={cn("w-3 h-3 mb-1", config.isNightActive ? "text-indigo-600" : "text-slate-400")} />
+                <span className={cn("text-[8px] font-black uppercase", config.isNightActive ? "text-indigo-700" : "text-slate-400")}>Noche</span>
               </div>
             </div>
           </div>
@@ -164,7 +174,7 @@ const MachineCard = ({
                   <tr key={i} className="hover:bg-indigo-50/30 transition-colors">
                     <td className="px-4 py-3 font-mono font-bold text-slate-700 truncate max-w-[80px]" title={o['CodMaterial'] || normalizeMaterialCode(o['MATERIAL'])}>{o['CodMaterial'] || normalizeMaterialCode(o['MATERIAL'])}</td>
                     <td className="px-4 py-3 text-slate-600 truncate max-w-[150px]" title={o['NOMBRE'] || o['TEXTOMATERIAL'] || o['Material']}>{o['NOMBRE'] || o['TEXTOMATERIAL'] || o['Material'] || '—'}</td>
-                    <td className="px-4 py-3 font-bold text-indigo-700 bg-indigo-50/20">{hrCode}</td>
+                    <td className="px-4 py-3 font-bold text-indigo-700 bg-indigo-50/20">{mapToHojaRuta(puestoName)}</td>
                     <td className="px-4 py-3 text-right font-mono font-black text-slate-800">{Number(o['CANTIDAD'] || 0).toLocaleString()}</td>
                     <td className="px-4 py-3 text-right font-mono font-black text-indigo-600 bg-indigo-50/30">{t.toFixed(2)}</td>
                   </tr>
@@ -446,7 +456,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
     if (uniquePuestos.length > 0 && Object.keys(workstationConfigs).length === 0) {
       const initial: Record<string, WorkstationConfig> = {};
       uniquePuestos.forEach(p => {
-        initial[p] = { machine: p, peopleDiurno: 1, peopleNocturno: 0 };
+        // Por defecto: Día ON, Noche OFF
+        initial[p] = { machine: p, isDayActive: true, isNightActive: false };
       });
       setWorkstationConfigs(initial);
     }
@@ -459,8 +470,14 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
   }, [isMounted, forrosGruposList, fetchTiemposProduccion, fetchDailyOrders]);
 
-  const handleWorkstationConfigChange = (p: string, field: keyof WorkstationConfig, value: any) => {
-    setWorkstationConfigs(prev => ({ ...prev, [p]: { ...prev[p], [field]: value } }));
+  const toggleWorkstationShift = (p: string, shift: 'day' | 'night') => {
+    setWorkstationConfigs(prev => ({
+      ...prev,
+      [p]: {
+        ...prev[p],
+        [shift === 'day' ? 'isDayActive' : 'isNightActive']: !prev[p][shift === 'day' ? 'isDayActive' : 'isNightActive']
+      }
+    }));
   };
 
   // Hydration guard: ensures identical first render on server and client
@@ -474,6 +491,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   return (
     <div className="p-6 md:p-8 space-y-6 bg-slate-50/40 min-h-screen font-body">
+      {/* HEADER PRINCIPAL */}
       <div className="flex flex-col xl:flex-row items-center justify-between gap-6 bg-white p-7 rounded-[2rem] border border-slate-200 shadow-sm">
         <div className="flex items-center space-x-6">
           <div className="bg-slate-950 p-5 rounded-[1.5rem] text-white shadow-xl ring-4 ring-slate-100">
@@ -569,8 +587,11 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       const orders = dailyOrders.filter(o => getResolvedPuesto(o) === p);
                       const totalUnits = orders.reduce((sum, o) => sum + Number(o['CANTIDAD'] || 0), 0);
                       const totalTimeHours = orders.reduce((sum, o) => sum + calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || 0), o), 0) / 60;
-                      const config = workstationConfigs[p] || { machine: p, peopleDiurno: 1, peopleNocturno: 0 };
-                      const capacityHours = (horasNetasDiurnas * config.peopleDiurno) + (horasNetasNocturnas * config.peopleNocturno);
+                      const config = workstationConfigs[p] || { machine: p, isDayActive: true, isNightActive: false };
+                      
+                      // Capacidad ponderada por activación binaria
+                      const capacityHours = (config.isDayActive ? horasNetasDiurnas : 0) + (config.isNightActive ? horasNetasNocturnas : 0);
+                      
                       const utilization = capacityHours > 0 ? (totalTimeHours / capacityHours) * 100 : 0;
                       return (
                         <tr key={idx} className="hover:bg-slate-50 transition-all group">
@@ -614,7 +635,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       puestoName={achNames[0]} 
                       orders={dailyOrders.filter(o => getResolvedPuesto(o) === achNames[0])}
                       calculateProductionTime={calculateProductionTime}
-                      config={workstationConfigs[achNames[0]] || { machine: achNames[0], peopleDiurno: 1, peopleNocturno: 0 }}
+                      config={workstationConfigs[achNames[0]] || { machine: achNames[0], isDayActive: true, isNightActive: false }}
                       horasNetasDiurnas={horasNetasDiurnas}
                       horasNetasNocturnas={horasNetasNocturnas}
                       mapToHojaRuta={mapToHojaRuta}
@@ -627,7 +648,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       puestoName={pefNames[0]} 
                       orders={dailyOrders.filter(o => getResolvedPuesto(o) === pefNames[0])}
                       calculateProductionTime={calculateProductionTime}
-                      config={workstationConfigs[pefNames[0]] || { machine: pefNames[0], peopleDiurno: 1, peopleNocturno: 0 }}
+                      config={workstationConfigs[pefNames[0]] || { machine: pefNames[0], isDayActive: true, isNightActive: false }}
                       horasNetasDiurnas={horasNetasDiurnas}
                       horasNetasNocturnas={horasNetasNocturnas}
                       mapToHojaRuta={mapToHojaRuta}
@@ -649,7 +670,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 small 
                 orders={dailyOrders.filter(o => getResolvedPuesto(o) === pName)}
                 calculateProductionTime={calculateProductionTime}
-                config={workstationConfigs[pName] || { machine: pName, peopleDiurno: 1, peopleNocturno: 0 }}
+                config={workstationConfigs[pName] || { machine: pName, isDayActive: true, isNightActive: false }}
                 horasNetasDiurnas={horasNetasDiurnas}
                 horasNetasNocturnas={horasNetasNocturnas}
                 mapToHojaRuta={mapToHojaRuta}
@@ -668,7 +689,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 small 
                 orders={dailyOrders.filter(o => getResolvedPuesto(o) === pName)}
                 calculateProductionTime={calculateProductionTime}
-                config={workstationConfigs[pName] || { machine: pName, peopleDiurno: 1, peopleNocturno: 0 }}
+                config={workstationConfigs[pName] || { machine: pName, isDayActive: true, isNightActive: false }}
                 horasNetasDiurnas={horasNetasDiurnas}
                 horasNetasNocturnas={horasNetasNocturnas}
                 mapToHojaRuta={mapToHojaRuta}
@@ -687,7 +708,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 small 
                 orders={dailyOrders.filter(o => getResolvedPuesto(o) === pName)}
                 calculateProductionTime={calculateProductionTime}
-                config={workstationConfigs[pName] || { machine: pName, peopleDiurno: 1, peopleNocturno: 0 }}
+                config={workstationConfigs[pName] || { machine: pName, isDayActive: true, isNightActive: false }}
                 horasNetasDiurnas={horasNetasDiurnas}
                 horasNetasNocturnas={horasNetasNocturnas}
                 mapToHojaRuta={mapToHojaRuta}
@@ -699,6 +720,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
         <TabsContent value="personal-turnos">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
+            {/* CONFIGURACIÓN DE JORNADAS */}
             <Card className="lg:col-span-1 rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden">
                <CardHeader className="bg-slate-950 text-white p-8"><CardTitle className="text-xl font-black uppercase">Configuración de Jornada</CardTitle></CardHeader>
                <CardContent className="p-10 space-y-10">
@@ -727,28 +749,56 @@ export const TacticalPlanForrosSection: React.FC = () => {
                </CardContent>
             </Card>
 
+            {/* CONTROL DE ACTIVACIÓN POR PUESTO */}
             <div className="lg:col-span-2 space-y-10">
               <Card className="rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden">
                 <CardHeader className="bg-slate-50/50 p-8 border-b flex flex-row items-center justify-between">
                   <div>
-                    <CardTitle className="text-xl font-black uppercase tracking-tight flex items-center gap-2"><Sun className="w-5 h-5 text-amber-500" /> Dotación Turno Diurno</CardTitle>
-                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">Asignación de operadores para la primera jornada</p>
+                    <CardTitle className="text-xl font-black uppercase tracking-tight flex items-center gap-2">Asignación Operativa por Máquina</CardTitle>
+                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">Determine si la máquina se encenderá en cada turno específico</p>
                   </div>
                 </CardHeader>
                 <CardContent className="p-8">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-h-[40vh] overflow-y-auto pr-2">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-h-[60vh] overflow-y-auto pr-2">
                       {uniquePuestos.map(p => {
-                        const config = workstationConfigs[p] || { machine: p, peopleDiurno: 1, peopleNocturno: 0 };
+                        const config = workstationConfigs[p] || { machine: p, isDayActive: true, isNightActive: false };
                         return (
-                          <div key={`d-${p}`} className="flex items-center justify-between p-5 border-2 border-slate-50 rounded-3xl bg-white hover:border-amber-100 transition-all group">
-                            <div>
-                              <p className="font-black text-slate-800 uppercase text-xs">{p}</p>
-                              <Badge className="bg-amber-50 text-amber-600 border-none font-mono text-[9px] mt-2">CAP: {(config.peopleDiurno * horasNetasDiurnas).toFixed(1)}h</Badge>
+                          <div key={p} className="flex items-center justify-between p-5 border-2 border-slate-50 rounded-3xl bg-white hover:border-indigo-100 transition-all group">
+                            <div className="flex-1 min-w-0 mr-4">
+                              <p className="font-black text-slate-800 uppercase text-xs truncate" title={p}>{p}</p>
+                              <div className="flex gap-2 mt-2">
+                                {config.isDayActive && <Badge className="bg-amber-100 text-amber-700 border-none font-mono text-[8px] uppercase">Día</Badge>}
+                                {config.isNightActive && <Badge className="bg-indigo-100 text-indigo-700 border-none font-mono text-[8px] uppercase">Noche</Badge>}
+                                {!config.isDayActive && !config.isNightActive && <Badge className="bg-slate-100 text-slate-400 border-none font-mono text-[8px] uppercase">Apagada</Badge>}
+                              </div>
                             </div>
-                            <div className="flex items-center gap-3 bg-slate-50 p-2 rounded-2xl border border-slate-100">
-                              <button onClick={() => handleWorkstationConfigChange(p, 'peopleDiurno', Math.max(0, config.peopleDiurno - 1))} className="w-8 h-8 rounded-xl bg-white shadow-sm flex items-center justify-center font-black">-</button>
-                              <span className="font-mono font-black text-base min-w-[28px] text-center text-amber-700">{config.peopleDiurno}</span>
-                              <button onClick={() => handleWorkstationConfigChange(p, 'peopleDiurno', config.peopleDiurno + 1)} className="w-8 h-8 rounded-xl bg-white shadow-sm flex items-center justify-center font-black">+</button>
+                            
+                            <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-2xl border border-slate-100">
+                              {/* TOGGLE DIA */}
+                              <button 
+                                onClick={() => toggleWorkstationShift(p, 'day')}
+                                className={cn(
+                                  "w-12 h-12 rounded-xl flex flex-col items-center justify-center transition-all shadow-sm",
+                                  config.isDayActive ? "bg-amber-500 text-white shadow-amber-200" : "bg-white text-slate-300"
+                                )}
+                                title={config.isDayActive ? "Turno Día Encendido" : "Turno Día Apagado"}
+                              >
+                                <Sun className="w-4 h-4 mb-0.5" />
+                                <span className="text-[8px] font-black uppercase">D</span>
+                              </button>
+                              
+                              {/* TOGGLE NOCHE */}
+                              <button 
+                                onClick={() => toggleWorkstationShift(p, 'night')}
+                                className={cn(
+                                  "w-12 h-12 rounded-xl flex flex-col items-center justify-center transition-all shadow-sm",
+                                  config.isNightActive ? "bg-indigo-600 text-white shadow-indigo-200" : "bg-white text-slate-300"
+                                )}
+                                title={config.isNightActive ? "Turno Noche Encendido" : "Turno Noche Apagado"}
+                              >
+                                <Moon className="w-4 h-4 mb-0.5" />
+                                <span className="text-[8px] font-black uppercase">N</span>
+                              </button>
                             </div>
                           </div>
                         );
@@ -757,34 +807,18 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 </CardContent>
               </Card>
 
-              <Card className="rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden">
-                <CardHeader className="bg-slate-50/50 p-8 border-b flex flex-row items-center justify-between">
-                  <div>
-                    <CardTitle className="text-xl font-black uppercase tracking-tight flex items-center gap-2"><Moon className="w-5 h-5 text-indigo-500" /> Dotación Turno Nocturno</CardTitle>
-                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">Asignación de operadores para la jornada de noche</p>
-                  </div>
-                </CardHeader>
-                <CardContent className="p-8">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-h-[40vh] overflow-y-auto pr-2">
-                      {uniquePuestos.map(p => {
-                        const config = workstationConfigs[p] || { machine: p, peopleDiurno: 1, peopleNocturno: 0 };
-                        return (
-                          <div key={`n-${p}`} className="flex items-center justify-between p-5 border-2 border-slate-50 rounded-3xl bg-white hover:border-indigo-100 transition-all group">
-                            <div>
-                              <p className="font-black text-slate-800 uppercase text-xs">{p}</p>
-                              <Badge className="bg-indigo-50 text-indigo-600 border-none font-mono text-[9px] mt-2">CAP: {(config.peopleNocturno * horasNetasNocturnas).toFixed(1)}h</Badge>
-                            </div>
-                            <div className="flex items-center gap-3 bg-slate-50 p-2 rounded-2xl border border-slate-100">
-                              <button onClick={() => handleWorkstationConfigChange(p, 'peopleNocturno', Math.max(0, config.peopleNocturno - 1))} className="w-8 h-8 rounded-xl bg-white shadow-sm flex items-center justify-center font-black">-</button>
-                              <span className="font-mono font-black text-base min-w-[28px] text-center text-indigo-700">{config.peopleNocturno}</span>
-                              <button onClick={() => handleWorkstationConfigChange(p, 'peopleNocturno', config.peopleNocturno + 1)} className="w-8 h-8 rounded-xl bg-white shadow-sm flex items-center justify-center font-black">+</button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                  </div>
-                </CardContent>
-              </Card>
+              {/* LEYENDA TÉCNICA */}
+              <div className="bg-blue-50 border border-blue-100 rounded-3xl p-6 flex gap-4">
+                <div className="bg-blue-600 p-2 rounded-xl text-white h-fit"><ClipboardList className="w-5 h-5" /></div>
+                <div>
+                  <h4 className="text-xs font-black text-blue-900 uppercase mb-2">Lógica de Capacidad</h4>
+                  <ul className="text-[10px] text-blue-800/80 space-y-1 font-medium leading-relaxed">
+                    <li>• <span className="font-black">DÍA (D):</span> Suma {horasNetasDiurnas.toFixed(2)}h netas si está activa.</li>
+                    <li>• <span className="font-black">NOCHE (N):</span> Suma {horasNetasNocturnas.toFixed(2)}h netas si está activa.</li>
+                    <li>• <span className="font-black">EFICIENCIA:</span> Los valores ya consideran el 84% de rendimiento estándar.</li>
+                  </ul>
+                </div>
+              </div>
             </div>
           </div>
         </TabsContent>
