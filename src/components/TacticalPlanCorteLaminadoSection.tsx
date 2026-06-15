@@ -473,7 +473,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                           {groupedNeeds.length}
                         </p>
                      </div>
-                     <div className="flex flex-col gap-1 mt-1 border-l border-white/10 pl-6">
+                     <div className="flex flex-col gap-1 mt-1 border-l border-white/10 pl-6 text-left">
                         {densityBreakdown.map(([dens, count]) => (
                           <div key={dens} className="flex items-center gap-2">
                              <span className="text-[10px] font-black text-slate-400 uppercase tracking-tight">
@@ -559,7 +559,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           </div>
         </TabsContent>
 
-        <TabsContent value="ordenes" className="space-y-6 animate-in fade-in duration-300">
+        <TabsContent value="ordenes" className="space-y-6 animate-in fade-in duration-300 text-left">
           <div className="flex items-center justify-between bg-white p-4 rounded-3xl border border-gray-100 shadow-xl">
             <div className="flex items-center gap-6 text-left">
               <div className="flex flex-col">
@@ -625,7 +625,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           </div>
         </TabsContent>
 
-        <TabsContent value="listaMateriales" className="space-y-6 animate-in fade-in duration-300">
+        <TabsContent value="listaMateriales" className="space-y-6 animate-in fade-in duration-300 text-left">
           <div className="flex items-center justify-between bg-white p-5 rounded-3xl border border-gray-100 shadow-xl">
              <div className="flex items-center gap-4">
                <div className="p-3 bg-indigo-600/10 rounded-2xl text-indigo-600"><ClipboardList className="w-6 h-6" /></div>
@@ -646,7 +646,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           </div>
         </TabsContent>
 
-        <TabsContent value="tiempos" className="animate-in fade-in duration-300 space-y-10">
+        <TabsContent value="tiempos" className="animate-in fade-in duration-300 space-y-10 text-left">
           <div className="space-y-4">
             <div className="flex items-center gap-3 px-2 text-left">
               <div className="p-2 bg-indigo-600 rounded-xl text-white shadow-lg"><Activity className="w-4 h-4" /></div>
@@ -676,7 +676,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                            <Badge variant="outline" className="bg-slate-50 text-slate-400 border-slate-200 font-mono px-2 py-0">{t.RespControlProd || t.RESP_CONTROL_PROD || '—'}</Badge>
                         </td>
                         <td className="px-6 py-4 border-r border-dashed border-gray-100 text-slate-400 font-bold text-center">{t.Almacen || t.ALMACEN || '—'}</td>
-                        <td className="px-6 py-4 font-mono text-teal-600 border-r border-dashed border-gray-100 bg-teal-50/10 text-sm">{Number(t.Tiempo || 0).toFixed(4)}</td>
+                        <td className="px-6 py-4 font-mono text-teal-600 border-r border-dashed border-gray-100 bg-teal-50/10 text-sm">{Number(t.Tiempo_Min || t.Tiempo || t.tiempo || 0).toFixed(4)}</td>
                         <td className="px-6 py-4 text-slate-400 font-mono text-center">{(t.StockActual || 0).toLocaleString()}</td>
                       </tr>
                     ))}
