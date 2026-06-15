@@ -43,6 +43,7 @@ import type { Grupo, Restriccion } from '@/types/interfaces';
 import { cn } from '@/lib/utils';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, parseISO, addMonths, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { MaestroMaterialesExplosionSection } from './MaestroMaterialesExplosionSection';
 
 interface UnifiedNeedRow {
   material: string;
@@ -128,12 +129,12 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [processedSignature, setProcessedSignature] = useState('');
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
-  // Definición de datesWithOrders para el calendario
+  // Definición de datesWithOrders para el marcador del calendario
   const datesWithOrders = useMemo(() => {
     const dates = new Set<string>();
     ordenes.forEach(o => {
-      const d = String(o.FECHAINICIO || o.FECHA || '').trim();
-      if (d && d !== 'null') {
+      const d = String(o.FECHAINICIO || o.FECHA || o.fecha_inicio || '').trim();
+      if (d && d !== 'null' && d !== 'undefined') {
         const normalized = d.includes('T') ? d.split('T')[0] : d;
         dates.add(normalized);
       }
@@ -146,7 +147,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     const now = new Date();
     setViewDate(now);
     setSelectedDate(now.toISOString().split('T')[0]);
+    
     const init = async () => {
+      setIsLoading(true);
       try {
         const groupsRes = await grupoService.getAll();
         const filteredGroups = (groupsRes.data || []).filter(g => {
@@ -155,16 +158,23 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         });
         setGrupos(filteredGroups);
         const ids = filteredGroups.map(g => g.codigo_grupo);
+        
         const [restrs, provs, times, kpiLooper] = await Promise.all([
           restriccionService.getAll(),
           serviciosService.OrdenesProvisionalesPaginados(1, 20000).catch(() => ({ data: [] })),
           serviciosService.getTiemposEnsamblado(1, 15000).catch(() => ({ data: [] })),
           serviciosService.getKPIMAestroLooper().catch(() => ({ data: [] }))
         ]);
+        
         setRestriccionesArray((restrs.data || []).filter((r: any) => ids.includes(r.codigo_grupo)));
         setOrders(provs.data?.data || provs.data || []);
         setTiemposEnsamblado(times.data?.data || times.data || []);
-        setKpiLooperData(kpiLooper.data || []);
+        
+        // CORRECCIÓN: Extraer correctamente el array de datos de la respuesta KPI
+        const looperDataRaw = kpiLooper?.data || (Array.isArray(kpiLooper) ? kpiLooper : []);
+        setKpiLooperData(looperDataRaw);
+        
+        inspector.captureVariable('looperDataLoaded', looperDataRaw.length);
       } catch (e) {
         console.error('Error init:', e);
       } finally {
@@ -172,7 +182,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       }
     };
     init();
-  }, []);
+  }, [inspector]);
 
   const filteredOrders = useMemo(() => {
     const relevantGroups = grupos.map(g => g.codigo_grupo);
@@ -460,17 +470,12 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                    </p>
                 </div>
                 <div className="flex flex-col gap-1 flex-1 text-left">
-                   <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Nro de Aperturas o corridas</span>
+                   <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Nro De Aperturas o corridas = {groupedNeeds.length}</span>
                    <div className="flex items-start gap-12">
-                     <div className="text-center">
-                        <p className="text-4xl font-black font-mono text-yellow-400 tracking-tighter">
-                          {groupedNeeds.length}
-                        </p>
-                     </div>
-                     <div className="flex flex-col gap-1 mt-1 border-l border-white/10 pl-6 text-left">
+                     <div className="flex flex-col gap-1 mt-1 pl-1 text-left">
                         {densityBreakdown.map(([dens, count]) => (
                           <div key={dens} className="flex items-center gap-2">
-                             <span className="text-[10px] font-black text-slate-400 uppercase tracking-tight">
+                             <span className="text-[10px] font-black text-yellow-400 uppercase tracking-tight">
                                - D{dens} = {count} CORRIDA{count !== 1 ? 'S' : ''}
                              </span>
                           </div>
@@ -571,7 +576,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
           <div className="border border-gray-100 rounded-3xl shadow-xl overflow-hidden bg-white">
             <div className="overflow-x-auto">
-              <table className="min-w-full border-collapse font-sans text-[11px] text-center">
+              <table className="min-w-full divide-y divide-gray-200 border-collapse font-sans text-[11px] text-center">
                 <thead className="bg-[#1e293b] text-white border-b border-gray-100 uppercase font-black tracking-widest text-[9px] sticky top-0 z-10">
                   <tr>
                     <th className="px-6 py-5 border-r border-white/5">Orden</th>
@@ -620,24 +625,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="listaMateriales" className="space-y-6 animate-in fade-in duration-300 text-left">
-          <div className="flex items-center justify-between bg-white p-5 rounded-3xl border border-gray-100 shadow-xl">
-             <div className="flex items-center gap-4 text-left">
-               <div className="p-3 bg-indigo-600/10 rounded-2xl text-indigo-600"><ClipboardList className="w-6 h-6" /></div>
-               <div>
-                 <h3 className="text-sm font-black text-slate-800 uppercase tracking-tighter">Auditoría Estructural BOM</h3>
-                 <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest mt-1">Niveles de Explosión SAP | Auditoría Multinivel Directa</p>
-               </div>
-             </div>
-             <form onSubmit={(e) => { e.preventDefault(); if(fertBusqueda.trim()) handleRefresh(); }} className="flex gap-3">
-               <div className="relative group text-left">
-                 <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-300 group-hover:text-red-500 transition-colors" />
-                 <input type="text" placeholder="Código FERT..." value={fertBusqueda} onChange={e => setFertBusqueda(e.target.value)} className="pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-black w-56 focus:ring-4 focus:ring-red-500/10 focus:bg-white transition-all outline-none" />
-               </div>
-               <Button type="submit" disabled={isSearchingBOM} className="bg-slate-900 text-white rounded-2xl h-10 px-8 text-[10px] font-black uppercase tracking-widest shadow-xl hover:bg-black transition-all">
-                 {isSearchingBOM ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Auditar'}
-               </Button>
-             </form>
-          </div>
+           <MaestroMaterialesExplosionSection ordenes={filteredOrders} />
         </TabsContent>
 
         <TabsContent value="tiempos" className="animate-in fade-in duration-300 space-y-10 text-left">
