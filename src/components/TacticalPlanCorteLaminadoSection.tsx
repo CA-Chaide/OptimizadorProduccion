@@ -131,7 +131,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [processedSignature, setProcessedSignature] = useState('');
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
-  // Definición estable de fechas con órdenes para el calendario
   const datesWithOrders = useMemo(() => {
     const dates = new Set<string>();
     ordenes.forEach(o => {
@@ -144,46 +143,42 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return dates;
   }, [ordenes]);
 
-  // Inicialización controlada
+  const initData = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const groupsRes = await grupoService.getAll();
+      const filteredGroups = (groupsRes.data || []).filter(g => {
+        const name = (g.nombre_grupo || '').toLowerCase();
+        return (name.includes('corte y laminado') || name.includes('laminado'));
+      });
+      setGrupos(filteredGroups);
+      const ids = filteredGroups.map(g => g.codigo_grupo);
+      
+      const [restrs, provs, times, kpiLooper, cuboInv] = await Promise.all([
+        restriccionService.getAll(),
+        serviciosService.OrdenesProvisionalesPaginados(1, 20000).catch(() => ({ data: [] })),
+        serviciosService.getTiemposEnsamblado(1, 15000).catch(() => ({ data: [] })),
+        serviciosService.getKPIMAestroLooper().catch(() => ({ data: [] })),
+        serviciosService.getCuboInventarios(1, 1000).catch(() => ({ data: [] }))
+      ]);
+      
+      setRestriccionesArray((restrs.data || []).filter((r: any) => ids.includes(r.codigo_grupo)));
+      setOrders(provs.data?.data || provs.data || []);
+      setTiemposEnsamblado(times.data?.data || times.data || []);
+      setKpiLooperData(kpiLooper?.data || []);
+      setCuboInventariosData(cuboInv?.data || []);
+
+    } catch (e) {
+      console.error('Error init:', e);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     setMounted(true);
-    const now = new Date();
-    setViewDate(now);
-    setSelectedDate(now.toISOString().split('T')[0]);
-    
-    const init = async () => {
-      setIsLoading(true);
-      try {
-        const groupsRes = await grupoService.getAll();
-        const filteredGroups = (groupsRes.data || []).filter(g => {
-          const name = (g.nombre_grupo || '').toLowerCase();
-          return (name.includes('corte y laminado') || name.includes('laminado'));
-        });
-        setGrupos(filteredGroups);
-        const ids = filteredGroups.map(g => g.codigo_grupo);
-        
-        const [restrs, provs, times, kpiLooper, cuboInv] = await Promise.all([
-          restriccionService.getAll(),
-          serviciosService.OrdenesProvisionalesPaginados(1, 20000).catch(() => ({ data: [] })),
-          serviciosService.getTiemposEnsamblado(1, 15000).catch(() => ({ data: [] })),
-          serviciosService.getKPIMAestroLooper().catch(() => ({ data: [] })),
-          serviciosService.getCuboInventarios(1, 1000).catch(() => ({ data: [] }))
-        ]);
-        
-        setRestriccionesArray((restrs.data || []).filter((r: any) => ids.includes(r.codigo_grupo)));
-        setOrders(provs.data?.data || provs.data || []);
-        setTiemposEnsamblado(times.data?.data || times.data || []);
-        setKpiLooperData(kpiLooper?.data || []);
-        setCuboInventariosData(cuboInv?.data || []);
-
-      } catch (e) {
-        console.error('Error init:', e);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    init();
-  }, []); 
+    initData();
+  }, [initData]);
 
   const filteredOrders = useMemo(() => {
     const relevantGroups = grupos.map(g => g.codigo_grupo);
@@ -205,13 +200,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       return true;
     });
   }, [ordenes, selectedDate, grupos, restriccionesArray]);
-
-  const filteredInventario = useMemo(() => {
-    return cuboInventariosData.filter(row => {
-      const desc = String(row.Descripcion || row.DESCRIPCION || row.Material || '').toLowerCase();
-      return desc.includes('laminado');
-    });
-  }, [cuboInventariosData]);
 
   const handleProcessResumen = useCallback(async (ordersToProcess: any[]) => {
     if (ordersToProcess.length === 0) {
@@ -468,7 +456,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                    </p>
                 </div>
                 <div className="flex flex-col gap-1 border-r border-white/10 px-10 text-left">
-                   <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Cantidad Necesaria (und)</span>
+                   <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Cantidad necesaria (und)</span>
                    <p className="text-4xl font-black font-mono text-indigo-400 tracking-tighter">
                      {Math.round(totalsUnified.un).toLocaleString()}
                    </p>
@@ -478,7 +466,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                    <div className="flex flex-col gap-1 mt-1 pl-1 text-left">
                         {densityBreakdown.map(([dens, count]) => (
                           <div key={dens} className="flex items-center gap-2">
-                             <span className="text-[10px] font-black text-yellow-400 uppercase tracking-tight">
+                             <span className="text-[10px] font-black text-[#facc15] uppercase tracking-tight">
                                - D{dens} = {count} CORRIDA{count !== 1 ? 'S' : ''}
                              </span>
                           </div>
@@ -501,8 +489,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     <th className="px-4 py-4 border-r border-black/5 text-right bg-orange-100/30">Consumo OF [Un]</th>
                     <th className="px-6 py-4 border-r border-black/5 bg-[#cfe2f3]">Peso / Rollo (Kg)</th>
                     <th className="px-4 py-4 border-r border-black/5 text-center">% Necesidad</th>
-                    <th className="px-4 py-4 border-r border-black/5 text-right font-black bg-red-100/50 text-red-900">PLAN (UN)</th>
-                    <th className="px-4 py-4 text-right font-black bg-red-100/50 text-red-900">PLAN (KG)</th>
+                    <th className="px-4 py-4 border-r border-black/5 text-right font-black bg-[#fee2e2] text-red-900">PLAN (UN)</th>
+                    <th className="px-4 py-4 text-right font-black bg-[#fee2e2] text-red-900">PLAN (KG)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 font-bold">
@@ -533,8 +521,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                             <td className="px-4 py-4 text-right font-mono font-black text-emerald-700 bg-emerald-50/30">{Math.round(group.totalUn).toLocaleString()}</td>
                             <td className="px-6 py-4 bg-[#cfe2f3]/30 font-mono text-slate-300">—</td>
                             <td className="px-4 py-4 text-center font-black text-indigo-300">100%</td>
-                            <td className="px-4 py-4 text-right font-mono font-black text-red-900 bg-red-50">{group.totalPlanUn.toLocaleString()}</td>
-                            <td className="px-4 py-4 text-right font-mono font-black text-red-900 bg-red-50">{group.totalPlanKg.toLocaleString(undefined, { minimumFractionDigits: 1 })}</td>
+                            <td className="px-4 py-4 text-right font-mono font-black text-red-900 bg-[#fee2e2]/50">{group.totalPlanUn.toLocaleString()}</td>
+                            <td className="px-4 py-4 text-right font-mono font-black text-red-900 bg-[#fee2e2]/50">{group.totalPlanKg.toLocaleString(undefined, { minimumFractionDigits: 1 })}</td>
                           </tr>
                           {isExpanded && group.items.map((row, iIdx) => (
                             <tr key={`${groupKey}-${iIdx}`} className="bg-white hover:bg-blue-50/10 transition-colors">
@@ -546,8 +534,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                               <td className="px-4 py-3 border-r border-gray-100 text-right font-mono font-bold text-emerald-400">{Math.round(row.consumoUn).toLocaleString()}</td>
                               <td className="px-6 py-3 border-r border-gray-100 bg-[#cfe2f3] font-mono font-black text-indigo-700">{row.peso.toFixed(2)}</td>
                               <td className="px-4 py-3 border-r border-black/10 text-center font-black text-slate-300">{(row.porcentajeNecesidad * 100).toFixed(0)}%</td>
-                              <td className="px-4 py-3 border-r border-black/10 text-right font-mono font-black text-red-500 bg-red-50/20">{row.planUn.toLocaleString()}</td>
-                              <td className="px-4 py-3 text-right font-mono font-black text-red-500 bg-red-50/20">{row.planKg.toLocaleString(undefined, { minimumFractionDigits: 1 })}</td>
+                              <td className="px-4 py-3 border-r border-black/10 text-right font-mono font-black text-red-500 bg-[#fee2e2]/20">{row.planUn.toLocaleString()}</td>
+                              <td className="px-4 py-3 text-right font-mono font-black text-red-500 bg-[#fee2e2]/20">{row.planKg.toLocaleString(undefined, { minimumFractionDigits: 1 })}</td>
                             </tr>
                           ))}
                         </React.Fragment>
@@ -634,7 +622,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           <div className="space-y-4">
             <div className="flex items-center gap-3 px-2 text-left">
               <div className="p-2 bg-indigo-600 rounded-xl text-white shadow-lg"><Activity className="w-4 h-4" /></div>
-              <h3 className="text-sm font-black uppercase tracking-widest text-slate-800">KPI Maestro Looper (Costura Especial)</h3>
+              <h3 className="text-sm font-black uppercase tracking-widest text-slate-800">Indicadores Maestro Looper (KPI SAP)</h3>
             </div>
             <Card className="rounded-3xl border border-indigo-100 shadow-xl overflow-hidden bg-white">
               <div className="overflow-x-auto max-h-[600px] relative">
@@ -652,17 +640,17 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   </thead>
                   <tbody className="divide-y divide-gray-100 text-[11px] font-black">
                     {kpiLooperData.length === 0 ? (
-                      <tr><td colSpan={7} className="py-24 text-slate-200 font-black uppercase tracking-widest text-center italic">Sin indicadores KPI registrados para el área Looper</td></tr>
+                      <tr><td colSpan={7} className="py-24 text-slate-200 font-black uppercase tracking-widest text-center italic">Consultando indicadores KPI de SAP...</td></tr>
                     ) : (
                       kpiLooperData.map((row, i) => (
                         <tr key={i} className="hover:bg-indigo-50/30 transition-colors">
-                          <td className="px-6 py-4 border-r border-dashed border-gray-100 text-left font-mono text-indigo-600">{row.Material || '—'}</td>
-                          <td className="px-6 py-4 border-r border-dashed border-gray-100 text-left uppercase text-slate-600">{row.Descripcion || '—'}</td>
-                          <td className="px-6 py-4 border-r border-dashed border-gray-100">{row.PesoUN ?? '—'}</td>
-                          <td className="px-6 py-4 border-r border-dashed border-gray-100">{row.Densidad || '—'}</td>
-                          <td className="px-6 py-4 border-r border-dashed border-gray-100">{row.Espesor ?? '—'}</td>
-                          <td className="px-6 py-4 border-r border-dashed border-gray-100 font-mono text-teal-600">{row.TiempoRolloMin ?? '—'}</td>
-                          <td className="px-6 py-4 font-mono text-slate-400">{row.TiempoRolloHora ?? '—'}</td>
+                          <td className="px-6 py-4 border-r border-dashed border-gray-100 text-left font-mono text-indigo-600">{String(row.Material || '—')}</td>
+                          <td className="px-6 py-4 border-r border-dashed border-gray-100 text-left uppercase text-slate-600">{String(row.Descripcion || '—')}</td>
+                          <td className="px-6 py-4 border-r border-dashed border-gray-100 font-mono text-indigo-400">{safeNum(row.PesoUN).toFixed(2)} Kg</td>
+                          <td className="px-6 py-4 border-r border-dashed border-gray-100 text-indigo-900">{String(row.Densidad || '—')}</td>
+                          <td className="px-6 py-4 border-r border-dashed border-gray-100 font-mono">{safeNum(row.Espesor).toFixed(2)}</td>
+                          <td className="px-6 py-4 border-r border-dashed border-gray-100 font-mono text-teal-600">{safeNum(row.TiempoRolloMin).toFixed(2)}</td>
+                          <td className="px-6 py-4 font-mono text-slate-400">{safeNum(row.TiempoRolloHora).toFixed(3)}</td>
                         </tr>
                       ))
                     )}
@@ -677,7 +665,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           <div className="space-y-4">
             <div className="flex items-center gap-3 px-2 text-left">
               <div className="p-2 bg-blue-600 rounded-xl text-white shadow-lg"><Database className="w-4 h-4" /></div>
-              <h3 className="text-sm font-black uppercase tracking-widest text-slate-800">Cubo de Inventarios SAP (Filtro: Laminado)</h3>
+              <h3 className="text-sm font-black uppercase tracking-widest text-slate-800">Cubo de Inventarios SAP (Visión Total)</h3>
             </div>
             <Card className="rounded-3xl border border-blue-100 shadow-xl overflow-hidden bg-white">
               <div className="overflow-x-auto max-h-[600px] relative">
@@ -694,10 +682,10 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 text-[11px] font-black">
-                    {filteredInventario.length === 0 ? (
-                      <tr><td colSpan={7} className="py-24 text-slate-200 font-black uppercase tracking-widest text-center italic">No se encontraron ítems de "Laminado" en el Cubo de Inventarios</td></tr>
+                    {cuboInventariosData.length === 0 ? (
+                      <tr><td colSpan={7} className="py-24 text-slate-200 font-black uppercase tracking-widest text-center italic">Consultando inventarios íntegros de SAP...</td></tr>
                     ) : (
-                      filteredInventario.map((row, i) => (
+                      cuboInventariosData.map((row, i) => (
                         <tr key={i} className="hover:bg-blue-50/30 transition-colors">
                           <td className="px-6 py-4 border-r border-dashed border-gray-100">{row.Centro || '—'}</td>
                           <td className="px-6 py-4 border-r border-dashed border-gray-100 font-mono text-blue-600">{row.Material || '—'}</td>

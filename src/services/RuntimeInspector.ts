@@ -224,7 +224,6 @@ class RuntimeInspector {
 export const runtimeInspector = RuntimeInspector.getInstance();
 
 export function useRuntimeInspector(section: string) {
-  // Stabilized using useMemo to prevent infinite loops in useEffect dependencies
   return React.useMemo(() => ({
     captureVariable: (name: string, value: any, metadata?: any) => {
       runtimeInspector.captureVariable(section, 'component', name, value, metadata);
