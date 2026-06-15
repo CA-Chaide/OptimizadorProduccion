@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { 
   Scissors, 
   Package, 
@@ -22,7 +22,8 @@ import {
   Minus,
   Info,
   RefreshCw,
-  Box
+  Box,
+  TrendingUp
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -90,7 +91,7 @@ const parseDimensionsEnhanced = (desc: string) => {
   const d = desc.toUpperCase();
   const densMatch = d.match(/D(\d+)/);
   const densidad = densMatch ? parseInt(densMatch[1]) : 0;
-  const dimMatch = d.match(/(\d+(?:\.\d+)?)\s*[xX*]\s*(\d+(?:\.\d+)?)/);
+  const dimMatch = d.match(/(\d+(?:\.\d+)?)\s*[xX*]\s*(\d+(?:\.\d+)?)(?:\s*[xX*]\s*(\d+(?:\.\d+)?))?/);
   const alturaOriginal = dimMatch ? parseFloat(dimMatch[1]) : 0;
   const espesor = dimMatch ? parseFloat(dimMatch[2]) : 0;
   
@@ -120,16 +121,13 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [kpiLooperData, setKpiLooperData] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<string>('all');
-  const [viewDate, setViewDate] = useState<Date | null>(null);
-  const [fertBusqueda, setFertBusqueda] = useState('');
-  const [isSearchingBOM, setIsSearchingBOM] = useState(false);
+  const [viewDate, setViewDate] = useState<Date>(new Date());
   const [unifiedNeeds, setUnifiedNeeds] = useState<UnifiedNeedRow[]>([]);
   const [isProcessingResumen, setIsProcessingResumen] = useState(false);
   const [resumenProgress, setResumenProgress] = useState({ current: 0, total: 0 });
   const [processedSignature, setProcessedSignature] = useState('');
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
-  // Definición de datesWithOrders para el marcador del calendario
   const datesWithOrders = useMemo(() => {
     const dates = new Set<string>();
     ordenes.forEach(o => {
@@ -170,11 +168,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         setOrders(provs.data?.data || provs.data || []);
         setTiemposEnsamblado(times.data?.data || times.data || []);
         
-        // CORRECCIÓN: Extraer correctamente el array de datos de la respuesta KPI
         const looperDataRaw = kpiLooper?.data || (Array.isArray(kpiLooper) ? kpiLooper : []);
         setKpiLooperData(looperDataRaw);
-        
-        inspector.captureVariable('looperDataLoaded', looperDataRaw.length);
       } catch (e) {
         console.error('Error init:', e);
       } finally {
@@ -182,7 +177,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       }
     };
     init();
-  }, [inspector]);
+  }, []);
 
   const filteredOrders = useMemo(() => {
     const relevantGroups = grupos.map(g => g.codigo_grupo);
@@ -378,7 +373,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
   return (
     <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
-      {/* HEADER PRINCIPAL */}
       <div className="flex items-center justify-between pb-4 border-b border-gray-100">
         <div className="flex items-center space-x-3 text-left">
           <div className="p-2 bg-red-600/10 rounded-xl shadow-inner"><Scissors className="w-6 h-6 text-red-600" /></div>
@@ -407,31 +401,27 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             </PopoverTrigger>
             <PopoverContent className="w-64 p-0 border-none shadow-2xl rounded-2xl overflow-hidden mt-3" align="end">
               <div className="bg-white p-5 font-sans text-left">
-                {viewDate && (
-                  <>
-                    <div className="flex items-center justify-between mb-5">
-                      <h3 className="text-xs font-black text-slate-800 capitalize">{format(viewDate, 'MMMM yyyy', { locale: es })}</h3>
-                      <div className="flex gap-1 bg-slate-50 p-1 rounded-xl">
-                        <Button variant="ghost" size="icon" onClick={() => setViewDate(subMonths(viewDate, 1))} className="h-8 w-8 hover:bg-white hover:shadow-sm"><ChevronLeft className="w-4 h-4" /></Button>
-                        <Button variant="ghost" size="icon" onClick={() => setViewDate(addMonths(viewDate, 1))} className="h-8 w-8 hover:bg-white hover:shadow-sm"><ChevronRight className="w-4 h-4" /></Button>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-7 gap-y-1.5 text-center mb-4">
-                      {['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO'].map(d => <div key={d} className="text-[10px] font-black text-slate-300 py-1">{d}</div>)}
-                      {calendarDays.map((day, idx) => {
-                        if (!day) return <div key={idx} />;
-                        const dStr = format(day, 'yyyy-MM-dd');
-                        const sel = selectedDate === dStr;
-                        return (
-                          <button key={dStr} onClick={() => setSelectedDate(sel ? 'all' : dStr)} className={cn("relative h-8 w-8 mx-auto rounded-xl flex items-center justify-center transition-all", sel ? "bg-red-600 text-white shadow-md shadow-red-200" : "hover:bg-slate-50")}>
-                            <span className={cn("text-xs font-black", !datesWithOrders.has(dStr) && !sel ? "text-slate-200" : "text-slate-700")}>{format(day, 'd')}</span>
-                            {datesWithOrders.has(dStr) && !sel && <div className="absolute bottom-1.5 w-1 h-1 bg-red-400 rounded-full" />}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </>
-                )}
+                <div className="flex items-center justify-between mb-5">
+                  <h3 className="text-xs font-black text-slate-800 capitalize">{format(viewDate, 'MMMM yyyy', { locale: es })}</h3>
+                  <div className="flex gap-1 bg-slate-50 p-1 rounded-xl">
+                    <Button variant="ghost" size="icon" onClick={() => setViewDate(subMonths(viewDate, 1))} className="h-8 w-8 hover:bg-white hover:shadow-sm"><ChevronLeft className="w-4 h-4" /></Button>
+                    <Button variant="ghost" size="icon" onClick={() => setViewDate(addMonths(viewDate, 1))} className="h-8 w-8 hover:bg-white hover:shadow-sm"><ChevronRight className="w-4 h-4" /></Button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-7 gap-y-1.5 text-center mb-4">
+                  {['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO'].map(d => <div key={d} className="text-[10px] font-black text-slate-300 py-1">{d}</div>)}
+                  {calendarDays.map((day, idx) => {
+                    if (!day) return <div key={idx} />;
+                    const dStr = format(day, 'yyyy-MM-dd');
+                    const sel = selectedDate === dStr;
+                    return (
+                      <button key={dStr} onClick={() => setSelectedDate(sel ? 'all' : dStr)} className={cn("relative h-8 w-8 mx-auto rounded-xl flex items-center justify-center transition-all", sel ? "bg-red-600 text-white shadow-md shadow-red-200" : "hover:bg-slate-50")}>
+                        <span className={cn("text-xs font-black", !datesWithOrders.has(dStr) && !sel ? "text-slate-200" : "text-slate-700")}>{format(day, 'd')}</span>
+                        {datesWithOrders.has(dStr) && !sel && <div className="absolute bottom-1.5 w-1 h-1 bg-red-400 rounded-full" />}
+                      </button>
+                    );
+                  })}
+                </div>
                 <Button variant="ghost" size="sm" className="w-full text-[10px] font-black uppercase text-red-600 h-9 mt-1 rounded-xl hover:bg-red-50 tracking-widest" onClick={() => setSelectedDate('all')}>Ver Todo el Plan</Button>
               </div>
             </PopoverContent>
@@ -454,7 +444,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         </TabsList>
 
         <TabsContent value="resumen" className="space-y-6 animate-in fade-in duration-300">
-           {/* BARRA DE RESULTADOS MAESTRA */}
            <div className="flex items-center gap-10 bg-[#1e293b] p-6 rounded-[2.5rem] border border-white/5 shadow-2xl text-white">
              <div className="flex items-center gap-12 flex-1">
                 <div className="flex flex-col gap-1 border-r border-white/10 pr-10 text-left">
@@ -520,9 +509,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                       return (
                         <React.Fragment key={groupKey}>
                           <tr className="bg-slate-50/80 hover:bg-slate-100 cursor-pointer transition-all border-l-4 border-l-red-500" onClick={() => toggleGroup(groupKey)}>
-                            <td className="px-4 py-4 flex items-center gap-2">
+                            <td className="px-4 py-4 flex items-center gap-2 text-left">
                                {isExpanded ? <Minus className="w-3 h-3 text-red-500" /> : <Plus className="w-3 h-3 text-indigo-500" />}
-                               <span className="font-black text-[10px] text-slate-400 uppercase tracking-widest text-left">Apertura {group.altura} - D{group.densidad}</span>
+                               <span className="font-black text-[10px] text-slate-400 uppercase tracking-widest">Apertura {group.altura} - D{group.densidad}</span>
                             </td>
                             <td className="px-6 py-4 text-left text-indigo-900 font-black uppercase">Subtotal Corrida</td>
                             <td className="px-3 py-4 text-slate-400 font-mono">{(group.total1006).toLocaleString()}</td>
