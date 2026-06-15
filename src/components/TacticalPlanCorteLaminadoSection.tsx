@@ -24,7 +24,8 @@ import {
   Info,
   RefreshCw,
   Box,
-  TrendingUp
+  TrendingUp,
+  Database
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -120,6 +121,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [ordenes, setOrders] = useState<any[]>([]);
   const [tiemposEnsamblado, setTiemposEnsamblado] = useState<any[]>([]);
   const [kpiLooperData, setKpiLooperData] = useState<any[]>([]);
+  const [cuboInventariosData, setCuboInventariosData] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<string>('all');
   const [viewDate, setViewDate] = useState<Date>(new Date());
@@ -158,11 +160,12 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         setGrupos(filteredGroups);
         const ids = filteredGroups.map(g => g.codigo_grupo);
         
-        const [restrs, provs, times, kpiLooper] = await Promise.all([
+        const [restrs, provs, times, kpiLooper, cuboInv] = await Promise.all([
           restriccionService.getAll(),
           serviciosService.OrdenesProvisionalesPaginados(1, 20000).catch(() => ({ data: [] })),
           serviciosService.getTiemposEnsamblado(1, 15000).catch(() => ({ data: [] })),
-          serviciosService.getKPIMAestroLooper().catch(() => ({ data: [] }))
+          serviciosService.getKPIMAestroLooper().catch(() => ({ data: [] })),
+          serviciosService.getCuboInventarios(1, 1000).catch(() => ({ data: [] }))
         ]);
         
         setRestriccionesArray((restrs.data || []).filter((r: any) => ids.includes(r.codigo_grupo)));
@@ -171,6 +174,10 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         
         const looperDataRaw = kpiLooper?.data || (Array.isArray(kpiLooper) ? kpiLooper : []);
         setKpiLooperData(looperDataRaw);
+
+        const cuboInvRaw = cuboInv?.data || (Array.isArray(cuboInv) ? cuboInv : []);
+        setCuboInventariosData(cuboInvRaw);
+
       } catch (e) {
         console.error('Error init:', e);
       } finally {
@@ -178,7 +185,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       }
     };
     init();
-  }, []); // Fixed infinite loop by removing unstable dependencies
+  }, []); 
 
   const filteredOrders = useMemo(() => {
     const relevantGroups = grupos.map(g => g.codigo_grupo);
@@ -431,12 +438,13 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-4 h-11 bg-gray-100/50 p-1.5 rounded-2xl border border-gray-200 mb-8">
+        <TabsList className="grid grid-cols-5 h-11 bg-gray-100/50 p-1.5 rounded-2xl border border-gray-200 mb-8">
           {[ 
             { v: 'resumen', l: 'Resumen Necesidades', i: LayoutDashboard },
             { v: 'ordenes', l: 'Órdenes Provisionales', i: Package }, 
             { v: 'listaMateriales', l: 'Auditoría BOM', i: ClipboardList },
-            { v: 'tiempos', l: 'Procesos Looper', i: Clock }
+            { v: 'tiempos', l: 'Procesos Looper', i: Clock },
+            { v: 'inventario', l: 'Inventarios SAP', i: Database }
           ].map(tab => (
             <TabsTrigger key={tab.v} value={tab.v} className="gap-2 text-[10px] font-black uppercase transition-all data-[state=active]:bg-white data-[state=active]:shadow-lg data-[state=active]:text-red-600 rounded-xl">
               <tab.i className="w-4 h-4" /> {tab.l}
@@ -651,6 +659,49 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                           <td className="px-6 py-4 border-r border-dashed border-gray-100">{row.Espesor ?? '—'}</td>
                           <td className="px-6 py-4 border-r border-dashed border-gray-100 font-mono text-teal-600">{row.TiempoRolloMin ?? '—'}</td>
                           <td className="px-6 py-4 font-mono text-slate-400">{row.TiempoRolloHora ?? '—'}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="inventario" className="animate-in fade-in duration-300 space-y-10 text-left">
+          <div className="space-y-4">
+            <div className="flex items-center gap-3 px-2 text-left">
+              <div className="p-2 bg-blue-600 rounded-xl text-white shadow-lg"><Database className="w-4 h-4" /></div>
+              <h3 className="text-sm font-black uppercase tracking-widest text-slate-800">Cubo de Inventarios SAP (Resumen Planta)</h3>
+            </div>
+            <Card className="rounded-3xl border border-blue-100 shadow-xl overflow-hidden bg-white">
+              <div className="overflow-x-auto max-h-[600px] relative">
+                <table className="w-full border-collapse text-center">
+                  <thead className="bg-[#1e293b] text-white sticky top-0 z-10 text-[9px] font-black uppercase tracking-tight border-b border-white/5">
+                    <tr>
+                      <th className="px-6 py-5 border-r border-white/5">Centro</th>
+                      <th className="px-6 py-5 border-r border-white/5">Material</th>
+                      <th className="px-6 py-5 border-r border-white/10 text-left">Descripción</th>
+                      <th className="px-6 py-5 border-r border-white/5">Clase Aprov.</th>
+                      <th className="px-6 py-5 border-r border-white/5 bg-blue-500/20">Stock Actual</th>
+                      <th className="px-6 py-5 border-r border-white/5">Stock Seg.</th>
+                      <th className="px-6 py-5">Sector</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 text-[11px] font-black">
+                    {cuboInventariosData.length === 0 ? (
+                      <tr><td colSpan={7} className="py-24 text-slate-200 font-black uppercase tracking-widest text-center italic">Sincronizando existencias con el Cubo de Inventarios...</td></tr>
+                    ) : (
+                      cuboInventariosData.map((row, i) => (
+                        <tr key={i} className="hover:bg-blue-50/30 transition-colors">
+                          <td className="px-6 py-4 border-r border-dashed border-gray-100">{row.Centro || '—'}</td>
+                          <td className="px-6 py-4 border-r border-dashed border-gray-100 font-mono text-blue-600">{row.Material || '—'}</td>
+                          <td className="px-6 py-4 border-r border-dashed border-gray-100 text-left uppercase text-slate-500 truncate max-w-[250px]">{row.Descripcion || '—'}</td>
+                          <td className="px-6 py-4 border-r border-dashed border-gray-100 text-center font-black">{row.ClaseAprovisionam || '—'}</td>
+                          <td className="px-6 py-4 border-r border-dashed border-gray-100 font-mono text-blue-700 bg-blue-50/50">{Number(row.StockActual || 0).toLocaleString()}</td>
+                          <td className="px-6 py-4 border-r border-dashed border-gray-100 font-mono text-slate-400">{Number(row.StockSeguridad || 0).toLocaleString()}</td>
+                          <td className="px-6 py-4 text-slate-400 italic">{row.Sector || '—'}</td>
                         </tr>
                       ))
                     )}
