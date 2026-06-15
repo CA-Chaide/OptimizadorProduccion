@@ -25,10 +25,11 @@ export const serviciosService = {
     return response.json();
   },
 
-  async getCuboInventarios(): Promise<BodyResponse<any>> {
+  async getCuboInventarios(page: number, rowsPerPage: number ): Promise<BodyResponse<any>> {
     const response = await fetch(API_URL + "/cuboInventarios", {
       method: "POST",
       headers: getHeaders(),
+      body: JSON.stringify({ page: page, rowsPerPage: rowsPerPage }),
     });
     if (!response.ok) {
       const errorBody = await response.json().catch(() => ({ message: "Error desconocido" }));

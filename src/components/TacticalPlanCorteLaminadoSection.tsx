@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -587,7 +586,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-50 font-bold">
                   {filteredOrders.length === 0 ? (
-                    <tr><td colSpan={8} className="py-24 text-slate-200 font-black uppercase tracking-widest text-center italic">Sin registros técnicos para el filtro actual</td></tr>
+                    <tr><td colSpan={8} className="py-24 text-slate-200 font-black uppercase tracking-widest text-center italic">No se detectaron órdenes para los criterios aplicados</td></tr>
                   ) : (
                     filteredOrders.map((o, i) => {
                       const matCode = cleanCode(String(o.MATERIAL || '').match(/^(\d+)/)?.[1]);
@@ -652,22 +651,28 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 <table className="w-full border-collapse text-center">
                   <thead className="bg-[#1e293b] text-white sticky top-0 z-10 text-[9px] font-black uppercase tracking-tight border-b border-white/5">
                     <tr>
-                      {kpiLooperData.length > 0 && Object.keys(kpiLooperData[0]).map(key => (
-                        <th key={key} className="px-6 py-5 border-r border-white/5 text-left">{key.replace(/_/g, ' ')}</th>
-                      ))}
+                      <th className="px-6 py-5 border-r border-white/5 text-left">Material</th>
+                      <th className="px-6 py-5 border-r border-white/5 text-left">Descripción</th>
+                      <th className="px-6 py-5 border-r border-white/5">Peso UN</th>
+                      <th className="px-6 py-5 border-r border-white/5">Densidad</th>
+                      <th className="px-6 py-5 border-r border-white/5">Espesor</th>
+                      <th className="px-6 py-5 border-r border-white/5">T. Rollo (Min)</th>
+                      <th className="px-6 py-5">T. Rollo (H)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 text-[11px] font-black">
                     {kpiLooperData.length === 0 ? (
-                      <tr><td colSpan={10} className="py-24 text-slate-200 font-black uppercase tracking-widest text-center italic">Sin indicadores KPI registrados para el área Looper</td></tr>
+                      <tr><td colSpan={7} className="py-24 text-slate-200 font-black uppercase tracking-widest text-center italic">Sin indicadores KPI registrados para el área Looper</td></tr>
                     ) : (
                       kpiLooperData.map((row, i) => (
                         <tr key={i} className="hover:bg-indigo-50/30 transition-colors">
-                          {Object.values(row).map((val, j) => (
-                            <td key={j} className="px-6 py-4 border-r border-dashed border-gray-100 text-left">
-                              {String(val ?? '—')}
-                            </td>
-                          ))}
+                          <td className="px-6 py-4 border-r border-dashed border-gray-100 text-left font-mono text-indigo-600">{row.Material || '—'}</td>
+                          <td className="px-6 py-4 border-r border-dashed border-gray-100 text-left uppercase text-slate-600">{row.Descripcion || '—'}</td>
+                          <td className="px-6 py-4 border-r border-dashed border-gray-100">{row.PesoUN ?? '—'}</td>
+                          <td className="px-6 py-4 border-r border-dashed border-gray-100">{row.Densidad || '—'}</td>
+                          <td className="px-6 py-4 border-r border-dashed border-gray-100">{row.Espesor ?? '—'}</td>
+                          <td className="px-6 py-4 border-r border-dashed border-gray-100 font-mono text-teal-600">{row.TiempoRolloMin ?? '—'}</td>
+                          <td className="px-6 py-4 font-mono text-slate-400">{row.TiempoRolloHora ?? '—'}</td>
                         </tr>
                       ))
                     )}
