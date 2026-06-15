@@ -131,6 +131,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [processedSignature, setProcessedSignature] = useState('');
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
+  // Definición estable de fechas con órdenes para el calendario
   const datesWithOrders = useMemo(() => {
     const dates = new Set<string>();
     ordenes.forEach(o => {
@@ -143,6 +144,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return dates;
   }, [ordenes]);
 
+  // Inicialización controlada para evitar bucles infinitos
   useEffect(() => {
     setMounted(true);
     const now = new Date();
@@ -172,6 +174,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         setOrders(provs.data?.data || provs.data || []);
         setTiemposEnsamblado(times.data?.data || times.data || []);
         
+        // Mapeo correcto de KPI Looper según especificación (objeto con property data)
         const looperDataRaw = kpiLooper?.data || (Array.isArray(kpiLooper) ? kpiLooper : []);
         setKpiLooperData(looperDataRaw);
 
@@ -453,12 +456,13 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         </TabsList>
 
         <TabsContent value="resumen" className="space-y-6 animate-in fade-in duration-300">
+           {/* Tablero de Resultados Superior */}
            <div className="flex items-center gap-10 bg-[#1e293b] p-6 rounded-[2.5rem] border border-white/5 shadow-2xl text-white">
              <div className="flex items-center gap-12 flex-1">
                 <div className="flex flex-col gap-1 border-r border-white/10 pr-10 text-left">
                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Cantidad necesaria (KG)</span>
                    <p className="text-4xl font-black font-mono text-[#f87171] tracking-tighter">
-                     {totalsUnified.kg.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).replace('.', ',')}
+                     {totalsUnified.kg.toLocaleString(undefined, { minimumFractionDigits: 1 }).replace('.', ',')}
                    </p>
                 </div>
                 <div className="flex flex-col gap-1 border-r border-white/10 px-10 text-left">
@@ -469,8 +473,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 </div>
                 <div className="flex flex-col gap-1 flex-1 text-left">
                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Nro De Aperturas o corridas = {groupedNeeds.length}</span>
-                   <div className="flex items-start gap-12">
-                     <div className="flex flex-col gap-1 mt-1 pl-1 text-left">
+                   <div className="flex flex-col gap-1 mt-1 pl-1 text-left">
                         {densityBreakdown.map(([dens, count]) => (
                           <div key={dens} className="flex items-center gap-2">
                              <span className="text-[10px] font-black text-yellow-400 uppercase tracking-tight">
@@ -478,7 +481,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                              </span>
                           </div>
                         ))}
-                     </div>
                    </div>
                 </div>
              </div>
@@ -564,7 +566,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   <UserCheck className="w-3 h-3" /> Responsables Corte y Laminado
                 </p>
                 <div className="flex gap-2">
-                  {restriccionesArray.filter(r => r.nombre_restriccion === 'RESPCTRLPROD' || r.nombre_restriccion === 'Hojas_Rutas_Materiales').map((r, ri) => (
+                  {restriccionesArray.filter(r => (r.nombre_restriccion === 'RESPCTRLPROD' || r.nombre_restriccion === 'Hojas_Rutas_Materiales')).map((r, ri) => (
                     <Badge key={ri} variant="outline" className="text-[10px] font-black bg-slate-50 border-slate-200 px-3 py-0.5 rounded-lg">{r.valor_restriccion}</Badge>
                   ))}
                 </div>
