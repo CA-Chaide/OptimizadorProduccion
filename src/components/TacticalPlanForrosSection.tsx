@@ -15,7 +15,8 @@ import {
   UserPlus,
   BarChart3,
   Sun,
-  Moon
+  Moon,
+  PackageSearch
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -247,8 +248,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [restricciones, setRestricciones] = useState<Restriccion[]>([]);
   const [tiemposProduccion, setTiemposProduccion] = useState<any[]>([]);
   const [dailyOrders, setDailyOrders] = useState<any[]>([]);
+  const [ordenesFert, setOrdenesFert] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingTiempos, setIsLoadingTiempos] = useState(false);
+  const [isLoadingFert, setIsLoadingFert] = useState(false);
   
   const [executionDate, setExecutionDate] = useState<string>('');
   const [jornadaDiurnaSel, setJornadaDiurnaSel] = useState("8.75");
@@ -323,9 +326,24 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
   }, []);
 
+  const fetchOrdenesFert = useCallback(async () => {
+    setIsLoadingFert(true);
+    try {
+      const response = await serviciosService.getOrdenesFert();
+      setOrdenesFert(response.data || []);
+    } catch (error) {
+      console.error('Error fetching Fert orders:', error);
+    } finally {
+      setIsLoadingFert(false);
+    }
+  }, []);
+
   useEffect(() => {
-    if (isMounted) fetchBaseData();
-  }, [isMounted, fetchBaseData]);
+    if (isMounted) {
+      fetchBaseData();
+      fetchOrdenesFert();
+    }
+  }, [isMounted, fetchBaseData, fetchOrdenesFert]);
 
   const forrosGruposList = useMemo(() => {
     return grupos.filter(g => {
@@ -411,7 +429,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     const normMaterial = normalizeMaterialCode(material);
     const puesto = getResolvedPuesto(order);
     
-    // Corregido: mNorm reemplazado por normMaterial que es accesible en este scope
     const match = tiemposProduccion.find(t => {
       const mNormInternal = normalizeMaterialCode(t.CodMaterial || t.Material || '');
       const tPuesto = String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').trim().toUpperCase();
@@ -537,6 +554,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
           </TabsTrigger>
           <TabsTrigger value="forros" className="px-7 py-4 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[11px] font-black uppercase tracking-widest text-slate-500">
             <LayoutGrid className="w-4 h-4 mr-2" /> 4. Forros Finales
+          </TabsTrigger>
+          <TabsTrigger value="ordenes-fert" className="px-7 py-4 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[11px] font-black uppercase tracking-widest text-slate-500">
+            <PackageSearch className="w-4 h-4 mr-2" /> Órdenes FERT
           </TabsTrigger>
           <TabsTrigger value="personal-turnos" className="px-7 py-4 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[11px] font-black uppercase tracking-widest text-slate-500">
             <UserPlus className="w-4 h-4 mr-2" /> Personal & Turnos
@@ -694,6 +714,55 @@ export const TacticalPlanForrosSection: React.FC = () => {
               />
             ))}
           </div>
+        </TabsContent>
+
+        <TabsContent value="ordenes-fert">
+          <Card className="rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden shadow-sm">
+            <CardHeader className="bg-slate-50/50 border-b border-slate-200 p-10">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-2xl font-black text-slate-900 uppercase">Órdenes FERT</CardTitle>
+                  <CardDescription className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-1">Listado de Órdenes de Producto Terminado</CardDescription>
+                </div>
+                <div className="bg-indigo-600 p-3 rounded-2xl text-white shadow-lg shadow-indigo-500/20">
+                  <Layers className="w-6 h-6" />
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto max-h-[70vh] relative">
+                {isLoadingFert ? (
+                  <div className="flex items-center justify-center py-20">
+                    <Loader2 className="w-10 h-10 animate-spin text-indigo-600" />
+                    <span className="ml-4 text-slate-500 font-black uppercase tracking-widest text-xs">Cargando órdenes FERT...</span>
+                  </div>
+                ) : ordenesFert.length > 0 ? (
+                  <table className="w-full text-[11px] border-collapse">
+                    <thead className="bg-slate-900 sticky top-0 z-10 text-white text-left uppercase tracking-widest font-black">
+                      <tr>
+                        {Object.keys(ordenesFert[0]).map((key) => (
+                          <th key={key} className="px-6 py-4">{key}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {ordenesFert.map((order, i) => (
+                        <tr key={i} className="hover:bg-slate-50 transition-colors">
+                          {Object.values(order).map((val: any, j) => (
+                            <td key={j} className="px-6 py-4 font-medium text-slate-600">
+                              {val === null || val === undefined ? '—' : String(val)}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <div className="py-20 text-center text-slate-400 uppercase font-black tracking-widest text-xs opacity-40">No se encontraron registros</div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="personal-turnos">
