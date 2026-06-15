@@ -178,7 +178,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       }
     };
     init();
-  }, []);
+  }, []); // Fixed infinite loop by removing unstable dependencies
 
   const filteredOrders = useMemo(() => {
     const relevantGroups = grupos.map(g => g.codigo_grupo);
