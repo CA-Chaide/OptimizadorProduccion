@@ -117,6 +117,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [restriccionesArray, setRestriccionesArray] = useState<Restriccion[]>([]);
   const [ordenes, setOrders] = useState<any[]>([]);
   const [tiemposEnsamblado, setTiemposEnsamblado] = useState<any[]>([]);
+  const [kpiLooperData, setKpiLooperData] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<string>('all');
   const [viewDate, setViewDate] = useState<Date | null>(null);
@@ -155,14 +156,16 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         });
         setGrupos(filteredGroups);
         const ids = filteredGroups.map(g => g.codigo_grupo);
-        const [restrs, provs, times] = await Promise.all([
+        const [restrs, provs, times, kpiLooper] = await Promise.all([
           restriccionService.getAll(),
           serviciosService.OrdenesProvisionalesPaginados(1, 20000).catch(() => ({ data: [] })),
-          serviciosService.getTiemposEnsamblado(1, 15000).catch(() => ({ data: [] }))
+          serviciosService.getTiemposEnsamblado(1, 15000).catch(() => ({ data: [] })),
+          serviciosService.getKPIMAestroLooper().catch(() => ({ data: [] }))
         ]);
         setRestriccionesArray((restrs.data || []).filter((r: any) => ids.includes(r.codigo_grupo)));
         setOrders(provs.data?.data || provs.data || []);
         setTiemposEnsamblado(times.data?.data || times.data || []);
+        setKpiLooperData(kpiLooper.data || []);
       } catch (e) {
         console.error('Error init:', e);
       } finally {
@@ -362,14 +365,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return [...Array(padding).fill(null), ...days];
   }, [viewDate, mounted]);
 
-  const looperRecords = useMemo(() => {
-    return tiemposEnsamblado.filter(t => {
-      const linea = String(t.Linea || '').toLowerCase();
-      const puesto = String(t.PuestoTrabajo || '').toLowerCase();
-      return (linea.includes('looper') || puesto.includes('looper'));
-    });
-  }, [tiemposEnsamblado]);
-
   if (!mounted) return null;
 
   return (
@@ -453,19 +448,19 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
            {/* BARRA DE RESULTADOS MAESTRA */}
            <div className="flex items-center gap-10 bg-[#1e293b] p-6 rounded-[2.5rem] border border-white/5 shadow-2xl text-white">
              <div className="flex items-center gap-12 flex-1">
-                <div className="flex flex-col gap-1 border-r border-white/10 pr-10">
+                <div className="flex flex-col gap-1 border-r border-white/10 pr-10 text-left">
                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Cantidad necesaria (KG)</span>
                    <p className="text-4xl font-black font-mono text-[#f87171] tracking-tighter">
                      {totalsUnified.kg.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).replace('.', ',')}
                    </p>
                 </div>
-                <div className="flex flex-col gap-1 border-r border-white/10 px-10">
+                <div className="flex flex-col gap-1 border-r border-white/10 px-10 text-left">
                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Cantidad Necesaria (und)</span>
                    <p className="text-4xl font-black font-mono text-indigo-400 tracking-tighter">
                      {Math.round(totalsUnified.un).toLocaleString()}
                    </p>
                 </div>
-                <div className="flex flex-col gap-1 flex-1">
+                <div className="flex flex-col gap-1 flex-1 text-left">
                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Nro de Aperturas o corridas</span>
                    <div className="flex items-start gap-12">
                      <div className="text-center">
@@ -523,7 +518,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                           <tr className="bg-slate-50/80 hover:bg-slate-100 cursor-pointer transition-all border-l-4 border-l-red-500" onClick={() => toggleGroup(groupKey)}>
                             <td className="px-4 py-4 flex items-center gap-2">
                                {isExpanded ? <Minus className="w-3 h-3 text-red-500" /> : <Plus className="w-3 h-3 text-indigo-500" />}
-                               <span className="font-black text-[10px] text-slate-400 uppercase tracking-widest">Apertura {group.altura} - D{group.densidad}</span>
+                               <span className="font-black text-[10px] text-slate-400 uppercase tracking-widest text-left">Apertura {group.altura} - D{group.densidad}</span>
                             </td>
                             <td className="px-6 py-4 text-left text-indigo-900 font-black uppercase">Subtotal Corrida</td>
                             <td className="px-3 py-4 text-slate-400 font-mono">{(group.total1006).toLocaleString()}</td>
@@ -627,7 +622,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
         <TabsContent value="listaMateriales" className="space-y-6 animate-in fade-in duration-300 text-left">
           <div className="flex items-center justify-between bg-white p-5 rounded-3xl border border-gray-100 shadow-xl">
-             <div className="flex items-center gap-4">
+             <div className="flex items-center gap-4 text-left">
                <div className="p-3 bg-indigo-600/10 rounded-2xl text-indigo-600"><ClipboardList className="w-6 h-6" /></div>
                <div>
                  <h3 className="text-sm font-black text-slate-800 uppercase tracking-tighter">Auditoría Estructural BOM</h3>
@@ -635,7 +630,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                </div>
              </div>
              <form onSubmit={(e) => { e.preventDefault(); if(fertBusqueda.trim()) handleRefresh(); }} className="flex gap-3">
-               <div className="relative group">
+               <div className="relative group text-left">
                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-300 group-hover:text-red-500 transition-colors" />
                  <input type="text" placeholder="Código FERT..." value={fertBusqueda} onChange={e => setFertBusqueda(e.target.value)} className="pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-black w-56 focus:ring-4 focus:ring-red-500/10 focus:bg-white transition-all outline-none" />
                </div>
@@ -650,36 +645,32 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           <div className="space-y-4">
             <div className="flex items-center gap-3 px-2 text-left">
               <div className="p-2 bg-indigo-600 rounded-xl text-white shadow-lg"><Activity className="w-4 h-4" /></div>
-              <h3 className="text-sm font-black uppercase tracking-widest text-slate-800">Procesos de Costura Especial (LOOPER)</h3>
+              <h3 className="text-sm font-black uppercase tracking-widest text-slate-800">KPI Maestro Looper (Costura Especial)</h3>
             </div>
             <Card className="rounded-3xl border border-indigo-100 shadow-xl overflow-hidden bg-white">
-              <div className="overflow-x-auto max-h-[600px]">
+              <div className="overflow-x-auto max-h-[600px] relative">
                 <table className="w-full border-collapse text-center">
-                  <thead className="bg-[#1e293b] text-white sticky top-0 z-10 text-[10px] font-black uppercase tracking-tight border-b border-white/5">
+                  <thead className="bg-[#1e293b] text-white sticky top-0 z-10 text-[9px] font-black uppercase tracking-tight border-b border-white/5">
                     <tr>
-                      <th className="px-6 py-5 border-r border-white/5 text-left">Material</th>
-                      <th className="px-6 py-5 border-r border-white/5 text-left">Descripción Técnica</th>
-                      <th className="px-6 py-5 border-r border-white/5">Línea de Proceso</th>
-                      <th className="px-6 py-5 border-r border-white/5 text-blue-200">Responsable CP</th>
-                      <th className="px-6 py-5 border-r border-white/5 text-blue-200">Almacén</th>
-                      <th className="px-6 py-5 border-r border-white/5 text-teal-400">Estándar (Min)</th>
-                      <th className="px-6 py-5 text-indigo-300">Stock Actual</th>
+                      {kpiLooperData.length > 0 && Object.keys(kpiLooperData[0]).map(key => (
+                        <th key={key} className="px-6 py-5 border-r border-white/5 text-left">{key.replace(/_/g, ' ')}</th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 text-[11px] font-black">
-                    {looperRecords.map((t, i) => (
-                      <tr key={i} className="hover:bg-indigo-50/30 transition-colors">
-                        <td className="px-6 py-4 font-mono text-indigo-600 border-r border-dashed border-gray-100 text-left text-sm">{cleanCode(t.CodMaterial)}</td>
-                        <td className="px-6 py-4 text-left border-r border-dashed border-gray-100 text-slate-600 uppercase leading-tight max-w-[300px] truncate">{String(t.Material || t.Descripcion || '—').toUpperCase()}</td>
-                        <td className="px-6 py-4 border-r border-dashed border-gray-100 font-black text-indigo-400 uppercase text-[9px] bg-indigo-50/10">{t.Linea || '—'}</td>
-                        <td className="px-6 py-4 border-r border-dashed border-gray-100 text-center">
-                           <Badge variant="outline" className="bg-slate-50 text-slate-400 border-slate-200 font-mono px-2 py-0">{t.RespControlProd || t.RESP_CONTROL_PROD || '—'}</Badge>
-                        </td>
-                        <td className="px-6 py-4 border-r border-dashed border-gray-100 text-slate-400 font-bold text-center">{t.Almacen || t.ALMACEN || '—'}</td>
-                        <td className="px-6 py-4 font-mono text-teal-600 border-r border-dashed border-gray-100 bg-teal-50/10 text-sm">{Number(t.Tiempo_Min || t.Tiempo || t.tiempo || 0).toFixed(4)}</td>
-                        <td className="px-6 py-4 text-slate-400 font-mono text-center">{(t.StockActual || 0).toLocaleString()}</td>
-                      </tr>
-                    ))}
+                    {kpiLooperData.length === 0 ? (
+                      <tr><td colSpan={10} className="py-24 text-slate-200 font-black uppercase tracking-widest text-center italic">Sin indicadores KPI registrados para el área Looper</td></tr>
+                    ) : (
+                      kpiLooperData.map((row, i) => (
+                        <tr key={i} className="hover:bg-indigo-50/30 transition-colors">
+                          {Object.values(row).map((val, j) => (
+                            <td key={j} className="px-6 py-4 border-r border-dashed border-gray-100 text-left">
+                              {String(val ?? '—')}
+                            </td>
+                          ))}
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>

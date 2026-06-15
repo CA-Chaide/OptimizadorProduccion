@@ -338,4 +338,17 @@ export const serviciosService = {
       throw e;
     }
   },
+
+  async getKPIMAestroLooper(): Promise<BodyResponse<any>> {
+    const response = await fetch(API_URL + "/KPIMaestroLooper", {
+      method: "GET",
+      headers: getHeaders(),
+    });
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({ message: "Error desconocido" }));
+      throw new Error(errorBody.message || "Failed to fetch Diccionario");
+    }
+    return response.json();
+  },
+  
 };
