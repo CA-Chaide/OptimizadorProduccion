@@ -144,7 +144,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return dates;
   }, [ordenes]);
 
-  // Inicialización controlada para evitar bucles infinitos
+  // Inicialización controlada
   useEffect(() => {
     setMounted(true);
     const now = new Date();
@@ -173,13 +173,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         setRestriccionesArray((restrs.data || []).filter((r: any) => ids.includes(r.codigo_grupo)));
         setOrders(provs.data?.data || provs.data || []);
         setTiemposEnsamblado(times.data?.data || times.data || []);
-        
-        // Mapeo correcto de KPI Looper según especificación (objeto con property data)
-        const looperDataRaw = kpiLooper?.data || (Array.isArray(kpiLooper) ? kpiLooper : []);
-        setKpiLooperData(looperDataRaw);
-
-        const cuboInvRaw = cuboInv?.data || (Array.isArray(cuboInv) ? cuboInv : []);
-        setCuboInventariosData(cuboInvRaw);
+        setKpiLooperData(kpiLooper?.data || []);
+        setCuboInventariosData(cuboInv?.data || []);
 
       } catch (e) {
         console.error('Error init:', e);
@@ -210,6 +205,13 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       return true;
     });
   }, [ordenes, selectedDate, grupos, restriccionesArray]);
+
+  const filteredInventario = useMemo(() => {
+    return cuboInventariosData.filter(row => {
+      const desc = String(row.Descripcion || row.DESCRIPCION || row.Material || '').toLowerCase();
+      return desc.includes('laminado');
+    });
+  }, [cuboInventariosData]);
 
   const handleProcessResumen = useCallback(async (ordersToProcess: any[]) => {
     if (ordersToProcess.length === 0) {
@@ -370,7 +372,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     addNotification('info', 'Actualizando datos técnicos...');
   };
 
-  const calendarDays = useMemo(() => {
+  const calendarDaysList = useMemo(() => {
     if (!mounted || !viewDate) return [];
     const start = startOfMonth(viewDate);
     const end = endOfMonth(viewDate);
@@ -421,7 +423,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 </div>
                 <div className="grid grid-cols-7 gap-y-1.5 text-center mb-4">
                   {['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO'].map(d => <div key={d} className="text-[10px] font-black text-slate-300 py-1">{d}</div>)}
-                  {calendarDays.map((day, idx) => {
+                  {calendarDaysList.map((day, idx) => {
                     if (!day) return <div key={idx} />;
                     const dStr = format(day, 'yyyy-MM-dd');
                     const sel = selectedDate === dStr;
@@ -591,7 +593,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-50 font-bold">
                   {filteredOrders.length === 0 ? (
-                    <tr><td colSpan={8} className="py-24 text-slate-200 font-black uppercase tracking-widest text-center italic">No se detectaron órdenes para los criterios aplicados</td></tr>
+                    <tr><td colSpan={8} className="py-24 text-slate-300 font-black uppercase tracking-widest text-center italic">No se detectaron órdenes para los criterios aplicados</td></tr>
                   ) : (
                     filteredOrders.map((o, i) => {
                       const matCode = cleanCode(String(o.MATERIAL || '').match(/^(\d+)/)?.[1]);
@@ -675,7 +677,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           <div className="space-y-4">
             <div className="flex items-center gap-3 px-2 text-left">
               <div className="p-2 bg-blue-600 rounded-xl text-white shadow-lg"><Database className="w-4 h-4" /></div>
-              <h3 className="text-sm font-black uppercase tracking-widest text-slate-800">Cubo de Inventarios SAP (Resumen Planta)</h3>
+              <h3 className="text-sm font-black uppercase tracking-widest text-slate-800">Cubo de Inventarios SAP (Filtro: Laminado)</h3>
             </div>
             <Card className="rounded-3xl border border-blue-100 shadow-xl overflow-hidden bg-white">
               <div className="overflow-x-auto max-h-[600px] relative">
@@ -692,18 +694,18 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 text-[11px] font-black">
-                    {cuboInventariosData.length === 0 ? (
-                      <tr><td colSpan={7} className="py-24 text-slate-200 font-black uppercase tracking-widest text-center italic">Sincronizando existencias con el Cubo de Inventarios...</td></tr>
+                    {filteredInventario.length === 0 ? (
+                      <tr><td colSpan={7} className="py-24 text-slate-200 font-black uppercase tracking-widest text-center italic">No se encontraron ítems de "Laminado" en el Cubo de Inventarios</td></tr>
                     ) : (
-                      cuboInventariosData.map((row, i) => (
+                      filteredInventario.map((row, i) => (
                         <tr key={i} className="hover:bg-blue-50/30 transition-colors">
                           <td className="px-6 py-4 border-r border-dashed border-gray-100">{row.Centro || '—'}</td>
                           <td className="px-6 py-4 border-r border-dashed border-gray-100 font-mono text-blue-600">{row.Material || '—'}</td>
-                          <td className="px-6 py-4 border-r border-dashed border-gray-100 text-left uppercase text-slate-500 truncate max-w-[250px]">{row.Descripcion || '—'}</td>
+                          <td className="px-6 py-4 border-r border-dashed border-gray-100 text-left uppercase text-slate-500 truncate max-w-[250px]">{row.Descripcion || row.DESCRIPCION || '—'}</td>
                           <td className="px-6 py-4 border-r border-dashed border-gray-100 text-center font-black">{row.ClaseAprovisionam || '—'}</td>
-                          <td className="px-6 py-4 border-r border-dashed border-gray-100 font-mono text-blue-700 bg-blue-50/50">{Number(row.StockActual || 0).toLocaleString()}</td>
-                          <td className="px-6 py-4 border-r border-dashed border-gray-100 font-mono text-slate-400">{Number(row.StockSeguridad || 0).toLocaleString()}</td>
-                          <td className="px-6 py-4 text-slate-400 italic">{row.Sector || '—'}</td>
+                          <td className="px-6 py-4 border-r border-dashed border-gray-100 font-mono text-blue-700 bg-blue-50/50">{Number(row.StockActual || row.STOCK_ACTUAL || 0).toLocaleString()}</td>
+                          <td className="px-6 py-4 border-r border-dashed border-gray-100 font-mono text-slate-400">{Number(row.StockSeguridad || row.STOCK_SEGURIDAD || 0).toLocaleString()}</td>
+                          <td className="px-6 py-4 text-slate-400 italic">{row.Sector || row.SECTOR || '—'}</td>
                         </tr>
                       ))
                     )}
