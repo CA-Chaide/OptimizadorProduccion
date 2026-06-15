@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useEffect, useState } from 'react';
@@ -22,7 +23,6 @@ interface Documentation {
     [sourceName: string]: SourceInfo;
 }
 
-// --- Reusable Dictionary Component ---
 interface DataDictionaryProps {
     title: string;
     sourceInfo: SourceInfo | undefined;
@@ -86,17 +86,13 @@ const DataDictionary: React.FC<DataDictionaryProps> = ({ title, sourceInfo, isLo
     );
 };
 
-
 export const RealDataSection: React.FC = () => {
-    useEffect(() => {
-        logger.log(`\n--------------------------------------------------\n[RealDataSection] Montado.`);
-    }, []);
-    
     const [documentation, setDocumentation] = useState<Documentation | null>(null);
     const [isLoading, setIsLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
+        logger.log(`\n--------------------------------------------------\n[RealDataSection] Montado.`);
         const fetchDocumentation = async () => {
             setIsLoading(true);
             setError(null);
@@ -110,7 +106,6 @@ export const RealDataSection: React.FC = () => {
                 setIsLoading(false);
             }
         };
-
         fetchDocumentation();
     }, []);
 
