@@ -14,7 +14,8 @@ import {
   Clock, 
   CalendarRange,
   Activity,
-  CheckCircle2
+  CheckCircle2,
+  LayoutGrid
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -27,6 +28,7 @@ import { TiemposEnsambladoTabSection } from './TiemposEnsambladoTabSection';
 import { PresupuestoProdSemanalTabSection } from './PresupuestoProdSemanalTabSection';
 import { RevCapacidadTabSection } from './RevCapacidadTabSection';
 import { PlanPropuestoTabSection } from './PlanPropuestoTabSection';
+import { MaterialBalanceoLineasTabSection } from './MaterialBalanceoLineasTabSection';
 import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
 import type { Grupo, Restriccion } from '@/types/interfaces';
@@ -124,6 +126,10 @@ export const TacticalPlan2Section: React.FC = () => {
           <TabsTrigger value="presupuesto_semanal" className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold uppercase tracking-tight transition-all data-[state=active]:bg-white data-[state=active]:text-indigo-700 data-[state=active]:shadow-sm rounded-lg">
             <CalendarRange className="w-3.5 h-3.5" />
             Presupuesto
+          </TabsTrigger>
+          <TabsTrigger value="material_balanceo" className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold uppercase tracking-tight transition-all data-[state=active]:bg-white data-[state=active]:text-indigo-700 data-[state=active]:shadow-sm rounded-lg">
+            <LayoutGrid className="w-3.5 h-3.5" />
+            Mat Balanceo
           </TabsTrigger>
           <TabsTrigger value="ordenes" className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold uppercase tracking-tight transition-all data-[state=active]:bg-white data-[state=active]:text-indigo-700 data-[state=active]:shadow-sm rounded-lg">
             <Package className="w-3.5 h-3.5" />
@@ -263,6 +269,18 @@ export const TacticalPlan2Section: React.FC = () => {
             </CardHeader>
             <CardContent>
               <PresupuestoProdSemanalTabSection />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="material_balanceo">
+          <Card>
+            <CardHeader>
+              <CardTitle>Configuración de Materiales para Balanceo</CardTitle>
+              <CardDescription>Gestione los materiales habilitados y sus líneas correspondientes para los cálculos de optimización.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <MaterialBalanceoLineasTabSection />
             </CardContent>
           </Card>
         </TabsContent>

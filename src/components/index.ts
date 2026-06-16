@@ -31,6 +31,7 @@ export * from './NeedsCalculationC2000Section';
 export * from './PresupuestoProdSemanalTabSection';
 export * from './RevCapacidadTabSection';
 export { PlanPropuestoTabSection } from './PlanPropuestoTabSection';
+export { MaterialBalanceoLineasTabSection } from './MaterialBalanceoLineasTabSection';
 
 // Widgets y paneles
 export { default as FloatingChatWidget } from './FloatingChatWidget';
