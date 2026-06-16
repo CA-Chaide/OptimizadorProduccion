@@ -121,7 +121,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [ordenes, setOrders] = useState<any[]>([]);
   const [tiemposEnsamblado, setTiemposEnsamblado] = useState<any[]>([]);
   const [kpiLooperData, setKpiLooperData] = useState<any[]>([]);
-  const [cuboInventariosData, setCuboInventariosData] = useState<any[]>([]);
+  const [inventarioAnioActual, setInventarioAnioActual] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<string>('all');
   const [viewDate, setViewDate] = useState<Date>(new Date());
@@ -154,19 +154,19 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       setGrupos(filteredGroups);
       const ids = filteredGroups.map(g => g.codigo_grupo);
       
-      const [restrs, provs, times, kpiLooper, cuboInv] = await Promise.all([
+      const [restrs, provs, times, kpiLooper, invAnio] = await Promise.all([
         restriccionService.getAll(),
         serviciosService.OrdenesProvisionalesPaginados(1, 20000).catch(() => ({ data: [] })),
         serviciosService.getTiemposEnsamblado(1, 15000).catch(() => ({ data: [] })),
         serviciosService.getKPIMAestroLooper().catch(() => ({ data: [] })),
-        serviciosService.getCuboInventarios(1, 1000).catch(() => ({ data: [] }))
+        serviciosService.getInventarioAñoActual().catch(() => ({ data: [] }))
       ]);
       
       setRestriccionesArray((restrs.data || []).filter((r: any) => ids.includes(r.codigo_grupo)));
       setOrders(provs.data?.data || provs.data || []);
       setTiemposEnsamblado(times.data?.data || times.data || []);
       setKpiLooperData(kpiLooper?.data || []);
-      setCuboInventariosData(cuboInv?.data || []);
+      setInventarioAnioActual(invAnio?.data || []);
 
     } catch (e) {
       console.error('Error init:', e);
@@ -631,7 +631,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     <tr>
                       <th className="px-6 py-5 border-r border-white/5 text-left">Material</th>
                       <th className="px-6 py-5 border-r border-white/5 text-left">Descripción</th>
-                      <th className="px-6 py-5 border-r border-white/5">Peso UN</th>
+                      <th className="px-6 py-5 border-r border-white/5">Peso UN (Kg)</th>
                       <th className="px-6 py-5 border-r border-white/5">Densidad</th>
                       <th className="px-6 py-5 border-r border-white/5">Espesor</th>
                       <th className="px-6 py-5 border-r border-white/5">T. Rollo (Min)</th>
@@ -646,7 +646,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                         <tr key={i} className="hover:bg-indigo-50/30 transition-colors">
                           <td className="px-6 py-4 border-r border-dashed border-gray-100 text-left font-mono text-indigo-600">{String(row.Material || '—')}</td>
                           <td className="px-6 py-4 border-r border-dashed border-gray-100 text-left uppercase text-slate-600">{String(row.Descripcion || '—')}</td>
-                          <td className="px-6 py-4 border-r border-dashed border-gray-100 font-mono text-indigo-400">{safeNum(row.PesoUN).toFixed(2)} Kg</td>
+                          <td className="px-6 py-4 border-r border-dashed border-gray-100 font-mono text-indigo-400">{safeNum(row.PesoUN).toFixed(2)}</td>
                           <td className="px-6 py-4 border-r border-dashed border-gray-100 text-indigo-900">{String(row.Densidad || '—')}</td>
                           <td className="px-6 py-4 border-r border-dashed border-gray-100 font-mono">{safeNum(row.Espesor).toFixed(2)}</td>
                           <td className="px-6 py-4 border-r border-dashed border-gray-100 font-mono text-teal-600">{safeNum(row.TiempoRolloMin).toFixed(2)}</td>
@@ -665,35 +665,43 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           <div className="space-y-4">
             <div className="flex items-center gap-3 px-2 text-left">
               <div className="p-2 bg-blue-600 rounded-xl text-white shadow-lg"><Database className="w-4 h-4" /></div>
-              <h3 className="text-sm font-black uppercase tracking-widest text-slate-800">Cubo de Inventarios SAP (Visión Total)</h3>
+              <h3 className="text-sm font-black uppercase tracking-widest text-slate-800">Inventario SAP Año Actual (Audit)</h3>
             </div>
             <Card className="rounded-3xl border border-blue-100 shadow-xl overflow-hidden bg-white">
               <div className="overflow-x-auto max-h-[600px] relative">
-                <table className="w-full border-collapse text-center">
+                <table className="w-full border-collapse text-center font-sans text-[10px]">
                   <thead className="bg-[#1e293b] text-white sticky top-0 z-10 text-[9px] font-black uppercase tracking-tight border-b border-white/5">
                     <tr>
-                      <th className="px-6 py-5 border-r border-white/5">Centro</th>
-                      <th className="px-6 py-5 border-r border-white/5">Material</th>
-                      <th className="px-6 py-5 border-r border-white/10 text-left">Descripción</th>
-                      <th className="px-6 py-5 border-r border-white/5">Clase Aprov.</th>
-                      <th className="px-6 py-5 border-r border-white/5 bg-blue-500/20">Stock Actual</th>
-                      <th className="px-6 py-5 border-r border-white/5">Stock Seg.</th>
-                      <th className="px-6 py-5">Sector</th>
+                      <th className="px-4 py-5 border-r border-white/5">Material</th>
+                      <th className="px-6 py-5 border-r border-white/5 text-left">Nombre</th>
+                      <th className="px-3 py-5 border-r border-white/5">Centro</th>
+                      <th className="px-3 py-5 border-r border-white/5">Alm.</th>
+                      <th className="px-3 py-5 border-r border-white/5">Año/Mes</th>
+                      <th className="px-3 py-5 border-r border-white/5 bg-green-500/30 text-green-300">Libre Utiliz.</th>
+                      <th className="px-3 py-5 border-r border-white/5 bg-blue-500/30 text-blue-200">En Traslado</th>
+                      <th className="px-3 py-5 border-r border-white/5">Insp. Calidad</th>
+                      <th className="px-3 py-5 border-r border-white/5 text-red-300">Bloqueado</th>
+                      <th className="px-3 py-5 border-r border-white/5">Punto Pedido</th>
+                      <th className="px-3 py-5">Tipo</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 text-[11px] font-black">
-                    {cuboInventariosData.length === 0 ? (
-                      <tr><td colSpan={7} className="py-24 text-slate-200 font-black uppercase tracking-widest text-center italic">Consultando inventarios íntegros de SAP...</td></tr>
+                    {inventarioAnioActual.length === 0 ? (
+                      <tr><td colSpan={11} className="py-24 text-slate-200 font-black uppercase tracking-widest text-center italic">Consultando inventarios 2026 desde SAP...</td></tr>
                     ) : (
-                      cuboInventariosData.map((row, i) => (
+                      inventarioAnioActual.map((row, i) => (
                         <tr key={i} className="hover:bg-blue-50/30 transition-colors">
-                          <td className="px-6 py-4 border-r border-dashed border-gray-100">{row.Centro || '—'}</td>
-                          <td className="px-6 py-4 border-r border-dashed border-gray-100 font-mono text-blue-600">{row.Material || '—'}</td>
-                          <td className="px-6 py-4 border-r border-dashed border-gray-100 text-left uppercase text-slate-500 truncate max-w-[250px]">{row.Descripcion || row.DESCRIPCION || '—'}</td>
-                          <td className="px-6 py-4 border-r border-dashed border-gray-100 text-center font-black">{row.ClaseAprovisionam || '—'}</td>
-                          <td className="px-6 py-4 border-r border-dashed border-gray-100 font-mono text-blue-700 bg-blue-50/50">{Number(row.StockActual || row.STOCK_ACTUAL || 0).toLocaleString()}</td>
-                          <td className="px-6 py-4 border-r border-dashed border-gray-100 font-mono text-slate-400">{Number(row.StockSeguridad || row.STOCK_SEGURIDAD || 0).toLocaleString()}</td>
-                          <td className="px-6 py-4 text-slate-400 italic">{row.Sector || row.SECTOR || '—'}</td>
+                          <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-blue-600">{cleanCode(row.MATERIAL)}</td>
+                          <td className="px-6 py-3 border-r border-dashed border-gray-100 text-left uppercase text-slate-600 truncate max-w-[200px]" title={row.NOMBRE}>{row.NOMBRE || '—'}</td>
+                          <td className="px-3 py-3 border-r border-dashed border-gray-100">{row.CENTRO}</td>
+                          <td className="px-3 py-3 border-r border-dashed border-gray-100">{row.ALMACEN}</td>
+                          <td className="px-3 py-3 border-r border-dashed border-gray-100 font-mono text-slate-400">{row.ANIO}/{row.MES}</td>
+                          <td className="px-3 py-3 border-r border-dashed border-gray-100 font-mono text-green-700 bg-green-50/30">{Number(row.LIBREUTILIZACION || 0).toLocaleString()}</td>
+                          <td className="px-3 py-3 border-r border-dashed border-gray-100 font-mono text-blue-700 bg-blue-50/30">{Number(row.ENTRASLADO || 0).toLocaleString()}</td>
+                          <td className="px-3 py-3 border-r border-dashed border-gray-100 font-mono">{Number(row.INSPECCCALIDAD || 0).toLocaleString()}</td>
+                          <td className="px-3 py-3 border-r border-dashed border-gray-100 font-mono text-red-600">{Number(row.BLOQUEADO || 0).toLocaleString()}</td>
+                          <td className="px-3 py-3 border-r border-dashed border-gray-100 font-mono text-indigo-400">{Number(row.PUNTOPEDIDO || 0).toLocaleString()}</td>
+                          <td className="px-3 py-3 text-[10px] text-slate-400">{row.TIPO_MATERIAL} {row.PETICIONBORRADO === 'X' && <span className="text-red-500 font-black">[B]</span>}</td>
                         </tr>
                       ))
                     )}

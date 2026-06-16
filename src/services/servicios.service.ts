@@ -351,5 +351,17 @@ export const serviciosService = {
     }
     return response.json();
   },
+
+  async getInventarioAñoActual(): Promise<BodyResponse<any>> {
+    const response = await fetch(API_URL + "/InventarioAnioActual", {
+      method: "GET",
+      headers: getHeaders(),
+    });
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({ message: "Error desconocido" }));
+      throw new Error(errorBody.message || "Failed to fetch Diccionario");
+    }
+    return response.json();
+  },
   
 };
