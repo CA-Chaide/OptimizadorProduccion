@@ -16,7 +16,11 @@ import {
   BarChart3,
   Sun,
   Moon,
-  PackageSearch
+  PackageSearch,
+  ArrowRight,
+  Database,
+  SearchCode,
+  FileJson
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -939,7 +943,54 @@ export const TacticalPlanForrosSection: React.FC = () => {
           </div>
         </TabsContent>
 
-        <TabsContent value="kpi-tiempos">
+        <TabsContent value="kpi-tiempos" className="space-y-8 pb-20">
+          {/* Flujo de Datos Section */}
+          <div className="bg-white rounded-[2rem] border border-slate-200 p-8 shadow-sm">
+            <h3 className="text-xl font-black text-indigo-950 uppercase tracking-tighter mb-6 flex items-center gap-3">
+              <Database className="w-6 h-6 text-indigo-600" /> Flujo de Origen de Datos
+            </h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-center">
+              {/* Step 1 */}
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 text-center space-y-2 h-full flex flex-col justify-center">
+                <div className="bg-white w-10 h-10 rounded-full flex items-center justify-center mx-auto shadow-sm border border-slate-100">
+                  <SearchCode className="w-5 h-5 text-indigo-600" />
+                </div>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">1. Identificación</p>
+                <p className="text-[11px] font-medium text-slate-700">Se filtran grupos (CHN, Bases, Bandas, etc.)</p>
+              </div>
+
+              <div className="hidden md:flex justify-center text-slate-300"><ArrowRight className="w-5 h-5" /></div>
+
+              {/* Step 2 */}
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 text-center space-y-2 h-full flex flex-col justify-center">
+                <div className="bg-white w-10 h-10 rounded-full flex items-center justify-center mx-auto shadow-sm border border-slate-100">
+                  <FileJson className="w-5 h-5 text-indigo-600" />
+                </div>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">2. Consulta API</p>
+                <p className="text-[11px] font-medium text-slate-700">getTiemposEnsambladobyCentroyCodigoGrupo</p>
+              </div>
+
+              <div className="hidden md:flex justify-center text-slate-300"><ArrowRight className="w-5 h-5" /></div>
+
+              {/* Step 3 */}
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 text-center space-y-2 h-full flex flex-col justify-center">
+                <div className="bg-white w-10 h-10 rounded-full flex items-center justify-center mx-auto shadow-sm border border-slate-100">
+                  <Layers className="w-5 h-5 text-indigo-600" />
+                </div>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">3. Consolidación</p>
+                <p className="text-[11px] font-medium text-slate-700">Unificación de maestros y limpieza de códigos</p>
+              </div>
+            </div>
+            
+            <div className="mt-8 p-4 bg-indigo-50/50 rounded-2xl border border-indigo-100">
+              <p className="text-xs font-medium text-indigo-800 leading-relaxed">
+                <span className="font-black uppercase mr-2">Nota Técnica:</span>
+                Los datos visualizados en la tabla inferior representan el estándar de ingeniería. Se utilizan para calcular la carga de trabajo multiplicando el <span className="font-bold">Min/Und</span> por la <span className="font-bold">Cantidad</span> de las órdenes previsionales asignadas a cada máquina.
+              </p>
+            </div>
+          </div>
+
           <TableKPI tiemposProduccion={tiemposProduccion} mapToHojaRuta={mapToHojaRuta} />
         </TabsContent>
       </Tabs>
