@@ -158,7 +158,7 @@ const MultiSelect: React.FC<{
 export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ restricciones, columns, hideControls = false, tiemposData = [], displayMode = 'full' }) => {
   const { addNotification } = useAppContext();
   const [isMounted, setIsMounted] = useState(false);
-  const [orders, setOrders] = useState<OrdenFert[]>([]);
+  const [orders, setOrders] = useState<any[]>([]);
   const [provisionalOrders, setProvisionalOrders] = useState<ProvisionalOrder[]>([]);
   const [tapiceros, setTapiceros] = useState<any[]>([]);
   const [pagination, setPagination] = useState<PaginationState>({
@@ -176,18 +176,41 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
   const [workSchedule, setWorkSchedule] = useState<string>("9");
   const [workTables, setWorkTables] = useState<string>("14");
 
-  // Hydration Guard
-  useEffect(() => {
-    setIsMounted(true);
-  }, []);
-
   const topScrollRef = useRef<HTMLDivElement>(null);
   const tableScrollRef = useRef<HTMLDivElement>(null);
   const tableRef = useRef<HTMLTableElement>(null);
   const [tableWidth, setTableWidth] = useState(0);
   const lastScrolledRef = useRef<'top' | 'table' | null>(null);
 
-  // TIEMPO DISPONIBLE DIARIO TOTAL (Suma de todas las mesas seleccionadas)
+  // Hydration Guard
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  // Handlers for synchronized scrollbars
+  const handleTopScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    if (lastScrolledRef.current === 'table') {
+      lastScrolledRef.current = null;
+      return;
+    }
+    if (tableScrollRef.current) {
+      lastScrolledRef.current = 'top';
+      tableScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
+    }
+  };
+
+  const handleTableScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    if (lastScrolledRef.current === 'top') {
+      lastScrolledRef.current = null;
+      return;
+    }
+    if (topScrollRef.current) {
+      lastScrolledRef.current = 'table';
+      topScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
+    }
+  };
+
+  // TIEMPO DISPONIBLE DIARIO TOTAL
   const TIEMPO_DISPONIBLE_DIARIO_TOTAL = useMemo(() => {
     const hours = parseInt(workSchedule);
     const tables = parseInt(workTables);
@@ -256,7 +279,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
       try {
         // 1. Fetch FERT Orders
         const exploreResponse = await serviciosService.getOrdenesFert(1, 1);
-        const totalFert = exploreResponse.totalRegistros || (exploreResponse.data?.length > 0 ? 1 : 0);
+        const totalFert = exploreResponse.totalRegistros || 0;
 
         let allFert: OrdenFert[] = [];
         if (totalFert > 0) {
@@ -267,13 +290,42 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
             if (res.data) allFert = allFert.concat(res.data);
           }
         }
-        setOrders(allFert);
 
         // 2. Fetch Provisional Orders
         const provResponse = await serviciosService.OrdenesProvisionalesPaginados(1, 20000);
+        let allProv: ProvisionalOrder[] = [];
         if (provResponse.data) {
-          setProvisionalOrders(Array.isArray(provResponse.data) ? provResponse.data : [provResponse.data]);
+          allProv = Array.isArray(provResponse.data) ? provResponse.data : [provResponse.data];
         }
+
+        // 3. Unificar con filtros (019, 006, Centro 1000)
+        const validResp = ['019', '006'];
+        
+        const fertMapped = allFert.filter(o => 
+          validResp.includes(String(o.RESPCTRLPROD).trim()) && o.CENTRO === '1000'
+        ).map(o => ({ ...o, _isPrevisional: false, _displayId: o.ORDEN }));
+
+        const provMapped = allProv.filter(o => 
+          validResp.includes(String(o.RESPCONTROLPROD).trim()) && o.CENTRO === '1000'
+        ).map(o => ({
+          FECHA: o.FECHAINICIO,
+          PEDIDO: '',
+          POSICION: '',
+          ORDEN: o.ORDENPREVISIONAL,
+          MATERIAL: o.MATERIAL,
+          NOMBRE: o.NOMBRE,
+          CANTPROGRAMADA: o.CANTIDAD,
+          CANTPENDIENTE: o.CANTIDAD,
+          CENTRO: o.CENTRO,
+          MAQUINA: o.Maquina,
+          PUESTOTRABAJO: o.PUESTOTRABAJO || o.Maquina,
+          RESPCTRLPROD: o.RESPCONTROLPROD,
+          CATEGORIA: o.CATEGORIA,
+          _isPrevisional: true,
+          _displayId: o.ORDENPREVISIONAL
+        }));
+
+        setOrders([...fertMapped, ...provMapped]);
 
       } catch (err) {
         const errorMessage = (err as Error).message;
@@ -289,47 +341,10 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
     }
   }, [addNotification, restricciones, isMounted]);
 
-  // COMBINAR ÓRDENES FERT Y PREVISIONALES
-  const baseFilteredOrders = useMemo(() => {
-    const validResp = ['019', '006'];
-    
-    // Normalizar FERT
-    const fertMapped = orders.filter(o => 
-      validResp.includes(String(o.RESPCTRLPROD).trim()) && o.CENTRO === '1000'
-    ).map(o => ({
-      ...o,
-      _isPrevisional: false,
-      _displayId: o.ORDEN
-    }));
-
-    // Normalizar Previsionales
-    const provMapped = provisionalOrders.filter(o => 
-      validResp.includes(String(o.RESPCONTROLPROD).trim()) && o.CENTRO === '1000'
-    ).map(o => ({
-      FECHA: o.FECHAINICIO,
-      PEDIDO: '',
-      POSICION: '',
-      ORDEN: o.ORDENPREVISIONAL,
-      MATERIAL: o.MATERIAL,
-      NOMBRE: o.NOMBRE,
-      CANTPROGRAMADA: o.CANTIDAD,
-      CANTPENDIENTE: o.CANTIDAD,
-      CENTRO: o.CENTRO,
-      MAQUINA: o.Maquina,
-      PUESTOTRABAJO: o.PUESTOTRABAJO || o.Maquina,
-      RESPCTRLPROD: o.RESPCONTROLPROD,
-      CATEGORIA: o.CATEGORIA,
-      _isPrevisional: true,
-      _displayId: o.ORDENPREVISIONAL
-    }));
-
-    return [...fertMapped, ...provMapped];
-  }, [orders, provisionalOrders]);
-
   const uniqueDates = useMemo(() => {
-    const dates = new Set(baseFilteredOrders.map(order => order.FECHA));
+    const dates = new Set(orders.map(order => order.FECHA));
     return Array.from(dates).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
-  }, [baseFilteredOrders]);
+  }, [orders]);
 
   useEffect(() => {
     if (!hasSetDefaultDate && uniqueDates.length > 0 && displayMode === 'plan') {
@@ -352,13 +367,12 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
   }, [uniqueDates, hasSetDefaultDate, displayMode]);
 
   const filteredOrders = useMemo(() => {
-    return baseFilteredOrders.filter(order => {
+    return orders.filter(order => {
         if (selectedDates.length === 0) return true;
         return selectedDates.includes(order.FECHA);
       });
-  }, [baseFilteredOrders, selectedDates]);
+  }, [orders, selectedDates]);
   
-  // ALERTA DE TIEMPOS FALTANTES
   const missingTimesCount = useMemo(() => {
     const missing = new Set<string>();
     filteredOrders.forEach(order => {
@@ -381,25 +395,6 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
       return sum + ((Number(order.CANTPROGRAMADA) || 0) * tiempoMin);
     }, 0);
   }, [filteredOrders, tiemposMap]);
-
-  const statusSummary = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const todayStr = today.toISOString().split('T')[0];
-    
-    let retrasadas = 0;
-    let enProceso = 0;
-    let porPlanificar = 0;
-
-    filteredOrders.forEach(order => {
-      const cant = Number(order.CANTPROGRAMADA) || 0;
-      if (order.FECHA < todayStr) retrasadas += cant;
-      else if (order.FECHA === todayStr) enProceso += cant;
-      else porPlanificar += cant;
-    });
-
-    return { retrasadas, enProceso, porPlanificar };
-  }, [filteredOrders]);
 
   const planSummaryByDate = useMemo(() => {
     if (displayMode !== 'plan' || selectedDates.length === 0) return [];
@@ -538,7 +533,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
           {displayMode === 'plan' && (
             <div className="flex flex-col space-y-4">
                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 shadow-sm">
-                  <h4 className="text-[13px] font-bold text-gray-800 mb-4 text-center uppercase tracking-wide">CAPACIDAD CONSOLIDADA (FERT + PREVISIONALES)</h4>
+                  <h4 className="text-[13px] font-bold text-gray-800 mb-4 text-center uppercase tracking-wide">CAPACIDAD CONSOLIDADA</h4>
                   <div className="grid grid-cols-3 gap-0 items-center text-base border rounded-md bg-white min-h-[80px]">
                       <div className="text-center border-r border-dashed border-gray-300 p-3 flex flex-col justify-center">
                           <p className="text-[12px] text-gray-500 font-semibold uppercase mb-1">CANT. PROGRAMADA TOTAL</p>
