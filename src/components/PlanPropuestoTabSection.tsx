@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -12,9 +11,9 @@ import {
   Home, 
   Calendar as CalendarIcon, 
   Download,
-  AlertCircle,
   ArrowRightLeft,
-  Search
+  Search,
+  Scale
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -29,18 +28,8 @@ interface ProposedPlanRow {
   cantidadPropuesta: number;
   diferencia: number;
   tiempoTotalPropuesto: number;
+  esAjustable: boolean;
 }
-
-const RESTRICCIONES_PUESTOS: Record<string, number> = {
-  'LINEA 1|Armado': 12,
-  'LINEA 1|Cerrado L1': 6,
-  'LINEA 2|Armado': 6,
-  'LINEA 2|Cerrado1 L2': 4,
-  'LINEA 2|Cerrado2 L2': 4,
-  'LINEA 3|Armado': 2,
-  'LINEA 3|Cerrado L3': 1,
-  'LINEA 5|Armado': 2,
-};
 
 const normalizeDateISO = (dateStr: any): string | null => {
   if (!dateStr) return null;
@@ -69,10 +58,9 @@ export const PlanPropuestoTabSection: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [searchTerm, setSearchTerm] = useState('');
   
-  // Filtros de Configuración
+  // Parámetros de Simulación (desde localStorage)
   const [programmingDate, setProgrammingDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [provisionalDate, setProvisionalDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [horasTurno1, setHorasTurno1] = useState<number>(8);
   const [rendLinea1, setRendLinea1] = useState<number>(1.05);
   const [rendLinea2, setRendLinea2] = useState<number>(1.08);
   const [rendLinea3, setRendLinea3] = useState<number>(1.05);
@@ -91,7 +79,6 @@ export const PlanPropuestoTabSection: React.FC = () => {
       setAvailableCenters(centers);
       if (centers.length > 0 && !selectedCenter) setSelectedCenter(centers[0]);
 
-      // Cargar Tiempos de Ensamblado (Misma fuente que Prog Tiempos)
       let allTiempos: any[] = [];
       let page = 1;
       let hasMore = true;
@@ -102,34 +89,8 @@ export const PlanPropuestoTabSection: React.FC = () => {
         if (raw.length < 5000) hasMore = false; else page++;
       }
       setTechnicalData(allTiempos);
-
-      // Cargar y mapear FERT (Misma lógica que Prog Tiempos)
-      const rawFert = Array.isArray(fertRes?.data) ? fertRes.data : [];
-      const mappedFert = rawFert.map((o: any) => {
-        const cat = String(o.CATEGORIA || '').toUpperCase();
-        let calc = '';
-        if (cat.includes('L1')) calc = 'LINEA 1';
-        else if (cat.includes('L2')) calc = 'LINEA 2';
-        else if (cat.includes('L3')) calc = 'LINEA 3';
-        else if (cat.includes('L5') || cat.includes('B-B')) calc = 'LINEA 5';
-        else calc = String(o.LINEA || '').trim().toUpperCase();
-        return { ...o, LINEA_MAPPED: calc };
-      });
-      setFertOrders(mappedFert);
-
-      // Cargar y mapear PREVISIONALES (Misma lógica que Prog Tiempos)
-      const rawPrev = Array.isArray(prevRes?.data) ? prevRes.data : [];
-      const mappedPrev = rawPrev.map((o: any) => {
-        const cat = String(o.CATEGORIA || '').toUpperCase();
-        let calc = '';
-        if (cat.includes('L1')) calc = 'LINEA 1';
-        else if (cat.includes('L2')) calc = 'LINEA 2';
-        else if (cat.includes('L3')) calc = 'LINEA 3';
-        else if (cat.includes('L5') || cat.includes('B-B')) calc = 'LINEA 5';
-        else calc = String(o.LINEA || '').trim().toUpperCase();
-        return { ...o, LINEA_MAPPED: calc };
-      });
-      setProvisionalOrders(mappedPrev);
+      setFertOrders(Array.isArray(fertRes?.data) ? fertRes.data : []);
+      setProvisionalOrders(Array.isArray(prevRes?.data) ? prevRes.data : []);
 
     } catch (err) {
       addNotification('error', `Error al cargar datos: ${(err as Error).message}`);
@@ -142,70 +103,67 @@ export const PlanPropuestoTabSection: React.FC = () => {
     loadData();
   }, [loadData]);
 
-  // MAPAS DE AGREGACIÓN DE DEMANDA (IDÉNTICOS A PROG TIEMPOS)
-  const fertSumMap = useMemo(() => {
-    const map = new Map<string, number>();
-    const targetDateISO = normalizeDateISO(programmingDate);
-    if (!targetDateISO || !selectedCenter) return map;
-
-    fertOrders.forEach(o => {
-      if (normalizeDateISO(o.FECHA || o.fecha) === targetDateISO && String(o.CENTRO || '').trim() === selectedCenter) {
-        const key = `${o.LINEA_MAPPED}|${normalizeMaterialCode(o.MATERIAL || o.CodMaterial)}`;
-        map.set(key, (map.get(key) || 0) + Number(o.CANTPENDIENTE || 0));
-      }
-    });
-    return map;
-  }, [fertOrders, programmingDate, selectedCenter]);
-
-  const prevSumMap = useMemo(() => {
-    const map = new Map<string, number>();
-    const targetDateISO = normalizeDateISO(provisionalDate);
-    if (!targetDateISO || !selectedCenter) return map;
-
-    provisionalOrders.forEach(o => {
-      if (normalizeDateISO(o.FECHAINICIO || o.fecha_inicio) === targetDateISO && String(o.Centro || '').trim() === selectedCenter) {
-        const key = `${o.LINEA_MAPPED}|${normalizeMaterialCode(o.MATERIAL || o.CodMaterial || o.Material)}`;
-        map.set(key, (map.get(key) || 0) + Number(o.CANTIDAD || 0));
-      }
-    });
-    return map;
-  }, [provisionalOrders, provisionalDate, selectedCenter]);
-
-  // ALGORITMO DE OPTIMIZACIÓN BASADO EXCLUSIVAMENTE EN DATOS TÉCNICOS Y DEMANDA AGREGADA
+  // ALGORITMO DE BALANCEO BASADO EN TIEMPO DISPONIBLE Y MATERIALES DE BALANCEO
   const proposedPlan = useMemo((): ProposedPlanRow[] => {
     if (!technicalData.length || !selectedCenter) return [];
 
-    const materialDemands = new Map<string, { material: string, descripcion: string, linea: string, qty: number, tUnit: number }>();
-    const lineLoad = new Map<string, { currentHours: number, targetHours: number }>();
+    // 1. Cargar Configuración de Balanceo y Puestos Editados
+    const matBalanceoRaw = localStorage.getItem('material_balanceo_lineas_data');
+    const matBalanceoPool = matBalanceoRaw ? JSON.parse(matBalanceoRaw) : [];
+    const enabledMaterials = new Set(matBalanceoPool.filter((m: any) => m.habilitado).map((m: any) => normalizeMaterialCode(m.material)));
 
-    // Filtrar técnicos por centro
+    const simPuestosT1 = JSON.parse(localStorage.getItem('sim_puestos_t1') || '{}');
+    const simPuestosT2 = JSON.parse(localStorage.getItem('sim_puestos_t2') || '{}');
+    const simHorasT1 = Number(localStorage.getItem('sim_horas_t1') || 8);
+    const simHorasT2 = Number(localStorage.getItem('sim_horas_t2') || 0);
+
+    const lineTargetHours = new Map<string, number>();
+    const lineCurrentFixedHours = new Map<string, number>();
+    const lineFlexibleUnitTimes = new Map<string, number>();
+    const lineMaterials = new Map<string, { material: string, desc: string, fixedQty: number, flexQty: number, tUnit: number }[]>();
+
+    const targetDateISO = normalizeDateISO(programmingDate);
+    const prevDateISO = normalizeDateISO(provisionalDate);
+
+    // Identificar el puesto de referencia (Armado) para determinar la capacidad de la línea
     const centerTechnical = technicalData.filter(d => String(d.Centro || '').trim() === selectedCenter);
     
-    // Identificar el puesto de referencia para cada línea
-    const lineRefWorkstation: Record<string, string> = {
-      'LINEA 1': 'Armado',
-      'LINEA 2': 'Armado',
-      'LINEA 3': 'Armado',
-      'LINEA 5': 'Armado'
-    };
+    // Agrupar demandas por línea
+    const allLines = ['LINEA 1', 'LINEA 2', 'LINEA 3', 'LINEA 5'];
+    
+    allLines.forEach(lineName => {
+      const keyRef = `${selectedCenter}|${lineName}|Armado`;
+      const t1 = simPuestosT1[keyRef] || 0;
+      const t2 = simPuestosT2[keyRef] || 0;
+      const available = (t1 * simHorasT1) + (t2 * simHorasT2);
+      lineTargetHours.set(lineName, available);
+    });
 
-    // Iterar sobre los materiales de la pestaña técnica
+    // 2. Procesar todos los materiales técnicos para el centro
     centerTechnical.forEach(row => {
       const linea = String(row.Linea || '').trim().toUpperCase();
       const puesto = String(row.PuestoTrabajo || '').trim();
       const material = normalizeMaterialCode(row.CodMaterial);
       
-      // Solo nos interesa el puesto de referencia para el cálculo de capacidad
-      if (puesto !== lineRefWorkstation[linea]) return;
+      // Solo procesamos basado en el puesto de Armado para el cálculo de capacidad grupal
+      if (puesto !== 'Armado') return;
 
       const matKey = `${linea}|${material}`;
       
-      // Obtener demanda agregada (FERT + PREV)
-      const qFab = fertSumMap.get(matKey) || 0;
-      const qPrev = prevSumMap.get(matKey) || 0;
-      const totalQty = qFab + qPrev;
+      // Calcular demanda fija (FERT) y flexible (OrdPrev)
+      let qFixed = 0;
+      fertOrders.forEach(o => {
+        if (normalizeDateISO(o.FECHA || o.fecha) === targetDateISO && normalizeMaterialCode(o.MATERIAL) === material && String(o.CENTRO).trim() === selectedCenter) {
+          qFixed += Number(o.CANTPENDIENTE || 0);
+        }
+      });
 
-      if (totalQty <= 0) return;
+      let qFlex = 0;
+      provisionalOrders.forEach(o => {
+        if (normalizeDateISO(o.FECHAINICIO || o.fecha_inicio) === prevDateISO && normalizeMaterialCode(o.MATERIAL || o.CodMaterial) === material && String(o.Centro).trim() === selectedCenter) {
+          qFlex += Number(o.CANTIDAD || 0);
+        }
+      });
 
       const tUnit = Number(row.Tiempo_Min || 0);
       let rend = 1;
@@ -214,101 +172,106 @@ export const PlanPropuestoTabSection: React.FC = () => {
       else if (linea.includes('3')) rend = rendLinea3;
       else if (linea.includes('5')) rend = rendLinea5;
 
-      const hours = ((totalQty * tUnit) / 60) * rend;
+      const effectiveTUnit = (tUnit / 60) * rend;
 
-      materialDemands.set(matKey, {
+      if (!lineMaterials.has(linea)) lineMaterials.set(linea, []);
+      lineMaterials.get(linea)!.push({
         material,
-        descripcion: row.Material || row.NombreMaterial || `Material ${material}`,
-        linea,
-        qty: totalQty,
-        tUnit
+        desc: row.Material || row.NombreMaterial || `Material ${material}`,
+        fixedQty: qFixed,
+        flexQty: qFlex,
+        tUnit: effectiveTUnit
       });
 
-      // Acumular carga de la línea
-      const current = lineLoad.get(linea) || { currentHours: 0, targetHours: 0 };
-      current.currentHours += hours;
-      current.targetHours = (RESTRICCIONES_PUESTOS[`${linea}|${puesto}`] || 0) * horasTurno1;
-      lineLoad.set(linea, current);
+      lineCurrentFixedHours.set(linea, (lineCurrentFixedHours.get(linea) || 0) + (qFixed * effectiveTUnit));
     });
 
-    // 2. Aplicar iteración de balanceo: Cantidad PROPUESTA = Cantidad Original * (Horas Objetivo / Horas Actuales)
+    // 3. Ejecutar Iteración de Balanceo
     const results: ProposedPlanRow[] = [];
 
-    materialDemands.forEach((data, key) => {
-      const [linea] = key.split('|');
-      const load = lineLoad.get(linea);
-      
-      let factor = 1;
-      if (load && load.currentHours > 0) {
-        factor = load.targetHours / load.currentHours;
+    lineMaterials.forEach((mats, linea) => {
+      const target = lineTargetHours.get(linea) || 0;
+      const fixedHours = lineCurrentFixedHours.get(linea) || 0;
+      const remainingHours = target - fixedHours;
+
+      // Filtrar materiales de la línea que están en el pool de balanceo habilitado
+      const flexPool = mats.filter(m => enabledMaterials.has(m.material));
+      const totalFlexTimeAtBase = flexPool.reduce((sum, m) => sum + (m.flexQty * m.tUnit), 0);
+
+      let scaleFactor = 1;
+      if (totalFlexTimeAtBase > 0) {
+        scaleFactor = remainingHours / totalFlexTimeAtBase;
+      } else if (flexPool.length > 0 && remainingHours > 0) {
+        // Si no hay demanda previsional pero hay materiales habilitados, repartir las horas equitativamente
+        const hoursPerMat = remainingHours / flexPool.length;
+        flexPool.forEach(m => { m.flexQty = 1; }); // Darle una base de 1 para que el cálculo funcione
+        const newFlexTime = flexPool.reduce((sum, m) => sum + (m.flexQty * m.tUnit), 0);
+        scaleFactor = remainingHours / newFlexTime;
       }
 
-      const proposedQty = Math.round(data.qty * factor);
-      
-      let rend = 1;
-      if (linea.includes('1')) rend = rendLinea1;
-      else if (linea.includes('2')) rend = rendLinea2;
-      else if (linea.includes('3')) rend = rendLinea3;
-      else if (linea.includes('5')) rend = rendLinea5;
+      mats.forEach(m => {
+        const isAdj = enabledMaterials.has(m.material);
+        const finalQty = isAdj ? Math.round(m.flexQty * scaleFactor) : 0;
+        const totalQty = m.fixedQty + finalQty;
 
-      results.push({
-        material: data.material,
-        descripcion: data.descripcion,
-        linea: data.linea,
-        cantidadOriginal: data.qty,
-        cantidadPropuesta: proposedQty,
-        diferencia: proposedQty - data.qty,
-        tiempoTotalPropuesto: ((proposedQty * data.tUnit) / 60) * rend
+        results.push({
+          material: m.material,
+          descripcion: m.desc,
+          linea: linea,
+          cantidadOriginal: m.fixedQty + m.flexQty,
+          cantidadPropuesta: totalQty,
+          diferencia: totalQty - (m.fixedQty + m.flexQty),
+          tiempoTotalPropuesto: totalQty * m.tUnit,
+          esAjustable: isAdj
+        });
       });
     });
 
     return results.sort((a, b) => a.linea.localeCompare(b.linea) || a.material.localeCompare(b.material));
-  }, [technicalData, fertSumMap, prevSumMap, selectedCenter, programmingDate, provisionalDate, horasTurno1, rendLinea1, rendLinea2, rendLinea3, rendLinea5]);
+  }, [technicalData, fertOrders, provisionalOrders, selectedCenter, programmingDate, provisionalDate, rendLinea1, rendLinea2, rendLinea3, rendLinea5]);
 
   const filteredResults = useMemo(() => {
     const q = searchTerm.toLowerCase().trim();
     if (!q) return proposedPlan;
     return proposedPlan.filter(r => 
       r.material.toLowerCase().includes(q) || 
-      r.descripcion.toLowerCase().includes(q) ||
-      r.linea.toLowerCase().includes(q)
+      r.descripcion.toLowerCase().includes(q)
     );
   }, [proposedPlan, searchTerm]);
 
   const handleExport = () => {
-    const dataToExport = filteredResults.map(r => ({
+    const ws = XLSX.utils.json_to_sheet(filteredResults.map(r => ({
       'Centro': selectedCenter,
       'Línea': r.linea,
-      'Código Material': r.material,
+      'Material': r.material,
       'Descripción': r.descripcion,
+      'Es Ajustable (Mat Balanceo)': r.esAjustable ? 'SI' : 'NO',
       'Cant. Original': r.cantidadOriginal,
       'Cant. PROPUESTA': r.cantidadPropuesta,
-      'Diferencia (±)': r.diferencia,
-      'Tiempo Estimado (h)': Number(r.tiempoTotalPropuesto.toFixed(2))
-    }));
-
-    const ws = XLSX.utils.json_to_sheet(dataToExport);
+      'Diferencia': r.diferencia,
+      'Tiempo Resultante (h)': Number(r.tiempoTotalPropuesto.toFixed(2))
+    })));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Plan Propuesto");
-    XLSX.writeFile(wb, `Plan_Propuesto_${selectedCenter}_${programmingDate}.xlsx`);
+    XLSX.writeFile(wb, `Plan_Optimizado_${selectedCenter}.xlsx`);
   };
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center space-x-3">
-          <CheckCircle2 className="w-6 h-6 text-green-600" />
+          <Scale className="w-6 h-6 text-green-600" />
           <div>
-            <h3 className="text-xl font-semibold text-gray-800">Propuesta de Producción Óptima</h3>
-            <p className="text-xs text-gray-500">Basado estrictamente en la matriz técnica y demanda agregada</p>
+            <h3 className="text-xl font-semibold text-gray-800">Plan de Producción Propuesto (Optimizado)</h3>
+            <p className="text-xs text-gray-500">Balanceo de carga basado en Tiempo Disponible y Materiales Habilitados</p>
           </div>
         </div>
         <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={handleExport} disabled={filteredResults.length === 0}>
-                <Download className="w-4 h-4 mr-2" /> Exportar Plan
+                <Download className="w-4 h-4 mr-2" /> Exportar Excel
             </Button>
-            <Button variant="outline" size="sm" onClick={() => { setFertOrders([]); setProvisionalOrders([]); loadData(); }}>
-                <ArrowRightLeft className="w-4 h-4 mr-2" /> Recalcular
+            <Button variant="outline" size="sm" onClick={() => loadData()}>
+                <ArrowRightLeft className="w-4 h-4 mr-2" /> Recalcular Todo
             </Button>
         </div>
       </div>
@@ -316,49 +279,33 @@ export const PlanPropuestoTabSection: React.FC = () => {
       <Tabs value={selectedCenter} onValueChange={setSelectedCenter} className="w-full">
         <TabsList className="flex h-auto bg-gray-100/50 p-1 mb-4">
           {availableCenters.map(center => (
-            <TabsTrigger key={center} value={center} className="px-6 py-2 text-xs font-bold uppercase tracking-wider data-[state=active]:bg-white data-[state=active]:text-indigo-700">
+            <TabsTrigger key={center} value={center} className="px-6 py-2 text-xs font-bold uppercase data-[state=active]:bg-white data-[state=active]:text-indigo-700">
               <Home className="w-3 h-3 mr-2" /> Centro {center}
             </TabsTrigger>
           ))}
         </TabsList>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-8 gap-4 p-4 bg-gray-50 border rounded-xl shadow-sm mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 p-4 bg-gray-50 border rounded-xl shadow-sm mb-6">
           <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">FERT (Prog):</label>
+            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Fecha FERT:</label>
             <input type="date" value={programmingDate} onChange={e => setProgrammingDate(e.target.value)} className="text-xs border rounded-md px-2 py-2 outline-none h-9 font-medium text-indigo-700" />
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Prev (Fecha):</label>
+            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Fecha PREV:</label>
             <input type="date" value={provisionalDate} onChange={e => setProvisionalDate(e.target.value)} className="text-xs border rounded-md px-2 py-2 outline-none h-9 font-medium text-indigo-700" />
           </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Horas T1:</label>
-            <select value={horasTurno1} onChange={e => setHorasTurno1(Number(e.target.value))} className="text-xs border rounded-md px-2 py-1 h-9 font-bold text-indigo-700">
-              {Array.from({ length: 9 }, (_, i) => i + 4).map(h => <option key={`t1-${h}`} value={h}>{h}</option>)}
-            </select>
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Rend L1:</label>
-            <input type="number" step="0.01" value={rendLinea1} onChange={e => setRendLinea1(Number(e.target.value))} className="text-xs border rounded-md px-2 py-1 h-9 font-bold text-indigo-700" />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Rend L2:</label>
-            <input type="number" step="0.01" value={rendLinea2} onChange={e => setRendLinea2(Number(e.target.value))} className="text-xs border rounded-md px-2 py-1 h-9 font-bold text-indigo-700" />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Rend L3:</label>
-            <input type="number" step="0.01" value={rendLinea3} onChange={e => setRendLinea3(Number(e.target.value))} className="text-xs border rounded-md px-2 py-1 h-9 font-bold text-indigo-700" />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Rend L5:</label>
-            <input type="number" step="0.01" value={rendLinea5} onChange={e => setRendLinea5(Number(e.target.value))} className="text-xs border rounded-md px-2 py-1 h-9 font-bold text-indigo-700" />
-          </div>
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1 lg:col-span-2">
             <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Búsqueda:</label>
             <div className="relative">
               <Search className="absolute left-2 top-2.5 h-3.5 w-3.5 text-gray-400" />
-              <input type="text" placeholder="Filtrar..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="text-xs border rounded-md pl-7 pr-2 py-2 outline-none h-9 w-full" />
+              <input type="text" placeholder="Filtrar por código o nombre..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="text-xs border rounded-md pl-7 pr-2 py-2 outline-none h-9 w-full" />
             </div>
+          </div>
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-2 flex items-center gap-2 lg:col-span-2">
+            <AlertCircle className="w-4 h-4 text-blue-600 flex-shrink-0" />
+            <p className="text-[10px] text-blue-800 leading-tight">
+              <b>Nota:</b> La optimización ajusta las cantidades de los materiales marcados en <b>"Mat Balanceo"</b> para alcanzar las horas disponibles configuradas en <b>"Rev Capacidad"</b>.
+            </p>
           </div>
         </div>
 
@@ -370,15 +317,16 @@ export const PlanPropuestoTabSection: React.FC = () => {
                   <th className="px-4 py-3 text-left">Línea</th>
                   <th className="px-4 py-3 text-left">Material</th>
                   <th className="px-4 py-3 text-left">Descripción</th>
-                  <th className="px-4 py-3 text-right">Cant. Original</th>
+                  <th className="px-4 py-3 text-center">Tipo</th>
+                  <th className="px-4 py-3 text-right">Cant. Actual</th>
                   <th className="px-4 py-3 text-right text-indigo-700 bg-indigo-50/30">Cant. PROPUESTA</th>
-                  <th className="px-4 py-3 text-right">Diferencia</th>
-                  <th className="px-4 py-3 text-right bg-indigo-50/30">Tiempo Est. (h)</th>
+                  <th className="px-4 py-3 text-right">Ajuste (±)</th>
+                  <th className="px-4 py-3 text-right bg-indigo-50/30">Tiempo (h)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {isLoading ? (
-                  <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-500"><Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" /> Calculando propuesta óptima...</td></tr>
+                  <tr><td colSpan={8} className="px-6 py-12 text-center text-gray-500"><Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" /> Generando propuesta óptima...</td></tr>
                 ) : filteredResults.length > 0 ? (() => {
                   const items: React.ReactNode[] = [];
                   const lines = [...new Set(filteredResults.map(r => r.linea))];
@@ -386,11 +334,17 @@ export const PlanPropuestoTabSection: React.FC = () => {
                     const lineRows = filteredResults.filter(r => r.linea === lineName);
                     lineRows.forEach((row, idx) => {
                       items.push(
-                        <tr key={`${lineName}-${row.material}-${idx}`} className="hover:bg-gray-50">
+                        <tr key={`${lineName}-${row.material}-${idx}`} className={cn("hover:bg-gray-50 transition-colors", row.esAjustable && "bg-emerald-50/30")}>
                           {idx === 0 && <td rowSpan={lineRows.length} className="px-4 py-3 font-bold text-gray-900 border-r align-top bg-gray-50/10">{lineName}</td>}
                           <td className="px-4 py-3 font-mono font-medium text-gray-700">{row.material}</td>
                           <td className="px-4 py-3 text-gray-600 max-w-xs truncate" title={row.descripcion}>{row.descripcion}</td>
-                          <td className="px-4 py-3 text-right text-gray-400 line-through">{row.cantidadOriginal.toLocaleString()}</td>
+                          <td className="px-4 py-3 text-center">
+                            {row.esAjustable ? 
+                              <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 text-[9px] uppercase font-bold">Ajustable</Badge> : 
+                              <Badge variant="outline" className="text-[9px] uppercase font-bold opacity-50">Fijo</Badge>
+                            }
+                          </td>
+                          <td className="px-4 py-3 text-right text-gray-400">{row.cantidadOriginal.toLocaleString()}</td>
                           <td className="px-4 py-3 text-right font-bold text-indigo-700 bg-indigo-50/5">{row.cantidadPropuesta.toLocaleString()}</td>
                           <td className={`px-4 py-3 text-right font-medium ${row.diferencia > 0 ? 'text-green-600' : row.diferencia < 0 ? 'text-red-600' : 'text-gray-400'}`}>
                             {row.diferencia > 0 ? `+${row.diferencia.toLocaleString()}` : row.diferencia.toLocaleString()}
@@ -402,13 +356,13 @@ export const PlanPropuestoTabSection: React.FC = () => {
                   });
                   return items;
                 })() : (
-                  <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-400 italic">No hay demanda activa que coincida con la matriz técnica para este centro y fechas.</td></tr>
+                  <tr><td colSpan={8} className="px-6 py-12 text-center text-gray-400 italic">No hay datos para optimizar con los filtros actuales.</td></tr>
                 )}
               </tbody>
               {filteredResults.length > 0 && (
                 <tfoot className="bg-gray-800 text-white font-bold text-[10px]">
                   <tr>
-                    <td colSpan={3} className="px-4 py-3 text-right uppercase border-r border-gray-700">Totales Propuesta:</td>
+                    <td colSpan={4} className="px-4 py-3 text-right uppercase border-r border-gray-700">Totales Plan Propuesto:</td>
                     <td className="px-4 py-3 text-right border-r border-gray-700">{filteredResults.reduce((sum, r) => sum + r.cantidadOriginal, 0).toLocaleString()}</td>
                     <td className="px-4 py-3 text-right text-indigo-300 border-r border-gray-700">{filteredResults.reduce((sum, r) => sum + r.cantidadPropuesta, 0).toLocaleString()}</td>
                     <td className="px-4 py-3 text-right border-r border-gray-700">{filteredResults.reduce((sum, r) => sum + r.diferencia, 0).toLocaleString()}</td>

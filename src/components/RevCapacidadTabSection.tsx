@@ -29,7 +29,6 @@ interface SummaryRow {
   totalCantidad: number;
   totalTiempo: number;
   puestosObjetivo: number;
-  puestosOptimizados: number;
 }
 
 const RESTRICCIONES_PUESTOS: Record<string, number> = {
@@ -41,13 +40,6 @@ const RESTRICCIONES_PUESTOS: Record<string, number> = {
   'LINEA 3|Armado': 2,
   'LINEA 3|Cerrado L3': 1,
   'LINEA 5|Armado': 2,
-};
-
-const PUESTOS_REFERENCIA: Record<string, string> = {
-  'LINEA 1': 'Armado',
-  'LINEA 2': 'Armado',
-  'LINEA 3': 'Armado',
-  'LINEA 5': 'Armado',
 };
 
 const normalizeDateISO = (dateStr: any): string | null => {
@@ -87,7 +79,7 @@ export const RevCapacidadTabSection: React.FC = () => {
   const [programmingDate, setProgrammingDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [provisionalDate, setProvisionalDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [horasTurno1, setHorasTurno1] = useState<number>(8);
-  const [horasTurno2, setHorasTurno2] = useState<number>(8);
+  const [horasTurno2, setHorasTurno2] = useState<number>(0);
   const [rendLinea1, setRendLinea1] = useState<number>(1.05);
   const [rendLinea2, setRendLinea2] = useState<number>(1.08);
   const [rendLinea3, setRendLinea3] = useState<number>(1.05);
@@ -206,8 +198,7 @@ export const RevCapacidadTabSection: React.FC = () => {
           cantOrdFab: 0, cantOrdPrev: 0, 
           tiempoOrdFab: 0, tiempoOrdPrev: 0,
           totalCantidad: 0, totalTiempo: 0,
-          puestosObjetivo: RESTRICCIONES_PUESTOS[key] || 0,
-          puestosOptimizados: 0
+          puestosObjetivo: RESTRICCIONES_PUESTOS[key] || 0
         });
       }
 
@@ -230,25 +221,18 @@ export const RevCapacidadTabSection: React.FC = () => {
       entry.totalTiempo = entry.tiempoOrdFab + entry.tiempoOrdPrev;
     });
 
-    const rows = Array.from(map.values());
-    const lineFactors = new Map<string, number>();
-
-    [...new Set(rows.map(r => r.linea))].forEach(lName => {
-      const refPuesto = PUESTOS_REFERENCIA[lName];
-      const refRow = rows.find(r => r.linea === lName && r.puesto === refPuesto);
-      if (refRow && refRow.totalTiempo > 0) {
-        const target = refRow.puestosObjetivo;
-        lineFactors.set(lName, target / (refRow.totalTiempo / horasTurno1));
-      } else {
-        lineFactors.set(lName, 1);
-      }
-    });
-
-    return rows.map(r => ({
-      ...r,
-      puestosOptimizados: (r.totalTiempo / horasTurno1) * (lineFactors.get(r.linea) || 1)
-    })).sort((a, b) => a.linea.localeCompare(b.linea) || a.puesto.localeCompare(b.puesto));
+    return Array.from(map.values()).sort((a, b) => a.linea.localeCompare(b.linea) || a.puesto.localeCompare(b.puesto));
   }, [technicalData, selectedCenter, fertSumMap, prevSumMap, rendLinea1, rendLinea2, rendLinea3, rendLinea5, horasTurno1]);
+
+  // Guardar parámetros de simulación en localStorage para el Plan Propuesto
+  useEffect(() => {
+    if (isMounted) {
+      localStorage.setItem('sim_puestos_t1', JSON.stringify(editablePuestosT1));
+      localStorage.setItem('sim_puestos_t2', JSON.stringify(editablePuestosT2));
+      localStorage.setItem('sim_horas_t1', horasTurno1.toString());
+      localStorage.setItem('sim_horas_t2', horasTurno2.toString());
+    }
+  }, [editablePuestosT1, editablePuestosT2, horasTurno1, horasTurno2, isMounted]);
 
   useEffect(() => {
     if (summaryData.length === 0) return;
@@ -288,14 +272,13 @@ export const RevCapacidadTabSection: React.FC = () => {
       return {
         totalCant: acc.totalCant + r.totalCantidad,
         totalTime: acc.totalTime + r.totalTiempo,
-        totalPuestos: acc.totalPuestos + (r.totalTiempo / horasTurno1),
+        totalPuestos: acc.totalPuestos + (r.totalTiempo / (horasTurno1 || 1)),
         totalT1: acc.totalT1 + t1,
         totalT2: acc.totalT2 + t2,
         totalDispTime: acc.totalDispTime + dispTime,
         totalObjetivo: acc.totalObjetivo + r.puestosObjetivo,
-        totalOpt: acc.totalOpt + r.puestosOptimizados
       };
-    }, { totalCant: 0, totalTime: 0, totalPuestos: 0, totalT1: 0, totalT2: 0, totalDispTime: 0, totalObjetivo: 0, totalOpt: 0 });
+    }, { totalCant: 0, totalTime: 0, totalPuestos: 0, totalT1: 0, totalT2: 0, totalDispTime: 0, totalObjetivo: 0 });
   }, [summaryData, selectedCenter, editablePuestosT1, editablePuestosT2, horasTurno1, horasTurno2]);
 
   return (
@@ -316,15 +299,16 @@ export const RevCapacidadTabSection: React.FC = () => {
                 const key = `${selectedCenter}|${r.linea}|${r.puesto}`;
                 const t1 = editablePuestosT1[key] ?? r.puestosObjetivo;
                 const t2 = editablePuestosT2[key] ?? 0;
+                const disp = (t1 * horasTurno1) + (t2 * horasTurno2);
                 return {
                   'Línea': r.linea, 'Puesto Trabajo': r.puesto,
                   'Total Tiempo (h)': Number(r.totalTiempo.toFixed(2)),
-                  'No. Puestos': Number((r.totalTiempo / horasTurno1).toFixed(2)),
+                  'No. Puestos': Number((r.totalTiempo / (horasTurno1 || 1)).toFixed(2)),
                   'Puestos T1': t1,
                   'Puestos T2': t2,
-                  'Tiempo Disponible (h)': (t1 * horasTurno1) + (t2 * horasTurno2),
-                  'Objetivo': r.puestosObjetivo,
-                  'Optimizado': Number(r.puestosOptimizados.toFixed(2))
+                  'Tiempo Disponible (h)': disp,
+                  'Diferencia (h)': disp - r.totalTiempo,
+                  'Puestos Objetivo': r.puestosObjetivo
                 };
               });
               const ws = XLSX.utils.json_to_sheet(exportRows);
@@ -397,15 +381,14 @@ export const RevCapacidadTabSection: React.FC = () => {
                   <th className="px-4 py-3 text-right border text-blue-700 bg-blue-50/30">No. Puestos</th>
                   <th className="px-4 py-3 text-right border text-indigo-700 bg-indigo-50/50">Puestos T1</th>
                   <th className="px-4 py-3 text-right border text-indigo-700 bg-indigo-50/50">Puestos T2</th>
-                  <th className="px-4 py-3 text-right border text-green-700 bg-green-50/30">Tiempo Disponible</th>
+                  <th className="px-4 py-3 text-right border text-green-700 bg-green-50/30 font-bold">Tiempo Disponible</th>
                   <th className="px-4 py-3 text-right border text-indigo-800 bg-indigo-100/50">Puestos Objetivo</th>
-                  <th className="px-4 py-3 text-right border text-purple-700 bg-purple-50/30">Puestos Opt</th>
-                  <th className="px-4 py-3 text-right border">Diferencia (±)</th>
+                  <th className="px-4 py-3 text-right border text-teal-700">Diferencia (h)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {isLoading ? (
-                  <tr><td colSpan={10} className="px-6 py-12 text-center text-gray-500"><Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" /> Cargando...</td></tr>
+                  <tr><td colSpan={9} className="px-6 py-12 text-center text-gray-500"><Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" /> Cargando...</td></tr>
                 ) : summaryData.length > 0 ? (() => {
                   const items: React.ReactNode[] = [];
                   const lines = [...new Set(summaryData.map(r => r.linea))];
@@ -413,11 +396,11 @@ export const RevCapacidadTabSection: React.FC = () => {
                     const rows = summaryData.filter(r => r.linea === lineName);
                     rows.forEach((r, idx) => {
                       const key = `${selectedCenter}|${r.linea}|${r.puesto}`;
-                      const calcPuestos = Number((r.totalTiempo / horasTurno1).toFixed(2));
+                      const calcPuestos = Number((r.totalTiempo / (horasTurno1 || 1)).toFixed(2));
                       const t1 = editablePuestosT1[key] ?? r.puestosObjetivo;
                       const t2 = editablePuestosT2[key] ?? 0;
                       const dispTime = (t1 * horasTurno1) + (t2 * horasTurno2);
-                      const delta = (t1 + t2) - calcPuestos;
+                      const deltaHours = dispTime - r.totalTiempo;
                       
                       items.push(
                         <tr key={key} className="hover:bg-gray-50 transition-colors">
@@ -437,9 +420,8 @@ export const RevCapacidadTabSection: React.FC = () => {
                           <td className="px-4 py-3 text-right font-bold border text-indigo-900 bg-indigo-100/20">
                             <span className="inline-flex items-center gap-1"><Target className="w-3 h-3 opacity-30" /> {r.puestosObjetivo}</span>
                           </td>
-                          <td className="px-4 py-3 text-right font-bold border text-purple-700 bg-purple-50/10">{isMounted ? r.puestosOptimizados.toFixed(2) : '-'}</td>
-                          <td className={cn("px-4 py-3 text-right font-bold border", delta < 0 ? "text-red-600 bg-red-50" : delta > 0 ? "text-green-600 bg-green-50" : "text-gray-400")}>
-                            {isMounted ? (delta > 0 ? `+${delta.toFixed(2)}` : delta.toFixed(2)) : '-'}
+                          <td className={cn("px-4 py-3 text-right font-bold border font-mono", deltaHours < 0 ? "text-red-600 bg-red-50" : deltaHours > 0 ? "text-green-600 bg-green-50" : "text-gray-400")}>
+                            {isMounted ? (deltaHours > 0 ? `+${deltaHours.toFixed(2)}` : deltaHours.toFixed(2)) : '-'}
                           </td>
                         </tr>
                       );
@@ -447,7 +429,7 @@ export const RevCapacidadTabSection: React.FC = () => {
                   });
                   return items;
                 })() : (
-                  <tr><td colSpan={10} className="px-6 py-12 text-center text-gray-400 italic">Sin datos.</td></tr>
+                  <tr><td colSpan={9} className="px-6 py-12 text-center text-gray-400 italic">Sin datos.</td></tr>
                 )}
               </tbody>
               {summaryData.length > 0 && (
@@ -460,8 +442,7 @@ export const RevCapacidadTabSection: React.FC = () => {
                     <td className="px-4 py-3 text-right font-mono border-r border-gray-700 text-indigo-300">{grandTotals.totalT2}</td>
                     <td className="px-4 py-3 text-right font-mono border-r border-gray-700 text-green-300">{isMounted ? `${grandTotals.totalDispTime.toFixed(1)}h` : '-'}</td>
                     <td className="px-4 py-3 text-right font-mono border-r border-gray-700 text-indigo-300">{grandTotals.totalObjetivo}</td>
-                    <td className="px-4 py-3 text-right font-mono border-r border-gray-700 text-purple-300">{isMounted ? grandTotals.totalOpt.toFixed(2) : '-'}</td>
-                    <td className="px-4 py-3 text-right">{isMounted ? (grandTotals.totalT1 + grandTotals.totalT2 - grandTotals.totalPuestos).toFixed(2) : '-'}</td>
+                    <td className="px-4 py-3 text-right text-teal-300">{isMounted ? (grandTotals.totalDispTime - grandTotals.totalTime).toFixed(2) : '-'}h</td>
                   </tr>
                 </tfoot>
               )}
