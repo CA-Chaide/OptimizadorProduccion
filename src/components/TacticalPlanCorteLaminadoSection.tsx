@@ -17,7 +17,9 @@ import {
   Minus,
   RefreshCw,
   Box,
-  Database
+  Database,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -55,7 +57,7 @@ interface UnifiedNeedRow {
   porcentajeNecesidad: number;
   planUn: number;
   planKg: number;
-  // Nuevas columnas recuperadas de Looper
+  // Columnas recuperadas de Looper
   looperPesoUN: number;
   looperDensidad: string;
   looperEspesor: number;
