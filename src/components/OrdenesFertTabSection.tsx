@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { serviciosService } from '@/services/servicios.service';
 import { useAppContext } from '@/context/AppProvider';
 import { Package, Check, ChevronsUpDown, Loader2, BellRing, AlertTriangle } from 'lucide-react';
-import type { OrdenFert, Restriccion } from '@/types/interfaces';
+import type { OrdenFert, ProvisionalOrder, Restriccion } from '@/types/interfaces';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from '@/components/ui/command';
@@ -159,6 +159,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
   const { addNotification } = useAppContext();
   const [isMounted, setIsMounted] = useState(false);
   const [orders, setOrders] = useState<OrdenFert[]>([]);
+  const [provisionalOrders, setProvisionalOrders] = useState<ProvisionalOrder[]>([]);
   const [tapiceros, setTapiceros] = useState<any[]>([]);
   const [pagination, setPagination] = useState<PaginationState>({
     currentPage: 1,
@@ -209,7 +210,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
         const tiempo = item.Tiempo_Min ?? item.Tiempo ?? 0;
         if (materialCode && tiempo > 0) {
             if (!map.has(materialCode)) {
-                map.set(materialCode, tiempo);
+                map.set(map.has(materialCode) ? `${materialCode}_dup` : materialCode, tiempo);
             }
         }
     });
@@ -230,21 +231,12 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
         const res = await serviciosService.getCuboHabilidadesOP();
         if (res && res.data) {
           const dataArray = Array.isArray(res.data) ? res.data : [res.data];
-          
-          // Filtro robusto: Tapiceros de Quito
           const filtered = dataArray.filter((s: any) => {
             const role = String(s.ROL || '').trim().toUpperCase();
             const location = String(s.LOCALIDAD || s.CENTRO || s.Centro || '').trim();
             return role.includes("TAPICERO") && (location.includes("QUITO") || location.includes("1000"));
           });
-
-          // Si el filtro específico no devuelve nada, intentar filtro general por rol
-          const finalFiltered = filtered.length > 0 ? filtered : dataArray.filter((s: any) => 
-            String(s.ROL || '').trim().toUpperCase().includes("TAPICERO")
-          );
-
-          // Ordenar por calificación descendente
-          const sorted = finalFiltered.sort((a: any, b: any) => (Number(b.CALIFICACION) || 0) - (Number(a.CALIFICACION) || 0));
+          const sorted = filtered.sort((a: any, b: any) => (Number(b.CALIFICACION) || 0) - (Number(a.CALIFICACION) || 0));
           setTapiceros(sorted);
         }
       } catch (e) {
@@ -257,33 +249,31 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
   useEffect(() => {
     if (!isMounted) return;
 
-    const fetchOrders = async () => {
+    const fetchData = async () => {
       setIsLoading(true);
       setError(null);
       
       try {
+        // 1. Fetch FERT Orders
         const exploreResponse = await serviciosService.getOrdenesFert(1, 1);
-        const totalRecords = exploreResponse.totalRegistros || (exploreResponse.data?.length > 0 ? 1 : 0);
+        const totalFert = exploreResponse.totalRegistros || (exploreResponse.data?.length > 0 ? 1 : 0);
 
-        if (totalRecords === 0) {
-          setOrders([]);
-          addNotification('info', 'No se encontraron órdenes FERT.');
-          setIsLoading(false);
-          return;
-        }
-
-        const BATCH_SIZE = 10000;
-        const totalPagesToFetch = Math.ceil(totalRecords / BATCH_SIZE);
-        let allData: OrdenFert[] = [];
-
-        for (let i = 1; i <= totalPagesToFetch; i++) {
-          const pageResponse = await serviciosService.getOrdenesFert(i, BATCH_SIZE);
-          if (pageResponse.data && Array.isArray(pageResponse.data)) {
-            allData = allData.concat(pageResponse.data);
+        let allFert: OrdenFert[] = [];
+        if (totalFert > 0) {
+          const BATCH_SIZE = 10000;
+          const pages = Math.ceil(totalFert / BATCH_SIZE);
+          for (let i = 1; i <= pages; i++) {
+            const res = await serviciosService.getOrdenesFert(i, BATCH_SIZE);
+            if (res.data) allFert = allFert.concat(res.data);
           }
         }
-        
-        setOrders(allData);
+        setOrders(allFert);
+
+        // 2. Fetch Provisional Orders
+        const provResponse = await serviciosService.OrdenesProvisionalesPaginados(1, 20000);
+        if (provResponse.data) {
+          setProvisionalOrders(Array.isArray(provResponse.data) ? provResponse.data : [provResponse.data]);
+        }
 
       } catch (err) {
         const errorMessage = (err as Error).message;
@@ -295,31 +285,62 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
     };
 
     if (restricciones) {
-      fetchOrders();
+      fetchData();
     }
   }, [addNotification, restricciones, isMounted]);
 
+  // COMBINAR ÓRDENES FERT Y PREVISIONALES
+  const baseFilteredOrders = useMemo(() => {
+    const validResp = ['019', '006'];
+    
+    // Normalizar FERT
+    const fertMapped = orders.filter(o => 
+      validResp.includes(String(o.RESPCTRLPROD).trim()) && o.CENTRO === '1000'
+    ).map(o => ({
+      ...o,
+      _isPrevisional: false,
+      _displayId: o.ORDEN
+    }));
+
+    // Normalizar Previsionales
+    const provMapped = provisionalOrders.filter(o => 
+      validResp.includes(String(o.RESPCONTROLPROD).trim()) && o.CENTRO === '1000'
+    ).map(o => ({
+      FECHA: o.FECHAINICIO,
+      PEDIDO: '',
+      POSICION: '',
+      ORDEN: o.ORDENPREVISIONAL,
+      MATERIAL: o.MATERIAL,
+      NOMBRE: o.NOMBRE,
+      CANTPROGRAMADA: o.CANTIDAD,
+      CANTPENDIENTE: o.CANTIDAD,
+      CENTRO: o.CENTRO,
+      MAQUINA: o.Maquina,
+      PUESTOTRABAJO: o.PUESTOTRABAJO || o.Maquina,
+      RESPCTRLPROD: o.RESPCONTROLPROD,
+      CATEGORIA: o.CATEGORIA,
+      _isPrevisional: true,
+      _displayId: o.ORDENPREVISIONAL
+    }));
+
+    return [...fertMapped, ...provMapped];
+  }, [orders, provisionalOrders]);
+
   const uniqueDates = useMemo(() => {
-    if (!orders) return [];
-    const dates = new Set(orders.map(order => order.FECHA));
+    const dates = new Set(baseFilteredOrders.map(order => order.FECHA));
     return Array.from(dates).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
-  }, [orders]);
+  }, [baseFilteredOrders]);
 
   useEffect(() => {
     if (!hasSetDefaultDate && uniqueDates.length > 0 && displayMode === 'plan') {
       const getTargetDate = () => {
         const today = new Date();
-        const holidaysList = ['2026-05-25']; // Feriado nacional Ecuador (Batalla de Pichincha)
         let daysAdded = 0;
         let result = new Date(today);
         while (daysAdded < 3) {
           result.setDate(result.getDate() + 1);
           const day = result.getDay();
-          const dateStr = result.toISOString().split('T')[0];
-          // Saltar fines de semana y el feriado específico solicitado
-          if (day !== 0 && day !== 6 && !holidaysList.includes(dateStr)) {
-            daysAdded++;
-          }
+          if (day !== 0 && day !== 6) daysAdded++;
         }
         return result.toISOString().split('T')[0];
       };
@@ -329,13 +350,6 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
       setHasSetDefaultDate(true);
     }
   }, [uniqueDates, hasSetDefaultDate, displayMode]);
-
-  const baseFilteredOrders = useMemo(() => {
-    return orders.filter(order => 
-      (order.RESPCTRLPROD === '019' || order.RESPCTRLPROD === '006') &&
-      order.CENTRO === '1000'
-    );
-  }, [orders]);
 
   const filteredOrders = useMemo(() => {
     return baseFilteredOrders.filter(order => {
@@ -356,21 +370,17 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
     return missing.size;
   }, [filteredOrders, tiemposMap]);
 
-  const totalCantidadPendienteGeneral = useMemo(() => {
-    return baseFilteredOrders.reduce((sum, order) => sum + (Number(order.CANTPENDIENTE) || 0), 0);
-  }, [baseFilteredOrders]);
-
   const totalCantProgramadaGeneral = useMemo(() => {
-    return baseFilteredOrders.reduce((sum, order) => sum + (Number(order.CANTPROGRAMADA) || 0), 0);
-  }, [baseFilteredOrders]);
+    return filteredOrders.reduce((sum, order) => sum + (Number(order.CANTPROGRAMADA) || 0), 0);
+  }, [filteredOrders]);
 
   const totalTiempoRequeridoGeneral = useMemo(() => {
-    return baseFilteredOrders.reduce((sum, order) => {
+    return filteredOrders.reduce((sum, order) => {
       const materialCode = normalizeMaterialCode(order.MATERIAL);
       const tiempoMin = tiemposMap.get(materialCode) || 0;
       return sum + ((Number(order.CANTPROGRAMADA) || 0) * tiempoMin);
     }, 0);
-  }, [baseFilteredOrders, tiemposMap]);
+  }, [filteredOrders, tiemposMap]);
 
   const statusSummary = useMemo(() => {
     const today = new Date();
@@ -378,39 +388,18 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
     const todayStr = today.toISOString().split('T')[0];
     
     let retrasadas = 0;
-    let retrasadasTimeMin = 0;
     let enProceso = 0;
-    let enProcesoTimeMin = 0;
     let porPlanificar = 0;
-    let porPlanificarTimeMin = 0;
 
-    baseFilteredOrders.forEach(order => {
+    filteredOrders.forEach(order => {
       const cant = Number(order.CANTPROGRAMADA) || 0;
-      const materialCode = normalizeMaterialCode(order.MATERIAL);
-      const tiempoMin = tiemposMap.get(materialCode) || 0;
-      const orderTotalTimeMin = cant * tiempoMin;
-
-      if (order.FECHA < todayStr) {
-        retrasadas += cant;
-        retrasadasTimeMin += orderTotalTimeMin;
-      } else if (order.FECHA === todayStr) {
-        enProceso += cant;
-        enProcesoTimeMin += orderTotalTimeMin;
-      } else {
-        porPlanificar += cant;
-        porPlanificarTimeMin += orderTotalTimeMin;
-      }
+      if (order.FECHA < todayStr) retrasadas += cant;
+      else if (order.FECHA === todayStr) enProceso += cant;
+      else porPlanificar += cant;
     });
 
-    return { 
-      retrasadas, 
-      retrasadasTimeH: retrasadasTimeMin / 60,
-      enProceso, 
-      enProcesoTimeH: enProcesoTimeMin / 60,
-      porPlanificar,
-      porPlanificarTimeH: porPlanificarTimeMin / 60
-    };
-  }, [baseFilteredOrders, tiemposMap]);
+    return { retrasadas, enProceso, porPlanificar };
+  }, [filteredOrders]);
 
   const planSummaryByDate = useMemo(() => {
     if (displayMode !== 'plan' || selectedDates.length === 0) return [];
@@ -418,7 +407,6 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
     return selectedDates.map(date => {
       const ordersOnDate = filteredOrders.filter(o => o.FECHA === date);
       
-      // 1. Calcular estadísticas base por mesa
       const rawMesas = MESA_MAPPING.map(mesa => {
         const mesaOrders = ordersOnDate.filter(o => String(o.PUESTOTRABAJO || '').trim() === mesa.code);
         const cantProgramada = mesaOrders.reduce((sum, o) => sum + (Number(o.CANTPROGRAMADA) || 0), 0);
@@ -428,41 +416,24 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
           return sum + (Number(o.CANTPROGRAMADA) || 0) * t;
         }, 0);
 
-        return {
-          ...mesa,
-          cantProgramada,
-          tiempoRequeridoH: tiempoRequeridoMin / 60
-        };
+        return { ...mesa, cantProgramada, tiempoRequeridoH: tiempoRequeridoMin / 60 };
       });
 
-      // 2. Asignación Inteligente de Tapiceros
-      const sortedMesasByLoad = [...rawMesas]
-        .map((m, originalIndex) => ({ ...m, originalIndex }))
-        .sort((a, b) => b.tiempoRequeridoH - a.tiempoRequeridoH);
-      
+      const sortedMesasByLoad = [...rawMesas].sort((a, b) => b.tiempoRequeridoH - a.tiempoRequeridoH);
       const mesaAssignments = new Map();
       sortedMesasByLoad.forEach((mesa, idx) => {
-        if (tapiceros && tapiceros.length > idx) {
-          mesaAssignments.set(mesa.code, tapiceros[idx]);
-        }
+        if (tapiceros && tapiceros.length > idx) mesaAssignments.set(mesa.code, tapiceros[idx]);
       });
 
-      // 3. Re-mapear a la estructura final
-      const mesasBreakdown = rawMesas.map(m => {
-        const tapicero = mesaAssignments.get(m.code);
-        return {
-          ...m,
-          assignedTapicero: tapicero ? `${tapicero.NOMBRE} (${tapicero.CALIFICACION})` : 'Sin Asignar'
-        };
-      });
-
-      const totalCantProgramada = mesasBreakdown.reduce((sum, m) => sum + m.cantProgramada, 0);
-      const totalTiempoRequeridoH = mesasBreakdown.reduce((sum, m) => sum + m.tiempoRequeridoH, 0);
+      const mesasBreakdown = rawMesas.map(m => ({
+        ...m,
+        assignedTapicero: mesaAssignments.get(m.code) ? `${mesaAssignments.get(m.code).NOMBRE} (${mesaAssignments.get(m.code).CALIFICACION})` : 'Sin Asignar'
+      }));
 
       return {
         date,
-        cantProgramada: totalCantProgramada,
-        tiempoTotalH: totalTiempoRequeridoH,
+        cantProgramada: mesasBreakdown.reduce((sum, m) => sum + m.cantProgramada, 0),
+        tiempoTotalH: mesasBreakdown.reduce((sum, m) => sum + m.tiempoRequeridoH, 0),
         mesas: mesasBreakdown
       };
     }).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
@@ -474,18 +445,11 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
   const displayedOrders = filteredOrders.slice(startIndex, endIndex);
 
   const goToPage = (page: number) => {
-    setPagination(prev => ({
-        ...prev,
-        currentPage: Math.max(1, Math.min(page, totalPagesLocal))
-    }));
+    setPagination(prev => ({ ...prev, currentPage: Math.max(1, Math.min(page, totalPagesLocal)) }));
   };
 
   const handleRowsPerPageChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setPagination(prev => ({
-      ...prev,
-      rowsPerPage: Number(e.target.value),
-      currentPage: 1,
-    }));
+    setPagination(prev => ({ ...prev, rowsPerPage: Number(e.target.value), currentPage: 1 }));
   };
   
   const handleDateChange = (dates: string[]) => {
@@ -495,10 +459,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
 
   useEffect(() => {
     if (!isMounted) return;
-
-    const calculateWidth = () => {
-      if (tableRef.current) setTableWidth(tableRef.current.offsetWidth);
-    };
+    const calculateWidth = () => { if (tableRef.current) setTableWidth(tableRef.current.offsetWidth); };
     calculateWidth();
     window.addEventListener('resize', calculateWidth);
     const resizeObserver = new ResizeObserver(calculateWidth);
@@ -509,26 +470,10 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
     };
   }, [displayedOrders, isMounted]);
 
-  if (!isMounted) {
-    return (
-      <div className="flex justify-center items-center py-20">
-        <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-      </div>
-    );
-  }
-
-  if (isLoading && orders.length === 0) {
-    return (
-      <div className="flex justify-center items-center py-8">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
-        <span className="ml-3 text-gray-600">Cargando Órdenes FERT...</span>
-      </div>
-    );
-  }
+  if (!isMounted) return null;
 
   return (
     <div className="space-y-4">
-      {/* ALERTA DE TIEMPOS FALTANTES */}
       {displayMode === 'plan' && missingTimesCount > 0 && (
         <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-4 flex items-center gap-4 shadow-md animate-pulse">
           <div className="flex-shrink-0 bg-red-100 p-2 rounded-full">
@@ -539,10 +484,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
               <AlertTriangle className="h-4 w-4" /> Alerta de Consistencia de Datos
             </h3>
             <p className="text-xs text-red-700 font-medium mt-0.5">
-              Se han detectado <span className="underline decoration-2">{missingTimesCount}</span> materiales en la fecha seleccionada que <span className="font-bold">no tienen información de tiempo</span> en la pestaña "TIEMPO".
-            </p>
-            <p className="text-[10px] text-red-600 italic mt-1">
-              Esto impide el cálculo exacto de la capacidad ocupada. Por favor, valide los datos maestros.
+              Se han detectado <span className="underline decoration-2">{missingTimesCount}</span> materiales en la selección que <span className="font-bold">no tienen información de tiempo</span>.
             </p>
           </div>
         </div>
@@ -565,12 +507,11 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
               {displayMode === 'plan' && (
                 <>
                   <div className="w-64">
-                    <label htmlFor="schedule-filter" className="text-sm font-semibold text-gray-700">Horario de Trabajo:</label>
+                    <label className="text-sm font-semibold text-gray-700">Horario de Trabajo:</label>
                     <select
-                      id="schedule-filter"
                       value={workSchedule}
                       onChange={(e) => setWorkSchedule(e.target.value)}
-                      className="w-full h-9 border border-gray-300 rounded-md px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                      className="w-full h-9 border border-gray-300 rounded-md px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-indigo-500"
                     >
                       <option value="8">8 horas / 07:00 - 15:45</option>
                       <option value="9">9 horas / 07:00 - 17:00</option>
@@ -578,12 +519,11 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
                     </select>
                   </div>
                   <div className="w-56">
-                    <label htmlFor="tables-filter" className="text-sm font-semibold text-gray-700">Mesas de Trabajo:</label>
+                    <label className="text-sm font-semibold text-gray-700">Mesas de Trabajo:</label>
                     <select
-                      id="tables-filter"
                       value={workTables}
                       onChange={(e) => setWorkTables(e.target.value)}
-                      className="w-full h-9 border border-gray-300 rounded-md px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                      className="w-full h-9 border border-gray-300 rounded-md px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-indigo-500"
                     >
                       {[6, 7, 8, 9, 10, 11, 12, 13, 14].map(num => (
                         <option key={num} value={String(num)}>{num} Mesas de Trabajo</option>
@@ -597,19 +537,18 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
 
           {displayMode === 'plan' && (
             <div className="flex flex-col space-y-4">
-                {/* RECUADRO 1: PENDIENTES TOTALES */}
                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 shadow-sm">
-                  <h4 className="text-[13px] font-bold text-gray-800 mb-4 text-center uppercase tracking-wide">PENDIENTES TOTALES</h4>
+                  <h4 className="text-[13px] font-bold text-gray-800 mb-4 text-center uppercase tracking-wide">CAPACIDAD CONSOLIDADA (FERT + PREVISIONALES)</h4>
                   <div className="grid grid-cols-3 gap-0 items-center text-base border rounded-md bg-white min-h-[80px]">
-                      <div className="text-center border-r border-dashed border-gray-300 p-3 h-full flex flex-col justify-center">
+                      <div className="text-center border-r border-dashed border-gray-300 p-3 flex flex-col justify-center">
                           <p className="text-[12px] text-gray-500 font-semibold uppercase mb-1">CANT. PROGRAMADA TOTAL</p>
                           <p className="font-bold text-base text-gray-900">{totalCantProgramadaGeneral.toLocaleString()}</p>
                       </div>
-                      <div className="text-center border-r border-dashed border-gray-300 p-3 h-full flex flex-col justify-center">
+                      <div className="text-center border-r border-dashed border-gray-300 p-3 flex flex-col justify-center">
                           <p className="text-[12px] text-gray-500 font-semibold uppercase mb-1">TIEMPO REQUERIDO TOTAL (h)</p>
-                          <p className="font-bold text-base text-indigo-700">{(totalTiempoRequeridoGeneral / 60).toFixed(2)}</p>
+                          <p className="font-bold text-base text-indigo-700">{(totalTiempoRequeridoGeneral / 60).toFixed(2)}h</p>
                       </div>
-                      <div className="text-center p-3 h-full flex flex-col justify-center">
+                      <div className="text-center p-3 flex flex-col justify-center">
                           <p className="text-[12px] text-gray-500 font-semibold uppercase mb-1">DIAS PENDIENTES</p>
                           <p className="font-bold text-base text-blue-600">
                             {((totalTiempoRequeridoGeneral / 60) / TIEMPO_DISPONIBLE_DIARIO_TOTAL).toFixed(2)} Días
@@ -618,54 +557,42 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
                   </div>
                 </div>
 
-                {/* RECUADRO 2: CAPACIDAD POR FECHA (DESGLOSADO POR MESAS) */}
                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 shadow-sm">
-                  <h4 className="text-[13px] font-bold text-gray-800 mb-4 text-center uppercase tracking-wide">Capacidad por fecha</h4>
+                  <h4 className="text-[13px] font-bold text-gray-800 mb-4 text-center uppercase tracking-wide">Desglose por Fecha y Mesa</h4>
                   <div className="space-y-4 max-h-[500px] overflow-y-auto">
                       {selectedDates.length > 0 ? (
                         planSummaryByDate.map((daySummary) => {
                           const capacidadOcupadaTotal = (daySummary.tiempoTotalH / TIEMPO_DISPONIBLE_DIARIO_TOTAL) * 100;
-                          
                           return (
-                          <div key={daySummary.date} className="border rounded-md bg-white overflow-hidden">
-                              {/* Header del día */}
-                              <div className="grid grid-cols-5 gap-0 items-center text-xs p-2 bg-indigo-600 text-white font-bold uppercase tracking-wider">
+                          <div key={daySummary.date} className="border rounded-md bg-white overflow-hidden shadow-sm">
+                              <div className="grid grid-cols-5 gap-0 items-center text-xs p-2 bg-indigo-600 text-white font-bold uppercase">
                                   <div className="text-center border-r border-indigo-400">FECHA: {daySummary.date}</div>
-                                  <div className="text-center border-r border-indigo-400">CANT. TOTAL: {daySummary.cantProgramada.toLocaleString()}</div>
-                                  <div className="text-center border-r border-indigo-400">REQ. TOTAL: {daySummary.tiempoTotalH.toFixed(2)}h</div>
-                                  <div className="text-center border-r border-indigo-400">DISP. TOTAL: {TIEMPO_DISPONIBLE_DIARIO_TOTAL.toFixed(2)}h</div>
+                                  <div className="text-center border-r border-indigo-400">CANT: {daySummary.cantProgramada.toLocaleString()}</div>
+                                  <div className="text-center border-r border-indigo-400">REQ: {daySummary.tiempoTotalH.toFixed(1)}h</div>
+                                  <div className="text-center border-r border-indigo-400">DISP: {TIEMPO_DISPONIBLE_DIARIO_TOTAL.toFixed(1)}h</div>
                                   <div className="text-center">OCUPACIÓN: {capacidadOcupadaTotal.toFixed(1)}%</div>
                               </div>
-                              
-                              {/* Detalle por mesa */}
                               <div className="overflow-x-auto">
-                                <table className="min-w-full text-[12px]">
+                                <table className="min-w-full text-[11px]">
                                   <thead className="bg-gray-100 text-gray-600 uppercase border-b">
                                     <tr>
-                                      <th className="px-3 py-1.5 text-left font-bold border-r">Mesa de Trabajo</th>
-                                      <th className="px-3 py-1.5 text-left font-bold border-r">Personal Asignado</th>
-                                      <th className="px-2 py-1.5 text-center font-bold border-r">Cant. Programada</th>
-                                      <th className="px-2 py-1.5 text-center font-bold border-r">Tiempo Requerido (h)</th>
-                                      <th className="px-2 py-1.5 text-center font-bold border-r">Tiempo Disponible (h)</th>
-                                      <th className="px-2 py-1.5 text-center font-bold">Capacidad (%)</th>
+                                      <th className="px-3 py-1.5 text-left font-bold border-r">Mesa</th>
+                                      <th className="px-3 py-1.5 text-left font-bold border-r">Personal</th>
+                                      <th className="px-2 py-1.5 text-center font-bold border-r">Cant</th>
+                                      <th className="px-2 py-1.5 text-center font-bold border-r">Horas Req</th>
+                                      <th className="px-2 py-1.5 text-center font-bold">Ocupación %</th>
                                     </tr>
                                   </thead>
-                                  <tbody className="divide-y divide-gray-100">
+                                  <tbody>
                                     {daySummary.mesas.map((mesa) => {
                                       const capMesa = (mesa.tiempoRequeridoH / TIEMPO_DISPONIBLE_POR_MESA) * 100;
                                       return (
-                                        <tr key={mesa.code} className="hover:bg-gray-50 transition-colors">
-                                          <td className="px-3 py-1.5 font-semibold text-gray-700 border-r bg-gray-50/30">{mesa.name}</td>
-                                          <td className="px-3 py-1.5 font-semibold text-blue-600 truncate max-w-[200px] border-r" title={mesa.assignedTapicero}>
-                                            {mesa.assignedTapicero}
-                                          </td>
-                                          <td className="px-2 py-1.5 text-center font-mono border-r">{mesa.cantProgramada.toLocaleString()}</td>
-                                          <td className="px-2 py-1.5 text-center font-mono text-indigo-700 border-r">{mesa.tiempoRequeridoH.toFixed(2)}</td>
-                                          <td className="px-2 py-1.5 text-center font-mono text-emerald-700 border-r">{TIEMPO_DISPONIBLE_POR_MESA.toFixed(2)}</td>
-                                          <td className={cn(
-                                            "px-2 py-1.5 text-center font-bold font-mono",
-                                            capMesa > 100 ? "text-red-600 bg-red-50" : "text-blue-600 bg-blue-50"
-                                          )}>
+                                        <tr key={mesa.code} className="border-b last:border-0">
+                                          <td className="px-3 py-1 font-semibold border-r">{mesa.name}</td>
+                                          <td className="px-3 py-1 border-r text-blue-600 truncate max-w-[150px]">{mesa.assignedTapicero}</td>
+                                          <td className="px-2 py-1 text-center font-mono border-r">{mesa.cantProgramada}</td>
+                                          <td className="px-2 py-1 text-center font-mono border-r">{mesa.tiempoRequeridoH.toFixed(2)}</td>
+                                          <td className={cn("px-2 py-1 text-center font-bold font-mono", capMesa > 100 ? "text-red-600 bg-red-50" : "text-blue-600")}>
                                             {capMesa.toFixed(1)}%
                                           </td>
                                         </tr>
@@ -678,36 +605,8 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
                           );
                         })
                       ) : (
-                        <p className="p-4 text-center text-gray-500 text-sm italic bg-white rounded-md border">Selecciona una fecha para ver el resumen por mesa.</p>
+                        <p className="p-4 text-center text-gray-500 text-sm italic bg-white rounded-md border">Selecciona fechas para analizar capacidad.</p>
                       )}
-                  </div>
-                </div>
-
-                {/* RECUADRO 3: ESTATUS ACTUAL ORDENES */}
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 shadow-sm">
-                  <h4 className="text-[13px] font-bold text-gray-800 mb-4 text-center uppercase tracking-wide">ESTATUS ACTUAL ORDENES</h4>
-                  <div className="grid grid-cols-3 gap-0 items-center text-base border rounded-md bg-white min-h-[80px]">
-                      <div className="text-center border-r border-dashed border-gray-300 p-3 h-full flex flex-col justify-center">
-                          <p className="text-[12px] text-gray-500 font-semibold uppercase mb-1">RETRASADAS</p>
-                          <div className="flex items-center justify-center gap-2">
-                            <p className="font-bold text-base text-red-600">{statusSummary.retrasadas.toLocaleString()}</p>
-                            <span className="text-xs text-red-400 font-mono">/ {statusSummary.retrasadasTimeH.toFixed(1)}h</span>
-                          </div>
-                      </div>
-                      <div className="text-center border-r border-dashed border-gray-300 p-3 h-full flex flex-col justify-center">
-                          <p className="text-[12px] text-gray-500 font-semibold uppercase mb-1">EN PROCESO</p>
-                          <div className="flex items-center justify-center gap-2">
-                            <p className="font-bold text-base text-blue-600">{statusSummary.enProceso.toLocaleString()}</p>
-                            <span className="text-xs text-blue-400 font-mono">/ {statusSummary.enProcesoTimeH.toFixed(1)}h</span>
-                          </div>
-                      </div>
-                      <div className="text-center p-3 h-full flex flex-col justify-center">
-                          <p className="text-[12px] text-gray-500 font-semibold uppercase mb-1">POR PLANIFICAR</p>
-                          <div className="flex items-center justify-center gap-2">
-                            <p className="font-bold text-base text-teal-600">{statusSummary.porPlanificar.toLocaleString()}</p>
-                            <span className="text-xs text-teal-400 font-mono">/ {statusSummary.porPlanificarTimeH.toFixed(1)}h</span>
-                          </div>
-                      </div>
                   </div>
                 </div>
             </div>
@@ -715,75 +614,51 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
         </div>
       )}
 
-      {/* Tabla de Órdenes FERT */}
       <div className="bg-white rounded-lg shadow-lg overflow-hidden border">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
+        <div ref={topScrollRef} onScroll={handleTopScroll} className="overflow-x-auto overflow-y-hidden" style={{ height: '18px' }}>
+            <div style={{ width: `${tableWidth}px`, height: '1px' }}></div>
+        </div>
+        <div ref={tableScrollRef} onScroll={handleTableScroll} className="overflow-x-auto">
+          <table ref={tableRef} className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-100">
               <tr>
                 {COLUMNS_TO_DISPLAY.map((col, index) => (
-                  <th
-                    key={col}
-                    className={cn(
-                      "px-3 py-3 text-center text-xs font-medium text-gray-700 uppercase tracking-wider",
-                      col === 'CANTPROGRAMADA' && "w-24",
-                      index < COLUMNS_TO_DISPLAY.length - 1 && "border-r border-dashed border-gray-300"
-                    )}
-                  >
-                    {col.replace(/_/g, ' ')}
+                  <th key={col} className={cn("px-3 py-3 text-center text-[11px] font-bold text-gray-700 uppercase tracking-wider", index < COLUMNS_TO_DISPLAY.length - 1 && "border-r border-dashed border-gray-300")}>
+                    {col}
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
               {displayedOrders.map((order, index) => {
-                  let tiempoCalculado = '-';
-                  if (COLUMNS_TO_DISPLAY.includes('TIEMPO')) {
-                      const materialCode = normalizeMaterialCode(order.MATERIAL);
-                      const tiempoMin = tiemposMap.get(materialCode);
-                      if (tiempoMin) {
-                          const cantProgramada = Number(order.CANTPROGRAMADA) || 0;
-                          const tiempoTotal = cantProgramada * tiempoMin;
-                          tiempoCalculado = tiempoTotal.toFixed(2);
-                      }
-                  }
-                  
+                  const materialCode = normalizeMaterialCode(order.MATERIAL);
+                  const tiempoMin = tiemposMap.get(materialCode) || 0;
+                  const tiempoTotal = (Number(order.CANTPROGRAMADA) || 0) * tiempoMin;
+
                   return (
-                    <tr key={`${order.ORDEN}-${index}`} className="hover:bg-gray-50">
+                    <tr key={`${order._displayId}-${index}`} className={cn("hover:bg-gray-50 transition-colors", order._isPrevisional ? "bg-blue-50/20" : "")}>
                       {COLUMNS_TO_DISPLAY.map((col, colIndex) => {
+                          const isBorder = colIndex < COLUMNS_TO_DISPLAY.length - 1 ? 'border-r border-dashed border-gray-300' : '';
+                          
                           if (col === 'TIEMPO') {
                               return (
-                                 <td key={col} className={cn(
-                                   "px-2 py-4 whitespace-nowrap text-sm text-center font-mono font-semibold",
-                                   tiempoCalculado === '-' ? "text-red-500" : "text-blue-700",
-                                   colIndex < COLUMNS_TO_DISPLAY.length - 1 ? 'border-r border-dashed border-gray-300' : ''
-                                 )}>
-                                   {tiempoCalculado}
+                                 <td key={col} className={cn("px-2 py-3 text-center font-mono font-bold text-[13px]", tiempoTotal === 0 ? "text-red-400" : "text-blue-700", isBorder)}>
+                                   {tiempoTotal > 0 ? tiempoTotal.toFixed(2) : '-'}
                                  </td>
                               );
                           }
 
                           let displayValue = String((order as any)[col] ?? '-');
-                          
-                          // Formateo especial para PEDIDO y POSICION (quitar 3 primeros ceros)
-                          if (col === 'PEDIDO' || col === 'POSICION') {
-                            if (displayValue && displayValue.startsWith('000')) {
+                          if ((col === 'PEDIDO' || col === 'POSICION') && displayValue.startsWith('000')) {
                               displayValue = displayValue.substring(3);
-                            }
-                          } else if (col === 'ORDEN') {
-                            if (displayValue && displayValue.length > 4) {
-                                displayValue = displayValue.substring(4);
-                            }
+                          } else if (col === 'ORDEN' && displayValue.length > 4 && !order._isPrevisional) {
+                              displayValue = displayValue.substring(4);
                           } else if (col === 'MATERIAL') {
-                            displayValue = normalizeMaterialCode(displayValue);
+                              displayValue = normalizeMaterialCode(displayValue);
                           }
 
                           return (
-                           <td key={col} className={cn(
-                             "px-2 py-4 whitespace-nowrap text-sm text-gray-600 text-center",
-                             col === 'CANTPROGRAMADA' && "w-24 font-bold",
-                             colIndex < COLUMNS_TO_DISPLAY.length - 1 && "border-r border-dashed border-gray-300"
-                           )}>
+                           <td key={col} className={cn("px-2 py-3 text-center text-sm text-gray-600", col === 'CANTPROGRAMADA' && "font-bold text-gray-900", isBorder)}>
                              {displayValue}
                            </td>
                           );
@@ -796,56 +671,19 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
         </div>
       </div>
       
-      {/* Controles de Paginación */}
       <div className="flex items-center justify-between mt-4">
         <div className="flex items-center space-x-4">
-          <span className="text-sm text-gray-600">
-            Mostrando {startIndex + 1} a {Math.min(endIndex, filteredOrders.length)} de {filteredOrders.length} órdenes.
-          </span>
-          <select
-            value={pagination.rowsPerPage}
-            onChange={handleRowsPerPageChange}
-            className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white font-medium text-gray-700 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          >
+          <span className="text-xs text-gray-500">Mostrando {displayedOrders.length} de {filteredOrders.length} registros.</span>
+          <select value={pagination.rowsPerPage} onChange={handleRowsPerPageChange} className="px-2 py-1 border border-gray-300 rounded text-xs">
             {ROWS_PER_PAGE_OPTIONS.map(size => <option key={size} value={size}>{size}</option>)}
           </select>
         </div>
         <div className="flex items-center space-x-2">
-           <span className="text-sm text-gray-600">
-            Página <span className="font-bold">{pagination.currentPage}</span> de <span className="font-bold">{totalPagesLocal}</span>
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => goToPage(1)}
-            disabled={pagination.currentPage === 1 || isLoading}
-          >
-            Primera
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => goToPage(pagination.currentPage - 1)}
-            disabled={pagination.currentPage === 1 || isLoading}
-          >
-            Anterior
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => goToPage(pagination.currentPage + 1)}
-            disabled={pagination.currentPage >= totalPagesLocal || isLoading}
-          >
-            Siguiente
-          </Button>
-           <Button
-            variant="outline"
-            size="sm"
-            onClick={() => goToPage(totalPagesLocal)}
-            disabled={pagination.currentPage === totalPagesLocal || isLoading}
-          >
-            Última
-          </Button>
+          <Button variant="outline" size="sm" onClick={() => goToPage(1)} disabled={pagination.currentPage === 1}>Primera</Button>
+          <Button variant="outline" size="sm" onClick={() => goToPage(pagination.currentPage - 1)} disabled={pagination.currentPage === 1}>Ant.</Button>
+          <span className="text-xs font-bold px-2">{pagination.currentPage} / {totalPagesLocal}</span>
+          <Button variant="outline" size="sm" onClick={() => goToPage(pagination.currentPage + 1)} disabled={pagination.currentPage >= totalPagesLocal}>Sig.</Button>
+          <Button variant="outline" size="sm" onClick={() => goToPage(totalPagesLocal)} disabled={pagination.currentPage >= totalPagesLocal}>Última</Button>
         </div>
       </div>
     </div>
