@@ -76,8 +76,10 @@ export const RevCapacidadTabSection: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isMounted, setIsMounted] = useState(false);
   
-  const [programmingDate, setProgrammingDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  // Filtros de fecha independientes por centro
+  const [progDates, setProgDates] = useState<Record<string, string>>({});
   const [provisionalDate, setProvisionalDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  
   const [horasTurno1, setHorasTurno1] = useState<number>(8);
   const [horasTurno2, setHorasTurno2] = useState<number>(0);
   const [rendLinea1, setRendLinea1] = useState<number>(1.05);
@@ -95,11 +97,13 @@ export const RevCapacidadTabSection: React.FC = () => {
     const savedT2 = localStorage.getItem('sim_puestos_t2');
     const savedH1 = localStorage.getItem('sim_horas_t1');
     const savedH2 = localStorage.getItem('sim_horas_t2');
+    const savedProgDates = localStorage.getItem('sim_prog_dates');
 
     if (savedT1) try { setEditablePuestosT1(JSON.parse(savedT1)); } catch(e) {}
     if (savedT2) try { setEditablePuestosT2(JSON.parse(savedT2)); } catch(e) {}
     if (savedH1) setHorasTurno1(Number(savedH1));
     if (savedH2) setHorasTurno2(Number(savedH2));
+    if (savedProgDates) try { setProgDates(JSON.parse(savedProgDates)); } catch(e) {}
   }, []);
 
   const loadData = useCallback(async () => {
@@ -138,6 +142,9 @@ export const RevCapacidadTabSection: React.FC = () => {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Obtener fecha actual para el centro seleccionado
+  const programmingDate = progDates[selectedCenter] || new Date().toISOString().split('T')[0];
 
   const fertSumMap = useMemo(() => {
     const map = new Map<string, number>();
@@ -241,8 +248,9 @@ export const RevCapacidadTabSection: React.FC = () => {
       localStorage.setItem('sim_puestos_t2', JSON.stringify(editablePuestosT2));
       localStorage.setItem('sim_horas_t1', horasTurno1.toString());
       localStorage.setItem('sim_horas_t2', horasTurno2.toString());
+      localStorage.setItem('sim_prog_dates', JSON.stringify(progDates));
     }
-  }, [editablePuestosT1, editablePuestosT2, horasTurno1, horasTurno2, isMounted]);
+  }, [editablePuestosT1, editablePuestosT2, horasTurno1, horasTurno2, progDates, isMounted]);
 
   // Inicializar puestos vacíos si el centro no tiene datos guardados
   useEffect(() => {
@@ -345,7 +353,15 @@ export const RevCapacidadTabSection: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-8 gap-4 p-4 bg-gray-50 border rounded-xl mb-6 shadow-sm">
           <div className="flex flex-col gap-1">
             <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Día Prog:</label>
-            <input type="date" value={programmingDate} onChange={e => setProgrammingDate(e.target.value)} className="text-xs border rounded-md px-2 py-2 text-indigo-700 font-medium h-9 outline-none focus:ring-2 focus:ring-indigo-500" />
+            <input 
+              type="date" 
+              value={programmingDate} 
+              onChange={e => {
+                const val = e.target.value;
+                setProgDates(prev => ({ ...prev, [selectedCenter]: val }));
+              }} 
+              className="text-xs border rounded-md px-2 py-2 text-indigo-700 font-medium h-9 outline-none focus:ring-2 focus:ring-indigo-500" 
+            />
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Fecha Prev:</label>
@@ -497,8 +513,9 @@ export const RevCapacidadTabSection: React.FC = () => {
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-3">
         <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
         <div className="text-xs text-blue-800 space-y-1">
+          <p><b>Independencia por Centro:</b> El filtro "Día Prog" y los ajustes de puestos son únicos para cada planta.</p>
           <p><b>Validación de Puestos:</b> Los valores ingresados en T1 y T2 no pueden exceder los <b>Puestos Objetivo</b>.</p>
-          <p><b>Persistencia:</b> Los ajustes manuales se guardan automáticamente y se utilizan como base para el <b>Plan Propuesto</b>.</p>
+          <p><b>Persistencia:</b> Los ajustes manuales y las fechas se guardan automáticamente en el navegador.</p>
         </div>
       </div>
     </div>
