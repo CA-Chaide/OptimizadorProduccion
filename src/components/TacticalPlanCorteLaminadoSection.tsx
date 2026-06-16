@@ -50,7 +50,7 @@ interface UnifiedNeedRow {
   peso: number;
   consumoKg: number;
   consumoUn: number;
-  // Nuevas columnas de stock desde Inventarios SAP
+  // Columnas de stock desde Inventarios SAP
   stock1006: number;
   stock1008: number;
   stock1015: number;
@@ -126,6 +126,16 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     });
     return dates;
   }, [ordenes]);
+
+  const calendarDays = useMemo(() => {
+    if (!mounted || !viewDate) return [];
+    const start = startOfMonth(viewDate);
+    const end = endOfMonth(viewDate);
+    const days = eachDayOfInterval({ start, end });
+    const startDay = getDay(start);
+    const padding = startDay === 0 ? 6 : startDay - 1;
+    return [...Array(padding).fill(null), ...days];
+  }, [viewDate, mounted]);
 
   const initData = useCallback(async () => {
     setIsLoading(true);
@@ -373,9 +383,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return inventarioAnioActual.filter(row => {
       const alm = String(row.ALMACEN || '').trim();
       const matchAlm = allowedAlmacenes.length === 0 || allowedAlmacenes.includes(alm);
-      const nombre = String(row.NOMBRE || '').toUpperCase();
-      const matchDesc = nombre.includes('LAMINA CILINDRICA');
-      return matchAlm && matchDesc;
+      return matchAlm;
     });
   }, [inventarioAnioActual, restriccionesArray]);
 
