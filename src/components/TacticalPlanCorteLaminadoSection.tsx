@@ -21,7 +21,7 @@ import {
   Box,
   TrendingUp,
   MapPin,
-  AlertTriangle
+  Info
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -131,6 +131,11 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [resumenProgress, setResumenProgress] = useState({ current: 0, total: 0 });
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
+  // Prevent hydration error
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const datesWithOrders = useMemo(() => {
     if (!mounted) return new Set<string>();
     const dates = new Set<string>();
@@ -185,9 +190,10 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    setMounted(true);
-    initData();
-  }, [initData]);
+    if (mounted) {
+      initData();
+    }
+  }, [mounted, initData]);
 
   const filteredOrders = useMemo(() => {
     const relevantGroups = grupos.map(g => g.codigo_grupo);
@@ -422,6 +428,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     });
   }, [inventarioSAP, restriccionesArray]);
 
+  if (!mounted) return null;
+
   return (
     <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
       <div className="flex items-center justify-between pb-4 border-b border-gray-100">
@@ -496,7 +504,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         </TabsList>
 
         <TabsContent value="resumen" className="space-y-6 animate-in fade-in duration-300">
-           {/* Tablero Ejecutivo Superior */}
            <div className="flex items-center gap-10 bg-[#1e293b] p-6 rounded-[2.5rem] border border-white/5 shadow-2xl text-white">
              <div className="flex items-center gap-12 flex-1">
                 <div className="flex flex-col gap-1 border-r border-white/10 pr-10 text-left">
