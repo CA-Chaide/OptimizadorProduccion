@@ -12,7 +12,7 @@ import {
   Download,
   Target,
   ArrowRightLeft,
-  Clock
+  AlertCircle
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -90,6 +90,16 @@ export const RevCapacidadTabSection: React.FC = () => {
 
   useEffect(() => {
     setIsMounted(true);
+    // Cargar datos persistentes de localStorage al montar
+    const savedT1 = localStorage.getItem('sim_puestos_t1');
+    const savedT2 = localStorage.getItem('sim_puestos_t2');
+    const savedH1 = localStorage.getItem('sim_horas_t1');
+    const savedH2 = localStorage.getItem('sim_horas_t2');
+
+    if (savedT1) try { setEditablePuestosT1(JSON.parse(savedT1)); } catch(e) {}
+    if (savedT2) try { setEditablePuestosT2(JSON.parse(savedT2)); } catch(e) {}
+    if (savedH1) setHorasTurno1(Number(savedH1));
+    if (savedH2) setHorasTurno2(Number(savedH2));
   }, []);
 
   const loadData = useCallback(async () => {
@@ -222,9 +232,9 @@ export const RevCapacidadTabSection: React.FC = () => {
     });
 
     return Array.from(map.values()).sort((a, b) => a.linea.localeCompare(b.linea) || a.puesto.localeCompare(b.puesto));
-  }, [technicalData, selectedCenter, fertSumMap, prevSumMap, rendLinea1, rendLinea2, rendLinea3, rendLinea5, horasTurno1]);
+  }, [technicalData, selectedCenter, fertSumMap, prevSumMap, rendLinea1, rendLinea2, rendLinea3, rendLinea5]);
 
-  // Guardar parámetros de simulación en localStorage para el Plan Propuesto
+  // Sincronizar y guardar en localStorage
   useEffect(() => {
     if (isMounted) {
       localStorage.setItem('sim_puestos_t1', JSON.stringify(editablePuestosT1));
@@ -234,6 +244,7 @@ export const RevCapacidadTabSection: React.FC = () => {
     }
   }, [editablePuestosT1, editablePuestosT2, horasTurno1, horasTurno2, isMounted]);
 
+  // Inicializar puestos vacíos si el centro no tiene datos guardados
   useEffect(() => {
     if (summaryData.length === 0) return;
     setEditablePuestosT1(prev => {
@@ -289,8 +300,8 @@ export const RevCapacidadTabSection: React.FC = () => {
           <h3 className="text-xl font-semibold text-gray-800">Resumen de Capacidad y Balanceo</h3>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" className="bg-blue-50 text-blue-700 border-blue-200">
-            <ArrowRightLeft className="w-4 h-4 mr-2" /> Equilibrar Cantidades
+          <Button variant="outline" size="sm" className="bg-blue-50 text-blue-700 border-blue-200" onClick={() => loadData()}>
+            <ArrowRightLeft className="w-4 h-4 mr-2" /> Recalcular Carga
           </Button>
           <Button 
             variant="outline" size="sm" 
@@ -306,8 +317,8 @@ export const RevCapacidadTabSection: React.FC = () => {
                   'No. Puestos': Number((r.totalTiempo / (horasTurno1 || 1)).toFixed(2)),
                   'Puestos T1': t1,
                   'Puestos T2': t2,
-                  'Tiempo Disponible (h)': disp,
-                  'Diferencia (h)': disp - r.totalTiempo,
+                  'Tiempo Disponible (h)': Number(disp.toFixed(2)),
+                  'Diferencia (h)': Number((disp - r.totalTiempo).toFixed(2)),
                   'Puestos Objetivo': r.puestosObjetivo
                 };
               });
@@ -397,8 +408,11 @@ export const RevCapacidadTabSection: React.FC = () => {
                     rows.forEach((r, idx) => {
                       const key = `${selectedCenter}|${r.linea}|${r.puesto}`;
                       const calcPuestos = Number((r.totalTiempo / (horasTurno1 || 1)).toFixed(2));
+                      
+                      // Cargar valores de estado o inicializar
                       const t1 = editablePuestosT1[key] ?? r.puestosObjetivo;
                       const t2 = editablePuestosT2[key] ?? 0;
+                      
                       const dispTime = (t1 * horasTurno1) + (t2 * horasTurno2);
                       const deltaHours = dispTime - r.totalTiempo;
                       
@@ -408,12 +422,41 @@ export const RevCapacidadTabSection: React.FC = () => {
                           <td className="px-4 py-3 font-medium text-gray-700 border">{r.puesto}</td>
                           <td className="px-4 py-3 text-right font-bold border bg-indigo-50/5">{r.totalTiempo.toFixed(2)}</td>
                           <td className="px-4 py-3 text-right font-bold border text-blue-700 bg-blue-50/5">{isMounted ? calcPuestos.toFixed(2) : '-'}</td>
+                          
+                          {/* Input T1 con Validación contra Objetivo */}
                           <td className="px-0 py-0 border bg-white min-w-[80px]">
-                            <input type="number" value={t1} onChange={e => setEditablePuestosT1(p => ({...p, [key]: Number(e.target.value)}))} className="w-full text-right px-3 py-3 font-bold text-indigo-600 outline-none h-full bg-transparent" />
+                            <input 
+                              type="number" 
+                              value={t1} 
+                              min="0"
+                              max={r.puestosObjetivo}
+                              onChange={e => {
+                                const val = Number(e.target.value);
+                                // Validación: no puede ser mayor al objetivo
+                                const finalVal = Math.min(val, r.puestosObjetivo);
+                                setEditablePuestosT1(p => ({...p, [key]: finalVal}));
+                              }} 
+                              className="w-full text-right px-3 py-3 font-bold text-indigo-600 outline-none h-full bg-transparent focus:bg-indigo-50" 
+                            />
                           </td>
+                          
+                          {/* Input T2 con Validación contra Objetivo */}
                           <td className="px-0 py-0 border bg-white min-w-[80px]">
-                            <input type="number" value={t2} onChange={e => setEditablePuestosT2(p => ({...p, [key]: Number(e.target.value)}))} className="w-full text-right px-3 py-3 font-bold text-indigo-600 outline-none h-full bg-transparent" />
+                            <input 
+                              type="number" 
+                              value={t2} 
+                              min="0"
+                              max={r.puestosObjetivo}
+                              onChange={e => {
+                                const val = Number(e.target.value);
+                                // Validación: no puede ser mayor al objetivo
+                                const finalVal = Math.min(val, r.puestosObjetivo);
+                                setEditablePuestosT2(p => ({...p, [key]: finalVal}));
+                              }} 
+                              className="w-full text-right px-3 py-3 font-bold text-indigo-600 outline-none h-full bg-transparent focus:bg-indigo-50" 
+                            />
                           </td>
+                          
                           <td className="px-4 py-3 text-right font-bold border text-green-700 bg-green-50/10">
                             {isMounted ? `${dispTime.toFixed(1)}h` : '-'}
                           </td>
@@ -450,6 +493,14 @@ export const RevCapacidadTabSection: React.FC = () => {
           </div>
         </div>
       </Tabs>
+
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-3">
+        <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+        <div className="text-xs text-blue-800 space-y-1">
+          <p><b>Validación de Puestos:</b> Los valores ingresados en T1 y T2 no pueden exceder los <b>Puestos Objetivo</b>.</p>
+          <p><b>Persistencia:</b> Los ajustes manuales se guardan automáticamente y se utilizan como base para el <b>Plan Propuesto</b>.</p>
+        </div>
+      </div>
     </div>
   );
 };
