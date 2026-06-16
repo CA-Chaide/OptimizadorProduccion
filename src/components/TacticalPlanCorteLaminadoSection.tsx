@@ -370,18 +370,20 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return [...Array(padding).fill(null), ...days];
   }, [viewDate, mounted]);
 
-  // FILTRADO DINÁMICO DE INVENTARIOS POR RESTRICCIÓN ALmacen_Consumo
   const filteredInventario = useMemo(() => {
     const allowedAlmacenes = restriccionesArray
       .filter(r => r.nombre_restriccion === 'ALmacen_Consumo')
       .flatMap(r => r.valor_restriccion.split(/[&,]/).map(v => v.trim()))
       .filter(v => v !== '');
 
-    if (allowedAlmacenes.length === 0) return inventarioAnioActual;
-
     return inventarioAnioActual.filter(row => {
       const alm = String(row.ALMACEN || '').trim();
-      return allowedAlmacenes.includes(alm);
+      const matchAlm = allowedAlmacenes.length === 0 || allowedAlmacenes.includes(alm);
+      
+      const nombre = String(row.NOMBRE || '').toUpperCase();
+      const matchDesc = nombre.includes('LAMINA CILINDRICA');
+      
+      return matchAlm && matchDesc;
     });
   }, [inventarioAnioActual, restriccionesArray]);
 
@@ -415,7 +417,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 {selectedDate === 'all' ? 'Plan Maestro' : selectedDate}
               </button>
             </PopoverTrigger>
-            <PopoverContent className="w-64 p-0 border-none shadow-2xl rounded-2xl overflow-hidden mt-3" align="end">
+            <PopoverContent className="w-[260px] p-0 border-none shadow-2xl rounded-2xl overflow-hidden mt-3" align="end">
               <div className="bg-white p-5 font-sans text-left">
                 <div className="flex items-center justify-between mb-5">
                   <h3 className="text-xs font-black text-slate-800 capitalize">{format(viewDate, 'MMMM yyyy', { locale: es })}</h3>
@@ -461,7 +463,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         </TabsList>
 
         <TabsContent value="resumen" className="space-y-6 animate-in fade-in duration-300">
-           {/* Tablero de Resultados Superior */}
            <div className="flex items-center gap-10 bg-[#1e293b] p-6 rounded-[2.5rem] border border-white/5 shadow-2xl text-white">
              <div className="flex items-center gap-12 flex-1">
                 <div className="flex flex-col gap-1 border-r border-white/10 pr-10 text-left">
@@ -681,7 +682,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             <div className="flex items-center justify-between px-2">
               <div className="flex items-center gap-3 text-left">
                 <div className="p-2 bg-blue-600 rounded-xl text-white shadow-lg"><Database className="w-4 h-4" /></div>
-                <h3 className="text-sm font-black uppercase tracking-widest text-slate-800">Inventario SAP Año Actual (Filtrado por Almacén Consumo)</h3>
+                <h3 className="text-sm font-black uppercase tracking-widest text-slate-800">Inventario SAP Año Actual (Filtrado por Almacén Consumo y Láminas)</h3>
               </div>
               <div className="flex gap-2">
                 {restriccionesArray.filter(r => r.nombre_restriccion === 'ALmacen_Consumo').map((r, ri) => (
@@ -711,7 +712,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   </thead>
                   <tbody className="divide-y divide-gray-100 text-[11px] font-black">
                     {filteredInventario.length === 0 ? (
-                      <tr><td colSpan={11} className="py-24 text-slate-200 font-black uppercase tracking-widest text-center italic">No se encontraron materiales en los almacenes de consumo configurados</td></tr>
+                      <tr><td colSpan={11} className="py-24 text-slate-200 font-black uppercase tracking-widest text-center italic">No se encontraron materiales que coincidan con la descripción "LAMINA CILINDRICA" en los almacenes permitidos</td></tr>
                     ) : (
                       filteredInventario.map((row, i) => (
                         <tr key={i} className="hover:bg-blue-50/30 transition-colors">
