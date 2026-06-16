@@ -196,10 +196,12 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [dailyOrders, setDailyOrders] = useState<any[]>([]);
   const [ordenesFert, setOrdenesFert] = useState<any[]>([]);
   const [kpiMaestroData, setKpiMaestroData] = useState<any[]>([]);
+  const [habilidadesData, setHabilidadesData] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingTiempos, setIsLoadingTiempos] = useState(false);
   const [isLoadingFert, setIsLoadingFert] = useState(false);
   const [isLoadingKPI, setIsLoadingKPI] = useState(false);
+  const [isLoadingHabilidades, setIsLoadingHabilidades] = useState(false);
   
   const [executionDate, setExecutionDate] = useState<string>('');
   const [jornadaDiurnaSel, setJornadaDiurnaSel] = useState("8.75");
@@ -300,13 +302,27 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
   }, [addNotification]);
 
+  const fetchHabilidades = useCallback(async () => {
+    setIsLoadingHabilidades(true);
+    try {
+      const response = await serviciosService.getHabilidadesOperadorPorEstacion();
+      setHabilidadesData(response.data || []);
+    } catch (error: any) {
+      console.error('Error fetching skills:', error);
+      addNotification('error', `Error al cargar habilidades: ${error.message}`);
+    } finally {
+      setIsLoadingHabilidades(false);
+    }
+  }, [addNotification]);
+
   useEffect(() => {
     if (isMounted) {
       fetchBaseData();
       fetchOrdenesFert();
       fetchKPIMaestro();
+      fetchHabilidades();
     }
-  }, [isMounted, fetchBaseData, fetchOrdenesFert, fetchKPIMaestro]);
+  }, [isMounted, fetchBaseData, fetchOrdenesFert, fetchKPIMaestro, fetchHabilidades]);
 
   const forrosGruposList = useMemo(() => {
     return grupos.filter(g => {
@@ -512,6 +528,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
           <TabsTrigger value="ordenes-fert" className="px-7 py-4 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[11px] font-black uppercase tracking-widest text-slate-500">
             <PackageSearch className="w-4 h-4 mr-2" /> Órdenes FERT
           </TabsTrigger>
+          <TabsTrigger value="ordenes-previsionales" className="px-7 py-4 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[11px] font-black uppercase tracking-widest text-slate-500">
+            <SearchCode className="w-4 h-4 mr-2" /> Órdenes Previsionales
+          </TabsTrigger>
           <TabsTrigger value="personal-turnos" className="px-7 py-4 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[11px] font-black uppercase tracking-widest text-slate-500">
             <UserPlus className="w-4 h-4 mr-2" /> Personal & Turnos
           </TabsTrigger>
@@ -713,6 +732,55 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   </table>
                 ) : (
                   <div className="py-20 text-center text-slate-400 uppercase font-black tracking-widest text-xs opacity-40">No se encontraron registros</div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="ordenes-previsionales">
+          <Card className="rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden shadow-sm">
+            <CardHeader className="bg-slate-50/50 border-b border-slate-200 p-10">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-2xl font-black text-slate-900 uppercase">Órdenes Previsionales</CardTitle>
+                  <CardDescription className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-1">Consulta de habilidades de operadores por estación</CardDescription>
+                </div>
+                <div className="bg-sky-600 p-3 rounded-2xl text-white shadow-lg shadow-sky-500/20">
+                  <SearchCode className="w-6 h-6" />
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto max-h-[70vh] relative">
+                {isLoadingHabilidades ? (
+                  <div className="flex items-center justify-center py-24">
+                    <Loader2 className="w-10 h-10 animate-spin text-indigo-500" />
+                    <span className="ml-4 text-slate-500 font-black uppercase tracking-widest text-xs">Consultando habilidades...</span>
+                  </div>
+                ) : habilidadesData.length > 0 ? (
+                  <table className="w-full text-[11px] border-collapse">
+                    <thead className="bg-slate-900 sticky top-0 z-10 text-white text-left uppercase tracking-widest font-black">
+                      <tr>
+                        {Object.keys(habilidadesData[0]).map((key) => (
+                          <th key={key} className="px-6 py-4 whitespace-nowrap text-[10px] uppercase font-bold text-slate-300">{key}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {habilidadesData.map((item, i) => (
+                        <tr key={i} className="hover:bg-slate-50 transition-colors text-[10px]">
+                          {Object.values(item).map((val: any, j) => (
+                            <td key={j} className="px-6 py-4 font-medium text-slate-600 whitespace-nowrap">
+                              {val === null || val === undefined ? '—' : String(val)}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <div className="py-20 text-center text-slate-400 uppercase font-black tracking-widest text-xs opacity-40">No se encontraron registros de habilidades</div>
                 )}
               </div>
             </CardContent>
