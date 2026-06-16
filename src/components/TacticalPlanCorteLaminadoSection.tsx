@@ -120,7 +120,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [inventarioSAP, setInventarioSAP] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<string>('all');
-  const [viewDate, setViewDate] = useState<Date>(new Date());
+  const [viewDate, setViewDate] = useState<Date | null>(null);
   const [unifiedNeeds, setUnifiedNeeds] = useState<UnifiedNeedRow[]>([]);
   const [isProcessingResumen, setIsProcessingResumen] = useState(false);
   const [resumenProgress, setResumenProgress] = useState({ current: 0, total: 0 });
@@ -128,6 +128,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
   useEffect(() => {
     setMounted(true);
+    setViewDate(new Date());
+    setSelectedDate(format(new Date(), 'yyyy-MM-dd'));
   }, []);
 
   const datesWithOrders = useMemo(() => {
@@ -452,10 +454,10 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             <PopoverContent className="w-[260px] p-0 border-none shadow-2xl rounded-2xl overflow-hidden mt-3" align="end">
               <div className="bg-white p-5 font-sans text-left">
                 <div className="flex items-center justify-between mb-5">
-                  <h3 className="text-xs font-black text-slate-800 capitalize">{format(viewDate, 'MMMM yyyy', { locale: es })}</h3>
+                  <h3 className="text-xs font-black text-slate-800 capitalize">{viewDate ? format(viewDate, 'MMMM yyyy', { locale: es }) : '—'}</h3>
                   <div className="flex gap-1 bg-slate-50 p-1 rounded-xl">
-                    <Button variant="ghost" size="icon" onClick={() => setViewDate(subMonths(viewDate, 1))} className="h-8 w-8 hover:bg-white hover:shadow-sm"><ChevronLeft className="w-4 h-4" /></Button>
-                    <Button variant="ghost" size="icon" onClick={() => setViewDate(addMonths(viewDate, 1))} className="h-8 w-8 hover:bg-white hover:shadow-sm"><ChevronRight className="w-4 h-4" /></Button>
+                    <Button variant="ghost" size="icon" onClick={() => setViewDate(prev => prev ? subMonths(prev, 1) : null)} className="h-8 w-8 hover:bg-white hover:shadow-sm"><ChevronLeft className="w-4 h-4" /></Button>
+                    <Button variant="ghost" size="icon" onClick={() => setViewDate(prev => prev ? addMonths(prev, 1) : null)} className="h-8 w-8 hover:bg-white hover:shadow-sm"><ChevronRight className="w-4 h-4" /></Button>
                   </div>
                 </div>
                 <div className="grid grid-cols-7 gap-y-1.5 text-center mb-4">
