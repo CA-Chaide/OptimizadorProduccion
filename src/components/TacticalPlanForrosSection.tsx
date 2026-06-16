@@ -329,7 +329,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const fetchOrdenesFert = useCallback(async () => {
     setIsLoadingFert(true);
     try {
-      const response = await serviciosService.getOrdenesFert();
+      const response = await serviciosService.getOrdenesFert(1, 1000);
       setOrdenesFert(response.data || []);
     } catch (error: any) {
       console.error('Error fetching Fert orders:', error);
@@ -738,13 +738,13 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     <thead className="bg-slate-900 sticky top-0 z-10 text-white text-left uppercase tracking-widest font-black">
                       <tr>
                         {Object.keys(ordenesFert[0]).map((key) => (
-                          <th key={key} className="px-6 py-4">{key}</th>
+                          <th key={key} className="px-6 py-4 whitespace-nowrap">{key}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {ordenesFert.map((order, i) => (
-                        <tr key={i} className="hover:bg-slate-50 transition-colors">
+                        <tr key={i} className="hover:bg-slate-50 transition-colors text-[10px]">
                           {Object.values(order).map((val: any, j) => (
                             <td key={j} className="px-6 py-4 font-medium text-slate-600">
                               {val === null || val === undefined ? '—' : String(val)}
