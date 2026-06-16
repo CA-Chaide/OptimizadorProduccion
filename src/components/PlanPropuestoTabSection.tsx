@@ -13,11 +13,13 @@ import {
   Download,
   ArrowRightLeft,
   Search,
-  Scale
+  Scale,
+  AlertCircle
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 import * as XLSX from 'xlsx';
 
 interface ProposedPlanRow {
@@ -119,7 +121,6 @@ export const PlanPropuestoTabSection: React.FC = () => {
 
     const lineTargetHours = new Map<string, number>();
     const lineCurrentFixedHours = new Map<string, number>();
-    const lineFlexibleUnitTimes = new Map<string, number>();
     const lineMaterials = new Map<string, { material: string, desc: string, fixedQty: number, flexQty: number, tUnit: number }[]>();
 
     const targetDateISO = normalizeDateISO(programmingDate);
@@ -246,7 +247,7 @@ export const PlanPropuestoTabSection: React.FC = () => {
       'Material': r.material,
       'Descripción': r.descripcion,
       'Es Ajustable (Mat Balanceo)': r.esAjustable ? 'SI' : 'NO',
-      'Cant. Original': r.cantidadOriginal,
+      'Cant. Actual': r.cantidadOriginal,
       'Cant. PROPUESTA': r.cantidadPropuesta,
       'Diferencia': r.diferencia,
       'Tiempo Resultante (h)': Number(r.tiempoTotalPropuesto.toFixed(2))
