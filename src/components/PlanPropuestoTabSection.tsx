@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -14,7 +15,9 @@ import {
   ArrowRightLeft,
   Search,
   Scale,
-  AlertCircle
+  AlertCircle,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -58,6 +61,10 @@ export const PlanPropuestoTabSection: React.FC = () => {
   const [availableCenters, setAvailableCenters] = useState<string[]>([]);
   const [selectedCenter, setSelectedCenter] = useState<string>("1000");
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  
+  // Paginación
+  const [currentPage, setCurrentPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(50);
   const [searchTerm, setSearchTerm] = useState('');
   
   // Parámetros de Simulación (desde localStorage)
@@ -116,8 +123,11 @@ export const PlanPropuestoTabSection: React.FC = () => {
 
     const simPuestosT1 = JSON.parse(localStorage.getItem('sim_puestos_t1') || '{}');
     const simPuestosT2 = JSON.parse(localStorage.getItem('sim_puestos_t2') || '{}');
-    const simHorasT1 = Number(localStorage.getItem('sim_horas_t1') || 8);
-    const simHorasT2 = Number(localStorage.getItem('sim_horas_t2') || 0);
+    const savedH1 = JSON.parse(localStorage.getItem('sim_horas_t1_by_center') || '{}');
+    const savedH2 = JSON.parse(localStorage.getItem('sim_horas_t2_by_center') || '{}');
+    
+    const simHorasT1 = savedH1[selectedCenter] ?? 8.75;
+    const simHorasT2 = savedH2[selectedCenter] ?? 0;
 
     const lineTargetHours = new Map<string, number>();
     const lineCurrentFixedHours = new Map<string, number>();
@@ -149,8 +159,6 @@ export const PlanPropuestoTabSection: React.FC = () => {
       // Solo procesamos basado en el puesto de Armado para el cálculo de capacidad grupal
       if (puesto !== 'Armado') return;
 
-      const matKey = `${linea}|${material}`;
-      
       // Calcular demanda fija (FERT) y flexible (OrdPrev)
       let qFixed = 0;
       fertOrders.forEach(o => {
@@ -236,9 +244,30 @@ export const PlanPropuestoTabSection: React.FC = () => {
     if (!q) return proposedPlan;
     return proposedPlan.filter(r => 
       r.material.toLowerCase().includes(q) || 
-      r.descripcion.toLowerCase().includes(q)
+      r.descripcion.toLowerCase().includes(q) ||
+      r.linea.toLowerCase().includes(q)
     );
   }, [proposedPlan, searchTerm]);
+
+  // Paginación
+  const totalPages = Math.max(1, Math.ceil(filteredResults.length / rowsPerPage));
+  const paginatedResults = useMemo(() => {
+    const start = (currentPage - 1) * rowsPerPage;
+    return filteredResults.slice(start, start + rowsPerPage);
+  }, [filteredResults, currentPage, rowsPerPage]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, selectedCenter, rowsPerPage]);
+
+  const grandTotals = useMemo(() => {
+    return filteredResults.reduce((acc, r) => ({
+      totalCantActual: acc.totalCantActual + r.cantidadOriginal,
+      totalCantPropuesta: acc.totalCantPropuesta + r.cantidadPropuesta,
+      totalDiferencia: acc.totalDiferencia + r.diferencia,
+      totalTime: acc.totalTime + r.tiempoTotalPropuesto,
+    }), { totalCantActual: 0, totalCantPropuesta: 0, totalDiferencia: 0, totalTime: 0 });
+  }, [filteredResults]);
 
   const handleExport = () => {
     const ws = XLSX.utils.json_to_sheet(filteredResults.map(r => ({
@@ -329,52 +358,134 @@ export const PlanPropuestoTabSection: React.FC = () => {
                 {isLoading ? (
                   <tr><td colSpan={8} className="px-6 py-12 text-center text-gray-500"><Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" /> Generando propuesta óptima...</td></tr>
                 ) : filteredResults.length > 0 ? (() => {
-                  const items: React.ReactNode[] = [];
-                  const lines = [...new Set(filteredResults.map(r => r.linea))];
-                  lines.forEach(lineName => {
-                    const lineRows = filteredResults.filter(r => r.linea === lineName);
-                    lineRows.forEach((row, idx) => {
-                      items.push(
-                        <tr key={`${lineName}-${row.material}-${idx}`} className={cn("hover:bg-gray-50 transition-colors", row.esAjustable && "bg-emerald-50/30")}>
-                          {idx === 0 && <td rowSpan={lineRows.length} className="px-4 py-3 font-bold text-gray-900 border-r align-top bg-gray-50/10">{lineName}</td>}
-                          <td className="px-4 py-3 font-mono font-medium text-gray-700">{row.material}</td>
-                          <td className="px-4 py-3 text-gray-600 max-w-xs truncate" title={row.descripcion}>{row.descripcion}</td>
-                          <td className="px-4 py-3 text-center">
-                            {row.esAjustable ? 
-                              <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 text-[9px] uppercase font-bold">Ajustable</Badge> : 
-                              <Badge variant="outline" className="text-[9px] uppercase font-bold opacity-50">Fijo</Badge>
-                            }
+                  const rows: React.ReactNode[] = [];
+                  let lastLine = "";
+
+                  paginatedResults.forEach((row, idx) => {
+                    const isNewLine = row.linea !== lastLine;
+                    if (isNewLine) {
+                      rows.push(
+                        <tr key={`header-${row.linea}`} className="bg-gray-50/80">
+                          <td colSpan={8} className="px-4 py-1.5 font-bold text-indigo-900 border-b border-t text-[11px] uppercase tracking-wide">
+                            {row.linea}
                           </td>
-                          <td className="px-4 py-3 text-right text-gray-400">{row.cantidadOriginal.toLocaleString()}</td>
-                          <td className="px-4 py-3 text-right font-bold text-indigo-700 bg-indigo-50/5">{row.cantidadPropuesta.toLocaleString()}</td>
-                          <td className={`px-4 py-3 text-right font-medium ${row.diferencia > 0 ? 'text-green-600' : row.diferencia < 0 ? 'text-red-600' : 'text-gray-400'}`}>
-                            {row.diferencia > 0 ? `+${row.diferencia.toLocaleString()}` : row.diferencia.toLocaleString()}
-                          </td>
-                          <td className="px-4 py-3 text-right font-mono font-bold text-indigo-800 bg-indigo-50/5">{row.tiempoTotalPropuesto.toFixed(2)}h</td>
                         </tr>
                       );
-                    });
+                      lastLine = row.linea;
+                    }
+
+                    rows.push(
+                      <tr key={`${row.linea}-${row.material}-${idx}`} className={cn("hover:bg-gray-50 transition-colors", row.esAjustable && "bg-emerald-50/20")}>
+                        <td className="px-4 py-2.5 text-gray-400 font-medium italic">{row.linea}</td>
+                        <td className="px-4 py-2.5 font-mono font-medium text-gray-700">{row.material}</td>
+                        <td className="px-4 py-2.5 text-gray-600 max-w-xs truncate" title={row.descripcion}>{row.descripcion}</td>
+                        <td className="px-4 py-2.5 text-center">
+                          {row.esAjustable ? 
+                            <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 text-[9px] uppercase font-bold">Ajustable</Badge> : 
+                            <Badge variant="outline" className="text-[9px] uppercase font-bold opacity-40">Fijo</Badge>
+                          }
+                        </td>
+                        <td className="px-4 py-2.5 text-right text-gray-400">{row.cantidadOriginal.toLocaleString()}</td>
+                        <td className="px-4 py-2.5 text-right font-bold text-indigo-700 bg-indigo-50/5">{row.cantidadPropuesta.toLocaleString()}</td>
+                        <td className={`px-4 py-2.5 text-right font-medium ${row.diferencia > 0 ? 'text-green-600' : row.diferencia < 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                          {row.diferencia > 0 ? `+${row.diferencia.toLocaleString()}` : row.diferencia.toLocaleString()}
+                        </td>
+                        <td className="px-4 py-2.5 text-right font-mono font-bold text-indigo-800 bg-indigo-50/5">{row.tiempoTotalPropuesto.toFixed(2)}h</td>
+                      </tr>
+                    );
                   });
-                  return items;
+                  return rows;
                 })() : (
                   <tr><td colSpan={8} className="px-6 py-12 text-center text-gray-400 italic">No hay datos para optimizar con los filtros actuales.</td></tr>
                 )}
               </tbody>
               {filteredResults.length > 0 && (
-                <tfoot className="bg-gray-800 text-white font-bold text-[10px]">
+                <tfoot className="bg-gray-800 text-white font-bold text-[10px] sticky bottom-0">
                   <tr>
-                    <td colSpan={4} className="px-4 py-3 text-right uppercase border-r border-gray-700">Totales Plan Propuesto:</td>
-                    <td className="px-4 py-3 text-right border-r border-gray-700">{filteredResults.reduce((sum, r) => sum + r.cantidadOriginal, 0).toLocaleString()}</td>
-                    <td className="px-4 py-3 text-right text-indigo-300 border-r border-gray-700">{filteredResults.reduce((sum, r) => sum + r.cantidadPropuesta, 0).toLocaleString()}</td>
-                    <td className="px-4 py-3 text-right border-r border-gray-700">{filteredResults.reduce((sum, r) => sum + r.diferencia, 0).toLocaleString()}</td>
-                    <td className="px-4 py-3 text-right text-indigo-300">{filteredResults.reduce((sum, r) => sum + r.tiempoTotalPropuesto, 0).toFixed(2)}h</td>
+                    <td colSpan={4} className="px-4 py-3 text-right uppercase border-r border-gray-700">Totales Plan General ({filteredResults.length} regs):</td>
+                    <td className="px-4 py-3 text-right border-r border-gray-700">{grandTotals.totalCantActual.toLocaleString()}</td>
+                    <td className="px-4 py-3 text-right text-indigo-300 border-r border-gray-700">{grandTotals.totalCantPropuesta.toLocaleString()}</td>
+                    <td className="px-4 py-3 text-right border-r border-gray-700">{grandTotals.totalDiferencia.toLocaleString()}</td>
+                    <td className="px-4 py-3 text-right text-indigo-300">{grandTotals.totalTime.toFixed(2)}h</td>
                   </tr>
                 </tfoot>
               )}
             </table>
           </div>
         </div>
+
+        {/* Controles de Paginación */}
+        {totalPages > 1 && (
+          <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-4 px-2 py-2 bg-gray-50 border rounded-lg">
+            <div className="flex items-center gap-4 text-xs">
+              <span className="font-medium text-gray-500 uppercase">Mostrar:</span>
+              <select
+                value={rowsPerPage}
+                onChange={(e) => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }}
+                className="border rounded p-1 bg-white text-gray-700"
+              >
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+                <option value={200}>200</option>
+              </select>
+              <span className="text-gray-400">
+                Pág. {currentPage} de {totalPages} | Total {filteredResults.length} registros
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))} 
+                disabled={currentPage === 1}
+                className="h-8 w-8 p-0"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <div className="flex items-center gap-1">
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  let pageNum = currentPage;
+                  if (totalPages <= 5) pageNum = i + 1;
+                  else if (currentPage <= 3) pageNum = i + 1;
+                  else if (currentPage >= totalPages - 2) pageNum = totalPages - 4 + i;
+                  else pageNum = currentPage - 2 + i;
+                  
+                  return (
+                    <Button
+                      key={pageNum}
+                      variant={currentPage === pageNum ? "default" : "ghost"}
+                      size="sm"
+                      onClick={() => setCurrentPage(pageNum)}
+                      className="h-8 w-8 p-0 text-xs"
+                    >
+                      {pageNum}
+                    </Button>
+                  );
+                })}
+              </div>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} 
+                disabled={currentPage === totalPages}
+                className="h-8 w-8 p-0"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        )}
       </Tabs>
+
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-3 mt-4">
+        <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+        <div className="text-xs text-blue-800 space-y-1">
+          <p><b>Optimización de Vista:</b> Se ha implementado paginación para mejorar la fluidez de la interfaz. La búsqueda y filtros procesan el total de los datos.</p>
+          <p><b>Nota de Balanceo:</b> El motor ajusta únicamente las cantidades de los materiales marcados en <b>"Mat Balanceo"</b>.</p>
+        </div>
+      </div>
     </div>
   );
 };
