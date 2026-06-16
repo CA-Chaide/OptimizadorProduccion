@@ -10,14 +10,15 @@ import {
   CheckCircle2, 
   Loader2, 
   Home, 
-  Calendar as CalendarIcon, 
   Download,
   ArrowRightLeft,
   Search,
   Scale,
   AlertCircle,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Filter,
+  X
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -29,6 +30,7 @@ interface ProposedPlanRow {
   material: string;
   descripcion: string;
   linea: string;
+  puestoTrabajo: string;
   cantidadOriginal: number;
   cantidadPropuesta: number;
   diferencia: number;
@@ -65,7 +67,15 @@ export const PlanPropuestoTabSection: React.FC = () => {
   // Paginación
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(50);
-  const [searchTerm, setSearchTerm] = useState('');
+  
+  // Filtros Multicolumna
+  const [filters, setFilters] = useState({
+    linea: '',
+    material: '',
+    descripcion: '',
+    puesto: '',
+    tipo: 'ALL'
+  });
   
   // Parámetros de Simulación (desde localStorage)
   const [programmingDate, setProgrammingDate] = useState<string>(new Date().toISOString().split('T')[0]);
@@ -91,7 +101,7 @@ export const PlanPropuestoTabSection: React.FC = () => {
       let allTiempos: any[] = [];
       let page = 1;
       let hasMore = true;
-      while (hasMore && page <= 5) {
+      while (hasMore && page <= 10) {
         const response = await serviciosService.getTiemposEnsamblado(page, 5000);
         const raw = Array.isArray(response?.data) ? response.data : [];
         allTiempos = [...allTiempos, ...raw];
@@ -117,21 +127,21 @@ export const PlanPropuestoTabSection: React.FC = () => {
     if (!technicalData.length || !selectedCenter) return [];
 
     // 1. Cargar Configuración de Balanceo y Puestos Editados
-    const matBalanceoRaw = localStorage.getItem('material_balanceo_lineas_data');
+    const matBalanceoRaw = typeof window !== 'undefined' ? localStorage.getItem('material_balanceo_lineas_data') : null;
     const matBalanceoPool = matBalanceoRaw ? JSON.parse(matBalanceoRaw) : [];
     const enabledMaterials = new Set(matBalanceoPool.filter((m: any) => m.habilitado).map((m: any) => normalizeMaterialCode(m.material)));
 
-    const simPuestosT1 = JSON.parse(localStorage.getItem('sim_puestos_t1') || '{}');
-    const simPuestosT2 = JSON.parse(localStorage.getItem('sim_puestos_t2') || '{}');
-    const savedH1 = JSON.parse(localStorage.getItem('sim_horas_t1_by_center') || '{}');
-    const savedH2 = JSON.parse(localStorage.getItem('sim_horas_t2_by_center') || '{}');
+    const simPuestosT1 = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('sim_puestos_t1') || '{}') : {};
+    const simPuestosT2 = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('sim_puestos_t2') || '{}') : {};
+    const savedH1 = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('sim_horas_t1_by_center') || '{}') : {};
+    const savedH2 = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('sim_horas_t2_by_center') || '{}') : {};
     
     const simHorasT1 = savedH1[selectedCenter] ?? 8.75;
     const simHorasT2 = savedH2[selectedCenter] ?? 0;
 
     const lineTargetHours = new Map<string, number>();
     const lineCurrentFixedHours = new Map<string, number>();
-    const lineMaterials = new Map<string, { material: string, desc: string, fixedQty: number, flexQty: number, tUnit: number }[]>();
+    const lineMaterials = new Map<string, { material: string, desc: string, puesto: string, fixedQty: number, flexQty: number, tUnit: number }[]>();
 
     const targetDateISO = normalizeDateISO(programmingDate);
     const prevDateISO = normalizeDateISO(provisionalDate);
@@ -187,6 +197,7 @@ export const PlanPropuestoTabSection: React.FC = () => {
       lineMaterials.get(linea)!.push({
         material,
         desc: row.Material || row.NombreMaterial || `Material ${material}`,
+        puesto,
         fixedQty: qFixed,
         flexQty: qFlex,
         tUnit: effectiveTUnit
@@ -212,21 +223,20 @@ export const PlanPropuestoTabSection: React.FC = () => {
         scaleFactor = remainingHours / totalFlexTimeAtBase;
       } else if (flexPool.length > 0 && remainingHours > 0) {
         // Si no hay demanda previsional pero hay materiales habilitados, repartir las horas equitativamente
-        const hoursPerMat = remainingHours / flexPool.length;
-        flexPool.forEach(m => { m.flexQty = 1; }); // Darle una base de 1 para que el cálculo funcione
-        const newFlexTime = flexPool.reduce((sum, m) => sum + (m.flexQty * m.tUnit), 0);
+        const newFlexTime = flexPool.reduce((sum, m) => sum + (1 * m.tUnit), 0);
         scaleFactor = remainingHours / newFlexTime;
       }
 
       mats.forEach(m => {
         const isAdj = enabledMaterials.has(m.material);
-        const finalQty = isAdj ? Math.round(m.flexQty * scaleFactor) : 0;
+        const finalQty = isAdj ? Math.round((m.flexQty || 1) * scaleFactor) : 0;
         const totalQty = m.fixedQty + finalQty;
 
         results.push({
           material: m.material,
           descripcion: m.desc,
           linea: linea,
+          puestoTrabajo: m.puesto,
           cantidadOriginal: m.fixedQty + m.flexQty,
           cantidadPropuesta: totalQty,
           diferencia: totalQty - (m.fixedQty + m.flexQty),
@@ -239,15 +249,28 @@ export const PlanPropuestoTabSection: React.FC = () => {
     return results.sort((a, b) => a.linea.localeCompare(b.linea) || a.material.localeCompare(b.material));
   }, [technicalData, fertOrders, provisionalOrders, selectedCenter, programmingDate, provisionalDate, rendLinea1, rendLinea2, rendLinea3, rendLinea5]);
 
+  // FILTRADO DINÁMICO POR COLUMNAS
   const filteredResults = useMemo(() => {
-    const q = searchTerm.toLowerCase().trim();
-    if (!q) return proposedPlan;
-    return proposedPlan.filter(r => 
-      r.material.toLowerCase().includes(q) || 
-      r.descripcion.toLowerCase().includes(q) ||
-      r.linea.toLowerCase().includes(q)
-    );
-  }, [proposedPlan, searchTerm]);
+    return proposedPlan.filter(r => {
+      const matchLinea = filters.linea === '' || r.linea.toLowerCase().includes(filters.linea.toLowerCase());
+      const matchMaterial = filters.material === '' || r.material.toLowerCase().includes(filters.material.toLowerCase());
+      const matchDesc = filters.descripcion === '' || r.descripcion.toLowerCase().includes(filters.descripcion.toLowerCase());
+      const matchPuesto = filters.puesto === '' || r.puestoTrabajo.toLowerCase().includes(filters.puesto.toLowerCase());
+      const matchTipo = filters.tipo === 'ALL' || (filters.tipo === 'ADJ' ? r.esAjustable : !r.esAjustable);
+
+      return matchLinea && matchMaterial && matchDesc && matchPuesto && matchTipo;
+    });
+  }, [proposedPlan, filters]);
+
+  // TOTALES DINÁMICOS BASADOS EN FILTRO
+  const grandTotals = useMemo(() => {
+    return filteredResults.reduce((acc, r) => ({
+      totalCantActual: acc.totalCantActual + r.cantidadOriginal,
+      totalCantPropuesta: acc.totalCantPropuesta + r.cantidadPropuesta,
+      totalDiferencia: acc.totalDiferencia + r.diferencia,
+      totalTime: acc.totalTime + r.tiempoTotalPropuesto,
+    }), { totalCantActual: 0, totalCantPropuesta: 0, totalDiferencia: 0, totalTime: 0 });
+  }, [filteredResults]);
 
   // Paginación
   const totalPages = Math.max(1, Math.ceil(filteredResults.length / rowsPerPage));
@@ -258,32 +281,38 @@ export const PlanPropuestoTabSection: React.FC = () => {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, selectedCenter, rowsPerPage]);
-
-  const grandTotals = useMemo(() => {
-    return filteredResults.reduce((acc, r) => ({
-      totalCantActual: acc.totalCantActual + r.cantidadOriginal,
-      totalCantPropuesta: acc.totalCantPropuesta + r.cantidadPropuesta,
-      totalDiferencia: acc.totalDiferencia + r.diferencia,
-      totalTime: acc.totalTime + r.tiempoTotalPropuesto,
-    }), { totalCantActual: 0, totalCantPropuesta: 0, totalDiferencia: 0, totalTime: 0 });
-  }, [filteredResults]);
+  }, [filters, selectedCenter, rowsPerPage]);
 
   const handleExport = () => {
     const ws = XLSX.utils.json_to_sheet(filteredResults.map(r => ({
       'Centro': selectedCenter,
       'Línea': r.linea,
+      'Puesto Trabajo': r.puestoTrabajo,
       'Material': r.material,
       'Descripción': r.descripcion,
       'Es Ajustable (Mat Balanceo)': r.esAjustable ? 'SI' : 'NO',
       'Cant. Actual': r.cantidadOriginal,
       'Cant. PROPUESTA': r.cantidadPropuesta,
-      'Diferencia': r.diferencia,
+      'Diferencia (±)': r.diferencia,
       'Tiempo Resultante (h)': Number(r.tiempoTotalPropuesto.toFixed(2))
     })));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Plan Propuesto");
     XLSX.writeFile(wb, `Plan_Optimizado_${selectedCenter}.xlsx`);
+  };
+
+  const handleFilterChange = (field: keyof typeof filters, value: string) => {
+    setFilters(prev => ({ ...prev, [field]: value }));
+  };
+
+  const clearAllFilters = () => {
+    setFilters({
+      linea: '',
+      material: '',
+      descripcion: '',
+      puesto: '',
+      tipo: 'ALL'
+    });
   };
 
   return (
@@ -293,11 +322,11 @@ export const PlanPropuestoTabSection: React.FC = () => {
           <Scale className="w-6 h-6 text-green-600" />
           <div>
             <h3 className="text-xl font-semibold text-gray-800">Plan de Producción Propuesto (Optimizado)</h3>
-            <p className="text-xs text-gray-500">Balanceo de carga basado en Tiempo Disponible y Materiales Habilitados</p>
+            <p className="text-xs text-gray-500">Ajuste dinámico de cantidades basado en carga de tiempo objetivo</p>
           </div>
         </div>
         <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={handleExport} disabled={filteredResults.length === 0}>
+            <Button variant="outline" size="sm" onClick={handleExport} disabled={filteredResults.length === 0} className="border-green-200 text-green-700 bg-green-50 hover:bg-green-100">
                 <Download className="w-4 h-4 mr-2" /> Exportar Excel
             </Button>
             <Button variant="outline" size="sm" onClick={() => loadData()}>
@@ -315,7 +344,8 @@ export const PlanPropuestoTabSection: React.FC = () => {
           ))}
         </TabsList>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 p-4 bg-gray-50 border rounded-xl shadow-sm mb-6">
+        {/* --- Toolbar de Fechas y Nota --- */}
+        <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-5 gap-4 p-4 bg-gray-50 border rounded-xl shadow-sm mb-4">
           <div className="flex flex-col gap-1">
             <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Fecha FERT:</label>
             <input type="date" value={programmingDate} onChange={e => setProgrammingDate(e.target.value)} className="text-xs border rounded-md px-2 py-2 outline-none h-9 font-medium text-indigo-700" />
@@ -324,39 +354,93 @@ export const PlanPropuestoTabSection: React.FC = () => {
             <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Fecha PREV:</label>
             <input type="date" value={provisionalDate} onChange={e => setProvisionalDate(e.target.value)} className="text-xs border rounded-md px-2 py-2 outline-none h-9 font-medium text-indigo-700" />
           </div>
-          <div className="flex flex-col gap-1 lg:col-span-2">
-            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Búsqueda:</label>
-            <div className="relative">
-              <Search className="absolute left-2 top-2.5 h-3.5 w-3.5 text-gray-400" />
-              <input type="text" placeholder="Filtrar por código o nombre..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="text-xs border rounded-md pl-7 pr-2 py-2 outline-none h-9 w-full" />
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-2 flex items-center gap-2 lg:col-span-3">
+            <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0" />
+            <div className="text-[10px] text-blue-800 leading-tight">
+              <p><b>Balanceo Automático:</b> El sistema ajusta las cantidades de materiales <b>Ajustables</b> para que el Tiempo Total coincida con el Tiempo Disponible configurado.</p>
+              <p className="mt-0.5">Los totales al pie de la tabla se actualizan según los filtros aplicados.</p>
             </div>
-          </div>
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-2 flex items-center gap-2 lg:col-span-2">
-            <AlertCircle className="w-4 h-4 text-blue-600 flex-shrink-0" />
-            <p className="text-[10px] text-blue-800 leading-tight">
-              <b>Nota:</b> La optimización ajusta las cantidades de los materiales marcados en <b>"Mat Balanceo"</b> para alcanzar las horas disponibles configuradas en <b>"Rev Capacidad"</b>.
-            </p>
           </div>
         </div>
 
         <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="min-w-full text-xs divide-y divide-gray-200">
+            <table className="min-w-full text-xs divide-y divide-gray-200 border-collapse">
               <thead className="bg-gray-50 uppercase text-[10px] font-bold text-gray-500">
+                {/* --- Cabecera de Nombres --- */}
                 <tr>
-                  <th className="px-4 py-3 text-left">Línea</th>
-                  <th className="px-4 py-3 text-left">Material</th>
-                  <th className="px-4 py-3 text-left">Descripción</th>
-                  <th className="px-4 py-3 text-center">Tipo</th>
-                  <th className="px-4 py-3 text-right">Cant. Actual</th>
-                  <th className="px-4 py-3 text-right text-indigo-700 bg-indigo-50/30">Cant. PROPUESTA</th>
-                  <th className="px-4 py-3 text-right">Ajuste (±)</th>
-                  <th className="px-4 py-3 text-right bg-indigo-50/30">Tiempo (h)</th>
+                  <th className="px-4 py-3 text-left border-b">Línea</th>
+                  <th className="px-4 py-3 text-left border-b">Material</th>
+                  <th className="px-4 py-3 text-left border-b">Descripción</th>
+                  <th className="px-4 py-3 text-left border-b">Puesto Trabajo</th>
+                  <th className="px-4 py-3 text-center border-b">Tipo</th>
+                  <th className="px-4 py-3 text-right border-b">Cant. Actual</th>
+                  <th className="px-4 py-3 text-right text-indigo-700 bg-indigo-50/30 border-b">Cant. PROPUESTA</th>
+                  <th className="px-4 py-3 text-right border-b">Ajuste (±)</th>
+                  <th className="px-4 py-3 text-right bg-indigo-50/30 border-b">Tiempo (h)</th>
+                </tr>
+                {/* --- Fila de Filtros --- */}
+                <tr className="bg-white">
+                  <th className="px-2 py-2 border-b">
+                    <div className="relative">
+                      <Search className="absolute left-2 top-1.5 h-3 w-3 text-gray-400" />
+                      <input 
+                        type="text" 
+                        value={filters.linea} 
+                        onChange={e => handleFilterChange('linea', e.target.value)}
+                        placeholder="Filtrar..." 
+                        className="w-full pl-6 pr-1 py-1 text-[10px] border rounded font-normal lowercase outline-none focus:ring-1 focus:ring-indigo-500" 
+                      />
+                    </div>
+                  </th>
+                  <th className="px-2 py-2 border-b">
+                    <input 
+                      type="text" 
+                      value={filters.material} 
+                      onChange={e => handleFilterChange('material', e.target.value)}
+                      placeholder="Cod..." 
+                      className="w-full px-2 py-1 text-[10px] border rounded font-normal lowercase outline-none focus:ring-1 focus:ring-indigo-500" 
+                    />
+                  </th>
+                  <th className="px-2 py-2 border-b">
+                    <input 
+                      type="text" 
+                      value={filters.descripcion} 
+                      onChange={e => handleFilterChange('descripcion', e.target.value)}
+                      placeholder="Buscar desc..." 
+                      className="w-full px-2 py-1 text-[10px] border rounded font-normal lowercase outline-none focus:ring-1 focus:ring-indigo-500" 
+                    />
+                  </th>
+                  <th className="px-2 py-2 border-b">
+                    <input 
+                      type="text" 
+                      value={filters.puesto} 
+                      onChange={e => handleFilterChange('puesto', e.target.value)}
+                      placeholder="Puesto..." 
+                      className="w-full px-2 py-1 text-[10px] border rounded font-normal lowercase outline-none focus:ring-1 focus:ring-indigo-500" 
+                    />
+                  </th>
+                  <th className="px-2 py-2 border-b">
+                    <select 
+                      value={filters.tipo} 
+                      onChange={e => handleFilterChange('tipo', e.target.value)}
+                      className="w-full px-1 py-1 text-[9px] border rounded font-bold outline-none"
+                    >
+                      <option value="ALL">TODOS</option>
+                      <option value="ADJ">AJUSTABLE</option>
+                      <option value="FIX">FIJO</option>
+                    </select>
+                  </th>
+                  <th className="px-2 py-2 border-b text-center" colSpan={4}>
+                    <Button variant="ghost" size="sm" onClick={clearAllFilters} className="h-6 text-[9px] text-red-500 hover:text-red-700 hover:bg-red-50 font-bold uppercase p-0">
+                      <X className="w-3 h-3 mr-1" /> Limpiar Filtros
+                    </Button>
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {isLoading ? (
-                  <tr><td colSpan={8} className="px-6 py-12 text-center text-gray-500"><Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" /> Generando propuesta óptima...</td></tr>
+                  <tr><td colSpan={9} className="px-6 py-12 text-center text-gray-500"><Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" /> Calculando propuesta óptima...</td></tr>
                 ) : filteredResults.length > 0 ? (() => {
                   const rows: React.ReactNode[] = [];
                   let lastLine = "";
@@ -366,8 +450,8 @@ export const PlanPropuestoTabSection: React.FC = () => {
                     if (isNewLine) {
                       rows.push(
                         <tr key={`header-${row.linea}`} className="bg-gray-50/80">
-                          <td colSpan={8} className="px-4 py-1.5 font-bold text-indigo-900 border-b border-t text-[11px] uppercase tracking-wide">
-                            {row.linea}
+                          <td colSpan={9} className="px-4 py-1.5 font-bold text-indigo-900 border-b border-t text-[11px] uppercase tracking-wide flex items-center gap-2">
+                            <LayoutGrid className="w-3.5 h-3.5 opacity-50" /> {row.linea}
                           </td>
                         </tr>
                       );
@@ -375,19 +459,20 @@ export const PlanPropuestoTabSection: React.FC = () => {
                     }
 
                     rows.push(
-                      <tr key={`${row.linea}-${row.material}-${idx}`} className={cn("hover:bg-gray-50 transition-colors", row.esAjustable && "bg-emerald-50/20")}>
+                      <tr key={`${row.linea}-${row.material}-${idx}`} className={cn("hover:bg-gray-50 transition-colors", row.esAjustable && "bg-emerald-50/10")}>
                         <td className="px-4 py-2.5 text-gray-400 font-medium italic">{row.linea}</td>
-                        <td className="px-4 py-2.5 font-mono font-medium text-gray-700">{row.material}</td>
+                        <td className="px-4 py-2.5 font-mono font-bold text-gray-700">{row.material}</td>
                         <td className="px-4 py-2.5 text-gray-600 max-w-xs truncate" title={row.descripcion}>{row.descripcion}</td>
+                        <td className="px-4 py-2.5 text-gray-500 font-medium">{row.puestoTrabajo}</td>
                         <td className="px-4 py-2.5 text-center">
                           {row.esAjustable ? 
-                            <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 text-[9px] uppercase font-bold">Ajustable</Badge> : 
-                            <Badge variant="outline" className="text-[9px] uppercase font-bold opacity-40">Fijo</Badge>
+                            <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 text-[9px] uppercase font-bold px-1.5">Ajustable</Badge> : 
+                            <Badge variant="outline" className="text-[9px] uppercase font-bold opacity-30 border-gray-300">Fijo</Badge>
                           }
                         </td>
-                        <td className="px-4 py-2.5 text-right text-gray-400">{row.cantidadOriginal.toLocaleString()}</td>
-                        <td className="px-4 py-2.5 text-right font-bold text-indigo-700 bg-indigo-50/5">{row.cantidadPropuesta.toLocaleString()}</td>
-                        <td className={`px-4 py-2.5 text-right font-medium ${row.diferencia > 0 ? 'text-green-600' : row.diferencia < 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                        <td className="px-4 py-2.5 text-right text-gray-400 font-mono">{row.cantidadOriginal.toLocaleString()}</td>
+                        <td className="px-4 py-2.5 text-right font-bold text-indigo-700 bg-indigo-50/5 font-mono">{row.cantidadPropuesta.toLocaleString()}</td>
+                        <td className={`px-4 py-2.5 text-right font-bold font-mono ${row.diferencia > 0 ? 'text-green-600' : row.diferencia < 0 ? 'text-red-600' : 'text-gray-300'}`}>
                           {row.diferencia > 0 ? `+${row.diferencia.toLocaleString()}` : row.diferencia.toLocaleString()}
                         </td>
                         <td className="px-4 py-2.5 text-right font-mono font-bold text-indigo-800 bg-indigo-50/5">{row.tiempoTotalPropuesto.toFixed(2)}h</td>
@@ -396,17 +481,27 @@ export const PlanPropuestoTabSection: React.FC = () => {
                   });
                   return rows;
                 })() : (
-                  <tr><td colSpan={8} className="px-6 py-12 text-center text-gray-400 italic">No hay datos para optimizar con los filtros actuales.</td></tr>
+                  <tr>
+                    <td colSpan={9} className="px-6 py-12 text-center text-gray-400 italic">
+                      <div className="flex flex-col items-center gap-2">
+                        <Filter className="w-8 h-8 text-gray-200" />
+                        <span>No hay datos que coincidan con los filtros aplicados en el Centro {selectedCenter}.</span>
+                        <Button variant="link" size="sm" onClick={clearAllFilters} className="text-indigo-600 font-bold">Quitar todos los filtros</Button>
+                      </div>
+                    </td>
+                  </tr>
                 )}
               </tbody>
               {filteredResults.length > 0 && (
                 <tfoot className="bg-gray-800 text-white font-bold text-[10px] sticky bottom-0">
                   <tr>
-                    <td colSpan={4} className="px-4 py-3 text-right uppercase border-r border-gray-700">Totales Plan General ({filteredResults.length} regs):</td>
-                    <td className="px-4 py-3 text-right border-r border-gray-700">{grandTotals.totalCantActual.toLocaleString()}</td>
-                    <td className="px-4 py-3 text-right text-indigo-300 border-r border-gray-700">{grandTotals.totalCantPropuesta.toLocaleString()}</td>
-                    <td className="px-4 py-3 text-right border-r border-gray-700">{grandTotals.totalDiferencia.toLocaleString()}</td>
-                    <td className="px-4 py-3 text-right text-indigo-300">{grandTotals.totalTime.toFixed(2)}h</td>
+                    <td colSpan={5} className="px-4 py-3 text-right uppercase border-r border-gray-700">Totales Filtrados ({filteredResults.length} regs):</td>
+                    <td className="px-4 py-3 text-right border-r border-gray-700 font-mono">{grandTotals.totalCantActual.toLocaleString()}</td>
+                    <td className="px-4 py-3 text-right text-indigo-300 border-r border-gray-700 font-mono">{grandTotals.totalCantPropuesta.toLocaleString()}</td>
+                    <td className="px-4 py-3 text-right border-r border-gray-700 font-mono">
+                      {grandTotals.totalDiferencia > 0 ? `+${grandTotals.totalDiferencia.toLocaleString()}` : grandTotals.totalDiferencia.toLocaleString()}
+                    </td>
+                    <td className="px-4 py-3 text-right text-emerald-300 font-mono">{grandTotals.totalTime.toFixed(2)}h</td>
                   </tr>
                 </tfoot>
               )}
@@ -417,19 +512,19 @@ export const PlanPropuestoTabSection: React.FC = () => {
         {/* Controles de Paginación */}
         {totalPages > 1 && (
           <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-4 px-2 py-2 bg-gray-50 border rounded-lg">
-            <div className="flex items-center gap-4 text-xs">
-              <span className="font-medium text-gray-500 uppercase">Mostrar:</span>
+            <div className="flex items-center gap-4 text-[10px]">
+              <span className="font-bold text-gray-400 uppercase">Mostrar:</span>
               <select
                 value={rowsPerPage}
                 onChange={(e) => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }}
-                className="border rounded p-1 bg-white text-gray-700"
+                className="border rounded p-1 bg-white text-gray-700 font-bold outline-none"
               >
                 <option value={20}>20</option>
                 <option value={50}>50</option>
                 <option value={100}>100</option>
                 <option value={200}>200</option>
               </select>
-              <span className="text-gray-400">
+              <span className="text-gray-400 font-bold">
                 Pág. {currentPage} de {totalPages} | Total {filteredResults.length} registros
               </span>
             </div>
@@ -458,7 +553,7 @@ export const PlanPropuestoTabSection: React.FC = () => {
                       variant={currentPage === pageNum ? "default" : "ghost"}
                       size="sm"
                       onClick={() => setCurrentPage(pageNum)}
-                      className="h-8 w-8 p-0 text-xs"
+                      className="h-8 w-8 p-0 text-xs font-bold"
                     >
                       {pageNum}
                     </Button>
@@ -481,9 +576,8 @@ export const PlanPropuestoTabSection: React.FC = () => {
 
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-3 mt-4">
         <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-        <div className="text-xs text-blue-800 space-y-1">
-          <p><b>Optimización de Vista:</b> Se ha implementado paginación para mejorar la fluidez de la interfaz. La búsqueda y filtros procesan el total de los datos.</p>
-          <p><b>Nota de Balanceo:</b> El motor ajusta únicamente las cantidades de los materiales marcados en <b>"Mat Balanceo"</b>.</p>
+        <div className="text-[11px] text-blue-800 space-y-1">
+          <p><b>Nota sobre Filtros:</b> Al filtrar la tabla, los totales del pie de página se recalcularán automáticamente para mostrar la sumatoria de las filas visibles. Esto te permite auditar la carga de horas por línea o puesto de trabajo de forma independiente.</p>
         </div>
       </div>
     </div>
