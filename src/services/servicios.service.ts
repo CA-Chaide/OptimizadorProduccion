@@ -338,7 +338,7 @@ export const serviciosService = {
 
   async getOrdenesFert(): Promise<BodyResponse<any>> {
     const response = await fetch(API_URL + "/OrdenesFert", {
-      method: "GET",
+      method: "POST",
       headers: { "Content-Type": "application/json" },
     });
     if (!response.ok) {

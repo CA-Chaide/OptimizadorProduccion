@@ -87,8 +87,8 @@ const MachineCard = ({
             <Badge className="w-fit bg-indigo-600 text-white font-black text-[10px] uppercase tracking-widest px-3 py-1 rounded-lg border-none shadow-md shadow-indigo-200">
               {hrCode}
             </Badge>
-            <h3 className="text-xl font-black uppercase tracking-tighter text-indigo-950 flex items-center gap-2">
-              <Cpu className="w-5 h-5 text-indigo-600 shrink-0" />
+            <h3 className="text-2xl font-black uppercase tracking-tighter text-indigo-950 flex items-center gap-2 break-words">
+              <Cpu className="w-6 h-6 text-indigo-600 shrink-0" />
               <span>{puestoName}</span>
             </h3>
           </div>
@@ -150,7 +150,7 @@ const MachineCard = ({
             <thead className="bg-slate-100/80 sticky top-0 z-10 text-slate-500 font-black uppercase tracking-widest text-left">
               <tr>
                 <th className="px-4 py-3 border-b border-slate-200">Material</th>
-                <th className="px-4 py-3 border-b border-slate-200 min-w-[180px]">Nombre</th>
+                <th className="px-4 py-3 border-b border-slate-200 min-w-[250px]">Nombre</th>
                 <th className="px-4 py-3 border-b border-slate-200 text-indigo-600">HR</th>
                 <th className="px-4 py-3 border-b border-slate-200 text-right">Cant.</th>
                 <th className="px-4 py-3 border-b border-slate-200 text-right text-indigo-700 bg-indigo-50/30">T. (h)</th>
@@ -164,7 +164,7 @@ const MachineCard = ({
                 return (
                   <tr key={i} className="hover:bg-indigo-50/30 transition-colors">
                     <td className="px-4 py-3 font-mono font-bold text-slate-700 whitespace-nowrap">{materialCode}</td>
-                    <td className="px-4 py-3 text-slate-600 font-medium whitespace-normal break-words">{materialName}</td>
+                    <td className="px-4 py-3 text-slate-600 font-medium whitespace-normal break-words leading-tight">{materialName}</td>
                     <td className="px-4 py-3 font-bold text-indigo-700">{hrCode}</td>
                     <td className="px-4 py-3 text-right font-mono font-black text-slate-800">{Number(o['CANTIDAD'] || 0).toLocaleString()}</td>
                     <td className="px-4 py-3 text-right font-mono font-black text-indigo-600 bg-indigo-50/10">{t.toFixed(2)}</td>
@@ -214,7 +214,7 @@ const TableKPI = ({ tiemposProduccion, mapToHojaRuta }: { tiemposProduccion: any
               <th className="px-6 py-4">Cod. Material</th>
               <th className="px-6 py-4 text-sky-400">HOJA DE RUTA</th>
               <th className="px-6 py-4">Puesto de Trabajo</th>
-              <th className="px-6 py-4">Descripción</th>
+              <th className="px-6 py-4 min-w-[200px]">Descripción</th>
               <th className="px-6 py-4 text-center">Centro</th>
               <th className="px-6 py-4">Línea</th>
               <th className="px-6 py-4 text-right bg-indigo-900/40">Min / Und</th>
@@ -226,7 +226,7 @@ const TableKPI = ({ tiemposProduccion, mapToHojaRuta }: { tiemposProduccion: any
                 <td className="px-6 py-4 font-mono font-bold text-slate-600 whitespace-nowrap">{t.CodMaterial || t.MATERIAL}</td>
                 <td className="px-6 py-4 font-mono font-black text-indigo-700 uppercase whitespace-nowrap">{mapToHojaRuta(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '')}</td>
                 <td className="px-6 py-4 font-black text-slate-800 uppercase whitespace-nowrap">{t.PuestoTrabajo || t.nombre_estacion || t.Maquina}</td>
-                <td className="px-6 py-4 text-slate-500 font-medium">{t.Material || t.DESCRIPCION || t.NOMBRE || '—'}</td>
+                <td className="px-6 py-4 text-slate-500 font-medium whitespace-normal leading-tight">{t.Material || t.DESCRIPCION || t.NOMBRE || '—'}</td>
                 <td className="px-6 py-4 text-center font-bold text-slate-700">{t.Centro || '—'}</td>
                 <td className="px-6 py-4 text-slate-600">{t.Linea || '—'}</td>
                 <td className="px-6 py-4 text-right font-mono font-black text-indigo-600 bg-indigo-50/30">
@@ -658,7 +658,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
         <TabsContent value="bandas" className="space-y-10 pb-20">
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-10">
-            {uniquePuestos.filter(p => p.includes('ACH11') || p.includes('ACH12') || p.includes('RMTB') || p.includes('COS3D') || p.includes('ENCBD') || p.includes('BO01')).map((pName) => (
+            {uniquePuestos.filter(p => p.includes('ACH11') || p.includes('ACH12') || p.includes('RMTB') || p.includes('COS3D') || p.includes('ENCINTADOBD') || p.includes('BO01')).map((pName) => (
               <MachineCard 
                 key={pName} 
                 puestoName={pName} 
@@ -819,8 +819,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
                         return (
                           <div key={p} className="flex flex-col p-6 border-2 border-slate-100 rounded-[2rem] bg-white hover:border-indigo-200 transition-all shadow-sm">
                             <div className="flex items-center justify-between mb-4">
-                              <div className="min-w-0">
-                                <p className="font-black text-indigo-950 uppercase text-lg leading-none mb-2">{p}</p>
+                              <div className="min-w-0 flex-1">
+                                <p className="font-black text-indigo-950 uppercase text-lg leading-tight mb-2 break-words">{p}</p>
                                 <div className="flex flex-wrap gap-2">
                                   <Badge className="bg-indigo-600 text-white border-none font-mono text-[10px] uppercase font-bold tracking-widest px-2.5 py-0.5 rounded-lg shadow-sm">
                                     {mapToHojaRuta(p)}
@@ -887,8 +887,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
                         return (
                           <div key={p} className="flex flex-col p-6 border-2 border-slate-100 rounded-[2rem] bg-white hover:border-indigo-200 transition-all shadow-sm opacity-80">
                             <div className="flex items-center justify-between mb-4">
-                              <div className="min-w-0">
-                                <p className="font-black text-indigo-950 uppercase text-lg leading-none mb-2">{p}</p>
+                              <div className="min-w-0 flex-1">
+                                <p className="font-black text-indigo-950 uppercase text-lg leading-tight mb-2 break-words">{p}</p>
                                 <div className="flex flex-wrap gap-2">
                                   <Badge className="bg-slate-500 text-white border-none font-mono text-[10px] uppercase font-bold tracking-widest px-2.5 py-0.5 rounded-lg shadow-sm">
                                     {mapToHojaRuta(p)}
