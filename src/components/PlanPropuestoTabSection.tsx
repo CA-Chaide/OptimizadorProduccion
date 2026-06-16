@@ -18,7 +18,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Filter,
-  X
+  X,
+  LayoutGrid
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
