@@ -76,12 +76,13 @@ export const RevCapacidadTabSection: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isMounted, setIsMounted] = useState(false);
   
-  // Filtros de fecha independientes por centro
+  // Filtros persistentes e independientes por centro
   const [progDates, setProgDates] = useState<Record<string, string>>({});
+  const [horasT1ByCenter, setHorasT1ByCenter] = useState<Record<string, number>>({});
+  const [horasT2ByCenter, setHorasT2ByCenter] = useState<Record<string, number>>({});
+  
   const [provisionalDate, setProvisionalDate] = useState<string>(new Date().toISOString().split('T')[0]);
   
-  const [horasTurno1, setHorasTurno1] = useState<number>(8);
-  const [horasTurno2, setHorasTurno2] = useState<number>(0);
   const [rendLinea1, setRendLinea1] = useState<number>(1.05);
   const [rendLinea2, setRendLinea2] = useState<number>(1.08);
   const [rendLinea3, setRendLinea3] = useState<number>(1.05);
@@ -95,14 +96,14 @@ export const RevCapacidadTabSection: React.FC = () => {
     // Cargar datos persistentes de localStorage al montar
     const savedT1 = localStorage.getItem('sim_puestos_t1');
     const savedT2 = localStorage.getItem('sim_puestos_t2');
-    const savedH1 = localStorage.getItem('sim_horas_t1');
-    const savedH2 = localStorage.getItem('sim_horas_t2');
+    const savedH1 = localStorage.getItem('sim_horas_t1_by_center');
+    const savedH2 = localStorage.getItem('sim_horas_t2_by_center');
     const savedProgDates = localStorage.getItem('sim_prog_dates');
 
     if (savedT1) try { setEditablePuestosT1(JSON.parse(savedT1)); } catch(e) {}
     if (savedT2) try { setEditablePuestosT2(JSON.parse(savedT2)); } catch(e) {}
-    if (savedH1) setHorasTurno1(Number(savedH1));
-    if (savedH2) setHorasTurno2(Number(savedH2));
+    if (savedH1) try { setHorasT1ByCenter(JSON.parse(savedH1)); } catch(e) {}
+    if (savedH2) try { setHorasT2ByCenter(JSON.parse(savedH2)); } catch(e) {}
     if (savedProgDates) try { setProgDates(JSON.parse(savedProgDates)); } catch(e) {}
   }, []);
 
@@ -143,8 +144,10 @@ export const RevCapacidadTabSection: React.FC = () => {
     loadData();
   }, [loadData]);
 
-  // Obtener fecha actual para el centro seleccionado
+  // Valores actuales basados en el centro seleccionado
   const programmingDate = progDates[selectedCenter] || new Date().toISOString().split('T')[0];
+  const currentHorasT1 = horasT1ByCenter[selectedCenter] ?? 8.75;
+  const currentHorasT2 = horasT2ByCenter[selectedCenter] ?? 8.75;
 
   const fertSumMap = useMemo(() => {
     const map = new Map<string, number>();
@@ -246,13 +249,13 @@ export const RevCapacidadTabSection: React.FC = () => {
     if (isMounted) {
       localStorage.setItem('sim_puestos_t1', JSON.stringify(editablePuestosT1));
       localStorage.setItem('sim_puestos_t2', JSON.stringify(editablePuestosT2));
-      localStorage.setItem('sim_horas_t1', horasTurno1.toString());
-      localStorage.setItem('sim_horas_t2', horasTurno2.toString());
+      localStorage.setItem('sim_horas_t1_by_center', JSON.stringify(horasT1ByCenter));
+      localStorage.setItem('sim_horas_t2_by_center', JSON.stringify(horasT2ByCenter));
       localStorage.setItem('sim_prog_dates', JSON.stringify(progDates));
     }
-  }, [editablePuestosT1, editablePuestosT2, horasTurno1, horasTurno2, progDates, isMounted]);
+  }, [editablePuestosT1, editablePuestosT2, horasT1ByCenter, horasT2ByCenter, progDates, isMounted]);
 
-  // Inicializar puestos vacíos si el centro no tiene datos guardados
+  // Inicializar puestos vacíos
   useEffect(() => {
     if (summaryData.length === 0) return;
     setEditablePuestosT1(prev => {
@@ -286,19 +289,21 @@ export const RevCapacidadTabSection: React.FC = () => {
       const key = `${selectedCenter}|${r.linea}|${r.puesto}`;
       const t1 = editablePuestosT1[key] ?? r.puestosObjetivo;
       const t2 = editablePuestosT2[key] ?? 0;
-      const dispTime = (t1 * horasTurno1) + (t2 * horasTurno2);
+      const dispTime = (t1 * currentHorasT1) + (t2 * currentHorasT2);
       
       return {
         totalCant: acc.totalCant + r.totalCantidad,
         totalTime: acc.totalTime + r.totalTiempo,
-        totalPuestos: acc.totalPuestos + (r.totalTiempo / (horasTurno1 || 1)),
+        totalPuestos: acc.totalPuestos + (r.totalTiempo / (currentHorasT1 || 1)),
         totalT1: acc.totalT1 + t1,
         totalT2: acc.totalT2 + t2,
         totalDispTime: acc.totalDispTime + dispTime,
         totalObjetivo: acc.totalObjetivo + r.puestosObjetivo,
       };
     }, { totalCant: 0, totalTime: 0, totalPuestos: 0, totalT1: 0, totalT2: 0, totalDispTime: 0, totalObjetivo: 0 });
-  }, [summaryData, selectedCenter, editablePuestosT1, editablePuestosT2, horasTurno1, horasTurno2]);
+  }, [summaryData, selectedCenter, editablePuestosT1, editablePuestosT2, currentHorasT1, currentHorasT2]);
+
+  const hourOptions = [8.75, 10, 11, 12];
 
   return (
     <div className="space-y-6">
@@ -318,11 +323,11 @@ export const RevCapacidadTabSection: React.FC = () => {
                 const key = `${selectedCenter}|${r.linea}|${r.puesto}`;
                 const t1 = editablePuestosT1[key] ?? r.puestosObjetivo;
                 const t2 = editablePuestosT2[key] ?? 0;
-                const disp = (t1 * horasTurno1) + (t2 * horasTurno2);
+                const disp = (t1 * currentHorasT1) + (t2 * currentHorasT2);
                 return {
                   'Línea': r.linea, 'Puesto Trabajo': r.puesto,
                   'Total Tiempo (h)': Number(r.totalTiempo.toFixed(2)),
-                  'No. Puestos': Number((r.totalTiempo / (horasTurno1 || 1)).toFixed(2)),
+                  'No. Puestos': Number((r.totalTiempo / (currentHorasT1 || 1)).toFixed(2)),
                   'Puestos T1': t1,
                   'Puestos T2': t2,
                   'Tiempo Disponible (h)': Number(disp.toFixed(2)),
@@ -369,14 +374,22 @@ export const RevCapacidadTabSection: React.FC = () => {
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Horas T1:</label>
-            <select value={horasTurno1} onChange={e => setHorasTurno1(Number(e.target.value))} className="text-xs border rounded-md px-2 py-1 h-9 font-bold text-indigo-700 bg-white">
-              {[4, 5, 6, 7, 8, 9, 10, 11, 12].map(h => <option key={`t1-${h}`} value={h}>{h}</option>)}
+            <select 
+              value={currentHorasT1} 
+              onChange={e => setHorasT1ByCenter(prev => ({ ...prev, [selectedCenter]: Number(e.target.value) }))} 
+              className="text-xs border rounded-md px-2 py-1 h-9 font-bold text-indigo-700 bg-white"
+            >
+              {hourOptions.map(h => <option key={`t1-${h}`} value={h}>{h}</option>)}
             </select>
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Horas T2:</label>
-            <select value={horasTurno2} onChange={e => setHorasTurno2(Number(e.target.value))} className="text-xs border rounded-md px-2 py-1 h-9 font-bold text-indigo-700 bg-white">
-              {[0, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(h => <option key={`t2-${h}`} value={h}>{h}</option>)}
+            <select 
+              value={currentHorasT2} 
+              onChange={e => setHorasT2ByCenter(prev => ({ ...prev, [selectedCenter]: Number(e.target.value) }))} 
+              className="text-xs border rounded-md px-2 py-1 h-9 font-bold text-indigo-700 bg-white"
+            >
+              {hourOptions.map(h => <option key={`t2-${h}`} value={h}>{h}</option>)}
             </select>
           </div>
           {[rendLinea1, rendLinea2, rendLinea3, rendLinea5].map((val, i) => (
@@ -423,13 +436,12 @@ export const RevCapacidadTabSection: React.FC = () => {
                     const rows = summaryData.filter(r => r.linea === lineName);
                     rows.forEach((r, idx) => {
                       const key = `${selectedCenter}|${r.linea}|${r.puesto}`;
-                      const calcPuestos = Number((r.totalTiempo / (horasTurno1 || 1)).toFixed(2));
+                      const calcPuestos = Number((r.totalTiempo / (currentHorasT1 || 1)).toFixed(2));
                       
-                      // Cargar valores de estado o inicializar
                       const t1 = editablePuestosT1[key] ?? r.puestosObjetivo;
                       const t2 = editablePuestosT2[key] ?? 0;
                       
-                      const dispTime = (t1 * horasTurno1) + (t2 * horasTurno2);
+                      const dispTime = (t1 * currentHorasT1) + (t2 * currentHorasT2);
                       const deltaHours = dispTime - r.totalTiempo;
                       
                       items.push(
@@ -439,7 +451,7 @@ export const RevCapacidadTabSection: React.FC = () => {
                           <td className="px-4 py-3 text-right font-bold border bg-indigo-50/5">{r.totalTiempo.toFixed(2)}</td>
                           <td className="px-4 py-3 text-right font-bold border text-blue-700 bg-blue-50/5">{isMounted ? calcPuestos.toFixed(2) : '-'}</td>
                           
-                          {/* Input T1 con Validación contra Objetivo */}
+                          {/* Input T1 */}
                           <td className="px-0 py-0 border bg-white min-w-[80px]">
                             <input 
                               type="number" 
@@ -448,7 +460,6 @@ export const RevCapacidadTabSection: React.FC = () => {
                               max={r.puestosObjetivo}
                               onChange={e => {
                                 const val = Number(e.target.value);
-                                // Validación: no puede ser mayor al objetivo
                                 const finalVal = Math.min(val, r.puestosObjetivo);
                                 setEditablePuestosT1(p => ({...p, [key]: finalVal}));
                               }} 
@@ -456,7 +467,7 @@ export const RevCapacidadTabSection: React.FC = () => {
                             />
                           </td>
                           
-                          {/* Input T2 con Validación contra Objetivo */}
+                          {/* Input T2 */}
                           <td className="px-0 py-0 border bg-white min-w-[80px]">
                             <input 
                               type="number" 
@@ -465,7 +476,6 @@ export const RevCapacidadTabSection: React.FC = () => {
                               max={r.puestosObjetivo}
                               onChange={e => {
                                 const val = Number(e.target.value);
-                                // Validación: no puede ser mayor al objetivo
                                 const finalVal = Math.min(val, r.puestosObjetivo);
                                 setEditablePuestosT2(p => ({...p, [key]: finalVal}));
                               }} 
@@ -513,9 +523,9 @@ export const RevCapacidadTabSection: React.FC = () => {
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-3">
         <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
         <div className="text-xs text-blue-800 space-y-1">
-          <p><b>Independencia por Centro:</b> El filtro "Día Prog" y los ajustes de puestos son únicos para cada planta.</p>
-          <p><b>Validación de Puestos:</b> Los valores ingresados en T1 y T2 no pueden exceder los <b>Puestos Objetivo</b>.</p>
-          <p><b>Persistencia:</b> Los ajustes manuales y las fechas se guardan automáticamente en el navegador.</p>
+          <p><b>Filtros Independientes:</b> El "Día Prog", "Horas T1" y "Horas T2" son únicos para cada centro.</p>
+          <p><b>Validación de Puestos:</b> Los valores ingresados no pueden exceder los <b>Puestos Objetivo</b>.</p>
+          <p><b>Persistencia:</b> Todos los ajustes se guardan automáticamente en el navegador.</p>
         </div>
       </div>
     </div>
