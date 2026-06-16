@@ -12,13 +12,12 @@ import {
   Filter,
   Activity,
   PlayCircle,
-  UserCheck,
-  Plus,
-  Minus,
   RefreshCw,
   Database,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Plus,
+  Minus
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -43,27 +42,30 @@ import { MaestroMaterialesExplosionSection } from './MaestroMaterialesExplosionS
 interface UnifiedNeedRow {
   material: string;
   descripcion: string;
-  distancia: number;
+  densidad: number;
   altura: number;
   espesor: number;
-  densidad: number;
+  distancia: number;
   peso: number;
   consumoKg: number;
   consumoUn: number;
-  // Stock en KG
+  // Stock Almacenes (Kg)
   stock1006: number;
   stock1008: number;
   stock1015: number;
-  // Stock en UN (Calculado)
+  // Stock Almacenes (UN)
   stockUN1006: number;
   stockUN1008: number;
   stockUN1015: number;
-  // Datos recuperados de Procesos Looper
+  // Datos Looper KPI
   looperPesoUN: number;
   looperDensidad: string;
   looperEspesor: number;
   looperTRolloMin: number;
-  // Calculos plan
+  // Datos Bloque Origen (Nuevo Nivel SAP)
+  bloqueOrigen: string;
+  descripcionBloque: string;
+  // Planificación
   porcentajeNecesidad: number;
   planUn: number;
   planKg: number;
@@ -108,7 +110,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [grupos, setGrupos] = useState<Grupo[]>([]);
   const [restriccionesArray, setRestriccionesArray] = useState<Restriccion[]>([]);
   const [ordenes, setOrders] = useState<any[]>([]);
-  const [tiemposEnsamblado, setTiemposEnsamblado] = useState<any[]>([]);
   const [kpiLooperData, setKpiLooperData] = useState<any[]>([]);
   const [inventarioAnioActual, setInventarioAnioActual] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -152,17 +153,15 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       setGrupos(filteredGroups);
       const ids = filteredGroups.map(g => g.codigo_grupo);
       
-      const [restrs, provs, times, kpiLooper, invAnio] = await Promise.all([
+      const [restrs, provs, kpiLooper, invAnio] = await Promise.all([
         restriccionService.getAll(),
         serviciosService.OrdenesProvisionalesPaginados(1, 20000).catch(() => ({ data: [] })),
-        serviciosService.getTiemposEnsamblado(1, 15000).catch(() => ({ data: [] })),
         serviciosService.getKPIMAestroLooper().catch(() => ({ data: [] })),
         serviciosService.getInventarioAñoActual().catch(() => ({ data: [] }))
       ]);
       
       setRestriccionesArray((restrs.data || []).filter((r: any) => ids.includes(r.codigo_grupo)));
       setOrders(provs.data?.data || provs.data || []);
-      setTiemposEnsamblado(times.data?.data || times.data || []);
       setKpiLooperData(kpiLooper?.data || []);
       setInventarioAnioActual(invAnio?.data || []);
 
@@ -233,65 +232,71 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           const response = await serviciosService.getMaestroMaterialesExplosion("1000", fullCode, 1, 500);
           const rawData = response?.data?.data || response?.data || [];
           if (Array.isArray(rawData)) {
-            rawData
-              .filter(row => {
-                const descVal = (row.DESCRIPCION_COMPONENTE || '').toUpperCase();
-                return descVal.includes('LAMINA CILINDRICA');
-              })
-              .forEach(comp => {
-                const compCode = cleanCode(comp.COMPONENTE);
-                const desc = String(comp.DESCRIPCION_COMPONENTE || '').toUpperCase();
-                const cantAcum = safeNum(comp.CANTIDAD_ACUMULADA || comp.CANTIDAD_UNITARIA);
-                const kgTotal = totalQtyForMaterial * cantAcum;
+            // Filtrar láminas
+            const laminaRows = rawData.filter(row => (row.DESCRIPCION_COMPONENTE || '').toUpperCase().includes('LAMINA CILINDRICA'));
+            
+            laminaRows.forEach(comp => {
+              const compCode = cleanCode(comp.COMPONENTE);
+              const desc = String(comp.DESCRIPCION_COMPONENTE || '').toUpperCase();
+              const cantAcum = safeNum(comp.CANTIDAD_ACUMULADA || comp.CANTIDAD_UNITARIA);
+              const kgTotal = totalQtyForMaterial * cantAcum;
 
-                if (consolidatedMap.has(compCode)) {
-                  const existingRow = consolidatedMap.get(compCode)!;
-                  existingRow.consumoKg += kgTotal;
-                } else {
-                  const dims = parseDimensionsEnhanced(desc);
-                  const pesoCalculado = (dims.distancia * dims.altura * dims.espesor * dims.densidad) / 10000;
-                  
-                  // Lookup en KPI Looper (Procesos Looper Tab)
-                  const looperMatch = kpiLooperData.find(k => cleanCode(k.Material) === compCode);
-                  const finalPeso = looperMatch ? safeNum(looperMatch.PesoUN) : pesoCalculado;
+              if (consolidatedMap.has(compCode)) {
+                const existingRow = consolidatedMap.get(compCode)!;
+                existingRow.consumoKg += kgTotal;
+              } else {
+                const dims = parseDimensionsEnhanced(desc);
+                const pesoCalculado = (dims.distancia * dims.altura * dims.espesor * dims.densidad) / 10000;
+                
+                // Lookup en KPI Looper
+                const looperMatch = kpiLooperData.find(k => cleanCode(k.Material) === compCode);
+                const finalPeso = looperMatch ? safeNum(looperMatch.PesoUN) : pesoCalculado;
 
-                  // Lookup en Inventarios SAP (Inventario Tab) para almacenes 1006, 1008, 1015
-                  const getStockKg = (alm: string) => {
-                    return inventarioAnioActual
-                      .filter(inv => cleanCode(inv.MATERIAL) === compCode && String(inv.ALMACEN).trim() === alm)
-                      .reduce((sum, item) => sum + safeNum(item.LIBREUTILIZACION), 0);
-                  };
+                // Auditoría de Origen (Bloque Formulado - Siguiente Nivel SAP)
+                const sourceBlock = rawData.find(row => 
+                  cleanCode(row.MATERIAL_PADRE) === compCode && 
+                  (row.DESCRIPCION_COMPONENTE || '').toUpperCase().includes('BLOQUE FORMULADO')
+                );
 
-                  const s1006 = getStockKg('1006');
-                  const s1008 = getStockKg('1008');
-                  const s1015 = getStockKg('1015');
+                // Lookup en Inventarios SAP
+                const getStockKg = (alm: string) => {
+                  return inventarioAnioActual
+                    .filter(inv => cleanCode(inv.MATERIAL) === compCode && String(inv.ALMACEN).trim() === alm)
+                    .reduce((sum, item) => sum + safeNum(item.LIBREUTILIZACION), 0);
+                };
 
-                  consolidatedMap.set(compCode, {
-                    material: compCode,
-                    descripcion: desc,
-                    distancia: dims.distancia,
-                    altura: dims.altura,
-                    espesor: dims.espesor,
-                    densidad: dims.densidad,
-                    peso: finalPeso,
-                    consumoKg: kgTotal,
-                    consumoUn: 0,
-                    stock1006: s1006,
-                    stock1008: s1008,
-                    stock1015: s1015,
-                    stockUN1006: finalPeso > 0 ? s1006 / finalPeso : 0,
-                    stockUN1008: finalPeso > 0 ? s1008 / finalPeso : 0,
-                    stockUN1015: finalPeso > 0 ? s1015 / finalPeso : 0,
-                    looperPesoUN: looperMatch ? safeNum(looperMatch.PesoUN) : 0,
-                    looperDensidad: looperMatch ? String(looperMatch.Densidad) : '—',
-                    looperEspesor: looperMatch ? safeNum(looperMatch.Espesor) : 0,
-                    looperTRolloMin: looperMatch ? safeNum(looperMatch.TiempoRolloMin) : 0,
-                    porcentajeNecesidad: 0,
-                    planUn: 0,
-                    planKg: 0
-                  });
-                }
-              });
+                const s1006 = getStockKg('1006');
+                const s1008 = getStockKg('1008');
+                const s1015 = getStockKg('1015');
+
+                consolidatedMap.set(compCode, {
+                  material: compCode,
+                  descripcion: desc,
+                  densidad: dims.densidad,
+                  altura: dims.altura,
+                  espesor: dims.espesor,
+                  distancia: dims.distancia,
+                  peso: finalPeso,
+                  consumoKg: kgTotal,
+                  consumoUn: 0,
+                  stock1006: s1006,
+                  stock1008: s1008,
+                  stock1015: s1015,
+                  stockUN1006: finalPeso > 0 ? s1006 / finalPeso : 0,
+                  stockUN1008: finalPeso > 0 ? s1008 / finalPeso : 0,
+                  stockUN1015: finalPeso > 0 ? s1015 / finalPeso : 0,
+                  looperPesoUN: looperMatch ? safeNum(looperMatch.PesoUN) : 0,
+                  looperDensidad: looperMatch ? String(looperMatch.Densidad) : '—',
+                  looperEspesor: looperMatch ? safeNum(looperMatch.Espesor) : 0,
+                  looperTRolloMin: looperMatch ? safeNum(looperMatch.TiempoRolloMin) : 0,
+                  bloqueOrigen: sourceBlock ? cleanCode(sourceBlock.COMPONENTE) : '—',
+                  descripcionBloque: sourceBlock ? String(sourceBlock.DESCRIPCION_COMPONENTE).toUpperCase() : '—',
+                  porcentajeNecesidad: 0,
+                  planUn: 0,
+                  planKg: 0
+                });
+              }
+            });
           }
         } catch (e) {
           console.warn(`Error material ${matCode}:`, (e as Error).message);
@@ -304,7 +309,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         consumoUn: row.peso > 0 ? row.consumoKg / row.peso : 0
       }));
       
-      // Lógica de cálculo de Planificación (Prorrateo 40 Unidades por apertura)
+      // Lógica de cálculo de Planificación
       const groupMap = new Map<string, UnifiedNeedRow[]>();
       finalArray.forEach(row => {
         const k = `${row.densidad}-${row.altura}`;
@@ -323,7 +328,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       });
 
       setUnifiedNeeds(finalArray.sort((a, b) => b.consumoKg - a.consumoKg));
-      addNotification('success', 'Resumen actualizado correctamente');
+      addNotification('success', 'Resumen técnico actualizado (Identificación de Bloques OK)');
     } finally { 
       setIsProcessingResumen(false); 
     }
@@ -390,10 +395,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     setExpandedGroups(next);
   };
 
-  const handleRefresh = () => {
-    handleProcessResumen();
-  };
-
   const filteredInventario = useMemo(() => {
     const allowedAlmacenes = restriccionesArray
       .filter(r => r.nombre_restriccion === 'ALmacen_Consumo')
@@ -402,12 +403,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
     return inventarioAnioActual.filter(row => {
       const alm = String(row.ALMACEN || '').trim();
-      const matchAlm = allowedAlmacenes.length === 0 || allowedAlmacenes.includes(alm);
-      return matchAlm;
+      return allowedAlmacenes.length === 0 || allowedAlmacenes.includes(alm);
     });
   }, [inventarioAnioActual, restriccionesArray]);
-
-  if (!mounted) return null;
 
   return (
     <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
@@ -416,13 +414,13 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           <div className="p-2 bg-red-600/10 rounded-xl shadow-inner"><Scissors className="w-6 h-6 text-red-600" /></div>
           <div>
             <h2 className="text-xl font-black text-gray-800 uppercase tracking-tighter">Programación Táctica Laminado</h2>
-            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Ingeniería SAP | Control Multialmacén (1006/1008/1015)</p>
+            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Ingeniería SAP | Control de Apertura de Bloques Formulados</p>
           </div>
         </div>
 
         <div className="flex items-center gap-3">
            <Button 
-              onClick={handleRefresh} 
+              onClick={handleProcessResumen} 
               disabled={isProcessingResumen}
               className="bg-red-600 hover:bg-red-700 text-white rounded-xl h-10 px-6 text-[10px] font-black uppercase tracking-widest shadow-lg active:scale-95 flex items-center gap-2"
             >
@@ -524,6 +522,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     <th className="px-2 py-4 border-r border-black/5 bg-indigo-50/50">Dens.</th>
                     <th className="px-2 py-4 border-r border-black/5 bg-indigo-50/50">Esp.</th>
                     <th className="px-2 py-4 border-r border-black/5 bg-indigo-50/50">T. Rollo (Min)</th>
+                    <th className="px-4 py-4 border-r border-black/10 bg-indigo-900 text-white">Bloque Origen</th>
                     <th className="px-3 py-4 border-r border-black/5 bg-blue-50/50">Stock 1006 (Kg)</th>
                     <th className="px-2 py-4 border-r border-black/5 bg-cyan-50/50 text-cyan-800">UN 1006</th>
                     <th className="px-3 py-4 border-r border-black/5 bg-blue-50/50">Stock 1008 (Kg)</th>
@@ -540,13 +539,13 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 <tbody className="divide-y divide-gray-100 font-bold">
                   {isProcessingResumen ? (
                     <tr>
-                      <td colSpan={17} className="py-20 text-center">
+                      <td colSpan={18} className="py-20 text-center">
                         <Loader2 className="w-8 h-8 animate-spin mx-auto text-indigo-500 mb-3" />
                         <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Ejecutando Explosión Técnica BOM: {resumenProgress.current} / {resumenProgress.total}</p>
                       </td>
                     </tr>
                   ) : groupedNeeds.length === 0 ? (
-                    <tr><td colSpan={17} className="py-24 text-slate-200 font-black uppercase tracking-widest text-center italic">Presione el botón "ACTUALIZAR DATOS" para iniciar la auditoría</td></tr>
+                    <tr><td colSpan={18} className="py-24 text-slate-200 font-black uppercase tracking-widest text-center italic">Presione el botón "ACTUALIZAR DATOS" para iniciar la auditoría</td></tr>
                   ) : (
                     groupedNeeds.map((group, gIdx) => {
                       const groupKey = `${group.densidad}-${group.altura}`;
@@ -559,7 +558,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                                <span className="font-black text-[10px] text-slate-400 uppercase tracking-widest">Apertura {group.altura} - D{group.densidad}</span>
                             </td>
                             <td className="px-6 py-4 text-left text-indigo-900 font-black uppercase">Subtotal Corrida</td>
-                            <td colSpan={4} className="bg-indigo-50/20"></td>
+                            <td colSpan={5} className="bg-indigo-50/20"></td>
                             <td className="px-3 py-4 text-slate-400 font-mono">{(group.total1006).toLocaleString()}</td>
                             <td className="px-2 py-4 text-cyan-600/50 font-mono">{(group.totalUN1006).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
                             <td className="px-3 py-4 text-slate-400 font-mono">{(group.total1008).toLocaleString()}</td>
@@ -580,6 +579,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                               <td className="px-2 py-3 border-r border-gray-100 font-bold text-indigo-900 bg-indigo-50/10">{item.looperDensidad}</td>
                               <td className="px-2 py-3 border-r border-gray-100 font-mono text-indigo-900 bg-indigo-50/10">{item.looperEspesor || '—'}</td>
                               <td className="px-2 py-3 border-r border-gray-100 font-mono font-black text-indigo-900 bg-indigo-50/10">{item.looperTRolloMin || '—'}</td>
+                              <td className="px-4 py-3 border-r border-black/5 bg-indigo-900/10 text-indigo-900 text-[10px] truncate max-w-[150px]" title={item.descripcionBloque}>{item.bloqueOrigen}</td>
                               <td className="px-3 py-3 border-r border-gray-100 font-mono text-slate-400">{item.stock1006 > 0 ? item.stock1006.toLocaleString() : '—'}</td>
                               <td className="px-2 py-3 border-r border-gray-100 font-mono text-cyan-600 bg-cyan-50/10">{item.stockUN1006 > 0 ? Math.round(item.stockUN1006).toLocaleString() : '—'}</td>
                               <td className="px-3 py-3 border-r border-gray-100 font-mono text-slate-400">{item.stock1008 > 0 ? item.stock1008.toLocaleString() : '—'}</td>
@@ -604,21 +604,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="ordenes" className="space-y-6 animate-in fade-in duration-300 text-left">
-          <div className="flex items-center justify-between bg-white p-4 rounded-3xl border border-gray-100 shadow-xl">
-            <div className="flex items-center gap-6 text-left">
-              <div className="flex flex-col">
-                <p className="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1.5 flex items-center gap-2">
-                  <UserCheck className="w-3 h-3" /> Responsables Corte y Laminado
-                </p>
-                <div className="flex gap-2">
-                  {restriccionesArray.filter(r => (r.nombre_restriccion === 'RESPCTRLPROD' || r.nombre_restriccion === 'Hojas_Rutas_Materiales')).map((r, ri) => (
-                    <Badge key={ri} variant="outline" className="text-[10px] font-black bg-slate-50 border-slate-200 px-3 py-0.5 rounded-lg">{r.valor_restriccion}</Badge>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-
           <div className="border border-gray-100 rounded-3xl shadow-xl overflow-hidden bg-white">
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200 border-collapse font-sans text-[11px] text-center">
@@ -669,7 +654,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           </div>
         </TabsContent>
 
-        <TabsContent value="listaMateriales" className="space-y-6 animate-in fade-in duration-300 text-left">
+        <TabsContent value="listaMateriales" className="animate-in fade-in duration-300 text-left">
            <MaestroMaterialesExplosionSection ordenes={filteredOrders} />
         </TabsContent>
 
