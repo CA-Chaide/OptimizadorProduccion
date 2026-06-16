@@ -467,7 +467,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     },
     { 
       title: "BANDAS", 
-      items: ["ACOLCHADORA11", "ACOLCHADORA12", "COSEDORA-BANDA3D", "COSEDORA-BO01", "COSEDORA-ENCINTADOBD"] 
+      items: ["ACOLCHADORA11", "ACOLCHADORA12", "COSEDORA-BANDA3D", "COSEDORA-BO01", "COSEDORA-ENCINTADOBD", "BORDADORA-BANDA01"] 
     },
     { 
       title: "REMATADORADAS DE BANDAS", 
@@ -658,7 +658,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
         <TabsContent value="bandas" className="space-y-10 pb-20">
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-10">
-            {uniquePuestos.filter(p => p.includes('ACH11') || p.includes('ACH12') || p.includes('RMTB') || p.includes('COS3D') || p.includes('ENCINTADOBD') || p.includes('BO01')).map((pName) => (
+            {uniquePuestos.filter(p => p.includes('ACH11') || p.includes('ACH12') || p.includes('RMTB') || p.includes('COS3D') || p.includes('ENCINTADOBD') || p.includes('BO01') || p.includes('BORDADORA-BANDA01')).map((pName) => (
               <MachineCard 
                 key={pName} 
                 puestoName={pName} 
