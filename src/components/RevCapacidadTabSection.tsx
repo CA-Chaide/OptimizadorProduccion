@@ -9,7 +9,6 @@ import {
   Activity, 
   Loader2, 
   Home, 
-  Calendar as CalendarIcon, 
   Download,
   Target,
   ArrowRightLeft
@@ -65,7 +64,6 @@ const normalizeMaterialCode = (code: string | number): string => {
   return String(code || '').trim().slice(-8);
 };
 
-// Función para limpiar texto y generar claves consistentes
 const normalizeKey = (text: string) => {
   return String(text || '')
     .normalize("NFD")
@@ -124,7 +122,6 @@ export const RevCapacidadTabSection: React.FC = () => {
         if (raw.length < 5000) hasMore = false; else page++;
       }
       setTechnicalData(allTiempos);
-
       setFertOrders(Array.isArray(fertRes?.data) ? fertRes.data : []);
       setProvisionalOrders(Array.isArray(prevRes?.data) ? prevRes.data : []);
 
@@ -139,7 +136,6 @@ export const RevCapacidadTabSection: React.FC = () => {
     loadData();
   }, [loadData]);
 
-  // Mapeo unificado para procesamiento de demanda
   const fertSumMap = useMemo(() => {
     const map = new Map<string, number>();
     const targetDateISO = normalizeDateISO(programmingDate);
@@ -227,10 +223,8 @@ export const RevCapacidadTabSection: React.FC = () => {
 
       entry.cantOrdFab += qFab;
       entry.tiempoOrdFab += ((qFab * tUnit) / 60) * rendFactor;
-      
       entry.cantOrdPrev += qPrev;
       entry.tiempoOrdPrev += ((qPrev * tUnit) / 60) * rendFactor;
-      
       entry.totalCantidad = entry.cantOrdFab + entry.cantOrdPrev;
       entry.totalTiempo = entry.tiempoOrdFab + entry.tiempoOrdPrev;
     });
@@ -255,10 +249,9 @@ export const RevCapacidadTabSection: React.FC = () => {
     })).sort((a, b) => a.linea.localeCompare(b.linea) || a.puesto.localeCompare(b.puesto));
   }, [technicalData, selectedCenter, fertSumMap, prevSumMap, rendLinea1, rendLinea2, rendLinea3, rendLinea5, horasTurno1]);
 
-  // Inicialización de estados editables cuando cambia el centro o la carga de datos
+  // Inicializar estados editables cuando cambia el centro o cargan datos
   useEffect(() => {
     if (summaryData.length === 0) return;
-
     setEditablePuestosT1(prev => {
       const next = { ...prev };
       let changed = false;
@@ -271,7 +264,6 @@ export const RevCapacidadTabSection: React.FC = () => {
       });
       return changed ? next : prev;
     });
-
     setEditablePuestosT2(prev => {
       const next = { ...prev };
       let changed = false;
@@ -291,7 +283,6 @@ export const RevCapacidadTabSection: React.FC = () => {
       const key = `${selectedCenter}|${r.linea}|${r.puesto}`;
       const t1 = editablePuestosT1[key] ?? r.puestosObjetivo;
       const t2 = editablePuestosT2[key] ?? 0;
-      
       return {
         totalCant: acc.totalCant + r.totalCantidad,
         totalTime: acc.totalTime + r.totalTiempo,
@@ -303,8 +294,6 @@ export const RevCapacidadTabSection: React.FC = () => {
       };
     }, { totalCant: 0, totalTime: 0, totalPuestos: 0, totalT1: 0, totalT2: 0, totalObjetivo: 0, totalOpt: 0 });
   }, [summaryData, selectedCenter, editablePuestosT1, editablePuestosT2, horasTurno1]);
-
-  const hourOptions = [4, 5, 6, 7, 8, 9, 10, 11, 12];
 
   return (
     <div className="space-y-6">
@@ -337,7 +326,6 @@ export const RevCapacidadTabSection: React.FC = () => {
               XLSX.utils.book_append_sheet(wb, ws, "Capacidad");
               XLSX.writeFile(wb, `Capacidad_${selectedCenter}.xlsx`);
             }}
-            disabled={summaryData.length === 0}
           >
             <Download className="w-4 h-4 mr-2" /> Exportar
           </Button>
@@ -365,27 +353,26 @@ export const RevCapacidadTabSection: React.FC = () => {
           <div className="flex flex-col gap-1">
             <label className="text-[10px] font-bold text-gray-400 uppercase">Horas T1:</label>
             <select value={horasTurno1} onChange={e => setHorasTurno1(Number(e.target.value))} className="text-xs border rounded-md px-2 py-1 h-9 font-bold text-indigo-700 bg-white">
-              {hourOptions.map(h => <option key={`t1-${h}`} value={h}>{h}</option>)}
+              {[4, 5, 6, 7, 8, 9, 10, 11, 12].map(h => <option key={`t1-${h}`} value={h}>{h}</option>)}
             </select>
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-[10px] font-bold text-gray-400 uppercase">Horas T2:</label>
             <select value={horasTurno2} onChange={e => setHorasTurno2(Number(e.target.value))} className="text-xs border rounded-md px-2 py-1 h-9 font-bold text-indigo-700 bg-white">
-              {hourOptions.map(h => <option key={`t2-${h}`} value={h}>{h}</option>)}
+              {[4, 5, 6, 7, 8, 9, 10, 11, 12].map(h => <option key={`t2-${h}`} value={h}>{h}</option>)}
             </select>
           </div>
           {[rendLinea1, rendLinea2, rendLinea3, rendLinea5].map((val, i) => (
             <div key={i} className="flex flex-col gap-1">
               <label className="text-[10px] font-bold text-gray-400 uppercase">Rend L{[1,2,3,5][i]}:</label>
               <input 
-                type="number" step="0.01" 
-                value={val} 
+                type="number" step="0.01" value={val} 
                 onChange={e => {
                   const v = Number(e.target.value);
                   if (i === 0) setRendLinea1(v);
-                  if (i === 1) setRendLinea2(v);
-                  if (i === 2) setRendLinea3(v);
-                  if (i === 3) setRendLinea5(v);
+                  else if (i === 1) setRendLinea2(v);
+                  else if (i === 2) setRendLinea3(v);
+                  else setRendLinea5(v);
                 }}
                 className="text-xs border rounded-md px-2 py-1 h-9 font-bold text-indigo-700 bg-white" 
               />
@@ -411,7 +398,7 @@ export const RevCapacidadTabSection: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {isLoading ? (
-                  <tr><td colSpan={9} className="px-6 py-12 text-center text-gray-500"><Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" /> Cargando datos técnicos...</td></tr>
+                  <tr><td colSpan={9} className="px-6 py-12 text-center text-gray-500"><Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" /> Cargando...</td></tr>
                 ) : summaryData.length > 0 ? (() => {
                   const items: React.ReactNode[] = [];
                   const lines = [...new Set(summaryData.map(r => r.linea))];
@@ -419,38 +406,22 @@ export const RevCapacidadTabSection: React.FC = () => {
                     const rows = summaryData.filter(r => r.linea === lineName);
                     rows.forEach((r, idx) => {
                       const key = `${selectedCenter}|${r.linea}|${r.puesto}`;
-                      const calculatedPuestos = Number((r.totalTiempo / horasTurno1).toFixed(2));
+                      const calcPuestos = Number((r.totalTiempo / horasTurno1).toFixed(2));
                       const t1 = editablePuestosT1[key] ?? r.puestosObjetivo;
                       const t2 = editablePuestosT2[key] ?? 0;
-                      const delta = (t1 + t2) - calculatedPuestos;
-                      
+                      const delta = (t1 + t2) - calcPuestos;
                       items.push(
-                        <tr key={`${selectedCenter}-${lineName}-${r.puesto}`} className="hover:bg-gray-50 transition-colors">
+                        <tr key={key} className="hover:bg-gray-50 transition-colors">
                           {idx === 0 && <td rowSpan={rows.length} className="px-4 py-3 font-bold text-gray-900 border align-top bg-gray-50/50">{lineName}</td>}
                           <td className="px-4 py-3 font-medium text-gray-700 border">{r.puesto}</td>
                           <td className="px-4 py-3 text-right font-bold border bg-indigo-50/5">{r.totalTiempo.toFixed(2)}</td>
-                          <td className="px-4 py-3 text-right font-bold border text-blue-700 bg-blue-50/5">{isMounted ? calculatedPuestos.toFixed(2) : '-'}</td>
-                          
-                          {/* Turno 1 Editable */}
+                          <td className="px-4 py-3 text-right font-bold border text-blue-700 bg-blue-50/5">{isMounted ? calcPuestos.toFixed(2) : '-'}</td>
                           <td className="px-0 py-0 border bg-white min-w-[90px]">
-                            <input 
-                              type="number" 
-                              value={t1} 
-                              onChange={e => setEditablePuestosT1(p => ({...p, [key]: Number(e.target.value)}))} 
-                              className="w-full text-right px-4 py-3 focus:ring-2 focus:ring-indigo-500 font-bold text-indigo-600 outline-none h-full bg-transparent" 
-                            />
+                            <input type="number" value={t1} onChange={e => setEditablePuestosT1(p => ({...p, [key]: Number(e.target.value)}))} className="w-full text-right px-4 py-3 font-bold text-indigo-600 outline-none h-full bg-transparent" />
                           </td>
-                          
-                          {/* Turno 2 Editable */}
                           <td className="px-0 py-0 border bg-white min-w-[90px]">
-                            <input 
-                              type="number" 
-                              value={t2} 
-                              onChange={e => setEditablePuestosT2(p => ({...p, [key]: Number(e.target.value)}))} 
-                              className="w-full text-right px-4 py-3 focus:ring-2 focus:ring-indigo-500 font-bold text-indigo-600 outline-none h-full bg-transparent" 
-                            />
+                            <input type="number" value={t2} onChange={e => setEditablePuestosT2(p => ({...p, [key]: Number(e.target.value)}))} className="w-full text-right px-4 py-3 font-bold text-indigo-600 outline-none h-full bg-transparent" />
                           </td>
-
                           <td className="px-4 py-3 text-right font-bold border text-indigo-900 bg-indigo-100/20">
                             <span className="inline-flex items-center gap-1"><Target className="w-3 h-3 opacity-30" /> {r.puestosObjetivo}</span>
                           </td>
@@ -464,7 +435,7 @@ export const RevCapacidadTabSection: React.FC = () => {
                   });
                   return items;
                 })() : (
-                  <tr><td colSpan={9} className="px-6 py-12 text-center text-gray-400 italic">Sin datos disponibles para los filtros seleccionados.</td></tr>
+                  <tr><td colSpan={9} className="px-6 py-12 text-center text-gray-400 italic">Sin datos.</td></tr>
                 )}
               </tbody>
               {summaryData.length > 0 && (
@@ -484,7 +455,7 @@ export const RevCapacidadTabSection: React.FC = () => {
             </table>
           </div>
         </div>
-      </div>
+      </Tabs>
     </div>
   );
 };
