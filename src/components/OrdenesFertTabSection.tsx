@@ -764,13 +764,20 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
                           }
 
                           let displayValue = String((order as any)[col] ?? '-');
-                          if (col === 'ORDEN') {
+                          
+                          // Formateo especial para PEDIDO y POSICION (quitar 3 primeros ceros)
+                          if (col === 'PEDIDO' || col === 'POSICION') {
+                            if (displayValue && displayValue.startsWith('000')) {
+                              displayValue = displayValue.substring(3);
+                            }
+                          } else if (col === 'ORDEN') {
                             if (displayValue && displayValue.length > 4) {
                                 displayValue = displayValue.substring(4);
                             }
                           } else if (col === 'MATERIAL') {
                             displayValue = normalizeMaterialCode(displayValue);
                           }
+
                           return (
                            <td key={col} className={cn(
                              "px-2 py-4 whitespace-nowrap text-sm text-gray-600 text-center",
