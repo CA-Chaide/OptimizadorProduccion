@@ -9,29 +9,20 @@ import {
   Clock, 
   LayoutDashboard, 
   ClipboardList, 
-  Search, 
-  ChevronLeft, 
-  ChevronRight, 
-  ChevronsLeft, 
-  ChevronsRight,
   Filter,
   Activity,
   PlayCircle,
   UserCheck,
-  Check,
   Plus,
   Minus,
-  Info,
   RefreshCw,
   Box,
-  TrendingUp,
   Database
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Progress } from "@/components/ui/progress";
 import {
   Popover,
   PopoverContent,
@@ -64,6 +55,11 @@ interface UnifiedNeedRow {
   porcentajeNecesidad: number;
   planUn: number;
   planKg: number;
+  // Nuevas columnas recuperadas de Looper
+  looperPesoUN: number;
+  looperDensidad: string;
+  looperEspesor: number;
+  looperTRolloMin: number;
 }
 
 const safeNum = (val: any): number => {
@@ -242,6 +238,10 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 const desc = getProp(comp, 'DESCRIPCION_COMPONENTE').toUpperCase();
                 const cantAcum = getNumProp(comp, 'CANTIDAD_ACUMULADA') || getNumProp(comp, 'CANTIDAD_UNITARIA');
                 const kgTotal = totalQtyForMaterial * cantAcum;
+
+                // Lookup en kpiLooperData para enriquecer con ingeniería SAP
+                const looperMatch = kpiLooperData.find(k => cleanCode(k.Material) === code);
+
                 if (consolidatedMap.has(code)) {
                   const ex = consolidatedMap.get(code)!;
                   ex.consumoKg += kgTotal;
@@ -251,10 +251,27 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   const s1006 = tiemposEnsamblado.filter(t => cleanCode(t.CodMaterial) === code && String(t.Almacen || t.ALMACEN) === '1006').reduce((s, t) => s + safeNum(t.StockActual), 0);
                   const s1008 = tiemposEnsamblado.filter(t => cleanCode(t.CodMaterial) === code && String(t.Almacen || t.ALMACEN) === '1008').reduce((s, t) => s + safeNum(t.StockActual), 0);
                   const s1015 = tiemposEnsamblado.filter(t => cleanCode(t.CodMaterial) === code && String(t.Almacen || t.ALMACEN) === '1015').reduce((s, t) => s + safeNum(t.StockActual), 0);
+                  
                   consolidatedMap.set(code, {
-                    material: code, descripcion: desc, distancia: dims.distancia, altura: dims.altura, espesor: dims.espesor, densidad: dims.densidad,
-                    peso: pesoCalculado, consumoKg: kgTotal, consumoUn: 0, stock1006: s1006, stock1008: s1008, stock1015: s1015,
-                    porcentajeNecesidad: 0, planUn: 0, planKg: 0
+                    material: code, 
+                    descripcion: desc, 
+                    distancia: dims.distancia, 
+                    altura: dims.altura, 
+                    espesor: dims.espesor, 
+                    densidad: dims.densidad,
+                    peso: looperMatch ? safeNum(looperMatch.PesoUN) : pesoCalculado, 
+                    consumoKg: kgTotal, 
+                    consumoUn: 0, 
+                    stock1006: s1006, 
+                    stock1008: s1008, 
+                    stock1015: s1015,
+                    porcentajeNecesidad: 0, 
+                    planUn: 0, 
+                    planKg: 0,
+                    looperPesoUN: looperMatch ? safeNum(looperMatch.PesoUN) : 0,
+                    looperDensidad: looperMatch ? String(looperMatch.Densidad) : '—',
+                    looperEspesor: looperMatch ? safeNum(looperMatch.Espesor) : 0,
+                    looperTRolloMin: looperMatch ? safeNum(looperMatch.TiempoRolloMin) : 0
                   });
                 }
               });
@@ -290,17 +307,17 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     } finally { 
       setIsProcessingResumen(false); 
     }
-  }, [tiemposEnsamblado]);
+  }, [tiemposEnsamblado, kpiLooperData]);
 
   useEffect(() => {
-    if (activeTab === 'resumen' && filteredOrders.length > 0 && !isProcessingResumen) {
+    if (activeTab === 'resumen' && filteredOrders.length > 0 && !isProcessingResumen && kpiLooperData.length > 0) {
       const signature = `${selectedDate}|${filteredOrders.length}|${filteredOrders[0]?.ORDENPREVISIONAL || ''}`;
       if (signature !== processedSignature) {
         handleProcessResumen(filteredOrders);
         setProcessedSignature(signature);
       }
     }
-  }, [activeTab, filteredOrders, selectedDate, isProcessingResumen, processedSignature, handleProcessResumen]);
+  }, [activeTab, filteredOrders, selectedDate, isProcessingResumen, processedSignature, handleProcessResumen, kpiLooperData]);
 
   const groupedNeeds = useMemo(() => {
     const map = new Map<string, { 
@@ -379,10 +396,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return inventarioAnioActual.filter(row => {
       const alm = String(row.ALMACEN || '').trim();
       const matchAlm = allowedAlmacenes.length === 0 || allowedAlmacenes.includes(alm);
-      
       const nombre = String(row.NOMBRE || '').toUpperCase();
       const matchDesc = nombre.includes('LAMINA CILINDRICA');
-      
       return matchAlm && matchDesc;
     });
   }, [inventarioAnioActual, restriccionesArray]);
@@ -498,13 +513,17 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 <thead className="sticky top-0 z-20">
                   <tr className="bg-[#ffff00] text-black uppercase font-black tracking-tighter text-[11px] border-b-2 border-black/10">
                     <th className="px-4 py-4 border-r border-black/5 text-left w-32">Material</th>
-                    <th className="px-6 py-4 border-r border-black/5 text-left">Descripción</th>
+                    <th className="px-6 py-4 border-r border-black/5 text-left min-w-[200px]">Descripción</th>
+                    <th className="px-2 py-4 border-r border-black/5 bg-indigo-50/50">Peso UN (Kg)</th>
+                    <th className="px-2 py-4 border-r border-black/5 bg-indigo-50/50">Dens.</th>
+                    <th className="px-2 py-4 border-r border-black/5 bg-indigo-50/50">Esp.</th>
+                    <th className="px-2 py-4 border-r border-black/5 bg-indigo-50/50">T. Rollo (m)</th>
                     <th className="px-3 py-4 border-r border-black/5">Stock 1006</th>
                     <th className="px-3 py-4 border-r border-black/5">Stock 1008</th>
                     <th className="px-4 py-4 border-r border-black/5 text-right bg-orange-100/30">Consumo OF [Kg]</th>
                     <th className="px-4 py-4 border-r border-black/5 text-right bg-orange-100/30">Consumo OF [Un]</th>
-                    <th className="px-6 py-4 border-r border-black/5 bg-[#cfe2f3]">Peso / Rollo (Kg)</th>
-                    <th className="px-4 py-4 border-r border-black/5 text-center">% Necesidad</th>
+                    <th className="px-6 py-4 border-r border-black/5 bg-[#cfe2f3]">Peso Teor. (Kg)</th>
+                    <th className="px-4 py-4 border-r border-black/5 text-center">% Nec.</th>
                     <th className="px-4 py-4 border-r border-black/5 text-right font-black bg-[#fee2e2] text-red-900">PLAN (UN)</th>
                     <th className="px-4 py-4 text-right font-black bg-[#fee2e2] text-red-900">PLAN (KG)</th>
                   </tr>
@@ -512,13 +531,13 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 <tbody className="divide-y divide-gray-100 font-bold">
                   {isProcessingResumen ? (
                     <tr>
-                      <td colSpan={10} className="py-20 text-center">
+                      <td colSpan={14} className="py-20 text-center">
                         <Loader2 className="w-8 h-8 animate-spin mx-auto text-indigo-500 mb-3" />
-                        <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Sincronizando Ingeniería: {resumenProgress.current} / {resumenProgress.total}</p>
+                        <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Sincronizando Ingeniería Looper: {resumenProgress.current} / {resumenProgress.total}</p>
                       </td>
                     </tr>
                   ) : groupedNeeds.length === 0 ? (
-                    <tr><td colSpan={10} className="py-24 text-slate-200 font-black uppercase tracking-widest text-center italic">Sin necesidades registradas para la fecha</td></tr>
+                    <tr><td colSpan={14} className="py-24 text-slate-200 font-black uppercase tracking-widest text-center italic">Sin necesidades registradas para la fecha</td></tr>
                   ) : (
                     groupedNeeds.map((group, gIdx) => {
                       const groupKey = `${group.densidad}-${group.altura}`;
@@ -531,6 +550,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                                <span className="font-black text-[10px] text-slate-400 uppercase tracking-widest">Apertura {group.altura} - D{group.densidad}</span>
                             </td>
                             <td className="px-6 py-4 text-left text-indigo-900 font-black uppercase">Subtotal Corrida</td>
+                            <td colSpan={4} className="bg-indigo-50/20"></td>
                             <td className="px-3 py-4 text-slate-400 font-mono">{(group.total1006).toLocaleString()}</td>
                             <td className="px-3 py-4 text-slate-400 font-mono">{(group.total1008).toLocaleString()}</td>
                             <td className="px-4 py-4 text-right font-mono font-black text-indigo-900 bg-indigo-50/50">{group.totalKg.toLocaleString(undefined, { minimumFractionDigits: 1 })}</td>
@@ -544,6 +564,10 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                             <tr key={`${groupKey}-${iIdx}`} className="bg-white hover:bg-blue-50/10 transition-colors">
                               <td className="px-4 py-3 border-r border-gray-100 font-mono text-indigo-600 text-left pl-8">{item.material}</td>
                               <td className="px-6 py-3 border-r border-gray-100 text-left text-gray-400 uppercase leading-tight italic text-[10px] truncate max-w-[250px]">{item.descripcion}</td>
+                              <td className="px-2 py-3 border-r border-gray-100 font-mono text-indigo-900 bg-indigo-50/10">{item.looperPesoUN || '—'}</td>
+                              <td className="px-2 py-3 border-r border-gray-100 font-bold text-indigo-900 bg-indigo-50/10">{item.looperDensidad}</td>
+                              <td className="px-2 py-3 border-r border-gray-100 font-mono text-indigo-900 bg-indigo-50/10">{item.looperEspesor || '—'}</td>
+                              <td className="px-2 py-3 border-r border-gray-100 font-mono font-black text-indigo-900 bg-indigo-50/10">{item.looperTRolloMin || '—'}</td>
                               <td className="px-3 py-3 border-r border-gray-100 font-mono text-slate-400">{item.stock1006 || '—'}</td>
                               <td className="px-3 py-3 border-r border-gray-100 font-mono text-slate-400">{item.stock1008 || '—'}</td>
                               <td className="px-4 py-3 border-r border-gray-100 text-right font-mono font-bold text-indigo-400">{item.consumoKg.toLocaleString(undefined, { minimumFractionDigits: 1 })}</td>
