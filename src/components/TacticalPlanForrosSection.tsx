@@ -187,64 +187,6 @@ const MachineCard = ({
   );
 };
 
-/**
- * Componente: TableKPI
- * Auditoría técnica de los tiempos base por material.
- */
-const TableKPI = ({ tiemposProduccion, mapToHojaRuta }: { tiemposProduccion: any[]; mapToHojaRuta: (name: string) => string; }) => (
-  <Card className="rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden shadow-lg border-none">
-    <CardHeader className="bg-slate-950 p-8 border-b border-slate-800">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <div className="bg-indigo-600 p-3 rounded-2xl text-white shadow-lg shadow-indigo-500/20">
-            <Clock className="w-6 h-6" />
-          </div>
-          <div>
-            <CardTitle className="text-2xl font-black text-white uppercase tracking-tight">Maestros Técnicos</CardTitle>
-            <CardDescription className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-1">Base de datos de Tiempos por Material y Puesto</CardDescription>
-          </div>
-        </div>
-        <div className="bg-white/5 border border-white/10 rounded-2xl px-5 py-3 text-center">
-          <span className="block text-[8px] text-slate-500 uppercase font-black tracking-widest">Registros</span>
-          <span className="text-xl font-mono font-black text-sky-400">{tiemposProduccion.length}</span>
-        </div>
-      </div>
-    </CardHeader>
-    <CardContent className="p-0">
-      <div className="overflow-x-auto max-h-[70vh] relative">
-        <table className="w-full text-[11px] border-collapse">
-          <thead className="bg-slate-900 sticky top-0 z-10 text-white text-left uppercase tracking-widest font-black">
-            <tr>
-              <th className="px-6 py-4">Cod. Material</th>
-              <th className="px-6 py-4 text-sky-400">HOJA DE RUTA</th>
-              <th className="px-6 py-4">Puesto de Trabajo</th>
-              <th className="px-6 py-4 min-w-[200px]">Descripción</th>
-              <th className="px-6 py-4 text-center">Centro</th>
-              <th className="px-6 py-4">Línea</th>
-              <th className="px-6 py-4 text-right bg-indigo-900/40">Min / Und</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {tiemposProduccion.map((t, i) => (
-              <tr key={i} className="hover:bg-slate-50 transition-colors">
-                <td className="px-6 py-4 font-mono font-bold text-slate-600 whitespace-nowrap">{t.CodMaterial || t.MATERIAL}</td>
-                <td className="px-6 py-4 font-mono font-black text-indigo-700 uppercase whitespace-nowrap">{mapToHojaRuta(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '')}</td>
-                <td className="px-6 py-4 font-black text-slate-800 uppercase whitespace-nowrap">{t.PuestoTrabajo || t.nombre_estacion || t.Maquina}</td>
-                <td className="px-6 py-4 text-slate-500 font-medium whitespace-normal leading-tight">{t.Material || t.DESCRIPCION || t.NOMBRE || '—'}</td>
-                <td className="px-6 py-4 text-center font-bold text-slate-700">{t.Centro || '—'}</td>
-                <td className="px-6 py-4 text-slate-600">{t.Linea || '—'}</td>
-                <td className="px-6 py-4 text-right font-mono font-black text-indigo-600 bg-indigo-50/30">
-                  {(t.Tiempo || t.Tiempo_Min || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </CardContent>
-  </Card>
-);
-
 export const TacticalPlanForrosSection: React.FC = () => {
   const { addNotification } = useAppContext();
   const [isMounted, setIsMounted] = useState(false);
@@ -253,9 +195,11 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [tiemposProduccion, setTiemposProduccion] = useState<any[]>([]);
   const [dailyOrders, setDailyOrders] = useState<any[]>([]);
   const [ordenesFert, setOrdenesFert] = useState<any[]>([]);
+  const [kpiMaestroData, setKpiMaestroData] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingTiempos, setIsLoadingTiempos] = useState(false);
   const [isLoadingFert, setIsLoadingFert] = useState(false);
+  const [isLoadingKPI, setIsLoadingKPI] = useState(false);
   
   const [executionDate, setExecutionDate] = useState<string>('');
   const [jornadaDiurnaSel, setJornadaDiurnaSel] = useState("8.75");
@@ -343,12 +287,26 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
   }, [addNotification]);
 
+  const fetchKPIMaestro = useCallback(async () => {
+    setIsLoadingKPI(true);
+    try {
+      const response = await serviciosService.getKPIMaestroForros();
+      setKpiMaestroData(response.data || []);
+    } catch (error: any) {
+      console.error('Error fetching KPI Maestro:', error);
+      addNotification('error', `Error al cargar KPI Maestro: ${error.message}`);
+    } finally {
+      setIsLoadingKPI(false);
+    }
+  }, [addNotification]);
+
   useEffect(() => {
     if (isMounted) {
       fetchBaseData();
       fetchOrdenesFert();
+      fetchKPIMaestro();
     }
-  }, [isMounted, fetchBaseData, fetchOrdenesFert]);
+  }, [isMounted, fetchBaseData, fetchOrdenesFert, fetchKPIMaestro]);
 
   const forrosGruposList = useMemo(() => {
     return grupos.filter(g => {
@@ -456,9 +414,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     });
   };
 
-  /**
-   * Definición de grupos visuales
-   */
   const workstationGroups = [
     { 
       title: "ACOLCHADORAS DE TAPAS Y PEGADORAS DE FALSO", 
@@ -499,9 +454,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
   ];
 
-  if (!isMounted) {
-    return null;
-  }
+  if (!isMounted) return null;
 
   return (
     <div className="p-6 md:p-8 space-y-6 bg-slate-50/40 min-h-screen font-body">
@@ -742,7 +695,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     <thead className="bg-slate-900 sticky top-0 z-10 text-white text-left uppercase tracking-widest font-black">
                       <tr>
                         {Object.keys(ordenesFert[0]).map((key) => (
-                          <th key={key} className="px-6 py-4 whitespace-nowrap">{key}</th>
+                          <th key={key} className="px-6 py-4 whitespace-nowrap text-[10px] uppercase font-bold text-slate-300">{key}</th>
                         ))}
                       </tr>
                     </thead>
@@ -871,127 +824,68 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   </div>
                 );
               })}
-
-              {/* Otros puestos no categorizados */}
-              {(() => {
-                const categorizedItems = workstationGroups.flatMap(g => g.items);
-                const otherItems = uniquePuestos.filter(p => !categorizedItems.includes(p));
-                if (otherItems.length === 0) return null;
-
-                return (
-                  <div className="space-y-6">
-                    <div className="flex items-center gap-4">
-                      <div className="h-8 w-1.5 bg-slate-400 rounded-full" />
-                      <h3 className="text-lg font-black text-slate-500 uppercase tracking-tighter">Otros Puestos</h3>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                      {otherItems.map(p => {
-                        const config = workstationConfigs[p] || { machine: p, isDayActive: true, isNightActive: false };
-                        const capPuesto = (config.isDayActive ? horasNetasDiurnas : 0) + (config.isNightActive ? horasNetasNocturnas : 0);
-                        return (
-                          <div key={p} className="flex flex-col p-6 border-2 border-slate-100 rounded-[2rem] bg-white hover:border-indigo-200 transition-all shadow-sm opacity-80">
-                            <div className="flex items-center justify-between mb-4">
-                              <div className="min-w-0 flex-1">
-                                <p className="font-black text-indigo-950 uppercase text-lg leading-tight mb-2 break-words">{p}</p>
-                                <div className="flex flex-wrap gap-2">
-                                  <Badge className="bg-slate-500 text-white border-none font-mono text-[10px] uppercase font-bold tracking-widest px-2.5 py-0.5 rounded-lg shadow-sm">
-                                    {mapToHojaRuta(p)}
-                                  </Badge>
-                                  <div className="flex items-center gap-1.5 bg-emerald-50 text-emerald-700 px-3 py-1 rounded-xl border border-emerald-100 shadow-sm">
-                                    <Clock className="w-3 h-3" />
-                                    <span className="font-mono text-[10px] font-black uppercase tracking-wider">{capPuesto.toFixed(2)}h Disponibles</span>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                            
-                            <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-100">
-                              <button 
-                                onClick={() => toggleWorkstationShift(p, 'day')}
-                                className={cn(
-                                  "flex-1 h-12 rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm border-2",
-                                  config.isDayActive 
-                                    ? "bg-amber-500 text-white border-amber-600 shadow-amber-200" 
-                                    : "bg-white text-slate-300 border-slate-100"
-                                )}
-                              >
-                                <Sun className="w-4 h-4" />
-                                <span className="text-[10px] font-black uppercase tracking-widest">{config.isDayActive ? 'Día ON' : 'Día OFF'}</span>
-                              </button>
-                              
-                              <button 
-                                onClick={() => toggleWorkstationShift(p, 'night')}
-                                className={cn(
-                                  "flex-1 h-12 rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm border-2",
-                                  config.isNightActive 
-                                    ? "bg-indigo-700 text-white border-indigo-800 shadow-indigo-200" 
-                                    : "bg-white text-slate-300 border-slate-100"
-                                )}
-                              >
-                                <Moon className="w-4 h-4" />
-                                <span className="text-[10px] font-black uppercase tracking-widest">{config.isNightActive ? 'Noc ON' : 'Noc OFF'}</span>
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })()}
             </div>
           </div>
         </TabsContent>
 
         <TabsContent value="kpi-tiempos" className="space-y-8 pb-20">
-          {/* Flujo de Datos Section */}
-          <div className="bg-white rounded-[2rem] border border-slate-200 p-8 shadow-sm">
-            <h3 className="text-xl font-black text-indigo-950 uppercase tracking-tighter mb-6 flex items-center gap-3">
-              <Database className="w-6 h-6 text-indigo-600" /> Flujo de Origen de Datos
-            </h3>
-            
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-center">
-              {/* Step 1 */}
-              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 text-center space-y-2 h-full flex flex-col justify-center">
-                <div className="bg-white w-10 h-10 rounded-full flex items-center justify-center mx-auto shadow-sm border border-slate-100">
-                  <SearchCode className="w-5 h-5 text-indigo-600" />
+          <Card className="rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden shadow-sm border-none">
+            <CardHeader className="bg-slate-950 p-8 border-b border-slate-800">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="bg-indigo-600 p-3 rounded-2xl text-white shadow-lg shadow-indigo-500/20">
+                    <Database className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-2xl font-black text-white uppercase tracking-tight">KPI Maestro de Forros</CardTitle>
+                    <CardDescription className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-1">Auditoría técnica de tiempos promedio por material y hoja de ruta</CardDescription>
+                  </div>
                 </div>
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">1. Identificación</p>
-                <p className="text-[11px] font-medium text-slate-700">Se filtran grupos (CHN, Bases, Bandas, etc.)</p>
-              </div>
-
-              <div className="hidden md:flex justify-center text-slate-300"><ArrowRight className="w-5 h-5" /></div>
-
-              {/* Step 2 */}
-              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 text-center space-y-2 h-full flex flex-col justify-center">
-                <div className="bg-white w-10 h-10 rounded-full flex items-center justify-center mx-auto shadow-sm border border-slate-100">
-                  <FileJson className="w-5 h-5 text-indigo-600" />
+                <div className="bg-white/5 border border-white/10 rounded-2xl px-5 py-3 text-center">
+                  <span className="block text-[8px] text-slate-500 uppercase font-black tracking-widest">Registros</span>
+                  <span className="text-xl font-mono font-black text-sky-400">{kpiMaestroData.length}</span>
                 </div>
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">2. Consulta API</p>
-                <p className="text-[11px] font-medium text-slate-700">getTiemposEnsambladobyCentroyCodigoGrupo</p>
               </div>
-
-              <div className="hidden md:flex justify-center text-slate-300"><ArrowRight className="w-5 h-5" /></div>
-
-              {/* Step 3 */}
-              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 text-center space-y-2 h-full flex flex-col justify-center">
-                <div className="bg-white w-10 h-10 rounded-full flex items-center justify-center mx-auto shadow-sm border border-slate-100">
-                  <Layers className="w-5 h-5 text-indigo-600" />
-                </div>
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">3. Consolidación</p>
-                <p className="text-[11px] font-medium text-slate-700">Unificación de maestros y limpieza de códigos</p>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto max-h-[70vh] relative">
+                {isLoadingKPI ? (
+                  <div className="flex items-center justify-center py-24">
+                    <Loader2 className="h-10 w-10 animate-spin text-indigo-500" />
+                    <span className="ml-4 text-slate-500 font-black uppercase tracking-widest text-xs">Consultando Maestro de Forros...</span>
+                  </div>
+                ) : (
+                  <table className="w-full text-[11px] border-collapse">
+                    <thead className="bg-slate-900 sticky top-0 z-10 text-white text-left uppercase tracking-widest font-black">
+                      <tr>
+                        <th className="px-6 py-4">Código Material</th>
+                        <th className="px-6 py-4">HOJA DE RUTA</th>
+                        <th className="px-6 py-4 text-right bg-indigo-900/40">T. Promedio (min)</th>
+                        <th className="px-6 py-4">Categoría / Puesto</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {kpiMaestroData.map((t, i) => (
+                        <tr key={i} className="hover:bg-slate-50 transition-colors">
+                          <td className="px-6 py-4 font-mono font-bold text-slate-600">{t.CodigoMaterial}</td>
+                          <td className="px-6 py-4 font-mono font-black text-indigo-700 uppercase">{t.HRUTA}</td>
+                          <td className="px-6 py-4 text-right font-mono font-black text-indigo-600 bg-indigo-50/30">
+                            {Number(t.TPromedio || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+                          <td className="px-6 py-4 font-black text-slate-800 uppercase whitespace-nowrap">{t.Categoria}</td>
+                        </tr>
+                      ))}
+                      {kpiMaestroData.length === 0 && (
+                        <tr>
+                          <td colSpan={4} className="py-20 text-center text-slate-400 uppercase font-black tracking-widest text-xs opacity-40">No hay datos de KPI disponibles</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                )}
               </div>
-            </div>
-            
-            <div className="mt-8 p-4 bg-indigo-50/50 rounded-2xl border border-indigo-100">
-              <p className="text-xs font-medium text-indigo-800 leading-relaxed">
-                <span className="font-black uppercase mr-2">Nota Técnica:</span>
-                Los datos visualizados en la tabla inferior representan el estándar de ingeniería. Se utilizan para calcular la carga de trabajo multiplicando el <span className="font-bold">Min/Und</span> por la <span className="font-bold">Cantidad</span> de las órdenes previsionales asignadas a cada máquina.
-              </p>
-            </div>
-          </div>
-
-          <TableKPI tiemposProduccion={tiemposProduccion} mapToHojaRuta={mapToHojaRuta} />
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>

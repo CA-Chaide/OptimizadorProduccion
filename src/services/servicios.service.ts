@@ -411,4 +411,18 @@ export const serviciosService = {
     }
     return response.json();
   },
+
+  async getKPIMaestroForros(): Promise<BodyResponse<any>> {
+    const response = await fetch(API_URL + "/KPIMaestroForros", {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    });
+    if (!response.ok) {
+      const errorBody = await response
+        .json()
+        .catch(() => ({ message: "Error desconocido" }));
+      throw new Error(errorBody.message || "Error al obtener KPI Maestro de Forros");
+    }
+    return response.json();
+  },
 };
