@@ -11,13 +11,11 @@ import {
   Home, 
   Calendar as CalendarIcon, 
   Download,
-  AlertCircle,
   Target,
   ArrowRightLeft
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import * as XLSX from 'xlsx';
 
@@ -34,6 +32,24 @@ interface SummaryRow {
   puestosOptimizados: number;
 }
 
+const RESTRICCIONES_PUESTOS: Record<string, number> = {
+  'LINEA 1|Armado': 12,
+  'LINEA 1|Cerrado L1': 6,
+  'LINEA 2|Armado': 6,
+  'LINEA 2|Cerrado1 L2': 4,
+  'LINEA 2|Cerrado2 L2': 4,
+  'LINEA 3|Armado': 2,
+  'LINEA 3|Cerrado L3': 1,
+  'LINEA 5|Armado': 2,
+};
+
+const PUESTOS_REFERENCIA: Record<string, string> = {
+  'LINEA 1': 'Armado',
+  'LINEA 2': 'Armado',
+  'LINEA 3': 'Armado',
+  'LINEA 5': 'Armado',
+};
+
 const normalizeDateISO = (dateStr: any): string | null => {
   if (!dateStr) return null;
   const s = String(dateStr).trim();
@@ -46,25 +62,6 @@ const normalizeDateISO = (dateStr: any): string | null => {
 
 const normalizeMaterialCode = (code: string | number): string => {
   return String(code || '').trim().slice(-8);
-};
-
-const RESTRICCIONES_PUESTOS: Record<string, number> = {
-  'LINEA 1|Armado': 12,
-  'LINEA 1|Cerrado L1': 6,
-  'LINEA 2|Armado': 6,
-  'LINEA 2|Cerrado1 L2': 4,
-  'LINEA 2|Cerrado2 L2': 4,
-  'LINEA 3|Armado': 2,
-  'LINEA 3|Cerrado L3': 1,
-  'LINEA 5|Armado': 2,
-};
-
-// Puestos que mandan el ritmo para el balanceo
-const PUESTOS_REFERENCIA: Record<string, string> = {
-  'LINEA 1': 'Armado',
-  'LINEA 2': 'Armado',
-  'LINEA 3': 'Armado',
-  'LINEA 5': 'Armado',
 };
 
 export const RevCapacidadTabSection: React.FC = () => {
@@ -88,7 +85,8 @@ export const RevCapacidadTabSection: React.FC = () => {
   const [rendLinea3, setRendLinea3] = useState<number>(1.05);
   const [rendLinea5, setRendLinea5] = useState<number>(1.05);
 
-  const hourOptions = Array.from({ length: 9 }, (_, i) => i + 4);
+  const [editablePuestosT1, setEditablePuestosT1] = useState<Record<string, number>>({});
+  const [editablePuestosT2, setEditablePuestosT2] = useState<Record<string, number>>({});
 
   useEffect(() => setIsMounted(true), []);
 
@@ -116,8 +114,7 @@ export const RevCapacidadTabSection: React.FC = () => {
       }
       setTechnicalData(allTiempos);
 
-      const rawFert = Array.isArray(fertRes?.data) ? fertRes.data : [];
-      const mappedFert = rawFert.map((o: any) => {
+      const mappedFert = (Array.isArray(fertRes?.data) ? fertRes.data : []).map((o: any) => {
         const cat = String(o.CATEGORIA || '').toUpperCase();
         let calc = '';
         if (cat.includes('L1')) calc = 'LINEA 1';
@@ -129,8 +126,7 @@ export const RevCapacidadTabSection: React.FC = () => {
       });
       setFertOrders(mappedFert);
 
-      const rawPrev = Array.isArray(prevRes?.data) ? prevRes.data : [];
-      const mappedPrev = rawPrev.map((o: any) => {
+      const mappedPrev = (Array.isArray(prevRes?.data) ? prevRes.data : []).map((o: any) => {
         const cat = String(o.CATEGORIA || '').toUpperCase();
         let calc = '';
         if (cat.includes('L1')) calc = 'LINEA 1';
@@ -214,10 +210,10 @@ export const RevCapacidadTabSection: React.FC = () => {
       const tUnit = Number(row.Tiempo_Min || 0);
 
       let rendFactor = 1;
-      if (line.includes('LINEA 1')) rendFactor = rendLinea1;
-      else if (line.includes('LINEA 2')) rendFactor = rendLinea2;
-      else if (line.includes('LINEA 3')) rendFactor = rendLinea3;
-      else if (line.includes('LINEA 5')) rendFactor = rendLinea5;
+      if (line.includes('1')) rendFactor = rendLinea1;
+      else if (line.includes('2')) rendFactor = rendLinea2;
+      else if (line.includes('3')) rendFactor = rendLinea3;
+      else if (line.includes('5')) rendFactor = rendLinea5;
 
       if (qFab > 0) {
         entry.cantOrdFab += qFab;
@@ -233,8 +229,6 @@ export const RevCapacidadTabSection: React.FC = () => {
     });
 
     const rows = Array.from(map.values());
-
-    // CALCULO DE PUESTOS OPTIMIZADOS (BASADO EN BALANCEO POR PUESTO DE REFERENCIA)
     const lineFactors = new Map<string, number>();
     const linesFound = [...new Set(rows.map(r => r.linea))];
 
@@ -259,115 +253,129 @@ export const RevCapacidadTabSection: React.FC = () => {
     }).sort((a, b) => a.linea.localeCompare(b.linea) || a.puesto.localeCompare(b.puesto));
   }, [technicalData, selectedCenter, fertSumMap, prevSumMap, rendLinea1, rendLinea2, rendLinea3, rendLinea5, horasTurno1]);
 
+  useEffect(() => {
+    const newT1 = { ...editablePuestosT1 };
+    const newT2 = { ...editablePuestosT2 };
+    let changed = false;
+
+    summaryData.forEach(r => {
+      const key = `${r.linea}|${r.puesto}`;
+      if (newT1[key] === undefined) {
+        newT1[key] = RESTRICCIONES_PUESTOS[key] || 0;
+        changed = true;
+      }
+      if (newT2[key] === undefined) {
+        newT2[key] = 0;
+        changed = true;
+      }
+    });
+
+    if (changed) {
+      setEditablePuestosT1(newT1);
+      setEditablePuestosT2(newT2);
+    }
+  }, [summaryData]);
+
   const grandTotals = useMemo(() => {
-    return summaryData.reduce((acc, r) => ({
-      cantFab: acc.cantFab + r.cantOrdFab,
-      cantPrev: acc.cantPrev + r.cantOrdPrev,
-      totalCant: acc.totalCant + r.totalCantidad,
-      totalTime: acc.totalTime + r.totalTiempo,
-      totalPuestos: acc.totalPuestos + (r.totalTiempo / horasTurno1),
-      totalObjetivo: acc.totalObjetivo + r.puestosObjetivo,
-      totalOptimizados: acc.totalOptimizados + r.puestosOptimizados
-    }), { cantFab: 0, cantPrev: 0, totalCant: 0, totalTime: 0, totalPuestos: 0, totalObjetivo: 0, totalOptimizados: 0 });
-  }, [summaryData, horasTurno1]);
+    return summaryData.reduce((acc, r) => {
+      const key = `${r.linea}|${r.puesto}`;
+      const t1 = editablePuestosT1[key] || 0;
+      const t2 = editablePuestosT2[key] || 0;
+      const calculated = r.totalTiempo / horasTurno1;
+      
+      return {
+        totalCant: acc.totalCant + r.totalCantidad,
+        totalTime: acc.totalTime + r.totalTiempo,
+        totalPuestos: acc.totalPuestos + calculated,
+        totalT1: acc.totalT1 + t1,
+        totalT2: acc.totalT2 + t2,
+        totalObjetivo: acc.totalObjetivo + r.puestosObjetivo,
+        totalOptimizados: acc.totalOptimizados + r.puestosOptimizados
+      };
+    }, { totalCant: 0, totalTime: 0, totalPuestos: 0, totalT1: 0, totalT2: 0, totalObjetivo: 0, totalOptimizados: 0 });
+  }, [summaryData, horasTurno1, editablePuestosT1, editablePuestosT2]);
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center space-x-3">
           <Activity className="w-6 h-6 text-indigo-600" />
-          <div>
-            <h3 className="text-xl font-semibold text-gray-800">Resumen de Capacidad y Balanceo</h3>
-            <p className="text-xs text-gray-500">Cálculo de puestos necesarios vs capacidad instalada</p>
-          </div>
+          <h3 className="text-xl font-semibold text-gray-800">Resumen de Capacidad y Balanceo</h3>
         </div>
         <div className="flex gap-2">
-            <Button variant="outline" size="sm" className="bg-blue-50 text-blue-700 border-blue-200">
-                <ArrowRightLeft className="w-4 h-4 mr-2" /> Equilibrar Cantidades
-            </Button>
-            <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => {
-                    const ws = XLSX.utils.json_to_sheet(summaryData.map(r => ({
-                    'Línea': r.linea, 'Puesto Trabajo': r.puesto,
-                    'Total Cant': r.totalCantidad,
-                    'Total Tiempo (h)': r.totalTiempo.toFixed(2),
-                    'No. Puestos': (r.totalTiempo / horasTurno1).toFixed(2),
-                    'Puestos Objetivo': r.puestosObjetivo,
-                    'Puestos Optimizados': r.puestosOptimizados.toFixed(2)
-                    })));
-                    const wb = XLSX.utils.book_new();
-                    XLSX.utils.book_append_sheet(wb, ws, "Capacidad");
-                    XLSX.writeFile(wb, `Capacidad_${selectedCenter}.xlsx`);
-                }} 
-                disabled={summaryData.length === 0}
-                >
-                <Download className="w-4 h-4 mr-2" /> Exportar
-            </Button>
+          <Button variant="outline" size="sm" className="bg-blue-50 text-blue-700 border-blue-200">
+            <ArrowRightLeft className="w-4 h-4 mr-2" /> Equilibrar Cantidades
+          </Button>
+          <Button 
+            variant="outline" size="sm" 
+            onClick={() => {
+              const ws = XLSX.utils.json_to_sheet(summaryData.map(r => ({
+                'Línea': r.linea, 'Puesto Trabajo': r.puesto,
+                'Cant Total': r.totalCantidad, 'Tiempo Total (h)': r.totalTiempo.toFixed(2),
+                'No. Puestos': (r.totalTiempo / horasTurno1).toFixed(2),
+                'T1': editablePuestosT1[`${r.linea}|${r.puesto}`] || 0,
+                'T2': editablePuestosT2[`${r.linea}|${r.puesto}`] || 0,
+                'Objetivo': r.puestosObjetivo
+              })));
+              const wb = XLSX.utils.book_new();
+              XLSX.utils.book_append_sheet(wb, ws, "Capacidad");
+              XLSX.writeFile(wb, `Capacidad_${selectedCenter}.xlsx`);
+            }}
+          >
+            <Download className="w-4 h-4 mr-2" /> Exportar
+          </Button>
         </div>
       </div>
 
-      <Tabs value={selectedCenter} onValueChange={(val) => setSelectedCenter(val)} className="w-full">
+      <Tabs value={selectedCenter} onValueChange={setSelectedCenter} className="w-full">
         <TabsList className="flex h-auto bg-gray-100/50 p-1 mb-4">
           {availableCenters.map(center => (
-            <TabsTrigger key={center} value={center} className="px-6 py-2 text-xs font-bold uppercase tracking-wider data-[state=active]:bg-white data-[state=active]:text-indigo-700">
+            <TabsTrigger key={center} value={center} className="px-6 py-2 text-xs font-bold uppercase data-[state=active]:bg-white data-[state=active]:text-indigo-700">
               <Home className="w-3 h-3 mr-2" /> Centro {center}
             </TabsTrigger>
           ))}
         </TabsList>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-8 gap-4 p-4 bg-gray-50 border rounded-xl shadow-sm mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-8 gap-4 p-4 bg-gray-50 border rounded-xl mb-6">
           <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Día Prog:</label>
-            <input type="date" value={programmingDate} onChange={e => setProgrammingDate(e.target.value)} className="text-xs border rounded-md px-2 py-2 outline-none text-indigo-700 font-medium h-9" />
+            <label className="text-[10px] font-bold text-gray-400 uppercase">Día Prog:</label>
+            <input type="date" value={programmingDate} onChange={e => setProgrammingDate(e.target.value)} className="text-xs border rounded-md px-2 py-2 text-indigo-700 font-medium h-9" />
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Fecha Prev:</label>
-            <input type="date" value={provisionalDate} onChange={e => setProvisionalDate(e.target.value)} className="text-xs border rounded-md px-2 py-2 outline-none text-indigo-700 font-medium h-9" />
+            <label className="text-[10px] font-bold text-gray-400 uppercase">Fecha Prev:</label>
+            <input type="date" value={provisionalDate} onChange={e => setProvisionalDate(e.target.value)} className="text-xs border rounded-md px-2 py-2 text-indigo-700 font-medium h-9" />
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Horas T1:</label>
+            <label className="text-[10px] font-bold text-gray-400 uppercase">Horas T1:</label>
             <select value={horasTurno1} onChange={e => setHorasTurno1(Number(e.target.value))} className="text-xs border rounded-md px-2 py-1 h-9 font-bold text-indigo-700">
-              {hourOptions.map(h => <option key={`t1-${h}`} value={h}>{h}</option>)}
+              {[4,5,6,7,8,9,10,11,12].map(h => <option key={`t1-${h}`} value={h}>{h}</option>)}
             </select>
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Horas T2:</label>
+            <label className="text-[10px] font-bold text-gray-400 uppercase">Horas T2:</label>
             <select value={horasTurno2} onChange={e => setHorasTurno2(Number(e.target.value))} className="text-xs border rounded-md px-2 py-1 h-9 font-bold text-indigo-700">
-              {hourOptions.map(h => <option key={`t2-${h}`} value={h}>{h}</option>)}
+              {[4,5,6,7,8,9,10,11,12].map(h => <option key={`t2-${h}`} value={h}>{h}</option>)}
             </select>
           </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Rend L1:</label>
-            <input type="number" step="0.01" value={rendLinea1} onChange={e => setRendLinea1(Number(e.target.value))} className="text-xs border rounded-md px-2 py-1 h-9 font-bold text-indigo-700" />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Rend L2:</label>
-            <input type="number" step="0.01" value={rendLinea2} onChange={e => setRendLinea2(Number(e.target.value))} className="text-xs border rounded-md px-2 py-1 h-9 font-bold text-indigo-700" />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Rend L3:</label>
-            <input type="number" step="0.01" value={rendLinea3} onChange={e => setRendLinea3(Number(e.target.value))} className="text-xs border rounded-md px-2 py-1 h-9 font-bold text-indigo-700" />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Rend L5:</label>
-            <input type="number" step="0.01" value={rendLinea5} onChange={e => setRendLinea5(Number(e.target.value))} className="text-xs border rounded-md px-2 py-1 h-9 font-bold text-indigo-700" />
-          </div>
+          {[rendLinea1, rendLinea2, rendLinea3, rendLinea5].map((val, i) => (
+            <div key={i} className="flex flex-col gap-1">
+              <label className="text-[10px] font-bold text-gray-400 uppercase">Rend L{[1,2,3,5][i]}:</label>
+              <input type="number" step="0.01" value={val} className="text-xs border rounded-md px-2 py-1 h-9 font-bold text-indigo-700" readOnly />
+            </div>
+          ))}
         </div>
 
         <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="min-w-full text-xs divide-y divide-gray-200 border-collapse">
+            <table className="min-w-full text-xs border-collapse">
               <thead className="bg-gray-50 uppercase text-[10px] font-bold text-gray-500">
                 <tr>
                   <th className="px-4 py-3 text-left border">Línea</th>
                   <th className="px-4 py-3 text-left border">Puesto Trabajo</th>
-                  <th className="px-4 py-3 text-right border">Cant ordFab</th>
-                  <th className="px-4 py-3 text-right border">Cant ordPrev</th>
-                  <th className="px-4 py-3 text-right border bg-indigo-50/30">Total Cant</th>
                   <th className="px-4 py-3 text-right border bg-indigo-50/30">Total Tiempo (h)</th>
                   <th className="px-4 py-3 text-right border text-blue-700 bg-blue-50/30">No. Puestos</th>
+                  <th className="px-4 py-3 text-right border text-indigo-700 bg-indigo-50/30">Puestos Turno 1</th>
+                  <th className="px-4 py-3 text-right border text-indigo-700 bg-indigo-50/30">Puestos Turno 2</th>
                   <th className="px-4 py-3 text-right border text-indigo-700 bg-indigo-50/30">Puestos Objetivo</th>
                   <th className="px-4 py-3 text-right border text-purple-700 bg-purple-50/30">Puestos Optimizados</th>
                   <th className="px-4 py-3 text-right border">Diferencia (±)</th>
@@ -380,32 +388,29 @@ export const RevCapacidadTabSection: React.FC = () => {
                   lines.forEach(lineName => {
                     const rows = summaryData.filter(r => r.linea === lineName);
                     rows.forEach((r, idx) => {
+                      const key = `${r.linea}|${r.puesto}`;
                       const calculatedPuestos = Number((r.totalTiempo / horasTurno1).toFixed(2));
-                      const delta = r.puestosObjetivo - calculatedPuestos;
+                      const t1 = editablePuestosT1[key] || 0;
+                      const t2 = editablePuestosT2[key] || 0;
+                      const delta = (t1 + t2) - calculatedPuestos;
                       
                       items.push(
-                        <tr key={`${lineName}-${idx}`} className="hover:bg-gray-50 group">
+                        <tr key={`${lineName}-${idx}`} className="hover:bg-gray-50">
                           {idx === 0 && <td rowSpan={rows.length} className="px-4 py-3 font-bold text-gray-900 border align-top bg-gray-50/30">{lineName}</td>}
                           <td className="px-4 py-3 font-medium text-gray-700 border">{r.puesto}</td>
-                          <td className="px-4 py-3 text-right font-mono border">{r.cantOrdFab.toLocaleString()}</td>
-                          <td className="px-4 py-3 text-right font-mono border">{r.cantOrdPrev.toLocaleString()}</td>
-                          <td className="px-4 py-3 text-right font-bold border bg-indigo-50/5">{r.totalCantidad.toLocaleString()}</td>
                           <td className="px-4 py-3 text-right font-bold border bg-indigo-50/5">{r.totalTiempo.toFixed(2)}</td>
-                          <td className="px-4 py-3 text-right font-bold border text-blue-700 bg-blue-50/5">
-                            {isMounted ? calculatedPuestos.toFixed(2) : '-'}
+                          <td className="px-4 py-3 text-right font-bold border text-blue-700 bg-blue-50/5">{isMounted ? calculatedPuestos.toFixed(2) : '-'}</td>
+                          <td className="px-4 py-3 border bg-white p-0">
+                            <input type="number" value={editablePuestosT1[key] ?? 0} onChange={e => setEditablePuestosT1(p => ({...p, [key]: Number(e.target.value)}))} className="w-full text-right px-4 py-3 focus:ring-2 focus:ring-indigo-500 font-bold text-indigo-600 outline-none" />
+                          </td>
+                          <td className="px-4 py-3 border bg-white p-0">
+                            <input type="number" value={editablePuestosT2[key] ?? 0} onChange={e => setEditablePuestosT2(p => ({...p, [key]: Number(e.target.value)}))} className="w-full text-right px-4 py-3 focus:ring-2 focus:ring-indigo-500 font-bold text-indigo-600 outline-none" />
                           </td>
                           <td className="px-4 py-3 text-right font-bold border text-indigo-700 bg-indigo-50/10">
-                            <span className="inline-flex items-center gap-1">
-                                <Target className="w-3 h-3 opacity-50" /> {r.puestosObjetivo}
-                            </span>
+                            <span className="inline-flex items-center gap-1"><Target className="w-3 h-3 opacity-50" /> {r.puestosObjetivo}</span>
                           </td>
-                          <td className="px-4 py-3 text-right font-bold border text-purple-700 bg-purple-50/10">
-                            {isMounted ? r.puestosOptimizados.toFixed(2) : '-'}
-                          </td>
-                          <td className={cn(
-                            "px-4 py-3 text-right font-bold border",
-                            delta < 0 ? "text-red-600 bg-red-50" : delta > 0 ? "text-green-600 bg-green-50" : "text-gray-400"
-                          )}>
+                          <td className="px-4 py-3 text-right font-bold border text-purple-700 bg-purple-50/10">{isMounted ? r.puestosOptimizados.toFixed(2) : '-'}</td>
+                          <td className={cn("px-4 py-3 text-right font-bold border", delta < 0 ? "text-red-600 bg-red-50" : delta > 0 ? "text-green-600 bg-green-50" : "text-gray-400")}>
                             {isMounted ? (delta > 0 ? `+${delta.toFixed(2)}` : delta.toFixed(2)) : '-'}
                           </td>
                         </tr>
@@ -414,29 +419,20 @@ export const RevCapacidadTabSection: React.FC = () => {
                   });
                   return items;
                 })() : (
-                  <tr><td colSpan={10} className="px-6 py-12 text-center text-gray-400 italic">Sin datos disponibles.</td></tr>
+                  <tr><td colSpan={9} className="px-6 py-12 text-center text-gray-400 italic">Sin datos disponibles.</td></tr>
                 )}
               </tbody>
               {summaryData.length > 0 && (
                 <tfoot className="bg-gray-800 text-white font-bold text-[11px]">
                   <tr>
                     <td colSpan={2} className="px-4 py-3 text-right uppercase border-r border-gray-700">Total General:</td>
-                    <td className="px-4 py-3 text-right font-mono border-r border-gray-700">{grandTotals.cantFab.toLocaleString()}</td>
-                    <td className="px-4 py-3 text-right font-mono border-r border-gray-700">{grandTotals.cantPrev.toLocaleString()}</td>
-                    <td className="px-4 py-3 text-right font-mono border-r border-gray-700 text-indigo-300">{grandTotals.totalCant.toLocaleString()}</td>
                     <td className="px-4 py-3 text-right font-mono border-r border-gray-700 text-indigo-300">{grandTotals.totalTime.toFixed(2)}</td>
-                    <td className="px-4 py-3 text-right font-mono text-blue-300 border-r border-gray-700">
-                      {isMounted ? grandTotals.totalPuestos.toFixed(2) : '-'}
-                    </td>
-                    <td className="px-4 py-3 text-right font-mono text-indigo-300 border-r border-gray-700">
-                        {grandTotals.totalObjetivo}
-                    </td>
-                    <td className="px-4 py-3 text-right font-mono text-purple-300 border-r border-gray-700">
-                        {isMounted ? grandTotals.totalOptimizados.toFixed(2) : '-'}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                        {isMounted ? (grandTotals.totalObjetivo - grandTotals.totalPuestos).toFixed(2) : '-'}
-                    </td>
+                    <td className="px-4 py-3 text-right font-mono text-blue-300 border-r border-gray-700">{isMounted ? grandTotals.totalPuestos.toFixed(2) : '-'}</td>
+                    <td className="px-4 py-3 text-right font-mono text-indigo-300 border-r border-gray-700">{grandTotals.totalT1}</td>
+                    <td className="px-4 py-3 text-right font-mono text-indigo-300 border-r border-gray-700">{grandTotals.totalT2}</td>
+                    <td className="px-4 py-3 text-right font-mono text-indigo-300 border-r border-gray-700">{grandTotals.totalObjetivo}</td>
+                    <td className="px-4 py-3 text-right font-mono text-purple-300 border-r border-gray-700">{isMounted ? grandTotals.totalOptimizados.toFixed(2) : '-'}</td>
+                    <td className="px-4 py-3 text-right">{isMounted ? ((grandTotals.totalT1 + grandTotals.totalT2) - grandTotals.totalPuestos).toFixed(2) : '-'}</td>
                   </tr>
                 </tfoot>
               )}
