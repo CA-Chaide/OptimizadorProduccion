@@ -619,7 +619,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="acolchado-tapas" className="space-y-16 pb-20">
-          {['02', '06', '07', '08', '09', '10'].map(suffix => {
+          {['02', '06', '07', '08', '09', '10', '11', '12', '13'].map(suffix => {
             const achNames = uniquePuestos.filter(p => p.includes(`ACH${suffix}`) || p.includes(`ACOLCHADORA${suffix}`));
             const pefNames = uniquePuestos.filter(p => p.includes(`PEF${suffix}`) || p.includes(`COSEDORA-ACH${suffix}`) || p.includes(`PEGADORA${suffix}`));
             if (achNames.length === 0 && pefNames.length === 0) return null;
