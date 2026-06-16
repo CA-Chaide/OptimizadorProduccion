@@ -415,7 +415,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
     return inventarioSAP.filter(row => {
       const alm = String(row.ALMACEN || '').trim();
-      return allowedAlmacenes.length === 0 || allowedAlmacenes.includes(alm);
+      const matchAlm = allowedAlmacenes.length === 0 || allowedAlmacenes.includes(alm);
+      const matchName = String(row.NOMBRE || '').toUpperCase().includes('LAMINA CILINDRICA');
+      return matchAlm && matchName;
     });
   }, [inventarioSAP, restriccionesArray]);
 
