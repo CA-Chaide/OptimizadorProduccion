@@ -150,7 +150,7 @@ const MachineCard = ({
             <thead className="bg-slate-100/80 sticky top-0 z-10 text-slate-500 font-black uppercase tracking-widest text-left">
               <tr>
                 <th className="px-4 py-3 border-b border-slate-200">Material</th>
-                <th className="px-4 py-3 border-b border-slate-200">Nombre</th>
+                <th className="px-4 py-3 border-b border-slate-200 min-w-[180px]">Nombre</th>
                 <th className="px-4 py-3 border-b border-slate-200 text-indigo-600">HR</th>
                 <th className="px-4 py-3 border-b border-slate-200 text-right">Cant.</th>
                 <th className="px-4 py-3 border-b border-slate-200 text-right text-indigo-700 bg-indigo-50/30">T. (h)</th>
@@ -164,7 +164,7 @@ const MachineCard = ({
                 return (
                   <tr key={i} className="hover:bg-indigo-50/30 transition-colors">
                     <td className="px-4 py-3 font-mono font-bold text-slate-700 whitespace-nowrap">{materialCode}</td>
-                    <td className="px-4 py-3 text-slate-600 truncate max-w-[180px] font-medium" title={materialName}>{materialName}</td>
+                    <td className="px-4 py-3 text-slate-600 font-medium whitespace-normal break-words">{materialName}</td>
                     <td className="px-4 py-3 font-bold text-indigo-700">{hrCode}</td>
                     <td className="px-4 py-3 text-right font-mono font-black text-slate-800">{Number(o['CANTIDAD'] || 0).toLocaleString()}</td>
                     <td className="px-4 py-3 text-right font-mono font-black text-indigo-600 bg-indigo-50/10">{t.toFixed(2)}</td>
@@ -226,7 +226,7 @@ const TableKPI = ({ tiemposProduccion, mapToHojaRuta }: { tiemposProduccion: any
                 <td className="px-6 py-4 font-mono font-bold text-slate-600 whitespace-nowrap">{t.CodMaterial || t.MATERIAL}</td>
                 <td className="px-6 py-4 font-mono font-black text-indigo-700 uppercase whitespace-nowrap">{mapToHojaRuta(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '')}</td>
                 <td className="px-6 py-4 font-black text-slate-800 uppercase whitespace-nowrap">{t.PuestoTrabajo || t.nombre_estacion || t.Maquina}</td>
-                <td className="px-6 py-4 text-slate-500 max-w-[250px] truncate font-medium">{t.Material || t.DESCRIPCION || t.NOMBRE || '—'}</td>
+                <td className="px-6 py-4 text-slate-500 font-medium">{t.Material || t.DESCRIPCION || t.NOMBRE || '—'}</td>
                 <td className="px-6 py-4 text-center font-bold text-slate-700">{t.Centro || '—'}</td>
                 <td className="px-6 py-4 text-slate-600">{t.Linea || '—'}</td>
                 <td className="px-6 py-4 text-right font-mono font-black text-indigo-600 bg-indigo-50/30">
@@ -287,7 +287,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     const pn = String(puestoName || '').toUpperCase().trim();
     if (!pn || pn === '—' || pn === 'NULL') return '';
     
-    // Mapeos explícitos solicitados
+    // Mapeos explícitos
     if (pn === 'ACOLCHADORA09') return 'HR-ACH09';
     if (pn === 'COSEDORA-ACH02') return 'HR-PEF02';
     if (pn === 'COSEDORA-ACH08') return 'HR-PEF08';
@@ -331,12 +331,13 @@ export const TacticalPlanForrosSection: React.FC = () => {
     try {
       const response = await serviciosService.getOrdenesFert();
       setOrdenesFert(response.data || []);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching Fert orders:', error);
+      addNotification('error', `Error al cargar órdenes FERT: ${error.message}`);
     } finally {
       setIsLoadingFert(false);
     }
-  }, []);
+  }, [addNotification]);
 
   useEffect(() => {
     if (isMounted) {
@@ -452,7 +453,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   };
 
   /**
-   * Definición de grupos visuales solicitados
+   * Definición de grupos visuales
    */
   const workstationGroups = [
     { 
@@ -495,11 +496,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   ];
 
   if (!isMounted) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-slate-50/40">
-        <Loader2 className="w-10 h-10 animate-spin text-indigo-600" />
-      </div>
-    );
+    return null;
   }
 
   return (

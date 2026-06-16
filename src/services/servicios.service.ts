@@ -14,7 +14,7 @@ export const serviciosService = {
       const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      throw new Error(errorBody.message || "Failed to fetch Habilidades OP");
     }
     return response.json();
   },
@@ -28,7 +28,7 @@ export const serviciosService = {
       const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      throw new Error(errorBody.message || "Failed to fetch Cubo Inventarios");
     }
     return response.json();
   },
@@ -43,7 +43,7 @@ export const serviciosService = {
       const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      throw new Error(errorBody.message || "Failed to fetch Presupuesto");
     }
     return response.json();
   },
@@ -61,7 +61,7 @@ export const serviciosService = {
       const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      throw new Error(errorBody.message || "Failed to fetch Tiempos Ensamblado");
     }
     return response.json();
   },
@@ -75,7 +75,7 @@ export const serviciosService = {
       const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      throw new Error(errorBody.message || "Failed to fetch Diccionario de Datos");
     }
     return response.json();
   },
@@ -89,7 +89,7 @@ export const serviciosService = {
       const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      throw new Error(errorBody.message || "Failed to fetch Diccionario de Fuentes");
     }
     return response.json();
   },
@@ -103,7 +103,7 @@ export const serviciosService = {
       const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      throw new Error(errorBody.message || "Failed to fetch Centros");
     }
     return response.json();
   },
@@ -117,7 +117,7 @@ export const serviciosService = {
       const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      throw new Error(errorBody.message || "Failed to fetch Meses");
     }
     return response.json();
   },
@@ -131,7 +131,7 @@ export const serviciosService = {
       const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      throw new Error(errorBody.message || "Failed to fetch Years");
     }
     return response.json();
   },
@@ -146,7 +146,7 @@ export const serviciosService = {
       const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      throw new Error(errorBody.message || "Failed to fetch Presupuesto por Centro");
     }
     return response.json();
   },
@@ -163,7 +163,7 @@ export const serviciosService = {
       const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      throw new Error(errorBody.message || "Failed to fetch Presupuesto por Meses");
     }
     return response.json();
   },
@@ -180,7 +180,7 @@ export const serviciosService = {
       const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      throw new Error(errorBody.message || "Failed to fetch Maestro por Meses");
     }
     return response.json();
   },
@@ -196,7 +196,7 @@ export const serviciosService = {
       const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      throw new Error(errorBody.message || "Failed to fetch Maestro por Centro");
     }
     return response.json();
   },
@@ -215,7 +215,7 @@ export const serviciosService = {
       const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      throw new Error(errorBody.message || "Failed to fetch Tiempos de Fabricacion");
     }
     return response.json();
   },
@@ -230,7 +230,7 @@ export const serviciosService = {
       const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      throw new Error(errorBody.message || "Failed to fetch Tiempos Canon");
     }
     return response.json();
   },
@@ -246,7 +246,7 @@ export const serviciosService = {
       const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      throw new Error(errorBody.message || "Failed to fetch Tiempo Canonico");
     }
     return response.json();
   },
@@ -267,7 +267,7 @@ export const serviciosService = {
       const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      throw new Error(errorBody.message || "Failed to fetch Habilidades Operador");
     }
     return response.json();
   },
@@ -282,7 +282,7 @@ export const serviciosService = {
       const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      throw new Error(errorBody.message || "Failed to fetch Materiales Brutos");
     }
     return response.json();
   },
@@ -297,7 +297,7 @@ export const serviciosService = {
       const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      throw new Error(errorBody.message || "Failed to fetch Mantenimientos");
     }
     return response.json();
   },
@@ -313,7 +313,7 @@ export const serviciosService = {
       const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      throw new Error(errorBody.message || "Failed to fetch Ordenes Provisionales");
     }
     return response.json();
   },
@@ -329,7 +329,7 @@ export const serviciosService = {
       const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      throw new Error(errorBody.message || "Failed to fetch Versiones Fabricacion");
     }
     return response.json();
   },
@@ -345,7 +345,7 @@ export const serviciosService = {
       const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      throw new Error(errorBody.message || "Error al obtener órdenes FERT");
     }
     return response.json();
   },
@@ -391,7 +391,7 @@ export const serviciosService = {
       const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      throw new Error(errorBody.message || "Failed to fetch Tiempos Aprovisionamiento");
     }
     return response.json();
   },
@@ -429,7 +429,7 @@ export const serviciosService = {
       const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      throw new Error(errorBody.message || "Failed to fetch Ordenes Provisionales Alpha");
     }
     return response.json();
   },
