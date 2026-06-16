@@ -53,24 +53,19 @@ interface UnifiedNeedRow {
   peso: number;
   consumoKg: number;
   consumoUn: number;
-  // Stock Almacenes (Kg)
   stock1006: number;
   stock1008: number;
   stock1015: number;
-  // Stock Almacenes (UN)
   stockUN1006: number;
   stockUN1008: number;
   stockUN1015: number;
-  // Datos Looper KPI
   looperPesoUN: number;
   looperDensidad: string;
   looperEspesor: number;
   looperTRolloMin: number;
-  // Datos Bloque Origen (Identificación de Apertura)
   bloqueOrigen: string;
   descripcionBloque: string;
-  apertura: string; // 194.5, 206, 219, 223
-  // Planificación
+  apertura: string;
   porcentajeNecesidad: number;
   planUn: number;
   planKg: number;
@@ -131,7 +126,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [resumenProgress, setResumenProgress] = useState({ current: 0, total: 0 });
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
-  // Prevent hydration error
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -141,7 +135,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     const dates = new Set<string>();
     ordenes.forEach(o => {
       const d = String(o.FECHAINICIO || o.FECHA || o.fecha_inicio || '').trim();
-      if (d && d !== 'null' && d !== 'undefined') {
+      if (d && d !== 'null') {
         const normalized = d.includes('T') ? d.split('T')[0] : d;
         dates.add(normalized);
       }
@@ -183,7 +177,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       setInventarioSAP(invSAP?.data || []);
 
     } catch (e) {
-      console.error('Error init:', e);
+      console.error('Error init TacticalPlanCorteLaminado:', e);
     } finally {
       setIsLoading(false);
     }
@@ -217,15 +211,14 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   }, [ordenes, selectedDate, grupos, restriccionesArray]);
 
   const handleProcessResumen = useCallback(async () => {
-    const ordersToProcess = filteredOrders;
-    if (ordersToProcess.length === 0) {
+    if (filteredOrders.length === 0) {
       setUnifiedNeeds([]);
       return;
     }
     
     setIsProcessingResumen(true);
     const materialGroups = new Map<string, { totalQty: number }>();
-    ordersToProcess.forEach(order => {
+    filteredOrders.forEach(order => {
       const matRaw = String(order.MATERIAL || order.CodMaterial || '').trim();
       const match = matRaw.match(/^(\d+)/);
       const matCode = match ? match[1] : matRaw;
@@ -265,11 +258,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 const dims = parseDimensionsEnhanced(desc);
                 const pesoTeorico = (dims.distancia * dims.altura * dims.espesor * safeNum(dims.densidad)) / 10000;
                 
-                // Lookup en Catálogo Looper
                 const looperMatch = kpiLooperData.find(k => cleanCode(k.Material) === compCode);
                 const finalPeso = looperMatch ? safeNum(looperMatch.PesoUN) : pesoTeorico;
 
-                // Identificación de Apertura desde el Bloque Formulado (Nivel +1)
                 const sourceBlock = rawData.find(row => 
                   cleanCode(row.MATERIAL_PADRE) === compCode && 
                   (row.DESCRIPCION_COMPONENTE || '').toUpperCase().includes('BLOQUE FORMULADO')
@@ -278,7 +269,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 const descBloque = sourceBlock ? String(sourceBlock.DESCRIPCION_COMPONENTE).toUpperCase() : '—';
                 const aperturaId = extractAperture(descBloque);
 
-                // Lookup en Inventarios SAP (Solo Almacenes Críticos)
                 const getStockKg = (alm: string) => {
                   return inventarioSAP
                     .filter(inv => cleanCode(inv.MATERIAL) === compCode && String(inv.ALMACEN).trim() === alm)
@@ -330,7 +320,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         consumoUn: row.peso > 0 ? row.consumoKg / row.peso : 0
       }));
       
-      // Lógica de cálculo de Planificación por Apertura y Densidad
       const groupMap = new Map<string, UnifiedNeedRow[]>();
       finalArray.forEach(row => {
         const k = `${row.apertura}|${row.densidad}`;
@@ -340,7 +329,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       
       groupMap.forEach(items => {
         const totalKgGroup = items.reduce((s, r) => s + r.consumoKg, 0);
-        const targetPlanUn = 40; // Estándar de corrido
+        const targetPlanUn = 40; 
         items.forEach(row => {
           row.porcentajeNecesidad = totalKgGroup > 0 ? (row.consumoKg / totalKgGroup) : 0;
           row.planUn = Math.round(targetPlanUn * row.porcentajeNecesidad);
@@ -428,7 +417,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     });
   }, [inventarioSAP, restriccionesArray]);
 
-  if (!mounted) return null;
+  if (!mounted) {
+    return <div className="p-4 md:p-6 min-h-screen bg-white" />;
+  }
 
   return (
     <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
@@ -569,7 +560,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   ) : groupedNeeds.length === 0 ? (
                     <tr><td colSpan={18} className="py-24 text-slate-200 font-black uppercase tracking-widest text-center italic">Presione el botón "ACTUALIZAR DATOS" para iniciar la auditoría</td></tr>
                   ) : (
-                    groupedNeeds.map((group, gIdx) => {
+                    groupedNeeds.map((group) => {
                       const groupKey = `${group.apertura}|${group.densidad}`;
                       const isExpanded = expandedGroups.has(groupKey);
                       return (
