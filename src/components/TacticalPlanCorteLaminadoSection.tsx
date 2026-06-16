@@ -50,10 +50,14 @@ interface UnifiedNeedRow {
   peso: number;
   consumoKg: number;
   consumoUn: number;
-  // Columnas de stock desde Inventarios SAP
+  // Stock en KG
   stock1006: number;
   stock1008: number;
   stock1015: number;
+  // Stock en UN (Calculado)
+  stockUN1006: number;
+  stockUN1008: number;
+  stockUN1015: number;
   // Datos recuperados de Procesos Looper
   looperPesoUN: number;
   looperDensidad: string;
@@ -249,13 +253,18 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   
                   // Lookup en KPI Looper (Procesos Looper Tab)
                   const looperMatch = kpiLooperData.find(k => cleanCode(k.Material) === compCode);
+                  const finalPeso = looperMatch ? safeNum(looperMatch.PesoUN) : pesoCalculado;
 
                   // Lookup en Inventarios SAP (Inventario Tab) para almacenes 1006, 1008, 1015
-                  const getStock = (alm: string) => {
+                  const getStockKg = (alm: string) => {
                     return inventarioAnioActual
                       .filter(inv => cleanCode(inv.MATERIAL) === compCode && String(inv.ALMACEN).trim() === alm)
                       .reduce((sum, item) => sum + safeNum(item.LIBREUTILIZACION), 0);
                   };
+
+                  const s1006 = getStockKg('1006');
+                  const s1008 = getStockKg('1008');
+                  const s1015 = getStockKg('1015');
 
                   consolidatedMap.set(compCode, {
                     material: compCode,
@@ -264,12 +273,15 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     altura: dims.altura,
                     espesor: dims.espesor,
                     densidad: dims.densidad,
-                    peso: looperMatch ? safeNum(looperMatch.PesoUN) : pesoCalculado,
+                    peso: finalPeso,
                     consumoKg: kgTotal,
                     consumoUn: 0,
-                    stock1006: getStock('1006'),
-                    stock1008: getStock('1008'),
-                    stock1015: getStock('1015'),
+                    stock1006: s1006,
+                    stock1008: s1008,
+                    stock1015: s1015,
+                    stockUN1006: finalPeso > 0 ? s1006 / finalPeso : 0,
+                    stockUN1008: finalPeso > 0 ? s1008 / finalPeso : 0,
+                    stockUN1015: finalPeso > 0 ? s1015 / finalPeso : 0,
                     looperPesoUN: looperMatch ? safeNum(looperMatch.PesoUN) : 0,
                     looperDensidad: looperMatch ? String(looperMatch.Densidad) : '—',
                     looperEspesor: looperMatch ? safeNum(looperMatch.Espesor) : 0,
@@ -321,13 +333,15 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     const map = new Map<string, { 
       densidad: number; altura: number; items: UnifiedNeedRow[]; totalKg: number; totalUn: number;
       total1006: number; total1008: number; total1015: number; totalPlanUn: number; totalPlanKg: number;
+      totalUN1006: number; totalUN1008: number; totalUN1015: number;
     }>();
     unifiedNeeds.forEach(item => {
       const key = `${item.densidad}-${item.altura}`;
       if (!map.has(key)) {
         map.set(key, { 
           densidad: item.densidad, altura: item.altura, items: [], totalKg: 0, totalUn: 0,
-          total1006: 0, total1008: 0, total1015: 0, totalPlanUn: 0, totalPlanKg: 0
+          total1006: 0, total1008: 0, total1015: 0, totalPlanUn: 0, totalPlanKg: 0,
+          totalUN1006: 0, totalUN1008: 0, totalUN1015: 0
         });
       }
       const group = map.get(key)!;
@@ -337,6 +351,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       group.total1006 += item.stock1006;
       group.total1008 += item.stock1008;
       group.total1015 += item.stock1015;
+      group.totalUN1006 += item.stockUN1006;
+      group.totalUN1008 += item.stockUN1008;
+      group.totalUN1015 += item.stockUN1015;
       group.totalPlanUn += item.planUn;
       group.totalPlanKg += item.planKg;
     });
@@ -351,8 +368,11 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       planKg: acc.planKg + row.planKg,
       stock1006: acc.stock1006 + row.stock1006,
       stock1008: acc.stock1008 + row.stock1008,
-      stock1015: acc.stock1015 + row.stock1015
-    }), { kg: 0, un: 0, planUn: 0, planKg: 0, stock1006: 0, stock1008: 0, stock1015: 0 });
+      stock1015: acc.stock1015 + row.stock1015,
+      stockUN1006: acc.stockUN1006 + row.stockUN1006,
+      stockUN1008: acc.stockUN1008 + row.stockUN1008,
+      stockUN1015: acc.stockUN1015 + row.stockUN1015
+    }), { kg: 0, un: 0, planUn: 0, planKg: 0, stock1006: 0, stock1008: 0, stock1015: 0, stockUN1006: 0, stockUN1008: 0, stockUN1015: 0 });
   }, [unifiedNeeds]);
 
   const densityBreakdown = useMemo(() => {
@@ -504,9 +524,12 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     <th className="px-2 py-4 border-r border-black/5 bg-indigo-50/50">Dens.</th>
                     <th className="px-2 py-4 border-r border-black/5 bg-indigo-50/50">Esp.</th>
                     <th className="px-2 py-4 border-r border-black/5 bg-indigo-50/50">T. Rollo (Min)</th>
-                    <th className="px-3 py-4 border-r border-black/5 bg-blue-50/50">Stock 1006</th>
-                    <th className="px-3 py-4 border-r border-black/5 bg-blue-50/50">Stock 1008</th>
-                    <th className="px-3 py-4 border-r border-black/5 bg-blue-50/50">Stock 1015</th>
+                    <th className="px-3 py-4 border-r border-black/5 bg-blue-50/50">Stock 1006 (Kg)</th>
+                    <th className="px-2 py-4 border-r border-black/5 bg-cyan-50/50 text-cyan-800">UN 1006</th>
+                    <th className="px-3 py-4 border-r border-black/5 bg-blue-50/50">Stock 1008 (Kg)</th>
+                    <th className="px-2 py-4 border-r border-black/5 bg-cyan-50/50 text-cyan-800">UN 1008</th>
+                    <th className="px-3 py-4 border-r border-black/5 bg-blue-50/50">Stock 1015 (Kg)</th>
+                    <th className="px-2 py-4 border-r border-black/5 bg-cyan-50/50 text-cyan-800">UN 1015</th>
                     <th className="px-4 py-4 border-r border-black/5 text-right bg-orange-100/30">Consumo OF [Kg]</th>
                     <th className="px-6 py-4 border-r border-black/5 bg-[#cfe2f3]">Peso Teor. (Kg)</th>
                     <th className="px-4 py-4 border-r border-black/5 text-center">% Nec.</th>
@@ -517,13 +540,13 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 <tbody className="divide-y divide-gray-100 font-bold">
                   {isProcessingResumen ? (
                     <tr>
-                      <td colSpan={14} className="py-20 text-center">
+                      <td colSpan={17} className="py-20 text-center">
                         <Loader2 className="w-8 h-8 animate-spin mx-auto text-indigo-500 mb-3" />
                         <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Ejecutando Explosión Técnica BOM: {resumenProgress.current} / {resumenProgress.total}</p>
                       </td>
                     </tr>
                   ) : groupedNeeds.length === 0 ? (
-                    <tr><td colSpan={14} className="py-24 text-slate-200 font-black uppercase tracking-widest text-center italic">Presione el botón "ACTUALIZAR DATOS" para iniciar la auditoría</td></tr>
+                    <tr><td colSpan={17} className="py-24 text-slate-200 font-black uppercase tracking-widest text-center italic">Presione el botón "ACTUALIZAR DATOS" para iniciar la auditoría</td></tr>
                   ) : (
                     groupedNeeds.map((group, gIdx) => {
                       const groupKey = `${group.densidad}-${group.altura}`;
@@ -538,8 +561,11 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                             <td className="px-6 py-4 text-left text-indigo-900 font-black uppercase">Subtotal Corrida</td>
                             <td colSpan={4} className="bg-indigo-50/20"></td>
                             <td className="px-3 py-4 text-slate-400 font-mono">{(group.total1006).toLocaleString()}</td>
+                            <td className="px-2 py-4 text-cyan-600/50 font-mono">{(group.totalUN1006).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
                             <td className="px-3 py-4 text-slate-400 font-mono">{(group.total1008).toLocaleString()}</td>
+                            <td className="px-2 py-4 text-cyan-600/50 font-mono">{(group.totalUN1008).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
                             <td className="px-3 py-4 text-slate-400 font-mono">{(group.total1015).toLocaleString()}</td>
+                            <td className="px-2 py-4 text-cyan-600/50 font-mono">{(group.totalUN1015).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
                             <td className="px-4 py-4 text-right font-mono font-black text-indigo-900 bg-indigo-50/50">{group.totalKg.toLocaleString(undefined, { minimumFractionDigits: 1 })}</td>
                             <td className="px-6 py-4 bg-[#cfe2f3]/30 font-mono text-slate-300">—</td>
                             <td className="px-4 py-4 text-center font-black text-indigo-300">100%</td>
@@ -554,9 +580,12 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                               <td className="px-2 py-3 border-r border-gray-100 font-bold text-indigo-900 bg-indigo-50/10">{item.looperDensidad}</td>
                               <td className="px-2 py-3 border-r border-gray-100 font-mono text-indigo-900 bg-indigo-50/10">{item.looperEspesor || '—'}</td>
                               <td className="px-2 py-3 border-r border-gray-100 font-mono font-black text-indigo-900 bg-indigo-50/10">{item.looperTRolloMin || '—'}</td>
-                              <td className="px-3 py-3 border-r border-gray-100 font-mono text-slate-400">{item.stock1006 || '—'}</td>
-                              <td className="px-3 py-3 border-r border-gray-100 font-mono text-slate-400">{item.stock1008 || '—'}</td>
-                              <td className="px-3 py-3 border-r border-gray-100 font-mono text-slate-400">{item.stock1015 || '—'}</td>
+                              <td className="px-3 py-3 border-r border-gray-100 font-mono text-slate-400">{item.stock1006 > 0 ? item.stock1006.toLocaleString() : '—'}</td>
+                              <td className="px-2 py-3 border-r border-gray-100 font-mono text-cyan-600 bg-cyan-50/10">{item.stockUN1006 > 0 ? Math.round(item.stockUN1006).toLocaleString() : '—'}</td>
+                              <td className="px-3 py-3 border-r border-gray-100 font-mono text-slate-400">{item.stock1008 > 0 ? item.stock1008.toLocaleString() : '—'}</td>
+                              <td className="px-2 py-3 border-r border-gray-100 font-mono text-cyan-600 bg-cyan-50/10">{item.stockUN1008 > 0 ? Math.round(item.stockUN1008).toLocaleString() : '—'}</td>
+                              <td className="px-3 py-3 border-r border-gray-100 font-mono text-slate-400">{item.stock1015 > 0 ? item.stock1015.toLocaleString() : '—'}</td>
+                              <td className="px-2 py-3 border-r border-gray-100 font-mono text-cyan-600 bg-cyan-50/10">{item.stockUN1015 > 0 ? Math.round(item.stockUN1015).toLocaleString() : '—'}</td>
                               <td className="px-4 py-3 border-r border-gray-100 text-right font-mono font-bold text-indigo-400">{item.consumoKg.toLocaleString(undefined, { minimumFractionDigits: 1 })}</td>
                               <td className="px-6 py-3 border-r border-gray-100 bg-[#cfe2f3] font-mono font-black text-indigo-700">{item.peso.toFixed(2)}</td>
                               <td className="px-4 py-3 border-r border-black/10 text-center font-black text-slate-300">{(item.porcentajeNecesidad * 100).toFixed(0)}%</td>
