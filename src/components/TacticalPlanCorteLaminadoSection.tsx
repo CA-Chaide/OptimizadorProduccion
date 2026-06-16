@@ -370,6 +370,21 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return [...Array(padding).fill(null), ...days];
   }, [viewDate, mounted]);
 
+  // FILTRADO DINÁMICO DE INVENTARIOS POR RESTRICCIÓN ALmacen_Consumo
+  const filteredInventario = useMemo(() => {
+    const allowedAlmacenes = restriccionesArray
+      .filter(r => r.nombre_restriccion === 'ALmacen_Consumo')
+      .flatMap(r => r.valor_restriccion.split(/[&,]/).map(v => v.trim()))
+      .filter(v => v !== '');
+
+    if (allowedAlmacenes.length === 0) return inventarioAnioActual;
+
+    return inventarioAnioActual.filter(row => {
+      const alm = String(row.ALMACEN || '').trim();
+      return allowedAlmacenes.includes(alm);
+    });
+  }, [inventarioAnioActual, restriccionesArray]);
+
   if (!mounted) return null;
 
   return (
@@ -524,18 +539,18 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                             <td className="px-4 py-4 text-right font-mono font-black text-red-900 bg-[#fee2e2]/50">{group.totalPlanUn.toLocaleString()}</td>
                             <td className="px-4 py-4 text-right font-mono font-black text-red-900 bg-[#fee2e2]/50">{group.totalPlanKg.toLocaleString(undefined, { minimumFractionDigits: 1 })}</td>
                           </tr>
-                          {isExpanded && group.items.map((row, iIdx) => (
+                          {isExpanded && group.items.map((item, iIdx) => (
                             <tr key={`${groupKey}-${iIdx}`} className="bg-white hover:bg-blue-50/10 transition-colors">
-                              <td className="px-4 py-3 border-r border-gray-100 font-mono text-indigo-600 text-left pl-8">{row.material}</td>
-                              <td className="px-6 py-3 border-r border-gray-100 text-left text-gray-400 uppercase leading-tight italic text-[10px] truncate max-w-[250px]">{row.descripcion}</td>
-                              <td className="px-3 py-3 border-r border-gray-100 font-mono text-slate-400">{row.stock1006 || '—'}</td>
-                              <td className="px-3 py-3 border-r border-gray-100 font-mono text-slate-400">{row.stock1008 || '—'}</td>
-                              <td className="px-4 py-3 border-r border-gray-100 text-right font-mono font-bold text-indigo-400">{row.consumoKg.toLocaleString(undefined, { minimumFractionDigits: 1 })}</td>
-                              <td className="px-4 py-3 border-r border-gray-100 text-right font-mono font-bold text-emerald-400">{Math.round(row.consumoUn).toLocaleString()}</td>
-                              <td className="px-6 py-3 border-r border-gray-100 bg-[#cfe2f3] font-mono font-black text-indigo-700">{row.peso.toFixed(2)}</td>
-                              <td className="px-4 py-3 border-r border-black/10 text-center font-black text-slate-300">{(row.porcentajeNecesidad * 100).toFixed(0)}%</td>
-                              <td className="px-4 py-3 border-r border-black/10 text-right font-mono font-black text-red-500 bg-[#fee2e2]/20">{row.planUn.toLocaleString()}</td>
-                              <td className="px-4 py-3 text-right font-mono font-black text-red-500 bg-[#fee2e2]/20">{row.planKg.toLocaleString(undefined, { minimumFractionDigits: 1 })}</td>
+                              <td className="px-4 py-3 border-r border-gray-100 font-mono text-indigo-600 text-left pl-8">{item.material}</td>
+                              <td className="px-6 py-3 border-r border-gray-100 text-left text-gray-400 uppercase leading-tight italic text-[10px] truncate max-w-[250px]">{item.descripcion}</td>
+                              <td className="px-3 py-3 border-r border-gray-100 font-mono text-slate-400">{item.stock1006 || '—'}</td>
+                              <td className="px-3 py-3 border-r border-gray-100 font-mono text-slate-400">{item.stock1008 || '—'}</td>
+                              <td className="px-4 py-3 border-r border-gray-100 text-right font-mono font-bold text-indigo-400">{item.consumoKg.toLocaleString(undefined, { minimumFractionDigits: 1 })}</td>
+                              <td className="px-4 py-3 border-r border-gray-100 text-right font-mono font-bold text-emerald-400">{Math.round(item.consumoUn).toLocaleString()}</td>
+                              <td className="px-6 py-3 border-r border-gray-100 bg-[#cfe2f3] font-mono font-black text-indigo-700">{item.peso.toFixed(2)}</td>
+                              <td className="px-4 py-3 border-r border-black/10 text-center font-black text-slate-300">{(item.porcentajeNecesidad * 100).toFixed(0)}%</td>
+                              <td className="px-4 py-3 border-r border-black/10 text-right font-mono font-black text-red-500 bg-[#fee2e2]/20">{item.planUn.toLocaleString()}</td>
+                              <td className="px-4 py-3 text-right font-mono font-black text-red-500 bg-[#fee2e2]/20">{item.planKg.toLocaleString(undefined, { minimumFractionDigits: 1 })}</td>
                             </tr>
                           ))}
                         </React.Fragment>
@@ -663,9 +678,18 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
         <TabsContent value="inventario" className="animate-in fade-in duration-300 space-y-10 text-left">
           <div className="space-y-4">
-            <div className="flex items-center gap-3 px-2 text-left">
-              <div className="p-2 bg-blue-600 rounded-xl text-white shadow-lg"><Database className="w-4 h-4" /></div>
-              <h3 className="text-sm font-black uppercase tracking-widest text-slate-800">Inventario SAP Año Actual (Audit)</h3>
+            <div className="flex items-center justify-between px-2">
+              <div className="flex items-center gap-3 text-left">
+                <div className="p-2 bg-blue-600 rounded-xl text-white shadow-lg"><Database className="w-4 h-4" /></div>
+                <h3 className="text-sm font-black uppercase tracking-widest text-slate-800">Inventario SAP Año Actual (Filtrado por Almacén Consumo)</h3>
+              </div>
+              <div className="flex gap-2">
+                {restriccionesArray.filter(r => r.nombre_restriccion === 'ALmacen_Consumo').map((r, ri) => (
+                  <Badge key={ri} variant="outline" className="text-[10px] font-black bg-blue-50 text-blue-700 border-blue-200 px-3 py-1 rounded-lg">
+                    Ruta Consumo: {r.valor_restriccion}
+                  </Badge>
+                ))}
+              </div>
             </div>
             <Card className="rounded-3xl border border-blue-100 shadow-xl overflow-hidden bg-white">
               <div className="overflow-x-auto max-h-[600px] relative">
@@ -675,7 +699,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                       <th className="px-4 py-5 border-r border-white/5">Material</th>
                       <th className="px-6 py-5 border-r border-white/5 text-left">Nombre</th>
                       <th className="px-3 py-5 border-r border-white/5">Centro</th>
-                      <th className="px-3 py-5 border-r border-white/5">Alm.</th>
+                      <th className="px-3 py-5 border-r border-white/5 text-indigo-300">ALM.</th>
                       <th className="px-3 py-5 border-r border-white/5">Año/Mes</th>
                       <th className="px-3 py-5 border-r border-white/5 bg-green-500/30 text-green-300">Libre Utiliz.</th>
                       <th className="px-3 py-5 border-r border-white/5 bg-blue-500/30 text-blue-200">En Traslado</th>
@@ -686,15 +710,15 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 text-[11px] font-black">
-                    {inventarioAnioActual.length === 0 ? (
-                      <tr><td colSpan={11} className="py-24 text-slate-200 font-black uppercase tracking-widest text-center italic">Consultando inventarios 2026 desde SAP...</td></tr>
+                    {filteredInventario.length === 0 ? (
+                      <tr><td colSpan={11} className="py-24 text-slate-200 font-black uppercase tracking-widest text-center italic">No se encontraron materiales en los almacenes de consumo configurados</td></tr>
                     ) : (
-                      inventarioAnioActual.map((row, i) => (
+                      filteredInventario.map((row, i) => (
                         <tr key={i} className="hover:bg-blue-50/30 transition-colors">
                           <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-blue-600">{cleanCode(row.MATERIAL)}</td>
                           <td className="px-6 py-3 border-r border-dashed border-gray-100 text-left uppercase text-slate-600 truncate max-w-[200px]" title={row.NOMBRE}>{row.NOMBRE || '—'}</td>
                           <td className="px-3 py-3 border-r border-dashed border-gray-100">{row.CENTRO}</td>
-                          <td className="px-3 py-3 border-r border-dashed border-gray-100">{row.ALMACEN}</td>
+                          <td className="px-3 py-3 border-r border-dashed border-gray-100 text-indigo-700 font-black bg-indigo-50/30">{row.ALMACEN}</td>
                           <td className="px-3 py-3 border-r border-dashed border-gray-100 font-mono text-slate-400">{row.ANIO}/{row.MES}</td>
                           <td className="px-3 py-3 border-r border-dashed border-gray-100 font-mono text-green-700 bg-green-50/30">{Number(row.LIBREUTILIZACION || 0).toLocaleString()}</td>
                           <td className="px-3 py-3 border-r border-dashed border-gray-100 font-mono text-blue-700 bg-blue-50/30">{Number(row.ENTRASLADO || 0).toLocaleString()}</td>
