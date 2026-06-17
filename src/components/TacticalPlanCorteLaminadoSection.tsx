@@ -69,6 +69,7 @@ interface UnifiedNeedRow {
   porcentajeNecesidad: number;
   planUn: number;
   planKg: number;
+  tProceso: number;
 }
 
 const safeNum = (val: any): number => {
@@ -106,6 +107,29 @@ const extractAperture = (desc: string): string => {
   // Aperturas actualizadas: 194.5, 206, 219, 228
   const match = d.match(/(194\.5|206|219|228)/);
   return match ? match[0] : '—';
+};
+
+const getDensityColor = (dens: string) => {
+  const d = dens.toLowerCase().replace('d', '');
+  switch (d) {
+    case '15': return 'border-l-blue-500 bg-blue-50/40 text-blue-900';
+    case '18': return 'border-l-emerald-500 bg-emerald-50/40 text-emerald-900';
+    case '20': return 'border-l-purple-500 bg-purple-50/40 text-purple-900';
+    case '23': return 'border-l-amber-500 bg-amber-50/40 text-amber-900';
+    case '25': return 'border-l-pink-500 bg-pink-50/40 text-pink-900';
+    case '26': return 'border-l-teal-500 bg-teal-50/40 text-teal-900';
+    case '30': return 'border-l-orange-500 bg-orange-50/40 text-orange-900';
+    case '40': return 'border-l-indigo-500 bg-indigo-50/40 text-indigo-900';
+    default: return 'border-l-slate-500 bg-slate-50/40 text-slate-900';
+  }
+};
+
+const formatNum = (val: any, decimals: number = 2): string => {
+  const n = safeNum(val);
+  return n.toLocaleString(undefined, { 
+    minimumFractionDigits: decimals, 
+    maximumFractionDigits: decimals 
+  });
 };
 
 export const TacticalPlanCorteLaminadoSection: React.FC = () => {
@@ -307,7 +331,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   apertura: aperturaId,
                   porcentajeNecesidad: 0,
                   planUn: 0,
-                  planKg: 0
+                  planKg: 0,
+                  tProceso: 0
                 });
               }
             });
@@ -337,6 +362,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           row.porcentajeNecesidad = totalKgGroup > 0 ? (row.consumoKg / totalKgGroup) : 0;
           row.planUn = Math.round(targetPlanUn * row.porcentajeNecesidad);
           row.planKg = row.planUn * row.peso;
+          row.tProceso = (row.looperTRolloMin || 0) * row.planKg;
         });
       });
 
@@ -351,7 +377,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     const map = new Map<string, { 
       densidad: string; apertura: string; items: UnifiedNeedRow[]; totalKg: number; totalUn: number;
       total1006: number; total1008: number; total1015: number; totalPlanUn: number; totalPlanKg: number;
-      totalUN1006: number; totalUN1008: number; totalUN1015: number;
+      totalUN1006: number; totalUN1008: number; totalUN1015: number; totalTProceso: number;
     }>();
     unifiedNeeds.forEach(item => {
       const key = `${item.apertura}|${item.densidad}`;
@@ -359,7 +385,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         map.set(key, { 
           densidad: item.densidad, apertura: item.apertura, items: [], totalKg: 0, totalUn: 0,
           total1006: 0, total1008: 0, total1015: 0, totalPlanUn: 0, totalPlanKg: 0,
-          totalUN1006: 0, totalUN1008: 0, totalUN1015: 0
+          totalUN1006: 0, totalUN1008: 0, totalUN1015: 0, totalTProceso: 0
         });
       }
       const group = map.get(key)!;
@@ -374,6 +400,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       group.totalUN1015 += item.stockUN1015;
       group.totalPlanUn += item.planUn;
       group.totalPlanKg += item.planKg;
+      group.totalTProceso += item.tProceso;
     });
     return Array.from(map.values()).sort((a, b) => b.totalKg - a.totalKg);
   }, [unifiedNeeds]);
@@ -389,8 +416,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       stock1015: acc.stock1015 + row.stock1015,
       stockUN1006: acc.stockUN1006 + row.stockUN1006,
       stockUN1008: acc.stockUN1008 + row.stockUN1008,
-      stockUN1015: acc.stockUN1015 + row.stockUN1015
-    }), { kg: 0, un: 0, planUn: 0, planKg: 0, stock1006: 0, stock1008: 0, stock1015: 0, stockUN1006: 0, stockUN1008: 0, stockUN1015: 0 });
+      stockUN1015: acc.stockUN1015 + row.stockUN1015,
+      tProceso: acc.tProceso + row.tProceso
+    }), { kg: 0, un: 0, planUn: 0, planKg: 0, stock1006: 0, stock1008: 0, stock1015: 0, stockUN1006: 0, stockUN1008: 0, stockUN1015: 0, tProceso: 0 });
   }, [unifiedNeeds]);
 
   const densityBreakdown = useMemo(() => {
@@ -460,7 +488,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   <h3 className="text-xs font-black text-slate-800 capitalize">{viewDate ? format(viewDate, 'MMMM yyyy', { locale: es }) : '—'}</h3>
                   <div className="flex gap-1 bg-slate-50 p-1 rounded-xl">
                     <Button variant="ghost" size="icon" onClick={() => setViewDate(prev => prev ? subMonths(prev, 1) : null)} className="h-8 w-8 hover:bg-white hover:shadow-sm"><ChevronLeft className="w-4 h-4" /></Button>
-                    <Button variant="ghost" size="icon" onClick={() => setViewDate(addMonths(viewDate, 1))} className="h-8 w-8 hover:bg-white hover:shadow-sm"><ChevronRight className="w-4 h-4" /></Button>
+                    <Button variant="ghost" size="icon" onClick={() => setViewDate(addMonths(viewDate!, 1))} className="h-8 w-8 hover:bg-white hover:shadow-sm"><ChevronRight className="w-4 h-4" /></Button>
                   </div>
                 </div>
                 <div className="grid grid-cols-7 gap-y-1.5 text-center mb-4">
@@ -550,32 +578,39 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     <th className="px-6 py-4 border-r border-black/5 bg-[#cfe2f3]">Peso Teor. (Kg)</th>
                     <th className="px-4 py-4 border-r border-black/5 text-center">% Nec.</th>
                     <th className="px-4 py-4 border-r border-black/5 text-right font-black bg-[#fee2e2] text-red-900">PLAN (UN)</th>
-                    <th className="px-4 py-4 text-right font-black bg-[#fee2e2] text-red-900">PLAN (KG)</th>
+                    <th className="px-4 py-4 border-r border-black/5 text-right font-black bg-[#fee2e2] text-red-900">PLAN (KG)</th>
+                    <th className="px-4 py-4 text-right font-black bg-indigo-900 text-white">T. PROCESO (Min)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 font-bold">
                   {isProcessingResumen ? (
                     <tr>
-                      <td colSpan={17} className="py-20 text-center">
+                      <td colSpan={18} className="py-20 text-center">
                         <Loader2 className="w-8 h-8 animate-spin mx-auto text-indigo-500 mb-3" />
                         <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Ejecutando Explosión Técnica BOM: {resumenProgress.current} / {resumenProgress.total}</p>
                       </td>
                     </tr>
                   ) : groupedNeeds.length === 0 ? (
-                    <tr><td colSpan={17} className="py-24 text-slate-200 font-black uppercase tracking-widest text-center italic">Presione el botón "ACTUALIZAR DATOS" para iniciar la auditoría</td></tr>
+                    <tr><td colSpan={18} className="py-24 text-slate-200 font-black uppercase tracking-widest text-center italic">Presione el botón "ACTUALIZAR DATOS" para iniciar la auditoría</td></tr>
                   ) : (
                     groupedNeeds.map((group) => {
                       const groupKey = `${group.apertura}|${group.densidad}`;
                       const isExpanded = expandedGroups.has(groupKey);
                       return (
                         <React.Fragment key={groupKey}>
-                          <tr className="bg-slate-50/80 hover:bg-slate-100 cursor-pointer transition-all border-l-4 border-l-red-500" onClick={() => toggleGroup(groupKey)}>
+                          <tr 
+                            className={cn(
+                              "hover:brightness-95 cursor-pointer transition-all border-l-4",
+                              getDensityColor(group.densidad)
+                            )}
+                            onClick={() => toggleGroup(groupKey)}
+                          >
                             <td className="px-4 py-4 flex items-center gap-2 text-left">
                                {isExpanded ? <Minus className="w-3 h-3 text-red-500" /> : <Plus className="w-3 h-3 text-indigo-500" />}
-                               <span className="font-black text-[10px] text-slate-400 uppercase tracking-widest">CORRIDA TÉCNICA: Apertura {group.apertura} - D{group.densidad}</span>
+                               <span className="font-black text-[10px] uppercase tracking-widest opacity-70">Corrida_Tecnica {group.apertura} - d{group.densidad}</span>
                             </td>
                             <td className="px-6 py-4 text-left text-indigo-900 font-black uppercase">Subtotal Corrida</td>
-                            <td colSpan={4} className="bg-indigo-50/20"></td>
+                            <td colSpan={4} className="bg-indigo-50/10"></td>
                             <td className="px-3 py-4 text-slate-400 font-mono">{(group.total1006).toLocaleString()}</td>
                             <td className="px-2 py-4 text-cyan-600/50 font-mono">{(group.totalUN1006).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
                             <td className="px-3 py-4 text-slate-400 font-mono">{(group.total1008).toLocaleString()}</td>
@@ -587,6 +622,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                             <td className="px-4 py-4 text-center font-black text-indigo-300">100%</td>
                             <td className="px-4 py-4 text-right font-mono font-black text-red-900 bg-[#fee2e2]/50">{group.totalPlanUn.toLocaleString()}</td>
                             <td className="px-4 py-4 text-right font-mono font-black text-red-900 bg-[#fee2e2]/50">{group.totalPlanKg.toLocaleString(undefined, { minimumFractionDigits: 1 })}</td>
+                            <td className="px-4 py-4 text-right font-mono font-black text-indigo-900 bg-indigo-100/50">{formatNum(group.totalTProceso, 1)}</td>
                           </tr>
                           {isExpanded && group.items.map((item, iIdx) => (
                             <tr key={`${groupKey}-${iIdx}`} className="bg-white hover:bg-blue-50/10 transition-colors">
@@ -606,7 +642,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                               <td className="px-6 py-3 border-r border-gray-100 bg-[#cfe2f3] font-mono font-black text-indigo-700">{item.peso.toFixed(2)}</td>
                               <td className="px-4 py-3 border-r border-black/10 text-center font-black text-slate-300">{(item.porcentajeNecesidad * 100).toFixed(0)}%</td>
                               <td className="px-4 py-3 border-r border-black/10 text-right font-mono font-black text-red-500 bg-[#fee2e2]/20">{item.planUn.toLocaleString()}</td>
-                              <td className="px-4 py-3 text-right font-mono font-black text-red-500 bg-[#fee2e2]/20">{item.planKg.toLocaleString(undefined, { minimumFractionDigits: 1 })}</td>
+                              <td className="px-4 py-3 border-r border-black/10 text-right font-mono font-black text-red-500 bg-[#fee2e2]/20">{item.planKg.toLocaleString(undefined, { minimumFractionDigits: 1 })}</td>
+                              <td className="px-4 py-3 text-right font-mono font-black text-indigo-600 bg-indigo-50/30">{formatNum(item.tProceso, 1)}</td>
                             </tr>
                           ))}
                         </React.Fragment>
