@@ -24,7 +24,6 @@ export const MaterialesBrutosTab: React.FC = () => {
     const [currentPage, setCurrentPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(ROWS_PER_PAGE_OPTIONS[1]); 
     const [totalRecords, setTotalRecords] = useState(0);
-    const [loadedBlocks, setLoadedBlocks] = useState<Set<number>>(new Set());
 
     // Refs para scrollbar doble
     const topScrollRef = useRef<HTMLDivElement>(null);
@@ -107,6 +106,15 @@ export const MaterialesBrutosTab: React.FC = () => {
         }
     };
 
+    // Filtrado local por FERT_PRINCIPAL
+    const filteredRows = useMemo(() => {
+        if (!searchTerm.trim()) return allData;
+        const term = searchTerm.toLowerCase();
+        return allData.filter(r => 
+            String(r.FERT_PRINCIPAL || '').toLowerCase().includes(term)
+        );
+    }, [allData, searchTerm]);
+
     return (
         <div className="space-y-4">
             <div className="flex flex-col md:flex-row gap-4 items-center justify-between bg-white p-4 rounded-lg shadow-sm border">
@@ -114,8 +122,8 @@ export const MaterialesBrutosTab: React.FC = () => {
                   <div className="relative w-full md:w-80">
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                       <Input 
-                          placeholder="Filtro rápido (en página actual)..." 
-                          className="pl-10 h-9"
+                          placeholder="Buscar por FERT_PRINCIPAL..." 
+                          className="pl-10 h-10"
                           value={searchTerm}
                           onChange={(e) => setSearchTerm(e.target.value)}
                       />
@@ -123,7 +131,7 @@ export const MaterialesBrutosTab: React.FC = () => {
                   {isLoading && (
                       <div className="flex items-center gap-2 text-xs text-blue-600 animate-pulse">
                           <Loader2 className="h-3 w-3 animate-spin" />
-                          Consultando batch...
+                          Consultando base de datos...
                       </div>
                   )}
                 </div>
@@ -131,6 +139,7 @@ export const MaterialesBrutosTab: React.FC = () => {
 
             {allData.length > 0 ? (
                 <>
+                    {/* Barra de desplazamiento superior sincronizada */}
                     <div ref={topScrollRef} onScroll={handleTopScroll} className="overflow-x-auto overflow-y-hidden h-[18px]">
                         <div style={{ width: `${tableWidth}px`, height: '1px' }}></div>
                     </div>
@@ -147,7 +156,7 @@ export const MaterialesBrutosTab: React.FC = () => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
-                                {allData.filter(r => !searchTerm || Object.values(r).some(v => String(v).toLowerCase().includes(searchTerm.toLowerCase()))).map((row, idx) => (
+                                {filteredRows.map((row, idx) => (
                                     <tr key={idx} className="hover:bg-gray-50 transition-colors">
                                         {columns.map((col, cIdx) => (
                                           <TableCell key={`${idx}-${cIdx}`} className="px-4 py-2 text-center border-r border-dashed border-gray-200 last:border-r-0 whitespace-nowrap">
@@ -156,6 +165,13 @@ export const MaterialesBrutosTab: React.FC = () => {
                                         ))}
                                     </tr>
                                 ))}
+                                {filteredRows.length === 0 && (
+                                    <tr>
+                                        <td colSpan={columns.length} className="py-10 text-center text-gray-500 italic">
+                                            No se encontraron coincidencias para "{searchTerm}" en esta página.
+                                        </td>
+                                    </tr>
+                                )}
                             </tbody>
                         </table>
                     </div>
