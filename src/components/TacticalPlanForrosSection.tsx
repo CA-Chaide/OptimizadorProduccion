@@ -18,7 +18,8 @@ import {
   Moon,
   PackageSearch,
   SearchCode,
-  Database
+  Database,
+  Filter
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -328,6 +329,46 @@ export const TacticalPlanForrosSection: React.FC = () => {
       return name.includes('FORRO') || name.includes('CHN') || name.includes('BASE') || name.includes('BANDA') || name.includes('ACOLCHADO') || name.includes('TAPAS') || name.includes('MODULAR') || name.includes('TAPA');
     });
   }, [grupos]);
+
+  // Extraer códigos de RESPCONTROLPROD permitidos desde restricciones de Forros
+  const allowedRespCodes = useMemo(() => {
+    const codes = new Set<string>();
+    const forroGroupCodes = new Set(forrosGruposList.map(g => g.codigo_grupo));
+    
+    restricciones.forEach(r => {
+      if (forroGroupCodes.has(r.codigo_grupo)) {
+        const normName = r.nombre_restriccion.toUpperCase().trim();
+        if (normName === 'RESPCTRLPROD' || normName === 'RESP_CTRL_PROD') {
+          // El separador es '&'
+          const values = r.valor_restriccion.split('&');
+          values.forEach(v => {
+            const clean = v.trim().replace(/^0+/, ''); // Normalizar quitando ceros a la izquierda
+            if (clean) codes.add(clean);
+          });
+        }
+      }
+    });
+    
+    return Array.from(codes);
+  }, [restricciones, forrosGruposList]);
+
+  // Filtrado de Órdenes Previsionales basado en allowedRespCodes
+  const filteredOrdenesPrevisionales = useMemo(() => {
+    if (allowedRespCodes.length === 0) return ordenesPrevisionalesData;
+
+    return ordenesPrevisionalesData.filter(order => {
+      // Buscar el campo de responsable de forma flexible
+      const respField = Object.keys(order).find(k => {
+        const uk = k.toUpperCase();
+        return uk === 'RESPCONTROLPROD' || uk === 'RESP_CTRL_PROD' || uk === 'RESPONSABLE' || uk === 'RESP';
+      });
+
+      if (!respField) return true;
+
+      const orderResp = String(order[respField] || '').trim().replace(/^0+/, '');
+      return allowedRespCodes.includes(orderResp);
+    });
+  }, [ordenesPrevisionalesData, allowedRespCodes]);
 
   const fetchTiemposProduccion = useCallback(async () => {
     if (forrosGruposList.length === 0) return;
@@ -720,7 +761,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       {ordenesFert.map((order, i) => (
                         <tr key={i} className="hover:bg-slate-50 transition-colors text-[10px]">
                           {Object.values(order).map((val: any, j) => (
-                            <td key={j} className="px-6 py-4 font-medium text-slate-600">
+                            <td key={j} className="px-6 py-4 font-medium text-slate-600 whitespace-normal break-words leading-tight min-w-[150px]">
                               {val === null || val === undefined ? '—' : String(val)}
                             </td>
                           ))}
@@ -742,10 +783,31 @@ export const TacticalPlanForrosSection: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <CardTitle className="text-2xl font-black text-slate-900 uppercase">Órdenes Previsionales</CardTitle>
-                  <CardDescription className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-1">Listado completo de órdenes sin filtros aplicados</CardDescription>
+                  <CardDescription className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-1">Órdenes filtradas por RESP_CTRL_PROD de Forros</CardDescription>
                 </div>
                 <div className="bg-sky-600 p-3 rounded-2xl text-white shadow-lg shadow-sky-500/20">
                   <SearchCode className="w-6 h-6" />
+                </div>
+              </div>
+              
+              {/* Sección de filtros aplicados */}
+              <div className="mt-6 flex flex-wrap items-center gap-3 p-4 bg-white border border-slate-200 rounded-2xl shadow-sm">
+                <div className="flex items-center gap-2 text-xs font-black text-slate-400 uppercase tracking-widest">
+                  <Filter className="w-4 h-4 text-indigo-600" /> Filtros Activos (RESP):
+                </div>
+                {allowedRespCodes.length > 0 ? (
+                  allowedRespCodes.map(code => (
+                    <Badge key={code} className="bg-indigo-50 text-indigo-700 border-indigo-200 font-mono text-[10px] font-black py-1 px-3 rounded-lg">
+                      {code}
+                    </Badge>
+                  ))
+                ) : (
+                  <Badge variant="outline" className="text-slate-400 font-bold uppercase text-[9px] px-3 py-1 rounded-lg">
+                    Sin restricciones (Mostrando Todo)
+                  </Badge>
+                )}
+                <div className="ml-auto text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                  Registros: <span className="text-indigo-600">{filteredOrdenesPrevisionales.length}</span>
                 </div>
               </div>
             </CardHeader>
@@ -754,22 +816,22 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 {isLoadingPrevisionales ? (
                   <div className="flex items-center justify-center py-24">
                     <Loader2 className="w-10 h-10 animate-spin text-indigo-500" />
-                    <span className="ml-4 text-slate-500 font-black uppercase tracking-widest text-xs">Consultando órdenes previsionales...</span>
+                    <span className="ml-4 text-slate-500 font-black uppercase tracking-widest text-xs">Filtrando órdenes...</span>
                   </div>
-                ) : ordenesPrevisionalesData.length > 0 ? (
+                ) : filteredOrdenesPrevisionales.length > 0 ? (
                   <table className="w-full text-[11px] border-collapse">
                     <thead className="bg-slate-900 sticky top-0 z-10 text-white text-left uppercase tracking-widest font-black">
                       <tr>
-                        {Object.keys(ordenesPrevisionalesData[0]).map((key) => (
+                        {Object.keys(filteredOrdenesPrevisionales[0]).map((key) => (
                           <th key={key} className="px-6 py-4 whitespace-nowrap text-[10px] uppercase font-bold text-slate-300">{key}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {ordenesPrevisionalesData.map((item, i) => (
+                      {filteredOrdenesPrevisionales.map((item, i) => (
                         <tr key={i} className="hover:bg-slate-50 transition-colors text-[10px]">
                           {Object.values(item).map((val: any, j) => (
-                            <td key={j} className="px-6 py-4 font-medium text-slate-600 whitespace-nowrap">
+                            <td key={j} className="px-6 py-4 font-medium text-slate-600 whitespace-normal break-words leading-tight min-w-[150px]">
                               {val === null || val === undefined ? '—' : String(val)}
                             </td>
                           ))}
@@ -778,7 +840,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     </tbody>
                   </table>
                 ) : (
-                  <div className="py-24 text-center text-slate-400 uppercase font-black tracking-widest text-xs opacity-40">No se encontraron registros</div>
+                  <div className="py-24 text-center text-slate-400 uppercase font-black tracking-widest text-xs opacity-40">No se encontraron órdenes para los códigos de responsabilidad aplicados</div>
                 )}
               </div>
             </CardContent>
@@ -938,7 +1000,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                           <td className="px-6 py-4 text-right font-mono font-black text-indigo-600 bg-indigo-50/30">
                             {Number(t.TPromedio || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </td>
-                          <td className="px-6 py-4 font-black text-slate-800 uppercase whitespace-nowrap">{t.Categoria}</td>
+                          <td className="px-6 py-4 font-black text-slate-800 uppercase whitespace-normal break-words leading-tight min-w-[250px]">{t.Categoria}</td>
                         </tr>
                       ))}
                       {kpiMaestroData.length === 0 && (
