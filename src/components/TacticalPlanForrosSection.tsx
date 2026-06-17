@@ -196,12 +196,12 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [dailyOrders, setDailyOrders] = useState<any[]>([]);
   const [ordenesFert, setOrdenesFert] = useState<any[]>([]);
   const [kpiMaestroData, setKpiMaestroData] = useState<any[]>([]);
-  const [habilidadesData, setHabilidadesData] = useState<any[]>([]);
+  const [ordenesPrevisionalesData, setOrdenesPrevisionalesData] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingTiempos, setIsLoadingTiempos] = useState(false);
   const [isLoadingFert, setIsLoadingFert] = useState(false);
   const [isLoadingKPI, setIsLoadingKPI] = useState(false);
-  const [isLoadingHabilidades, setIsLoadingHabilidades] = useState(false);
+  const [isLoadingPrevisionales, setIsLoadingPrevisionales] = useState(false);
   
   const [executionDate, setExecutionDate] = useState<string>('');
   const [jornadaDiurnaSel, setJornadaDiurnaSel] = useState("8.75");
@@ -302,16 +302,17 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
   }, [addNotification]);
 
-  const fetchHabilidades = useCallback(async () => {
-    setIsLoadingHabilidades(true);
+  const fetchOrdenesPrevisionales = useCallback(async () => {
+    setIsLoadingPrevisionales(true);
     try {
-      const response = await serviciosService.getHabilidadesOperadorPorEstacion();
-      setHabilidadesData(response.data || []);
+      // Consumimos el método OrdenesProvisionalesPaginados (sp_Get_OrdenesProvisionalesPaginadas)
+      const response = await serviciosService.OrdenesProvisionalesPaginados(1, 1000);
+      setOrdenesPrevisionalesData(response.data || []);
     } catch (error: any) {
-      console.error('Error fetching skills:', error);
-      addNotification('error', `Error al cargar habilidades: ${error.message}`);
+      console.error('Error fetching Provisional orders:', error);
+      addNotification('error', `Error al cargar órdenes previsionales: ${error.message}`);
     } finally {
-      setIsLoadingHabilidades(false);
+      setIsLoadingPrevisionales(false);
     }
   }, [addNotification]);
 
@@ -320,9 +321,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
       fetchBaseData();
       fetchOrdenesFert();
       fetchKPIMaestro();
-      fetchHabilidades();
+      fetchOrdenesPrevisionales();
     }
-  }, [isMounted, fetchBaseData, fetchOrdenesFert, fetchKPIMaestro, fetchHabilidades]);
+  }, [isMounted, fetchBaseData, fetchOrdenesFert, fetchKPIMaestro, fetchOrdenesPrevisionales]);
 
   const forrosGruposList = useMemo(() => {
     return grupos.filter(g => {
@@ -744,7 +745,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <CardTitle className="text-2xl font-black text-slate-900 uppercase">Órdenes Previsionales</CardTitle>
-                  <CardDescription className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-1">Consulta de habilidades de operadores por estación</CardDescription>
+                  <CardDescription className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-1">Listado consolidado de órdenes previsionales paginadas</CardDescription>
                 </div>
                 <div className="bg-sky-600 p-3 rounded-2xl text-white shadow-lg shadow-sky-500/20">
                   <SearchCode className="w-6 h-6" />
@@ -753,22 +754,22 @@ export const TacticalPlanForrosSection: React.FC = () => {
             </CardHeader>
             <CardContent className="p-0">
               <div className="overflow-x-auto max-h-[70vh] relative">
-                {isLoadingHabilidades ? (
+                {isLoadingPrevisionales ? (
                   <div className="flex items-center justify-center py-24">
                     <Loader2 className="w-10 h-10 animate-spin text-indigo-500" />
-                    <span className="ml-4 text-slate-500 font-black uppercase tracking-widest text-xs">Consultando habilidades...</span>
+                    <span className="ml-4 text-slate-500 font-black uppercase tracking-widest text-xs">Consultando órdenes previsionales...</span>
                   </div>
-                ) : habilidadesData.length > 0 ? (
+                ) : ordenesPrevisionalesData.length > 0 ? (
                   <table className="w-full text-[11px] border-collapse">
                     <thead className="bg-slate-900 sticky top-0 z-10 text-white text-left uppercase tracking-widest font-black">
                       <tr>
-                        {Object.keys(habilidadesData[0]).map((key) => (
+                        {Object.keys(ordenesPrevisionalesData[0]).map((key) => (
                           <th key={key} className="px-6 py-4 whitespace-nowrap text-[10px] uppercase font-bold text-slate-300">{key}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {habilidadesData.map((item, i) => (
+                      {ordenesPrevisionalesData.map((item, i) => (
                         <tr key={i} className="hover:bg-slate-50 transition-colors text-[10px]">
                           {Object.values(item).map((val: any, j) => (
                             <td key={j} className="px-6 py-4 font-medium text-slate-600 whitespace-nowrap">
@@ -780,7 +781,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     </tbody>
                   </table>
                 ) : (
-                  <div className="py-20 text-center text-slate-400 uppercase font-black tracking-widest text-xs opacity-40">No se encontraron registros de habilidades</div>
+                  <div className="py-20 text-center text-slate-400 uppercase font-black tracking-widest text-xs opacity-40">No se encontraron órdenes previsionales</div>
                 )}
               </div>
             </CardContent>
