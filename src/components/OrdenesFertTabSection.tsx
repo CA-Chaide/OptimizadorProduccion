@@ -3,12 +3,13 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { serviciosService } from '@/services/servicios.service';
 import { useAppContext } from '@/context/AppProvider';
-import { Package, Check, ChevronsUpDown, Loader2, BellRing, AlertTriangle, Clock, Calendar, LayoutDashboard, History, ListChecks, ChevronUp, ChevronDown } from 'lucide-react';
+import { Package, Check, ChevronsUpDown, Loader2, BellRing, AlertTriangle, Clock, Calendar, LayoutDashboard, History, ListChecks, ChevronUp, ChevronDown, Calculator, FileJson } from 'lucide-react';
 import type { OrdenFert, ProvisionalOrder, Restriccion } from '@/types/interfaces';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from '@/components/ui/command';
 import { Badge } from '@/components/ui/badge';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { cn } from '@/lib/utils';
 
 const normalizeMaterialCode = (code: string | number): string => {
@@ -48,6 +49,13 @@ interface PaginationState {
   pageSize: number;
   isExploring: boolean;
   rowsPerPage: number;
+}
+
+interface ComponentExplosion {
+  id: string;
+  description: string;
+  unit: string;
+  totalNeeded: number;
 }
 
 const ROWS_PER_PAGE_OPTIONS = [10, 20, 50, 100];
@@ -174,6 +182,10 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
   const [hasSetDefaultDate, setHasSetDefaultDate] = useState(false);
   const [workSchedule, setWorkSchedule] = useState<string>("9");
   const [workTables, setWorkTables] = useState<string>("14");
+
+  // Estado para Explosión de Materiales
+  const [explosionResults, setExplosionResults] = useState<ComponentExplosion[]>([]);
+  const [isExploding, setIsExploding] = useState(false);
 
   const topScrollRef = useRef<HTMLDivElement>(null);
   const tableScrollRef = useRef<HTMLDivElement>(null);
@@ -496,6 +508,79 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
   const handleDateChange = (dates: string[]) => {
     setSelectedDates(dates);
     setPagination(prev => ({ ...prev, currentPage: 1 }));
+    setExplosionResults([]); // Limpiar explosión al cambiar filtros
+  };
+
+  // Función para Explosión de Materiales
+  const handleExplodeMaterials = async () => {
+    if (filteredOrders.length === 0) {
+        addNotification('warning', 'No hay órdenes en el plan actual para explosionar.');
+        return;
+    }
+
+    setIsExploding(true);
+    setExplosionResults([]);
+    
+    // 1. Identificar FERTs únicos y su demanda acumulada en la selección actual
+    const fertDemandMap = new Map<string, number>();
+    filteredOrders.forEach(o => {
+        const code = normalizeMaterialCode(o.MATERIAL);
+        fertDemandMap.set(code, (fertDemandMap.get(code) || 0) + (Number(o.CANTPROGRAMADA) || 0));
+    });
+
+    const uniqueFerts = Array.from(fertDemandMap.keys());
+    const allComponents: any[] = [];
+
+    try {
+        addNotification('info', `Iniciando explosión de ${uniqueFerts.length} materiales únicos...`);
+        
+        // 2. Consultar explosión para cada FERT
+        for (const fert of uniqueFerts) {
+            const res = await serviciosService.getMaestroMaterialesExplosion('1000', fert, 1, 5000);
+            if (res.data) {
+                const components = Array.isArray(res.data) ? res.data : [res.data];
+                const parentDemand = fertDemandMap.get(fert) || 0;
+                
+                components.forEach((comp: any) => {
+                    const cantBase = Number(comp.CANT_COMPONENTE || comp.CANTIDAD || 0);
+                    allComponents.push({
+                        ...comp,
+                        calculatedNeeded: cantBase * parentDemand
+                    });
+                });
+            }
+        }
+
+        // 3. Agrupar y sumar por componente
+        const grouped = new Map<string, ComponentExplosion>();
+        allComponents.forEach(c => {
+            const id = String(c.MAT_COMPONENTE || c.MATERIAL || c.ID || 'Unknown');
+            if (!grouped.has(id)) {
+                grouped.set(id, {
+                    id,
+                    description: c.DESC_COMPONENTE || c.NOMBRE || c.DESCRIPCION || 'Sin Descripción',
+                    unit: c.UNIDAD || 'UN',
+                    totalNeeded: 0
+                });
+            }
+            grouped.get(id)!.totalNeeded += c.calculatedNeeded;
+        });
+
+        const sortedResults = Array.from(grouped.values()).sort((a, b) => b.totalNeeded - a.totalNeeded);
+        setExplosionResults(sortedResults);
+        
+        if (sortedResults.length > 0) {
+            addNotification('success', `Explosión completada. Se identificaron ${sortedResults.length} componentes necesarios.`);
+        } else {
+            addNotification('warning', 'La consulta de explosión no devolvió componentes para estos materiales.');
+        }
+
+    } catch (e) {
+        console.error("Error en explosión:", e);
+        addNotification('error', 'Error al procesar la explosión de materiales.');
+    } finally {
+        setIsExploding(false);
+    }
   };
 
   useEffect(() => {
@@ -534,7 +619,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
       {!hideControls && (
         <div className="flex flex-col space-y-6 mb-4">
           <div className="flex items-start justify-between">
-            <div className="flex items-start space-x-4">
+            <div className="flex items-start space-x-4 flex-1">
               <div className="w-56">
                 <label htmlFor="date-filter" className="text-sm font-semibold text-gray-700">Fecha(s):</label>
                 <MultiSelect
@@ -570,6 +655,17 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
                         <option key={num} value={String(num)}>{num} Mesas de Trabajo</option>
                       ))}
                     </select>
+                  </div>
+                  
+                  <div className="flex items-end h-16">
+                    <Button 
+                        onClick={handleExplodeMaterials} 
+                        disabled={isExploding || filteredOrders.length === 0}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 shadow-md h-9"
+                    >
+                        {isExploding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Calculator className="w-4 h-4" />}
+                        Calcular Explosión
+                    </Button>
                   </div>
                 </>
               )}
@@ -747,19 +843,93 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
       
       <div className="flex items-center justify-between mt-4">
         <div className="flex items-center space-x-4">
-          <span className="text-xs text-gray-500">Mostrando {displayedOrders.length} de {filteredOrders.length} registros.</span>
-          <select value={pagination.rowsPerPage} onChange={handleRowsPerPageChange} className="px-2 py-1 border border-gray-300 rounded text-xs">
+          <span className="text-sm text-gray-600">Mostrando {displayedOrders.length} de {filteredOrders.length} registros.</span>
+          <select value={pagination.rowsPerPage} onChange={handleRowsPerPageChange} className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white font-medium text-gray-700 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          >
             {ROWS_PER_PAGE_OPTIONS.map(size => <option key={size} value={size}>{size}</option>)}
           </select>
         </div>
         <div className="flex items-center space-x-2">
           <Button variant="outline" size="sm" onClick={() => goToPage(1)} disabled={pagination.currentPage === 1}>Primera</Button>
           <Button variant="outline" size="sm" onClick={() => goToPage(pagination.currentPage - 1)} disabled={pagination.currentPage === 1}>Ant.</Button>
-          <span className="text-xs font-bold px-2">{pagination.currentPage} / {totalPagesLocal}</span>
+          <span className="text-sm text-gray-600 px-2 font-bold">{pagination.currentPage} / {totalPagesLocal}</span>
           <Button variant="outline" size="sm" onClick={() => goToPage(pagination.currentPage + 1)} disabled={pagination.currentPage >= totalPagesLocal}>Sig.</Button>
           <Button variant="outline" size="sm" onClick={() => goToPage(totalPagesLocal)} disabled={pagination.currentPage >= totalPagesLocal}>Última</Button>
         </div>
       </div>
+
+      {/* SUBSECCIÓN: EXPLOSIÓN DE MATERIALES */}
+      {displayMode === 'plan' && (
+        <div className="mt-8">
+            <Accordion type="single" collapsible className="w-full bg-white border rounded-xl shadow-lg">
+                <AccordionItem value="explosion" className="border-b-0">
+                    <AccordionTrigger className="px-6 py-4 hover:no-underline">
+                        <div className="flex items-center gap-3">
+                            <div className="bg-emerald-100 p-2 rounded-lg">
+                                <FileJson className="w-5 h-5 text-emerald-700" />
+                            </div>
+                            <div className="text-left">
+                                <h3 className="text-lg font-bold text-gray-800">Explosión de Materiales (Necesidad de Componentes)</h3>
+                                <p className="text-xs text-gray-500">Listado consolidado de componentes requeridos para el plan actual</p>
+                            </div>
+                            {explosionResults.length > 0 && (
+                                <Badge className="ml-4 bg-emerald-100 text-emerald-700 border-emerald-200">
+                                    {explosionResults.length} componentes
+                                </Badge>
+                            )}
+                        </div>
+                    </AccordionTrigger>
+                    <AccordionContent className="px-6 pb-6">
+                        {isExploding ? (
+                            <div className="flex flex-col items-center justify-center py-12 gap-4">
+                                <Loader2 className="w-12 h-12 animate-spin text-emerald-600" />
+                                <p className="text-sm text-gray-600 font-medium">Procesando explosión de materiales... esto puede tomar un momento.</p>
+                            </div>
+                        ) : explosionResults.length > 0 ? (
+                            <div className="overflow-x-auto border rounded-lg">
+                                <table className="min-w-full divide-y divide-gray-200 text-xs">
+                                    <thead className="bg-emerald-50">
+                                        <tr>
+                                            <th className="px-4 py-3 text-left font-bold text-emerald-900 uppercase">Material Componente</th>
+                                            <th className="px-4 py-3 text-left font-bold text-emerald-900 uppercase">Descripción</th>
+                                            <th className="px-4 py-3 text-center font-bold text-emerald-900 uppercase">Unidad</th>
+                                            <th className="px-4 py-3 text-right font-bold text-emerald-900 uppercase">Cantidad Total Necesaria</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="bg-white divide-y divide-gray-100">
+                                        {explosionResults.map((comp, idx) => (
+                                            <tr key={`${comp.id}-${idx}`} className="hover:bg-emerald-50/30 transition-colors">
+                                                <td className="px-4 py-2 font-mono font-bold text-indigo-700">{comp.id}</td>
+                                                <td className="px-4 py-2 text-gray-700">{comp.description}</td>
+                                                <td className="px-4 py-2 text-center text-gray-500 font-medium">{comp.unit}</td>
+                                                <td className="px-4 py-2 text-right font-mono font-bold text-emerald-700">
+                                                    {comp.totalNeeded.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                    <tfoot className="bg-gray-800 text-white font-bold">
+                                        <tr>
+                                            <td colSpan={3} className="px-4 py-3 text-right uppercase">Resumen de Explosión</td>
+                                            <td className="px-4 py-3 text-right">
+                                                {explosionResults.reduce((sum, c) => sum + c.totalNeeded, 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} unidades de material
+                                            </td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                        ) : (
+                            <div className="flex flex-col items-center justify-center py-12 bg-gray-50 border-2 border-dashed rounded-lg">
+                                <Calculator className="w-12 h-12 text-gray-300 mb-4" />
+                                <p className="text-sm text-gray-500">Haz clic en el botón superior <span className="font-bold">"Calcular Explosión"</span> para ver los materiales necesarios.</p>
+                                <p className="text-xs text-gray-400 mt-1">Se procesarán todos los materiales correspondientes al filtro de fechas actual.</p>
+                            </div>
+                        )}
+                    </AccordionContent>
+                </AccordionItem>
+            </Accordion>
+        </div>
+      )}
     </div>
   );
 };
