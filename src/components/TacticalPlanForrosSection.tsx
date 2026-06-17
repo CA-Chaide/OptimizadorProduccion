@@ -330,7 +330,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     });
   }, [grupos]);
 
-  // Extraer códigos de RESPCONTROLPROD permitidos desde restricciones de Forros
+  // Extraer códigos de RESPCONTROLPROD permitidos desde restricciones de Forros (Separador &)
   const allowedRespCodes = useMemo(() => {
     const codes = new Set<string>();
     const forroGroupCodes = new Set(forrosGruposList.map(g => g.codigo_grupo));
@@ -339,7 +339,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
       if (forroGroupCodes.has(r.codigo_grupo)) {
         const normName = r.nombre_restriccion.toUpperCase().trim();
         if (normName === 'RESPCTRLPROD' || normName === 'RESP_CTRL_PROD') {
-          // El separador es '&'
+          // El separador es '&' según requerimiento
           const values = r.valor_restriccion.split('&');
           values.forEach(v => {
             const clean = v.trim().replace(/^0+/, ''); // Normalizar quitando ceros a la izquierda
@@ -352,22 +352,32 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return Array.from(codes);
   }, [restricciones, forrosGruposList]);
 
-  // Filtrado de Órdenes Previsionales basado en allowedRespCodes
+  // Filtrado de Órdenes Previsionales basado en RESPCONTROLPROD y CENTRO 1000
   const filteredOrdenesPrevisionales = useMemo(() => {
-    if (allowedRespCodes.length === 0) return ordenesPrevisionalesData;
-
-    return ordenesPrevisionalesData.filter(order => {
-      // Buscar el campo de responsable de forma flexible
-      const respField = Object.keys(order).find(k => {
-        const uk = k.toUpperCase();
-        return uk === 'RESPCONTROLPROD' || uk === 'RESP_CTRL_PROD' || uk === 'RESPONSABLE' || uk === 'RESP';
-      });
-
-      if (!respField) return true;
-
-      const orderResp = String(order[respField] || '').trim().replace(/^0+/, '');
-      return allowedRespCodes.includes(orderResp);
+    // 1. Filtrar primero por CENTRO 1000 (Mandatorio)
+    let filtered = ordenesPrevisionalesData.filter(order => {
+      const centroField = Object.keys(order).find(k => k.toUpperCase().trim() === 'CENTRO');
+      const centroVal = String(order[centroField || 'Centro'] || '').trim();
+      return centroVal === '1000';
     });
+
+    // 2. Aplicar filtro de Responsabilidad si hay restricciones configuradas
+    if (allowedRespCodes.length > 0) {
+      filtered = filtered.filter(order => {
+        // Buscar el campo de responsable de forma flexible
+        const respField = Object.keys(order).find(k => {
+          const uk = k.toUpperCase();
+          return uk === 'RESPCONTROLPROD' || uk === 'RESP_CTRL_PROD' || uk === 'RESPONSABLE' || uk === 'RESP';
+        });
+
+        if (!respField) return true;
+
+        const orderResp = String(order[respField] || '').trim().replace(/^0+/, '');
+        return allowedRespCodes.includes(orderResp);
+      });
+    }
+
+    return filtered;
   }, [ordenesPrevisionalesData, allowedRespCodes]);
 
   const fetchTiemposProduccion = useCallback(async () => {
@@ -783,7 +793,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <CardTitle className="text-2xl font-black text-slate-900 uppercase">Órdenes Previsionales</CardTitle>
-                  <CardDescription className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-1">Órdenes filtradas por RESP_CTRL_PROD de Forros</CardDescription>
+                  <CardDescription className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-1">Filtrado por Centro 1000 y RespCtrlProd de Forros</CardDescription>
                 </div>
                 <div className="bg-sky-600 p-3 rounded-2xl text-white shadow-lg shadow-sky-500/20">
                   <SearchCode className="w-6 h-6" />
@@ -793,19 +803,29 @@ export const TacticalPlanForrosSection: React.FC = () => {
               {/* Sección de filtros aplicados */}
               <div className="mt-6 flex flex-wrap items-center gap-3 p-4 bg-white border border-slate-200 rounded-2xl shadow-sm">
                 <div className="flex items-center gap-2 text-xs font-black text-slate-400 uppercase tracking-widest">
-                  <Filter className="w-4 h-4 text-indigo-600" /> Filtros Activos (RESP):
+                  <Filter className="w-4 h-4 text-indigo-600" /> Filtros Activos:
                 </div>
+                
+                <Badge className="bg-slate-950 text-white border-none font-mono text-[10px] font-black py-1 px-3 rounded-lg shadow-sm">
+                  CENTRO: 1000
+                </Badge>
+
                 {allowedRespCodes.length > 0 ? (
-                  allowedRespCodes.map(code => (
-                    <Badge key={code} className="bg-indigo-50 text-indigo-700 border-indigo-200 font-mono text-[10px] font-black py-1 px-3 rounded-lg">
-                      {code}
-                    </Badge>
-                  ))
+                  <>
+                    <div className="text-[10px] font-black text-slate-300">|</div>
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">RESP:</div>
+                    {allowedRespCodes.map(code => (
+                      <Badge key={code} className="bg-indigo-50 text-indigo-700 border-indigo-200 font-mono text-[10px] font-black py-1 px-3 rounded-lg">
+                        {code}
+                      </Badge>
+                    ))}
+                  </>
                 ) : (
                   <Badge variant="outline" className="text-slate-400 font-bold uppercase text-[9px] px-3 py-1 rounded-lg">
-                    Sin restricciones (Mostrando Todo)
+                    Sin restricción RESP
                   </Badge>
                 )}
+                
                 <div className="ml-auto text-[10px] font-black text-slate-400 uppercase tracking-widest">
                   Registros: <span className="text-indigo-600">{filteredOrdenesPrevisionales.length}</span>
                 </div>
@@ -840,7 +860,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     </tbody>
                   </table>
                 ) : (
-                  <div className="py-24 text-center text-slate-400 uppercase font-black tracking-widest text-xs opacity-40">No se encontraron órdenes para los códigos de responsabilidad aplicados</div>
+                  <div className="py-24 text-center text-slate-400 uppercase font-black tracking-widest text-xs opacity-40">
+                    No se encontraron órdenes para el Centro 1000 con las restricciones aplicadas
+                  </div>
                 )}
               </div>
             </CardContent>
