@@ -17,12 +17,8 @@ import {
   Sun,
   Moon,
   PackageSearch,
-  ArrowRight,
-  Database,
   SearchCode,
-  FileJson,
-  Filter,
-  AlertCircle
+  Database
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -332,46 +328,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
       return name.includes('FORRO') || name.includes('CHN') || name.includes('BASE') || name.includes('BANDA') || name.includes('ACOLCHADO') || name.includes('TAPAS') || name.includes('MODULAR') || name.includes('TAPA');
     });
   }, [grupos]);
-
-  // Filtrado de Órdenes Previsionales por RESPCONTROLPROD de la división Forros con validación robusta
-  const { filteredOrdenesPrevisionales, activeRespCodes } = useMemo(() => {
-    if (ordenesPrevisionalesData.length === 0) return { filteredOrdenesPrevisionales: [], activeRespCodes: [] };
-    
-    const forrosGroupCodes = forrosGruposList.map(g => g.codigo_grupo);
-    const validRespCodes = restricciones
-      .filter(r => {
-        const isForroGroup = forrosGroupCodes.includes(r.codigo_grupo);
-        const nameUpper = (r.nombre_restriccion || '').toUpperCase();
-        const isRespConstraint = nameUpper.includes('RESP') || nameUpper.includes('CTRL') || nameUpper.includes('PROD');
-        return isForroGroup && isRespConstraint;
-      })
-      .map(r => String(r.valor_restriccion || '').trim().replace(/^0+/, ''))
-      .filter(Boolean);
-
-    // Fallback: Si no hay códigos detectados, mostrar todo para evitar tabla vacía por mala configuración
-    if (validRespCodes.length === 0) {
-      console.warn('[TacticalPlanForros] No se detectaron códigos RESPCONTROLPROD en las restricciones de Forros. Mostrando todo.');
-      return { filteredOrdenesPrevisionales: ordenesPrevisionalesData, activeRespCodes: [] };
-    }
-
-    console.log('[TacticalPlanForros] Códigos de filtrado detectados:', validRespCodes);
-
-    const filtered = ordenesPrevisionalesData.filter(order => {
-      // Buscar el campo de responsabilidad de forma insensible a mayúsculas
-      const keys = Object.keys(order);
-      const respKey = keys.find(k => {
-        const uk = k.toUpperCase();
-        return uk === 'RESPCONTROLPROD' || uk === 'RESP_CTRL_PROD' || uk === 'RESPONSABLE' || uk === 'RESP';
-      });
-
-      if (!respKey) return false;
-
-      const respValue = String(order[respKey] || '').trim().replace(/^0+/, '');
-      return validRespCodes.includes(respValue);
-    });
-
-    return { filteredOrdenesPrevisionales: filtered, activeRespCodes: validRespCodes };
-  }, [ordenesPrevisionalesData, forrosGruposList, restricciones]);
 
   const fetchTiemposProduccion = useCallback(async () => {
     if (forrosGruposList.length === 0) return;
@@ -781,96 +737,52 @@ export const TacticalPlanForrosSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="ordenes-previsionales">
-          <div className="space-y-6">
-            {/* Panel de Filtros Activos para Diagnóstico */}
-            <Card className="rounded-[1.5rem] bg-indigo-50/50 border border-indigo-100 shadow-sm overflow-hidden">
-              <CardContent className="p-5">
-                <div className="flex items-center gap-4">
-                  <div className="bg-indigo-600 p-2.5 rounded-xl text-white shadow-md">
-                    <Filter className="w-5 h-5" />
-                  </div>
-                  <div className="flex-1">
-                    <h4 className="text-[11px] font-black text-indigo-900 uppercase tracking-widest mb-2 flex items-center gap-2">
-                      Configuración de Filtro Forros
-                    </h4>
-                    <div className="flex flex-wrap gap-2">
-                      {activeRespCodes.length > 0 ? activeRespCodes.map(code => (
-                        <Badge key={code} className="bg-white text-indigo-700 border-indigo-200 font-mono font-black text-[10px] px-3 py-1 rounded-lg">
-                          RESP: {code}
-                        </Badge>
-                      )) : (
-                        <Badge variant="outline" className="bg-white/50 text-slate-400 border-dashed border-slate-300 italic font-medium px-3 py-1 rounded-lg text-[10px]">
-                          Sin restricciones definidas (Mostrando todo)
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                  {activeRespCodes.length > 0 && (
-                    <div className="text-right hidden md:block">
-                      <span className="block text-[8px] text-indigo-400 uppercase font-black tracking-widest">Coincidencias</span>
-                      <span className="text-xl font-mono font-black text-indigo-800">{filteredOrdenesPrevisionales.length}</span>
-                    </div>
-                  )}
+          <Card className="rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden shadow-sm">
+            <CardHeader className="bg-slate-50/50 border-b border-slate-200 p-10">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-2xl font-black text-slate-900 uppercase">Órdenes Previsionales</CardTitle>
+                  <CardDescription className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-1">Listado completo de órdenes sin filtros aplicados</CardDescription>
                 </div>
-              </CardContent>
-            </Card>
-
-            <Card className="rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden shadow-sm">
-              <CardHeader className="bg-slate-50/50 border-b border-slate-200 p-10">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="text-2xl font-black text-slate-900 uppercase">Órdenes Previsionales</CardTitle>
-                    <CardDescription className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-1">
-                      Filtrado dinámico por división Forros (RESPCONTROLPROD)
-                    </CardDescription>
-                  </div>
-                  <div className="bg-sky-600 p-3 rounded-2xl text-white shadow-lg shadow-sky-500/20">
-                    <SearchCode className="w-6 h-6" />
-                  </div>
+                <div className="bg-sky-600 p-3 rounded-2xl text-white shadow-lg shadow-sky-500/20">
+                  <SearchCode className="w-6 h-6" />
                 </div>
-              </CardHeader>
-              <CardContent className="p-0">
-                <div className="overflow-x-auto max-h-[70vh] relative">
-                  {isLoadingPrevisionales ? (
-                    <div className="flex items-center justify-center py-24">
-                      <Loader2 className="w-10 h-10 animate-spin text-indigo-500" />
-                      <span className="ml-4 text-slate-500 font-black uppercase tracking-widest text-xs">Consultando órdenes previsionales...</span>
-                    </div>
-                  ) : filteredOrdenesPrevisionales.length > 0 ? (
-                    <table className="w-full text-[11px] border-collapse">
-                      <thead className="bg-slate-900 sticky top-0 z-10 text-white text-left uppercase tracking-widest font-black">
-                        <tr>
-                          {Object.keys(filteredOrdenesPrevisionales[0]).map((key) => (
-                            <th key={key} className="px-6 py-4 whitespace-nowrap text-[10px] uppercase font-bold text-slate-300">{key}</th>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto max-h-[70vh] relative">
+                {isLoadingPrevisionales ? (
+                  <div className="flex items-center justify-center py-24">
+                    <Loader2 className="w-10 h-10 animate-spin text-indigo-500" />
+                    <span className="ml-4 text-slate-500 font-black uppercase tracking-widest text-xs">Consultando órdenes previsionales...</span>
+                  </div>
+                ) : ordenesPrevisionalesData.length > 0 ? (
+                  <table className="w-full text-[11px] border-collapse">
+                    <thead className="bg-slate-900 sticky top-0 z-10 text-white text-left uppercase tracking-widest font-black">
+                      <tr>
+                        {Object.keys(ordenesPrevisionalesData[0]).map((key) => (
+                          <th key={key} className="px-6 py-4 whitespace-nowrap text-[10px] uppercase font-bold text-slate-300">{key}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {ordenesPrevisionalesData.map((item, i) => (
+                        <tr key={i} className="hover:bg-slate-50 transition-colors text-[10px]">
+                          {Object.values(item).map((val: any, j) => (
+                            <td key={j} className="px-6 py-4 font-medium text-slate-600 whitespace-nowrap">
+                              {val === null || val === undefined ? '—' : String(val)}
+                            </td>
                           ))}
                         </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {filteredOrdenesPrevisionales.map((item, i) => (
-                          <tr key={i} className="hover:bg-slate-50 transition-colors text-[10px]">
-                            {Object.values(item).map((val: any, j) => (
-                              <td key={j} className="px-6 py-4 font-medium text-slate-600 whitespace-nowrap">
-                                {val === null || val === undefined ? '—' : String(val)}
-                              </td>
-                            ))}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  ) : (
-                    <div className="py-24 text-center flex flex-col items-center justify-center gap-4">
-                      <div className="bg-slate-100 p-6 rounded-full text-slate-300">
-                        <AlertCircle className="w-12 h-12" />
-                      </div>
-                      <p className="text-slate-400 uppercase font-black tracking-widest text-xs max-w-md leading-relaxed">
-                        No se encontraron órdenes previsionales que coincidan con los códigos de responsabilidad de la división Forros.
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <div className="py-24 text-center text-slate-400 uppercase font-black tracking-widest text-xs opacity-40">No se encontraron registros</div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="personal-turnos">
