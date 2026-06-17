@@ -50,6 +50,7 @@ const MAX_STACK_HEIGHT_CM = 200;
 const SECONDS_PER_LOAD_VUELTA = 300; 
 const SECONDS_PER_MANEUVER_DESC = 45; 
 
+// Paros programados segmentados
 const PARO_PROG_T1 = 1.27;
 const PARO_PROG_T2 = 0.77;
 
@@ -85,6 +86,7 @@ const parseSAPDate = (dateStr: string): Date | null => {
   const str = String(dateStr).trim();
   if (!str || str === 'null' || str === 'undefined') return null;
 
+  // Manejo de formato DD/MM/YYYY HH:mm
   if (str.includes('/')) {
     const [datePart, timePart] = str.split(' ');
     if (!datePart) return null;
@@ -112,7 +114,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const { addNotification } = useAppContext();
 
   const [mounted, setMounted] = useState(false);
-  const [activeTab, setActiveTab] = useState('resumen');
+  const [activeTab, setActiveTab] = useState('capacidad');
   const [grupos, setGrupos] = useState<Grupo[]>([]);
   const [restriccionesArray, setRestriccionesArray] = useState<Restriccion[]>([]);
   const [ordenes, setOrders] = useState<any[]>([]);
@@ -126,7 +128,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set());
   const [viewDate, setViewDate] = useState<Date | null>(null);
 
-  // Estado para horas operativas manuales (Quito)
+  // Estado para horas operativas manuales (Quito y GYE)
   const [manualHours, setManualHours] = useState<Record<string, number>>({});
 
   useEffect(() => { 
@@ -176,6 +178,46 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     if (mounted) initData();
   }, [mounted, initData]);
 
+  // Auditoría de Mantenimientos por Máquina (De-duplicado por recurso)
+  const uniqueMantenimientos = useMemo(() => {
+    const seenMachine = new Set<string>();
+    return mantenimientos
+      .filter(m => {
+        const dStr = String(m.FECHA_OT_PRG_INI || m.FECHA_PRO || m.FECHA_INI || '').trim();
+        if (!dStr || dStr === 'null') return selectedDates.size === 0;
+        
+        let normalizedDate = '';
+        if (dStr.includes('T')) normalizedDate = dStr.split('T')[0];
+        else if (dStr.includes('/')) {
+          const parts = dStr.split(' ')[0].split('/');
+          if (parts.length === 3) normalizedDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+        } else normalizedDate = dStr;
+
+        return selectedDates.size === 0 || selectedDates.has(normalizedDate);
+      })
+      .filter(m => {
+        const machineId = String(m.ID_MAQUINA || m.MAQUINA || '').trim();
+        if (!machineId) return true; 
+        if (seenMachine.has(machineId)) return false;
+        seenMachine.add(machineId);
+        return true;
+      });
+  }, [mantenimientos, selectedDates]);
+
+  // Búsqueda de MTTO por Recurso y Fecha Seleccionada
+  const getMachineMTTO = (maquinaCode: string) => {
+    if (selectedDates.size === 0) return 0;
+    return uniqueMantenimientos
+      .filter(m => {
+        const mMachine = String(m.ID_MAQUINA || m.MAQUINA || '').toUpperCase();
+        return mMachine.includes(maquinaCode.toUpperCase()) || maquinaCode.toUpperCase().includes(mMachine);
+      })
+      .reduce((sum, m) => {
+        const durStr = calculateMTTOCapacity(m.FECHA_OT_PRG_INI || m.FECHA_INI || m.FECHA_PRO, m.FECHA_OT_PRG_FIN || m.FECHA_FIN || m.FECHA_PRO);
+        return sum + safeNum(durStr);
+      }, 0);
+  };
+
   const datesWithOrders = useMemo(() => {
     if (!mounted) return new Set<string>();
     const dates = new Set<string>();
@@ -201,7 +243,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   }, [viewDate, mounted]);
 
   const extractMaterialInfo = (item: any) => {
-    const matStr = String(item.MATERIAL || item.CodMaterial || '').trim();
+    const matStr = String(item.MATERIAL || item.Material || item.CodMaterial || '').trim();
     const nameStr = String(item.NOMBRE || item.Descripcion || '').trim();
     const catStr = String(item.CATEGORIA || item.Categoria || '').trim();
     const match = matStr.match(/^(\d+)/);
@@ -294,44 +336,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const provC2000 = useMemo(() => filterData(ordenes, '2000'), [ordenes, grupos, restriccionesArray, selectedDates]);
   const fertC1000 = useMemo(() => filterData(ordenesFert, '1000'), [ordenesFert, grupos, restriccionesArray, selectedDates]);
   const fertC2000 = useMemo(() => filterData(ordenesFert, '2000'), [ordenesFert, grupos, restriccionesArray, selectedDates]);
-
-  const uniqueMantenimientos = useMemo(() => {
-    const seenMachine = new Set<string>();
-    return mantenimientos
-      .filter(m => {
-        const dStr = String(m.FECHA_OT_PRG_INI || m.FECHA_PRO || m.FECHA_INI || '').trim();
-        if (!dStr || dStr === 'null') return selectedDates.size === 0;
-        
-        let normalizedDate = '';
-        if (dStr.includes('T')) normalizedDate = dStr.split('T')[0];
-        else if (dStr.includes('/')) {
-          const parts = dStr.split(' ')[0].split('/');
-          if (parts.length === 3) normalizedDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
-        } else normalizedDate = dStr;
-
-        return selectedDates.size === 0 || selectedDates.has(normalizedDate);
-      })
-      .filter(m => {
-        const machineId = String(m.ID_MAQUINA || m.MAQUINA || '').trim();
-        if (!machineId) return true; 
-        if (seenMachine.has(machineId)) return false;
-        seenMachine.add(machineId);
-        return true;
-      });
-  }, [mantenimientos, selectedDates]);
-
-  const getMachineMTTO = (maquinaCode: string) => {
-    if (selectedDates.size === 0) return 0;
-    return uniqueMantenimientos
-      .filter(m => {
-        const mMachine = String(m.ID_MAQUINA || m.MAQUINA || '').toUpperCase();
-        return mMachine.includes(maquinaCode.toUpperCase()) || maquinaCode.toUpperCase().includes(mMachine);
-      })
-      .reduce((sum, m) => {
-        const durStr = calculateMTTOCapacity(m.FECHA_OT_PRG_INI || m.FECHA_INI || m.FECHA_PRO, m.FECHA_OT_PRG_FIN || m.FECHA_FIN || m.FECHA_PRO);
-        return sum + safeNum(durStr);
-      }, 0);
-  };
 
   const getCenterPlannedHoursTotal = (centro: string) => {
     const provData = centro === '1000' ? provC1000 : provC2000;
@@ -427,7 +431,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid grid-cols-5 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
           {[ 
-            { v: 'resumen', l: 'Capacidad General', i: LayoutDashboard }, 
+            { v: 'capacidad', l: 'Capacidad General', i: LayoutDashboard }, 
             { v: 'habilidades', l: 'Habilidades SAP', i: GraduationCap },
             { v: 'mantenimiento', l: 'MTTO Preventivo', i: Wrench }, 
             { v: 'ordenes', l: 'Provisionales', i: Package },
@@ -439,24 +443,22 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           ))}
         </TabsList>
 
-        <TabsContent value="resumen" className="animate-in fade-in duration-300 space-y-8">
+        <TabsContent value="capacidad" className="animate-in fade-in duration-300 space-y-8">
           <div className="grid grid-cols-1 gap-12">
             {Object.entries(CAPACIDAD_CONFIG_BASE).map(([centro, machines]) => {
-              const totalParo1 = PARO_PROG_T1 * machines.length;
-              const totalParo2 = PARO_PROG_T2 * machines.length;
               const totalMTTO = machines.reduce((sum, m) => sum + getMachineMTTO(m.code), 0);
               
               const totalDisponibleBruto = machines.reduce((sum, m) => {
                 const mtto = getMachineMTTO(m.code);
-                const t1 = centro === '1000' ? (manualHours[`${m.code}_t1`] ?? defaultOpHour) : m.t1;
-                const t2 = centro === '1000' ? (manualHours[`${m.code}_t2`] ?? m.t2) : m.t2;
+                const t1 = manualHours[`${centro}_${m.code}_t1`] ?? defaultOpHour;
+                const t2 = manualHours[`${centro}_${m.code}_t2`] ?? (centro === '1000' ? m.t2 : 0);
                 return sum + (t1 + t2 - PARO_PROG_T1 - PARO_PROG_T2 - mtto);
               }, 0);
 
               const totalDisponibleReal = machines.reduce((sum, m) => {
                 const mtto = getMachineMTTO(m.code);
-                const t1 = centro === '1000' ? (manualHours[`${m.code}_t1`] ?? defaultOpHour) : m.t1;
-                const t2 = centro === '1000' ? (manualHours[`${m.code}_t2`] ?? m.t2) : m.t2;
+                const t1 = manualHours[`${centro}_${m.code}_t1`] ?? defaultOpHour;
+                const t2 = manualHours[`${centro}_${m.code}_t2`] ?? (centro === '1000' ? m.t2 : 0);
                 const base = t1 + t2 - PARO_PROG_T1 - PARO_PROG_T2 - mtto;
                 return sum + (base * m.rendimiento);
               }, 0);
@@ -494,48 +496,55 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                             <td className="px-6 py-2 border-r border-gray-100 bg-gray-50/50 uppercase">Turno 1 [H]</td>
                             {machines.map(m => (
                               <td key={`${m.code}-t1`} className="px-4 py-2 border-r border-gray-100 text-center font-mono">
-                                {centro === '1000' ? (
-                                  <select 
-                                    className="bg-transparent border border-indigo-100 rounded px-1 focus:ring-1 focus:ring-indigo-400 outline-none"
-                                    value={manualHours[`${m.code}_t1`] ?? defaultOpHour}
-                                    onChange={(e) => setManualHours(prev => ({ ...prev, [`${m.code}_t1`]: Number(e.target.value) }))}
-                                  >
-                                    {Array.from({ length: 13 }, (_, i) => <option key={i} value={i}>{i}h</option>)}
-                                  </select>
-                                ) : m.t1}
+                                <select 
+                                  className="bg-transparent border border-indigo-100 rounded px-1 focus:ring-1 focus:ring-indigo-400 outline-none"
+                                  value={manualHours[`${centro}_${m.code}_t1`] ?? defaultOpHour}
+                                  onChange={(e) => setManualHours(prev => ({ ...prev, [`${centro}_${m.code}_t1`]: Number(e.target.value) }))}
+                                >
+                                  {Array.from({ length: 13 }, (_, i) => <option key={i} value={i}>{i}h</option>)}
+                                </select>
                               </td>
                             ))}
                             <td className="px-4 py-2 text-center font-mono bg-slate-50 border-l-2 border-indigo-500/10">
-                              {machines.reduce((sum, m) => sum + (centro === '1000' ? (manualHours[`${m.code}_t1`] ?? defaultOpHour) : m.t1), 0).toFixed(1)}
+                              {machines.reduce((sum, m) => sum + (manualHours[`${centro}_${m.code}_t1`] ?? defaultOpHour), 0).toFixed(1)}
                             </td>
                           </tr>
                           <tr className="hover:bg-slate-50">
                             <td className="px-6 py-2 border-r border-gray-100 bg-gray-50/50 uppercase">Turno 2 [H]</td>
                             {machines.map(m => (
                               <td key={`${m.code}-t2`} className="px-4 py-2 border-r border-gray-100 text-center font-mono">
-                                {centro === '1000' ? (
-                                  <select 
-                                    className="bg-transparent border border-indigo-100 rounded px-1 focus:ring-1 focus:ring-indigo-400 outline-none"
-                                    value={manualHours[`${m.code}_t2`] ?? m.t2}
-                                    onChange={(e) => setManualHours(prev => ({ ...prev, [`${m.code}_t2`]: Number(e.target.value) }))}
-                                  >
-                                    {Array.from({ length: 13 }, (_, i) => <option key={i} value={i}>{i}h</option>)}
-                                  </select>
-                                ) : m.t2}
+                                <select 
+                                  className="bg-transparent border border-indigo-100 rounded px-1 focus:ring-1 focus:ring-indigo-400 outline-none"
+                                  value={manualHours[`${centro}_${m.code}_t2`] ?? (centro === '1000' ? m.t2 : 0)}
+                                  onChange={(e) => setManualHours(prev => ({ ...prev, [`${centro}_${m.code}_t2`]: Number(e.target.value) }))}
+                                >
+                                  {Array.from({ length: 13 }, (_, i) => <option key={i} value={i}>{i}h</option>)}
+                                </select>
                               </td>
                             ))}
                             <td className="px-4 py-2 text-center font-mono bg-slate-50 border-l-2 border-indigo-500/10">
-                              {machines.reduce((sum, m) => sum + (centro === '1000' ? (manualHours[`${m.code}_t2`] ?? m.t2) : m.t2), 0).toFixed(1)}
+                              {machines.reduce((sum, m) => sum + (manualHours[`${centro}_${m.code}_t2`] ?? (centro === '1000' ? m.t2 : 0)), 0).toFixed(1)}
                             </td>
                           </tr>
                           <tr className="hover:bg-slate-50 text-red-600/70 text-left">
-                            <td className="px-6 py-2 border-r border-gray-100 bg-gray-50/50 uppercase">Paro Prog. T1/T2</td>
-                            {machines.map(m => <td key={`${m.code}-p`} className="px-4 py-2 border-r border-gray-100 text-center font-mono">{(PARO_PROG_T1 + PARO_PROG_T2).toFixed(1)}</td>)}
-                            <td className="px-4 py-2 text-center font-mono bg-red-50/20 border-l-2 border-indigo-500/10">{(totalParo1 + totalParo2).toFixed(2)}</td>
+                            <td className="px-6 py-2 border-r border-gray-100 bg-gray-50/50 uppercase">Paro Programado T1</td>
+                            {machines.map(m => <td key={`${m.code}-p1`} className="px-4 py-2 border-r border-gray-100 text-center font-mono">{PARO_PROG_T1.toFixed(2)}</td>)}
+                            <td className="px-4 py-2 text-center font-mono bg-red-50/10 border-l-2 border-indigo-500/10">{(PARO_PROG_T1 * machines.length).toFixed(2)}</td>
+                          </tr>
+                          <tr className="hover:bg-slate-50 text-red-600/70 text-left">
+                            <td className="px-6 py-2 border-r border-gray-100 bg-gray-50/50 uppercase">Paro Programado T2</td>
+                            {machines.map(m => <td key={`${m.code}-p2`} className="px-4 py-2 border-r border-gray-100 text-center font-mono">{PARO_PROG_T2.toFixed(2)}</td>)}
+                            <td className="px-4 py-2 text-center font-mono bg-red-50/10 border-l-2 border-indigo-500/10">{(PARO_PROG_T2 * machines.length).toFixed(2)}</td>
                           </tr>
                           <tr className="hover:bg-slate-50 text-orange-600">
-                            <td className="px-6 py-2 border-r border-gray-100 bg-gray-50/50 uppercase">MTTO Preventivo</td>
-                            {machines.map(m => <td key={`${m.code}-mtto`} className="px-4 py-2 border-r border-gray-100 text-center font-mono">{getMachineMTTO(m.code) > 0 ? getMachineMTTO(m.code).toFixed(1) : '—'}</td>)}
+                            <td className="px-6 py-2 border-r border-gray-100 bg-gray-50/50 uppercase">MTTO Preventivo (SAP)</td>
+                            {machines.map(m => (
+                              <td key={`${m.code}-mtto`} className="px-4 py-2 border-r border-gray-100 text-center font-mono">
+                                {getMachineMTTO(m.code) > 0 ? (
+                                  <Badge className="bg-orange-100 text-orange-700 border-none font-bold text-[9px]">{getMachineMTTO(m.code).toFixed(1)}h</Badge>
+                                ) : '—'}
+                              </td>
+                            ))}
                             <td className="px-4 py-2 text-center font-mono bg-orange-50/30 border-l-2 border-indigo-500/10">{totalMTTO > 0 ? totalMTTO.toFixed(1) : '—'}</td>
                           </tr>
                           <tr className="bg-slate-900 text-slate-300">
@@ -620,7 +629,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                     uniqueMantenimientos.map((m, i) => {
                       const dur = calculateMTTOCapacity(m.FECHA_OT_PRG_INI || m.FECHA_INI || m.FECHA_PRO, m.FECHA_OT_PRG_FIN || m.FECHA_FIN || m.FECHA_PRO);
                       return (
-                        <tr key={`${m.ID_MAQUINA}-${i}`} className="hover:bg-amber-50/30">
+                        <tr key={`${m.ID_MAQUINA}-${i}`} className="hover:bg-amber-50/30 transition-colors">
                           <td className="px-4 py-3 border-r border-gray-100 text-slate-700 font-black">{String(m.ID_PLANTA || '—')}</td>
                           <td className="px-4 py-3 border-r border-gray-100 text-left uppercase text-slate-700">{String(m.PLANTA || '—')}</td>
                           <td className="px-4 py-3 border-r border-gray-100 text-slate-700">{String(m.ID_AREA || '—')}</td>
@@ -669,7 +678,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                     </thead>
                     <tbody className="divide-y divide-gray-50 font-bold">
                       {center.d.length === 0 ? (
-                        <tr><td colSpan={10} className="py-8 text-slate-300 font-bold uppercase italic">Sin órdenes registradas</td></tr>
+                        <tr><td colSpan={10} className="py-8 text-slate-300 font-bold uppercase italic">Sin órdenes registradas para los criterios de almacén y responsable aplicados</td></tr>
                       ) : (
                         center.d.map((o, i) => {
                           const eng = calculateEngineering(o);
@@ -727,7 +736,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                     </thead>
                     <tbody className="divide-y divide-gray-50 font-bold">
                       {center.d.length === 0 ? (
-                        <tr><td colSpan={10} className="py-8 text-slate-300 font-bold uppercase italic">Sin órdenes registradas</td></tr>
+                        <tr><td colSpan={10} className="py-8 text-slate-300 font-bold uppercase italic">Sin órdenes FERT registradas para los criterios de almacén y responsable aplicados</td></tr>
                       ) : (
                         center.d.map((o, i) => {
                           const eng = calculateEngineering(o);
