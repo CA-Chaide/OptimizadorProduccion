@@ -365,6 +365,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     setIsLoadingListaMateriales(true);
     try {
       const rowsPerPage = 5000;
+      // Primera petición para obtener el primer bloque y el total
       const firstResponse = await serviciosService.getMaestroMaterialesExplosion('1000', '', 1, rowsPerPage);
       const firstData = firstResponse.data || [];
       const total = firstResponse.totalRegistros || firstResponse.totalRecords || firstResponse.totalRows || 0;
@@ -372,6 +373,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
       let allData = [...firstData];
       const totalPages = Math.ceil(total / rowsPerPage);
       
+      // Si hay más páginas, traerlas todas de forma concurrente
       if (totalPages > 1) {
         const promises = [];
         for (let p = 2; p <= totalPages; p++) {
@@ -603,10 +605,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
     const targetHR = mapToHojaRuta(puestoName).trim().toUpperCase();
     if (!targetHR) return [];
     return filteredOrdenesPrevisionales.filter(o => {
-      const orderHR = mapToHojaRuta(getResolvedPuesto(o)).trim().toUpperCase();
+      const orderHR = String(o['MAQUINA'] || o['Maquina'] || '').trim().toUpperCase();
       return orderHR === targetHR;
     });
-  }, [filteredOrdenesPrevisionales, mapToHojaRuta, getResolvedPuesto]);
+  }, [filteredOrdenesPrevisionales, mapToHojaRuta]);
 
   const workstationGroups = [
     { 
@@ -1172,19 +1174,29 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   <table className="w-full text-[11px] border-collapse">
                     <thead className="bg-slate-900 sticky top-0 z-10 text-white text-left uppercase tracking-widest font-black">
                       <tr>
-                        {Object.keys(listaMaterialesData[0]).map((key) => (
-                          <th key={key} className="px-6 py-4 whitespace-nowrap text-[10px] uppercase font-bold text-slate-300">{key}</th>
-                        ))}
+                        <th className="px-6 py-4 whitespace-nowrap text-[10px] uppercase font-bold text-slate-300">Nivel</th>
+                        <th className="px-6 py-4 whitespace-nowrap text-[10px] uppercase font-bold text-slate-300">Centro</th>
+                        <th className="px-6 py-4 whitespace-nowrap text-[10px] uppercase font-bold text-slate-300">Fert Principal</th>
+                        <th className="px-6 py-4 whitespace-nowrap text-[10px] uppercase font-bold text-slate-300">Descripción Fert</th>
+                        <th className="px-6 py-4 whitespace-nowrap text-[10px] uppercase font-bold text-slate-300">Material Padre</th>
+                        <th className="px-6 py-4 whitespace-nowrap text-[10px] uppercase font-bold text-slate-300">Componente</th>
+                        <th className="px-6 py-4 whitespace-nowrap text-[10px] uppercase font-bold text-slate-300">Descripción Componente</th>
+                        <th className="px-6 py-4 whitespace-nowrap text-[10px] uppercase font-bold text-slate-300 text-right">Cantidad Unitaria</th>
+                        <th className="px-6 py-4 whitespace-nowrap text-[10px] uppercase font-bold text-slate-300 text-right">Cantidad Acumulada</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {listaMaterialesData.map((row, i) => (
                         <tr key={i} className="hover:bg-slate-50 transition-colors text-[10px]">
-                          {Object.values(row).map((val: any, j) => (
-                            <td key={j} className="px-6 py-4 font-medium text-slate-600 whitespace-nowrap">
-                              {val === null || val === undefined ? '—' : String(val)}
-                            </td>
-                          ))}
+                          <td className="px-6 py-4 font-bold text-slate-700">{row.NIVEL}</td>
+                          <td className="px-6 py-4 text-slate-600">{row.CENTRO}</td>
+                          <td className="px-6 py-4 font-mono font-bold text-indigo-600">{row.FERT_PRINCIPAL}</td>
+                          <td className="px-6 py-4 text-slate-600 whitespace-normal break-words leading-tight min-w-[200px]">{row.DESCRIPCION_FERT}</td>
+                          <td className="px-6 py-4 font-mono text-slate-500">{row.MATERIAL_PADRE}</td>
+                          <td className="px-6 py-4 font-mono font-bold text-slate-800">{row.COMPONENTE}</td>
+                          <td className="px-6 py-4 text-slate-600 whitespace-normal break-words leading-tight min-w-[200px]">{row.DESCRIPCION_COMPONENTE}</td>
+                          <td className="px-6 py-4 text-right font-mono font-bold text-slate-900">{Number(row.CANTIDAD_UNITARIA).toLocaleString(undefined, { minimumFractionDigits: 3 })}</td>
+                          <td className="px-6 py-4 text-right font-mono font-bold text-indigo-700 bg-indigo-50/30">{Number(row.CANTIDAD_ACUMULADA).toLocaleString(undefined, { minimumFractionDigits: 3 })}</td>
                         </tr>
                       ))}
                     </tbody>
