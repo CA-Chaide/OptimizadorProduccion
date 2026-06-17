@@ -203,23 +203,35 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
   const filterData = (data: any[], centro: string) => {
     const relevantGroups = grupos.filter(g => String(g.centro).trim() === centro);
-    const allowedResps = restriccionesArray
-      .filter(r => r.nombre_restriccion === 'RESPCONTROLPROD' && relevantGroups.some(g => g.codigo_grupo === r.codigo_grupo))
-      .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()));
+    const groupIds = relevantGroups.map(g => g.codigo_grupo);
+    const groupRest = restriccionesArray.filter(r => groupIds.includes(r.codigo_grupo));
+
+    const respCodes = groupRest
+      .filter(r => r.nombre_restriccion === 'RESPCONTROLPROD')
+      .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
+      .filter(v => v !== '');
+    
+    const almCodes = groupRest
+      .filter(r => r.nombre_restriccion === 'ALMACEN')
+      .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
+      .filter(v => v !== '');
 
     return data.filter(o => {
-      const c = String(o.CENTRO || o.Centro || '').trim();
+      const c = String(o.CENTRO || o.Centro || o.centro || '').trim();
       if (c !== centro) return false;
       
-      // FILTRO DE ALMACÉN: Solo Almacén 1006 solicitado por el usuario
-      const almValue = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
-      if (almValue !== '1006') return false;
+      const itemAlmValue = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
+      const matchAlm = almCodes.length === 0 || almCodes.includes(itemAlmValue);
+      if (!matchAlm) return false;
 
-      const resp = String(o.RESPCONTROLPROD || o.RespControlProd || '').trim();
-      if (allowedResps.length > 0 && !allowedResps.includes(resp)) return false;
+      const itemResp = String(o.RESPCONTROLPROD || o.RespControlProd || o.RESP_CONTROL_PROD || o.RespCtrlProd || '').trim();
+      const matchResp = respCodes.length === 0 || respCodes.includes(itemResp);
+      if (!matchResp) return false;
+
       if (selectedDate !== 'all') {
         const dFull = String(o.FECHAINICIO || o.FECHA || '').trim();
-        if ((dFull.includes('T') ? dFull.split('T')[0] : dFull) !== selectedDate) return false;
+        const itemDate = dFull.includes('T') ? dFull.split('T')[0] : dFull;
+        if (itemDate !== selectedDate) return false;
       }
       return true;
     });
@@ -285,7 +297,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <div className="p-2 bg-primary/10 rounded-xl"><Wind className="w-6 h-6 text-primary" /></div>
           <div>
             <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Programación Táctica Corte Espuma</h2>
-            <p className="text-xs text-gray-500 font-medium">Coche 2m | Gestión de Almacén 1006 | Engineering Model v2.2</p>
+            <p className="text-xs text-gray-500 font-medium">Coche 2m | Ingeniería de Planta | Engineering Model v2.2</p>
           </div>
         </div>
       </div>
@@ -312,7 +324,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               <div className="p-2 bg-primary/10 rounded-xl text-primary"><Activity className="w-4 h-4" /></div>
               <div>
                 <p className="text-[9px] font-black uppercase text-gray-400 tracking-widest">Tablero de Mando Diario</p>
-                <h3 className="text-[10px] font-black text-gray-700 uppercase">{selectedDate === 'all' ? 'Vista Consolidada (Alm 1006)' : `Fecha: ${selectedDate}`}</h3>
+                <h3 className="text-[10px] font-black text-gray-700 uppercase">{selectedDate === 'all' ? 'Vista Consolidada' : `Fecha: ${selectedDate}`}</h3>
               </div>
             </div>
             <Popover>
@@ -365,7 +377,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <th className="px-4 py-3 text-left w-56">Máquina</th>
                         <th className="px-4 py-3 text-center">Cant. Planificada</th>
                         <th className="px-4 py-3 text-center">Horas Req.</th>
-                        <th className="px-4 py-3 text-center">Almacén Origen</th>
+                        <th className="px-4 py-3 text-center">Auditado SAP</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
@@ -380,7 +392,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                             <td className="px-4 py-3 text-slate-800 font-black uppercase">{m.maquina}</td>
                             <td className="px-4 py-3 text-center font-mono">{totalQty > 0 ? formatNum(totalQty, 0) : '—'}</td>
                             <td className="px-4 py-3 text-center font-mono text-indigo-600">{totalHours > 0 ? `${totalHours.toFixed(2)}h` : '—'}</td>
-                            <td className="px-4 py-3 text-center text-slate-400">1006</td>
+                            <td className="px-4 py-3 text-center text-slate-400">✓</td>
                           </tr>
                         );
                       })}
@@ -420,7 +432,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                   <div className="flex items-center justify-between px-2">
                     <div className="flex items-center gap-3 text-left">
                       <div className="p-2 bg-slate-900 rounded-xl text-white shadow-lg"><Activity className="w-4 h-4" /></div>
-                      <h3 className="text-sm font-black uppercase tracking-tighter text-slate-800">CENTRO {centro === '1000' ? 'QUITO' : 'GUAYAQUIL'} (Solo Alm. 1006)</h3>
+                      <h3 className="text-sm font-black uppercase tracking-tighter text-slate-800">CENTRO {centro === '1000' ? 'QUITO' : 'GUAYAQUIL'}</h3>
                     </div>
                     <Badge className="bg-yellow-400 text-black font-black text-[9px] uppercase px-4 shadow-sm border-none">Periodo: {selectedDate === 'all' ? 'PLAN CONSOLIDADO' : selectedDate}</Badge>
                   </div>
@@ -550,8 +562,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
         <TabsContent value="ordenes" className="space-y-10 animate-in fade-in duration-300">
           {[ 
-            { t: 'Planta 1000 - Quito (Alm 1006)', d: provC1000, id: '1000', c: 'text-green-700', b: 'bg-green-600' }, 
-            { t: 'Planta 2000 - Guayaquil (Alm 1006)', d: provC2000, id: '2000', c: 'text-indigo-700', b: 'bg-indigo-600' } 
+            { t: 'Planta 1000 - Quito (Alm)', d: provC1000, id: '1000', c: 'text-green-700', b: 'bg-green-600' }, 
+            { t: 'Planta 2000 - Guayaquil (Alm)', d: provC2000, id: '2000', c: 'text-indigo-700', b: 'bg-indigo-600' } 
           ].map((center, idx) => (
             <div key={idx} className="space-y-3">
               <h3 className={cn("text-[10px] font-black uppercase flex items-center gap-2 px-1 text-left", center.c)}>
@@ -578,7 +590,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                     </thead>
                     <tbody className="divide-y divide-gray-50 font-bold">
                       {center.d.length === 0 ? (
-                        <tr><td colSpan={12} className="py-8 text-slate-300 font-bold uppercase italic">Sin órdenes para el Almacén 1006</td></tr>
+                        <tr><td colSpan={12} className="py-8 text-slate-300 font-bold uppercase italic">Sin órdenes registradas para los criterios de almacén y responsable aplicados</td></tr>
                       ) : (
                         center.d.map((o, i) => {
                           const eng = calculateEngineering(o);
@@ -597,7 +609,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                               <td className="px-2 py-2 border-r border-gray-50 bg-orange-50/10 font-black text-orange-800">{eng.blocks20m.toFixed(1)}</td>
                               <td className="px-3 py-2 border-r border-gray-50 bg-red-50/20 font-black text-red-600">{String(eng.loads)}</td>
                               <td className="px-3 py-2 border-r border-gray-50 text-gray-300">{String(o.RESPCONTROLPROD || '—')}</td>
-                              <td className="px-3 py-2 bg-slate-50/50 text-slate-900 font-black">1006</td>
+                              <td className="px-3 py-2 bg-slate-50/50 text-slate-900 font-black">{o.Almacen || o.ALMACEN || '—'}</td>
                             </tr>
                           );
                         })
@@ -612,8 +624,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
         <TabsContent value="ordenesFert" className="space-y-10 animate-in fade-in duration-300">
           {[ 
-            { t: 'Planta 1000 - Quito (Órdenes FERT - Alm 1006)', d: fertC1000, id: '1000', c: 'text-green-700', b: 'bg-green-600' }, 
-            { t: 'Planta 2000 - Guayaquil (Órdenes FERT - Alm 1006)', d: fertC2000, id: '2000', c: 'text-indigo-700', b: 'bg-indigo-600' } 
+            { t: 'Planta 1000 - Quito (Órdenes FERT)', d: fertC1000, id: '1000', c: 'text-green-700', b: 'bg-green-600' }, 
+            { t: 'Planta 2000 - Guayaquil (Órdenes FERT)', d: fertC2000, id: '2000', c: 'text-indigo-700', b: 'bg-indigo-600' } 
           ].map((center, idx) => (
             <div key={idx} className="space-y-3">
               <h3 className={cn("text-[10px] font-black uppercase flex items-center gap-2 px-1 text-left", center.c)}>
@@ -640,7 +652,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                     </thead>
                     <tbody className="divide-y divide-gray-50 font-bold">
                       {center.d.length === 0 ? (
-                        <tr><td colSpan={12} className="py-8 text-slate-300 font-bold uppercase italic">Sin órdenes FERT para el Almacén 1006</td></tr>
+                        <tr><td colSpan={12} className="py-8 text-slate-300 font-bold uppercase italic">Sin órdenes registradas para los criterios de almacén y responsable aplicados</td></tr>
                       ) : (
                         center.d.map((o, i) => {
                           const eng = calculateEngineering(o);
@@ -659,7 +671,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                               <td className="px-3 py-2 border-r border-gray-50 bg-orange-50/10 font-black text-orange-800">{eng.blocks20m.toFixed(1)}</td>
                               <td className="px-3 py-2 border-r border-gray-50 bg-red-50/20 font-black text-red-600">{String(eng.loads)}</td>
                               <td className="px-3 py-2 border-r border-gray-50 text-gray-300">{String(o.RESPCONTROLPROD || '—')}</td>
-                              <td className="px-3 py-2 bg-slate-50/50 text-slate-900 font-black">1006</td>
+                              <td className="px-3 py-2 bg-slate-50/50 text-slate-900 font-black">{o.Almacen || o.ALMACEN || '—'}</td>
                             </tr>
                           );
                         })
@@ -679,8 +691,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               <Card className="rounded-2xl border border-gray-100 shadow-md overflow-hidden bg-white">
                 <div className="overflow-x-auto max-h-[500px]">
                   <table className="w-full border-collapse text-[11px] font-bold text-center">
-                    <thead className="bg-[#1e293b] text-white sticky top-0 z-10 uppercase font-black tracking-widest text-[9px]">
-                      <tr>
+                    <thead className="bg-finish-800 text-white sticky top-0 z-10 uppercase font-black tracking-widest text-[9px]">
+                      <tr className="bg-slate-900">
                         <th className="px-5 py-4 border-r border-white/5 text-left">Material</th>
                         <th className="px-5 py-4 border-r border-white/5 text-left">Descripción Técnica</th>
                         <th className="px-5 py-4 border-r border-white/5">Línea</th>
