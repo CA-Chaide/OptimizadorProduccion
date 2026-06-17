@@ -18,7 +18,7 @@ import {
   TrendingUp,
   ShoppingCart
 } from 'lucide-react';
-import { Card } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -536,12 +536,14 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                 <thead className="bg-[#fef3c7] sticky top-0 z-10 text-amber-900 uppercase font-black tracking-widest border-b border-amber-200">
                   <tr>
                     <th className="px-4 py-4 border-r border-amber-100">ID_PLANTA</th>
+                    <th className="px-4 py-4 border-r border-amber-100 text-left">PLANTA</th>
+                    <th className="px-4 py-4 border-r border-amber-100">ID_AREA</th>
+                    <th className="px-4 py-4 border-r border-amber-100 text-left">AREA</th>
                     <th className="px-4 py-4 border-r border-amber-100">ID_MAQUINA</th>
                     <th className="px-4 py-4 border-r border-amber-100 text-left">MAQUINA</th>
                     <th className="px-4 py-4 border-r border-amber-100">OT_PRG_ID</th>
                     <th className="px-4 py-4 border-r border-amber-100 text-left">FECHA_OT_PRG_INI</th>
-                    <th className="px-4 py-4 border-r border-amber-100 text-left">FECHA_OT_PRG_FIN</th>
-                    <th className="px-4 py-4 text-red-900">T_MTTO_PLANIFICADO</th>
+                    <th className="px-4 py-4 text-left">FECHA_OT_PRG_FIN</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 font-bold">
@@ -552,12 +554,14 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                   }).map((m, i) => (
                     <tr key={i} className="hover:bg-amber-50/30">
                       <td className="px-4 py-3 border-r border-gray-100 text-slate-400">{String(m.ID_PLANTA || '—')}</td>
+                      <td className="px-4 py-3 border-r border-gray-100 text-left uppercase text-slate-600">{String(m.PLANTA || '—')}</td>
+                      <td className="px-4 py-3 border-r border-gray-100 text-slate-400">{String(m.ID_AREA || '—')}</td>
+                      <td className="px-4 py-3 border-r border-gray-100 text-left uppercase text-slate-600">{String(m.AREA || '—')}</td>
                       <td className="px-4 py-3 border-r border-gray-100 text-indigo-600">{String(m.ID_MAQUINA || '—')}</td>
                       <td className="px-4 py-3 border-r border-gray-100 text-left uppercase text-slate-600">{String(m.MAQUINA || '—')}</td>
                       <td className="px-4 py-3 border-r border-gray-100 font-mono text-slate-400">{String(m.OT_PRG_ID || '—')}</td>
                       <td className="px-4 py-3 border-r border-gray-100 text-left font-mono text-slate-500">{String(m.FECHA_OT_PRG_INI || m.FECHA_INI || m.FECHA_PRO || '—')}</td>
-                      <td className="px-4 py-3 border-r border-gray-100 text-left font-mono text-slate-500">{String(m.FECHA_OT_PRG_FIN || m.FECHA_FIN || '—')}</td>
-                      <td className="px-4 py-3 font-black text-red-600 bg-red-50/10">{String(m.T_MTTO_PLANIFICADO || m.TIEMPO || '0')}h</td>
+                      <td className="px-4 py-3 text-left font-mono text-slate-500">{String(m.FECHA_OT_PRG_FIN || m.FECHA_FIN || m.FECHA_PRO || '—')}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -670,10 +674,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                               <td className="px-3 py-2 border-r border-gray-100 font-mono text-[8px] text-gray-400">{date}</td>
                               <td className="px-3 py-2 font-mono text-primary border-r border-gray-50">{eng.code}</td>
                               <td className="px-3 py-2 text-left border-r border-gray-50 uppercase text-gray-500 max-w-[200px] truncate" title={eng.desc}>{eng.desc}</td>
-                              <td className="px-3 py-2 border-r border-gray-100 font-black text-gray-900 font-mono">{eng.qty.toLocaleString()}</td>
-                              <td className="px-3 py-2 border-r border-gray-100 font-black text-indigo-700 bg-indigo-50/5 uppercase">{String(o.MAQUINA || o.RECURSO || '—')}</td>
-                              <td className="px-3 py-2 border-r border-gray-100 bg-blue-50/10 font-mono text-blue-700 text-center">{eng.indivMin.toFixed(2)}</td>
-                              <td className="px-3 py-2 border-r border-gray-100 bg-amber-50/10 font-mono text-amber-700 text-center">{eng.hours.toFixed(2)}</td>
+                              <td className="px-3 py-2 border-r border-white/10 font-black text-gray-900 font-mono">{eng.qty.toLocaleString()}</td>
+                              <td className="px-3 py-2 border-r border-white/10 font-black text-indigo-700 bg-indigo-50/5 uppercase">{String(o.MAQUINA || o.RECURSO || '—')}</td>
+                              <td className="px-3 py-2 border-r border-white/10 bg-blue-50/10 font-mono text-blue-700 text-center">{eng.indivMin.toFixed(2)}</td>
+                              <td className="px-3 py-2 border-r border-white/10 bg-amber-50/10 font-mono text-amber-700 text-center">{eng.hours.toFixed(2)}</td>
                               <td className="px-3 py-2 border-r border-gray-50 bg-orange-50/10 font-black text-orange-800">{eng.blocks20m.toFixed(1)}</td>
                               <td className="px-3 py-2 border-r border-gray-50 bg-red-50/20 font-black text-red-600">{String(eng.loads)}</td>
                               <td className="px-3 py-2 border-r border-gray-50 text-gray-300">{String(o.RESPCONTROLPROD || '—')}</td>
