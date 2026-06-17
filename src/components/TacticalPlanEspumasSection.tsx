@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   Wind, 
   Package, 
@@ -113,39 +113,67 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const now = new Date();
     setViewDate(now);
     setSelectedDate(now.toISOString().split('T')[0]);
-    
-    const init = async () => {
-      setIsLoading(true);
-      try {
-        const groupsRes = await grupoService.getAll();
-        const filteredGroups = (groupsRes.data || []).filter(g => {
-          const name = (g.nombre_grupo || '').toLowerCase();
-          return name.includes('espuma') || name.includes('corte y laminado');
-        });
-        setGrupos(filteredGroups);
-        const gIds = filteredGroups.map(g => g.codigo_grupo);
-
-        const [restrs, provs, ferts, times, maint, habs] = await Promise.all([
-          restriccionService.getAll(),
-          serviciosService.OrdenesProvisionalesPaginados(1, 20000),
-          serviciosService.getOrdenesFert(1, 20000),
-          serviciosService.getTiemposEnsamblado(1, 15000),
-          serviciosService.ListarMantenimientoPreventivosProgramados().catch(() => ({ data: [] })),
-          serviciosService.getHabilidadesOperadorPorEstacion().catch(() => ({ data: [] }))
-        ]);
-
-        setRestriccionesArray((restrs.data || []).filter((r: any) => gIds.includes(r.codigo_grupo)));
-        setOrders(provs.data?.data || provs.data || []);
-        setOrdersFert(ferts.data?.data || ferts.data || []);
-        setTiemposEnsamblado(times.data?.data || times.data || []);
-        setMantenimientos(maint.data || []);
-        setHabilidades(Array.isArray(habs.data) ? habs.data : []);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    init();
   }, []);
+
+  const initData = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const groupsRes = await grupoService.getAll();
+      const filteredGroups = (groupsRes.data || []).filter(g => {
+        const name = (g.nombre_grupo || '').toLowerCase();
+        return name.includes('espuma') || name.includes('corte y laminado');
+      });
+      setGrupos(filteredGroups);
+      const gIds = filteredGroups.map(g => g.codigo_grupo);
+
+      const [restrs, provs, ferts, times, maint, habs] = await Promise.all([
+        restriccionService.getAll(),
+        serviciosService.OrdenesProvisionalesPaginados(1, 20000),
+        serviciosService.getOrdenesFert(1, 20000),
+        serviciosService.getTiemposEnsamblado(1, 15000),
+        serviciosService.ListarMantenimientoPreventivosProgramados().catch(() => ({ data: [] })),
+        serviciosService.getHabilidadesOperadorPorEstacion().catch(() => ({ data: [] }))
+      ]);
+
+      setRestriccionesArray((restrs.data || []).filter((r: any) => gIds.includes(r.codigo_grupo)));
+      setOrders(provs.data?.data || provs.data || []);
+      setOrdersFert(ferts.data?.data || ferts.data || []);
+      setTiemposEnsamblado(times.data?.data || times.data || []);
+      setMantenimientos(maint.data || []);
+      setHabilidades(Array.isArray(habs.data) ? habs.data : []);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (mounted) initData();
+  }, [mounted, initData]);
+
+  // CALCULO DE CALENDARIO Y FECHAS CON ORDENES
+  const datesWithOrders = useMemo(() => {
+    if (!mounted) return new Set<string>();
+    const dates = new Set<string>();
+    const allData = [...ordenes, ...ordenesFert];
+    allData.forEach(o => {
+      const d = String(o.FECHAINICIO || o.FECHA || o.fecha_inicio || '').trim();
+      if (d && d !== 'null' && d !== 'undefined') {
+        const normalized = d.includes('T') ? d.split('T')[0] : d;
+        dates.add(normalized);
+      }
+    });
+    return dates;
+  }, [ordenes, ordenesFert, mounted]);
+
+  const calendarDays = useMemo(() => {
+    if (!mounted || !viewDate) return [];
+    const start = startOfMonth(viewDate);
+    const end = endOfMonth(viewDate);
+    const days = eachDayOfInterval({ start, end });
+    const startDay = getDay(start);
+    const padding = startDay === 0 ? 6 : startDay - 1;
+    return [...Array(padding).fill(null), ...days];
+  }, [viewDate, mounted]);
 
   const extractMaterialInfo = (item: any) => {
     const matStr = String(item.MATERIAL || item.CodMaterial || '').trim();
@@ -266,16 +294,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return [...provData, ...fertData].reduce((sum, o) => sum + calculateEngineering(o).hours, 0);
   };
 
-  /**
-   * Helpers para Auditoría Técnica de Mantenimiento
-   */
   const formatMTTODate = (dateStr: any) => {
     if (!dateStr) return '—';
     const str = String(dateStr).trim();
     if (!str || str === 'null' || str === 'undefined') return '—';
     try {
       const d = new Date(str);
-      if (isNaN(d.getTime())) return str; // Si falla el parseo nativo, devolver original
+      if (isNaN(d.getTime())) return str;
       return format(d, 'dd/MM/yyyy HH:mm', { locale: es });
     } catch {
       return str;
@@ -585,8 +610,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                       <td className="px-4 py-3 border-r border-gray-100 text-indigo-600">{String(m.ID_MAQUINA || '—')}</td>
                       <td className="px-4 py-3 border-r border-gray-100 text-left uppercase text-slate-600">{String(m.MAQUINA || '—')}</td>
                       <td className="px-4 py-3 border-r border-gray-100 font-mono text-slate-400">{String(m.OT_PRG_ID || '—')}</td>
-                      <td className="px-4 py-3 border-r border-gray-100 text-left font-mono text-slate-500">{formatMTTODate(m.FECHA_OT_PRG_INI || m.FECHA_INI || m.FECHA_PRO)}</td>
-                      <td className="px-4 py-3 border-r border-gray-100 text-left font-mono text-slate-500">{formatMTTODate(m.FECHA_OT_PRG_FIN || m.FECHA_FIN || m.FECHA_PRO)}</td>
+                      <td className="px-4 py-3 border-r border-gray-100 text-left font-mono text-slate-50">{formatMTTODate(m.FECHA_OT_PRG_INI || m.FECHA_INI || m.FECHA_PRO)}</td>
+                      <td className="px-4 py-3 border-r border-gray-100 text-left font-mono text-slate-50">{formatMTTODate(m.FECHA_OT_PRG_FIN || m.FECHA_FIN || m.FECHA_PRO)}</td>
                       <td className="px-4 py-3 text-center font-mono font-black text-amber-700 bg-amber-500/5">
                         {calculateMTTOCapacity(m.FECHA_OT_PRG_INI || m.FECHA_INI || m.FECHA_PRO, m.FECHA_OT_PRG_FIN || m.FECHA_FIN || m.FECHA_PRO)}
                       </td>
