@@ -20,7 +20,9 @@ import {
   SearchCode,
   Database,
   Filter,
-  Info
+  Info,
+  ListTree,
+  Cog
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -199,11 +201,16 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [ordenesFert, setOrdenesFert] = useState<any[]>([]);
   const [kpiMaestroData, setKpiMaestroData] = useState<any[]>([]);
   const [ordenesPrevisionalesData, setOrdenesPrevisionalesData] = useState<any[]>([]);
+  const [listaMaterialesData, setListaMaterialesData] = useState<any[]>([]);
+  const [versionesFabricacionData, setVersionesFabricacionData] = useState<any[]>([]);
+
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingTiempos, setIsLoadingTiempos] = useState(false);
   const [isLoadingFert, setIsLoadingFert] = useState(false);
   const [isLoadingKPI, setIsLoadingKPI] = useState(false);
   const [isLoadingPrevisionales, setIsLoadingPrevisionales] = useState(false);
+  const [isLoadingListaMateriales, setIsLoadingListaMateriales] = useState(false);
+  const [isLoadingVersiones, setIsLoadingVersiones] = useState(false);
   
   const [jornadaDiurnaSel, setJornadaDiurnaSel] = useState("8.75");
   const [jornadaNocturnaSel, setJornadaNocturnaSel] = useState("0");
@@ -332,14 +339,42 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
   }, [addNotification]);
 
+  const fetchListaMateriales = useCallback(async () => {
+    setIsLoadingListaMateriales(true);
+    try {
+      const response = await serviciosService.getMaestroMaterialesExplosion('1000', '', 1, 1000);
+      setListaMaterialesData(response.data || []);
+    } catch (error: any) {
+      console.error('Error fetching BOM list:', error);
+      addNotification('error', `Error al cargar Lista de Materiales: ${error.message}`);
+    } finally {
+      setIsLoadingListaMateriales(false);
+    }
+  }, [addNotification]);
+
+  const fetchVersionesFabricacion = useCallback(async () => {
+    setIsLoadingVersiones(true);
+    try {
+      const response = await serviciosService.VersionesFabricacion(1, 1000);
+      setVersionesFabricacionData(response.data || []);
+    } catch (error: any) {
+      console.error('Error fetching Production Versions:', error);
+      addNotification('error', `Error al cargar Versiones de Fabricación: ${error.message}`);
+    } finally {
+      setIsLoadingVersiones(false);
+    }
+  }, [addNotification]);
+
   useEffect(() => {
     if (isMounted) {
       fetchBaseData();
       fetchOrdenesFert();
       fetchKPIMaestro();
       fetchOrdenesPrevisionales();
+      fetchListaMateriales();
+      fetchVersionesFabricacion();
     }
-  }, [isMounted, fetchBaseData, fetchOrdenesFert, fetchKPIMaestro, fetchOrdenesPrevisionales]);
+  }, [isMounted, fetchBaseData, fetchOrdenesFert, fetchKPIMaestro, fetchOrdenesPrevisionales, fetchListaMateriales, fetchVersionesFabricacion]);
 
   const forrosGruposList = useMemo(() => {
     return grupos.filter(g => {
@@ -609,6 +644,12 @@ export const TacticalPlanForrosSection: React.FC = () => {
           </TabsTrigger>
           <TabsTrigger value="ordenes-previsionales" className="px-7 py-4 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[11px] font-black uppercase tracking-widest text-slate-500">
             <SearchCode className="w-4 h-4 mr-2" /> Órdenes Previsionales
+          </TabsTrigger>
+          <TabsTrigger value="lista-materiales" className="px-7 py-4 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[11px] font-black uppercase tracking-widest text-slate-500">
+            <ListTree className="w-4 h-4 mr-2" /> LISTA DE MATERIALES
+          </TabsTrigger>
+          <TabsTrigger value="versiones-fabricacion" className="px-7 py-4 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[11px] font-black uppercase tracking-widest text-slate-500">
+            <Cog className="w-4 h-4 mr-2" /> Versiones de fabricación
           </TabsTrigger>
           <TabsTrigger value="personal-turnos" className="px-7 py-4 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[11px] font-black uppercase tracking-widest text-slate-500">
             <UserPlus className="w-4 h-4 mr-2" /> Personal & Turnos
@@ -945,6 +986,104 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   <div className="py-24 text-center text-slate-400 uppercase font-black tracking-widest text-xs opacity-40">
                     No se encontraron órdenes para el Centro 1000 con las restricciones aplicadas
                   </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="lista-materiales">
+          <Card className="rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden shadow-sm">
+            <CardHeader className="bg-slate-50/50 border-b border-slate-200 p-10">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-2xl font-black text-slate-900 uppercase">LISTA DE MATERIALES</CardTitle>
+                  <CardDescription className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-1">Explosión de Materiales (BOM)</CardDescription>
+                </div>
+                <div className="bg-emerald-600 p-3 rounded-2xl text-white shadow-lg shadow-emerald-500/20">
+                  <ListTree className="w-6 h-6" />
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto max-h-[70vh] relative">
+                {isLoadingListaMateriales ? (
+                  <div className="flex items-center justify-center py-20">
+                    <Loader2 className="w-10 h-10 animate-spin text-emerald-600" />
+                    <span className="ml-4 text-slate-500 font-black uppercase tracking-widest text-xs">Consultando explosión de materiales...</span>
+                  </div>
+                ) : listaMaterialesData.length > 0 ? (
+                  <table className="w-full text-[11px] border-collapse">
+                    <thead className="bg-slate-900 sticky top-0 z-10 text-white text-left uppercase tracking-widest font-black">
+                      <tr>
+                        {Object.keys(listaMaterialesData[0]).map((key) => (
+                          <th key={key} className="px-6 py-4 whitespace-nowrap text-[10px] uppercase font-bold text-slate-300">{key}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {listaMaterialesData.map((row, i) => (
+                        <tr key={i} className="hover:bg-slate-50 transition-colors text-[10px]">
+                          {Object.values(row).map((val: any, j) => (
+                            <td key={j} className="px-6 py-4 font-medium text-slate-600 whitespace-nowrap">
+                              {val === null || val === undefined ? '—' : String(val)}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <div className="py-20 text-center text-slate-400 uppercase font-black tracking-widest text-xs opacity-40">No hay datos de materiales disponibles</div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="versiones-fabricacion">
+          <Card className="rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden shadow-sm">
+            <CardHeader className="bg-slate-50/50 border-b border-slate-200 p-10">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-2xl font-black text-slate-900 uppercase">Versiones de fabricación</CardTitle>
+                  <CardDescription className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-1">Maestro de Versiones por Material</CardDescription>
+                </div>
+                <div className="bg-orange-600 p-3 rounded-2xl text-white shadow-lg shadow-orange-500/20">
+                  <Cog className="w-6 h-6" />
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto max-h-[70vh] relative">
+                {isLoadingVersiones ? (
+                  <div className="flex items-center justify-center py-20">
+                    <Loader2 className="w-10 h-10 animate-spin text-orange-600" />
+                    <span className="ml-4 text-slate-500 font-black uppercase tracking-widest text-xs">Consultando versiones...</span>
+                  </div>
+                ) : versionesFabricacionData.length > 0 ? (
+                  <table className="w-full text-[11px] border-collapse">
+                    <thead className="bg-slate-900 sticky top-0 z-10 text-white text-left uppercase tracking-widest font-black">
+                      <tr>
+                        {Object.keys(versionesFabricacionData[0]).map((key) => (
+                          <th key={key} className="px-6 py-4 whitespace-nowrap text-[10px] uppercase font-bold text-slate-300">{key}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {versionesFabricacionData.map((row, i) => (
+                        <tr key={i} className="hover:bg-slate-50 transition-colors text-[10px]">
+                          {Object.values(row).map((val: any, j) => (
+                            <td key={j} className="px-6 py-4 font-medium text-slate-600 whitespace-nowrap">
+                              {val === null || val === undefined ? '—' : String(val)}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <div className="py-20 text-center text-slate-400 uppercase font-black tracking-widest text-xs opacity-40">No hay versiones registradas</div>
                 )}
               </div>
             </CardContent>
