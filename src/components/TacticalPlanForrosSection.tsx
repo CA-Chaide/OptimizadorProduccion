@@ -49,7 +49,6 @@ interface WorkstationConfig {
 /**
  * Componente: MachineCard
  * Tarjeta de control de carga para cada puesto de trabajo en los tableros técnicos.
- * Ahora con columnas: CODMATERIAL, NOMBRE, CANTIDAD, FECHA INICIO, TIEMPO DE PRODUCCIÓN.
  */
 const MachineCard = ({ 
   puestoName, 
@@ -513,12 +512,12 @@ export const TacticalPlanForrosSection: React.FC = () => {
         "ACOLCHADORA02", "COSEDORA-ACH02", "ACOLCHADORA06", "COSEDORA-ACH06", 
         "ACOLCHADORA07", "COSEDORA-ACH07", "ACOLCHADORA08", "COSEDORA-ACH08", 
         "ACOLCHADORA09", "COSEDORA-ACH09", "ACOLCHADORA10", "COSEDORA-ACH10", 
-        "COSEDORA-ACH11", "COSEDORA-ACH12", "COSEDORA-ACH13"
+        "COSEDORA-ACH13"
       ] 
     },
     { 
       title: "BANDAS", 
-      items: ["ACOLCHADORA11", "ACOLCHADORA12", "COSEDORA-BANDA3D", "COSEDORA-BO01", "COSEDORA-ENCINTADOBD", "BORDADORA-BANDA01"] 
+      items: ["ACOLCHADORA11", "ACOLCHADORA12", "COSEDORA-ACH11", "COSEDORA-ACH12", "COSEDORA-BANDA3D", "COSEDORA-BO01", "COSEDORA-ENCINTADOBD", "BORDADORA-BANDA01"] 
     },
     { 
       title: "REMATADORADAS DE BANDAS", 
@@ -676,7 +675,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="acolchado-tapas" className="space-y-16 pb-20">
-          {['02', '06', '07', '08', '09', '10', '11', '12', '13'].map(suffix => {
+          {['02', '06', '07', '08', '09', '10', '13'].map(suffix => {
             const achNames = uniquePuestos.filter(p => p.includes(`ACH${suffix}`) || p.includes(`ACOLCHADORA${suffix}`));
             const pefNames = uniquePuestos.filter(p => p.includes(`PEF${suffix}`) || p.includes(`COSEDORA-ACH${suffix}`) || p.includes(`PEGADORA${suffix}`));
             if (achNames.length === 0 && pefNames.length === 0) return null;
@@ -719,7 +718,17 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
         <TabsContent value="bandas" className="space-y-10 pb-20">
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-10">
-            {uniquePuestos.filter(p => p.includes('ACH11') || p.includes('ACH12') || p.includes('RMTB') || p.includes('COS3D') || p.includes('ENCINTADOBD') || p.includes('BO01') || p.includes('BORDADORA-BANDA01')).map((pName) => (
+            {uniquePuestos.filter(p => 
+              p.includes('ACOLCHADORA11') || 
+              p.includes('ACOLCHADORA12') || 
+              p.includes('ACH11') || 
+              p.includes('ACH12') || 
+              p.includes('RMTB') || 
+              p.includes('COS3D') || 
+              p.includes('ENCINTADOBD') || 
+              p.includes('BO01') || 
+              p.includes('BORDADORA-BANDA01')
+            ).map((pName) => (
               <MachineCard 
                 key={pName} 
                 puestoName={pName} 
