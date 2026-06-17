@@ -349,8 +349,8 @@ export const serviciosService = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ 
-        centro: centro,
-        fert: fert,
+        Centro: centro,
+        Fert: fert,
         page: page, 
         rowsPerPage: rowsPerPage,
       }),

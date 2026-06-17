@@ -21,7 +21,8 @@ import {
   Database,
   Filter,
   ListTree,
-  Cog
+  Cog,
+  Truck
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -338,6 +339,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const fetchListaMateriales = useCallback(async () => {
     setIsLoadingListaMateriales(true);
     try {
+      // Petición al API según firma centro, fert
       const response = await serviciosService.ReporteExplosionMateriales('1000', '');
       setListaMaterialesData(response.data || []);
     } catch (error: any) {
@@ -398,6 +400,26 @@ export const TacticalPlanForrosSection: React.FC = () => {
     
     return Array.from(codes);
   }, [restricciones, forrosGruposList]);
+
+  // PROCESAMIENTO DE ÓRDENES FERT (Filtrado por RESP 003, 004 y División por Centro)
+  const processedOrdenesFert = useMemo(() => {
+    const allowedFertResps = ['003', '004', '3', '4'];
+    
+    const filtered = ordenesFert.filter(order => {
+      const respField = Object.keys(order).find(k => {
+        const uk = k.toUpperCase();
+        return uk === 'RESPCTRLPROD' || uk === 'RESP_CTRL_PROD' || uk === 'RESP';
+      });
+      if (!respField) return true;
+      const val = String(order[respField] || '').trim().replace(/^0+/, '');
+      return allowedFertResps.includes(val);
+    });
+
+    const fert1000 = filtered.filter(o => String(o['Centro'] || o['CENTRO'] || '').trim() === '1000');
+    const fert2000 = filtered.filter(o => String(o['Centro'] || o['CENTRO'] || '').trim() === '2000');
+
+    return { fert1000, fert2000, totalFiltered: filtered.length };
+  }, [ordenesFert]);
 
   const filteredOrdenesPrevisionales = useMemo(() => {
     let filtered = ordenesPrevisionalesData.filter(order => {
@@ -577,6 +599,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   return (
     <div className="p-6 md:p-8 space-y-6 bg-slate-50/40 min-h-screen font-body">
+      {/* Header Principal */}
       <div className="flex flex-col xl:flex-row items-center justify-between gap-6 bg-white p-7 rounded-[2rem] border border-slate-200 shadow-sm">
         <div className="flex items-center space-x-6">
           <div className="bg-slate-950 p-5 rounded-[1.5rem] text-white shadow-xl ring-4 ring-slate-100">
@@ -588,7 +611,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
               <Badge className="bg-indigo-600 text-white font-black px-3 py-1 rounded-lg text-[10px] uppercase tracking-widest">Forros</Badge>
             </div>
             <div className="flex items-center gap-3 mt-2 text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">
-              <Users className="w-3 h-3" /> Eficiencia: 84%
+              <Users className="w-3 h-3" /> Eficiencia Operativa: 84%
             </div>
           </div>
         </div>
@@ -816,53 +839,103 @@ export const TacticalPlanForrosSection: React.FC = () => {
           </div>
         </TabsContent>
 
-        <TabsContent value="ordenes-fert">
-          <Card className="rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden shadow-sm">
-            <CardHeader className="bg-slate-50/50 border-b border-slate-200 p-10">
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="text-2xl font-black text-slate-900 uppercase">Órdenes FERT</CardTitle>
-                  <CardDescription className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-1">Listado de Órdenes de Producto Terminado</CardDescription>
-                </div>
-                <div className="bg-indigo-600 p-3 rounded-2xl text-white shadow-lg shadow-indigo-500/20">
-                  <Layers className="w-6 h-6" />
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="overflow-x-auto max-h-[70vh] relative">
-                {isLoadingFert ? (
-                  <div className="flex items-center justify-center py-20">
-                    <Loader2 className="w-10 h-10 animate-spin text-indigo-600" />
-                    <span className="ml-4 text-slate-500 font-black uppercase tracking-widest text-xs">Cargando órdenes FERT...</span>
+        <TabsContent value="ordenes-fert" className="space-y-8 pb-20">
+          {isLoadingFert ? (
+            <div className="flex items-center justify-center py-20 bg-white rounded-3xl border border-slate-200">
+              <Loader2 className="w-10 h-10 animate-spin text-indigo-600" />
+              <span className="ml-4 text-slate-500 font-black uppercase tracking-widest text-xs">Cargando órdenes FERT...</span>
+            </div>
+          ) : (
+            <div className="space-y-10">
+              {/* Sección Centro 1000 */}
+              <Card className="rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden shadow-sm border-none">
+                <CardHeader className="bg-slate-900 text-white p-8">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="bg-indigo-600 p-3 rounded-2xl text-white shadow-lg shadow-indigo-500/20">
+                        <MapPin className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-2xl font-black uppercase tracking-tight">Órdenes FERT - Centro 1000 (UIO)</CardTitle>
+                        <CardDescription className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-1">Filtrado por RESP 003, 004</CardDescription>
+                      </div>
+                    </div>
+                    <Badge className="bg-indigo-500 text-white border-none font-mono font-black text-sm px-4 py-1.5 rounded-xl">{processedOrdenesFert.fert1000.length} REG</Badge>
                   </div>
-                ) : ordenesFert.length > 0 ? (
-                  <table className="w-full text-[11px] border-collapse">
-                    <thead className="bg-slate-900 sticky top-0 z-10 text-white text-left uppercase tracking-widest font-black">
-                      <tr>
-                        {Object.keys(ordenesFert[0]).map((key) => (
-                          <th key={key} className="px-6 py-4 whitespace-nowrap text-[10px] uppercase font-bold text-slate-300">{key}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {ordenesFert.map((order, i) => (
-                        <tr key={i} className="hover:bg-slate-50 transition-colors text-[10px]">
-                          {Object.values(order).map((val: any, j) => (
-                            <td key={j} className="px-6 py-4 font-medium text-slate-600 whitespace-normal break-words leading-tight min-w-[150px]">
-                              {val === null || val === undefined ? '—' : String(val)}
-                            </td>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <div className="overflow-x-auto max-h-[50vh]">
+                    {processedOrdenesFert.fert1000.length > 0 ? (
+                      <table className="w-full text-[11px] border-collapse">
+                        <thead className="bg-slate-100 sticky top-0 z-10 text-slate-600 text-left uppercase tracking-widest font-black">
+                          <tr>
+                            {Object.keys(processedOrdenesFert.fert1000[0]).map((key) => (
+                              <th key={key} className="px-6 py-4 whitespace-nowrap text-[10px] uppercase font-bold">{key}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {processedOrdenesFert.fert1000.map((order, i) => (
+                            <tr key={i} className="hover:bg-indigo-50 transition-colors">
+                              {Object.values(order).map((val: any, j) => (
+                                <td key={j} className="px-6 py-4 font-medium text-slate-600 whitespace-normal break-words min-w-[150px]">{val ?? '—'}</td>
+                              ))}
+                            </tr>
                           ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                ) : (
-                  <div className="py-20 text-center text-slate-400 uppercase font-black tracking-widest text-xs opacity-40">No se encontraron registros</div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+                        </tbody>
+                      </table>
+                    ) : (
+                      <div className="py-20 text-center text-slate-400 uppercase font-black tracking-widest text-xs opacity-40">No hay registros para Centro 1000</div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Sección Centro 2000 */}
+              <Card className="rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden shadow-sm border-none">
+                <CardHeader className="bg-indigo-700 text-white p-8">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="bg-white/10 p-3 rounded-2xl text-white backdrop-blur-sm border border-white/10">
+                        <Truck className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-2xl font-black uppercase tracking-tight">Órdenes FERT - Centro 2000 (GYE)</CardTitle>
+                        <CardDescription className="text-white/60 font-bold uppercase text-[10px] tracking-widest mt-1">Filtrado por RESP 003, 004</CardDescription>
+                      </div>
+                    </div>
+                    <Badge className="bg-white text-indigo-700 border-none font-mono font-black text-sm px-4 py-1.5 rounded-xl">{processedOrdenesFert.fert2000.length} REG</Badge>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <div className="overflow-x-auto max-h-[50vh]">
+                    {processedOrdenesFert.fert2000.length > 0 ? (
+                      <table className="w-full text-[11px] border-collapse">
+                        <thead className="bg-slate-100 sticky top-0 z-10 text-slate-600 text-left uppercase tracking-widest font-black">
+                          <tr>
+                            {Object.keys(processedOrdenesFert.fert2000[0]).map((key) => (
+                              <th key={key} className="px-6 py-4 whitespace-nowrap text-[10px] uppercase font-bold">{key}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {processedOrdenesFert.fert2000.map((order, i) => (
+                            <tr key={i} className="hover:bg-indigo-50 transition-colors">
+                              {Object.values(order).map((val: any, j) => (
+                                <td key={j} className="px-6 py-4 font-medium text-slate-600 whitespace-normal break-words min-w-[150px]">{val ?? '—'}</td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    ) : (
+                      <div className="py-20 text-center text-slate-400 uppercase font-black tracking-widest text-xs opacity-40">No hay registros para Centro 2000</div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="ordenes-previsionales">
@@ -920,6 +993,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     <thead className="bg-slate-900 sticky top-0 z-10 text-white text-left uppercase tracking-widest font-black">
                       <tr>
                         {(() => {
+                          if (filteredOrdenesPrevisionales.length === 0) return null;
                           const keys = Object.keys(filteredOrdenesPrevisionales[0]);
                           const headerCells = [];
                           for (const key of keys) {
