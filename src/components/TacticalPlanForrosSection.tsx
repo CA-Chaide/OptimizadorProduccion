@@ -20,7 +20,6 @@ import {
   SearchCode,
   Database,
   Filter,
-  Info,
   ListTree,
   Cog
 } from 'lucide-react';
@@ -41,6 +40,21 @@ import { serviciosService } from '@/services/servicios.service';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 import { cn } from '@/lib/utils';
 import { useAppContext } from '@/context/AppProvider';
+
+// Constantes de configuración de jornada
+const DIURNA_OPTIONS = [
+  { value: "8.75", label: "8.75 Horas" },
+  { value: "8", label: "8 Horas" },
+  { value: "9", label: "9 Horas" },
+  { value: "12", label: "12 Horas" },
+];
+
+const NOCTURNA_OPTIONS = [
+  { value: "0", label: "0 Horas (Sin turno)" },
+  { value: "8", label: "8 Horas" },
+  { value: "9", label: "9 Horas" },
+  { value: "12", label: "12 Horas" },
+];
 
 interface WorkstationConfig {
   machine: string;
@@ -1219,7 +1233,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       ))}
                       {kpiMaestroData.length === 0 && (
                         <tr>
-                          <td colSpan={4} className="py-20 text-center text-slate-400 uppercase font-black tracking-widest text-xs opacity-40">No hay datos de KPI disponibles</td>
+                          <td colSpan={4} className="py-20 text-center text-slate-400 uppercase font-black tracking-widest text-[9px] opacity-40">No hay datos de KPI disponibles</td>
                         </tr>
                       )}
                     </tbody>
