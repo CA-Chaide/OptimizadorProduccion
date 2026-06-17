@@ -231,7 +231,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   const normalizeMaterialCode = useCallback((code: string | number): string => {
     if (!code) return '';
-    return String(code).trim().replace(/^0+/, '');
+    const codeStr = String(code).trim();
+    return codeStr.replace(/^0+/, '');
   }, []);
 
   const mapToHojaRuta = useCallback((puestoName: string): string => {
@@ -462,8 +463,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return match ? (Number(match.Tiempo || match.Tiempo_Min || 0) * quantity) : 0;
   }, [tiemposProduccion, normalizeMaterialCode, getResolvedPuesto]);
 
-  // Nueva función para obtener el tiempo unitario desde el Maestro de Forros (KPI)
-  const getKPITimeForOrder = useCallback((order: any) => {
+  // Obtiene el tiempo unitario desde el Maestro de Forros (KPI) - Convirtiendo de segundos a minutos
+  const getKPITimeInMinutesForOrder = useCallback((order: any) => {
     if (!kpiMaestroData || kpiMaestroData.length === 0) return null;
     
     const materialCode = normalizeMaterialCode(order['MATERIAL'] || order['CodMaterial'] || '');
@@ -477,7 +478,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
       String(kpi.HRUTA).trim().toUpperCase() === hojaRuta.trim().toUpperCase()
     );
 
-    return match ? Number(match.TPromedio) : null;
+    // Se asume que TPromedio viene en segundos del backend, se divide por 60 para mostrar minutos
+    return match ? (Number(match.TPromedio) / 60) : null;
   }, [kpiMaestroData, normalizeMaterialCode, getResolvedPuesto, mapToHojaRuta]);
 
   const toggleWorkstationShift = (p: string, shift: 'day' | 'night') => {
@@ -855,35 +857,61 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   <table className="w-full text-[11px] border-collapse">
                     <thead className="bg-slate-900 sticky top-0 z-10 text-white text-left uppercase tracking-widest font-black">
                       <tr>
-                        {/* Nueva columna Tiempo de Producción */}
-                        <th className="px-6 py-4 text-[10px] uppercase font-bold text-sky-400 bg-slate-800 shadow-inner">Tiempo producción (min)</th>
-                        {Object.keys(filteredOrdenesPrevisionales[0]).map((key) => (
-                          <th key={key} className="px-6 py-4 whitespace-nowrap text-[10px] uppercase font-bold text-slate-300">{key}</th>
-                        ))}
+                        {/* Se itera sobre las columnas originales pero detectamos dónde inyectar la columna de tiempo */}
+                        {(() => {
+                          const keys = Object.keys(filteredOrdenesPrevisionales[0]);
+                          const headerCells = [];
+                          for (const key of keys) {
+                            headerCells.push(<th key={key} className="px-6 py-4 whitespace-nowrap text-[10px] uppercase font-bold text-slate-300">{key}</th>);
+                            // Si es la columna de máquina, inyectamos Tiempo producción justo después
+                            const normKey = key.toUpperCase().trim();
+                            if (normKey === 'MAQUINA' || normKey === 'PUESTOTRABAJO' || normKey === 'PUESTO_TRABAJO') {
+                              headerCells.push(
+                                <th key="col-tiempo-prod" className="px-6 py-4 text-[10px] uppercase font-bold text-sky-400 bg-slate-800 shadow-inner whitespace-nowrap">
+                                  Tiempo producción (min)
+                                </th>
+                              );
+                            }
+                          }
+                          return headerCells;
+                        })()}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {filteredOrdenesPrevisionales.map((item, i) => {
-                        const kpiTime = getKPITimeForOrder(item);
+                        const kpiTimeMin = getKPITimeInMinutesForOrder(item);
+                        const keys = Object.keys(item);
+                        const rowCells = [];
+                        
+                        for (const key of keys) {
+                          const val = item[key];
+                          rowCells.push(
+                            <td key={key} className="px-6 py-4 font-medium text-slate-600 whitespace-normal break-words leading-tight min-w-[150px]">
+                              {val === null || val === undefined ? '—' : String(val)}
+                            </td>
+                          );
+                          
+                          const normKey = key.toUpperCase().trim();
+                          if (normKey === 'MAQUINA' || normKey === 'PUESTOTRABAJO' || normKey === 'PUESTO_TRABAJO') {
+                            rowCells.push(
+                              <td key={`tiempo-prod-${i}`} className="px-6 py-4 font-mono font-black text-indigo-600 bg-indigo-50/30 text-center border-x border-slate-100 min-w-[120px]">
+                                {kpiTimeMin !== null ? (
+                                  <span className="flex items-center justify-center gap-1" title="Tiempo convertido de segundos a minutos">
+                                    {kpiTimeMin.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-300 italic flex items-center justify-center gap-1" title="No se encontró coincidencia en Maestro KPI">
+                                    —
+                                  </span>
+                                )}
+                              </td>
+                            );
+                          }
+                        }
+                        
                         return (
                           <tr key={i} className="hover:bg-slate-50 transition-colors text-[10px]">
-                            {/* Celda del tiempo de producción cruzado */}
-                            <td className="px-6 py-4 font-mono font-black text-indigo-600 bg-indigo-50/30 text-center border-r border-slate-100">
-                              {kpiTime !== null ? (
-                                <span className="flex items-center justify-center gap-1">
-                                  {kpiTime.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                </span>
-                              ) : (
-                                <span className="text-slate-300 italic flex items-center justify-center gap-1" title="No se encontró coincidencia en Maestro KPI">
-                                  —
-                                </span>
-                              )}
-                            </td>
-                            {Object.values(item).map((val: any, j) => (
-                              <td key={j} className="px-6 py-4 font-medium text-slate-600 whitespace-normal break-words leading-tight min-w-[150px]">
-                                {val === null || val === undefined ? '—' : String(val)}
-                              </td>
-                            ))}
+                            {rowCells}
                           </tr>
                         );
                       })}
@@ -1040,7 +1068,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       <tr>
                         <th className="px-6 py-4">Código Material</th>
                         <th className="px-6 py-4">HOJA DE RUTA</th>
-                        <th className="px-6 py-4 text-right bg-indigo-900/40">T. Promedio (min)</th>
+                        <th className="px-6 py-4 text-right bg-indigo-900/40">T. Promedio (seg)</th>
                         <th className="px-6 py-4">Categoría / Puesto</th>
                       </tr>
                     </thead>
