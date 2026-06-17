@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { serviciosService } from '@/services/servicios.service';
 import { useAppContext } from '@/context/AppProvider';
-import { Package, Check, ChevronsUpDown, Loader2, BellRing, AlertTriangle } from 'lucide-react';
+import { Package, Check, ChevronsUpDown, Loader2, BellRing, AlertTriangle, Clock, Calendar, LayoutDashboard, History, ListChecks } from 'lucide-react';
 import type { OrdenFert, ProvisionalOrder, Restriccion } from '@/types/interfaces';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -159,7 +159,6 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
   const { addNotification } = useAppContext();
   const [isMounted, setIsMounted] = useState(false);
   const [orders, setOrders] = useState<any[]>([]);
-  const [provisionalOrders, setProvisionalOrders] = useState<ProvisionalOrder[]>([]);
   const [tapiceros, setTapiceros] = useState<any[]>([]);
   const [pagination, setPagination] = useState<PaginationState>({
     currentPage: 1,
@@ -233,7 +232,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
         const tiempo = item.Tiempo_Min ?? item.Tiempo ?? 0;
         if (materialCode && tiempo > 0) {
             if (!map.has(materialCode)) {
-                map.set(map.has(materialCode) ? `${materialCode}_dup` : materialCode, tiempo);
+                map.set(materialCode, tiempo);
             }
         }
     });
@@ -341,6 +340,48 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
     }
   }, [addNotification, restricciones, isMounted]);
 
+  // CÁLCULOS MACRO (Independientes del filtro de fecha actual)
+  const globalSummary = useMemo(() => {
+    const totalCant = orders.reduce((sum, o) => sum + (Number(o.CANTPROGRAMADA) || 0), 0);
+    const totalTimeMin = orders.reduce((sum, o) => {
+      const materialCode = normalizeMaterialCode(o.MATERIAL);
+      const t = tiemposMap.get(materialCode) || 0;
+      return sum + (Number(o.CANTPROGRAMADA) || 0) * t;
+    }, 0);
+
+    return { totalCant, totalHours: totalTimeMin / 60 };
+  }, [orders, tiemposMap]);
+
+  const statusSummary = useMemo(() => {
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    const todayStr = today.toISOString().split('T')[0];
+
+    let pastCant = 0, pastHours = 0;
+    let todayCant = 0, todayHours = 0;
+    let futureCant = 0, futureHours = 0;
+
+    orders.forEach(o => {
+      const materialCode = normalizeMaterialCode(o.MATERIAL);
+      const t = tiemposMap.get(materialCode) || 0;
+      const hours = ((Number(o.CANTPROGRAMADA) || 0) * t) / 60;
+      const cant = (Number(o.CANTPROGRAMADA) || 0);
+
+      if (o.FECHA < todayStr) {
+        pastCant += cant;
+        pastHours += hours;
+      } else if (o.FECHA === todayStr) {
+        todayCant += cant;
+        todayHours += hours;
+      } else {
+        futureCant += cant;
+        futureHours += hours;
+      }
+    });
+
+    return { pastCant, pastHours, todayCant, todayHours, futureCant, futureHours };
+  }, [orders, tiemposMap]);
+
   const uniqueDates = useMemo(() => {
     const dates = new Set(orders.map(order => order.FECHA));
     return Array.from(dates).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
@@ -382,18 +423,6 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
       }
     });
     return missing.size;
-  }, [filteredOrders, tiemposMap]);
-
-  const totalCantProgramadaGeneral = useMemo(() => {
-    return filteredOrders.reduce((sum, order) => sum + (Number(order.CANTPROGRAMADA) || 0), 0);
-  }, [filteredOrders]);
-
-  const totalTiempoRequeridoGeneral = useMemo(() => {
-    return filteredOrders.reduce((sum, order) => {
-      const materialCode = normalizeMaterialCode(order.MATERIAL);
-      const tiempoMin = tiemposMap.get(materialCode) || 0;
-      return sum + ((Number(order.CANTPROGRAMADA) || 0) * tiempoMin);
-    }, 0);
   }, [filteredOrders, tiemposMap]);
 
   const planSummaryByDate = useMemo(() => {
@@ -531,79 +560,110 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
           </div>
 
           {displayMode === 'plan' && (
-            <div className="flex flex-col space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Card 1: CAPACIDAD CONSOLIDADA (Independiente de fechas) */}
                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 shadow-sm">
-                  <h4 className="text-[13px] font-bold text-gray-800 mb-4 text-center uppercase tracking-wide">CAPACIDAD CONSOLIDADA</h4>
+                  <h4 className="text-[13px] font-bold text-gray-800 mb-4 text-center uppercase tracking-wide flex items-center justify-center gap-2">
+                    <LayoutDashboard className="w-4 h-4 text-indigo-600" /> CAPACIDAD CONSOLIDADA (TOTAL SISTEMA)
+                  </h4>
                   <div className="grid grid-cols-3 gap-0 items-center text-base border rounded-md bg-white min-h-[80px]">
                       <div className="text-center border-r border-dashed border-gray-300 p-3 flex flex-col justify-center">
-                          <p className="text-[12px] text-gray-500 font-semibold uppercase mb-1">CANT. PROGRAMADA TOTAL</p>
-                          <p className="font-bold text-base text-gray-900">{totalCantProgramadaGeneral.toLocaleString()}</p>
+                          <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1">UNIDADES TOTALES</p>
+                          <p className="font-bold text-base text-gray-900">{globalSummary.totalCant.toLocaleString()}</p>
                       </div>
                       <div className="text-center border-r border-dashed border-gray-300 p-3 flex flex-col justify-center">
-                          <p className="text-[12px] text-gray-500 font-semibold uppercase mb-1">TIEMPO REQUERIDO TOTAL (h)</p>
-                          <p className="font-bold text-base text-indigo-700">{(totalTiempoRequeridoGeneral / 60).toFixed(2)}h</p>
+                          <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1">HORAS TOTALES</p>
+                          <p className="font-bold text-base text-indigo-700">{globalSummary.totalHours.toFixed(1)}h</p>
                       </div>
                       <div className="text-center p-3 flex flex-col justify-center">
-                          <p className="text-[12px] text-gray-500 font-semibold uppercase mb-1">DIAS PENDIENTES</p>
+                          <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1">DÍAS CARGA</p>
                           <p className="font-bold text-base text-blue-600">
-                            {((totalTiempoRequeridoGeneral / 60) / TIEMPO_DISPONIBLE_DIARIO_TOTAL).toFixed(2)} Días
+                            {(globalSummary.totalHours / TIEMPO_DISPONIBLE_DIARIO_TOTAL).toFixed(1)} Días
                           </p>
                       </div>
                   </div>
                 </div>
 
+                {/* Card 2: ESTADO DE ÓRDENES (Cronológico) */}
                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 shadow-sm">
-                  <h4 className="text-[13px] font-bold text-gray-800 mb-4 text-center uppercase tracking-wide">Desglose por Fecha y Mesa</h4>
-                  <div className="space-y-4 max-h-[500px] overflow-y-auto">
-                      {selectedDates.length > 0 ? (
-                        planSummaryByDate.map((daySummary) => {
-                          const capacidadOcupadaTotal = (daySummary.tiempoTotalH / TIEMPO_DISPONIBLE_DIARIO_TOTAL) * 100;
-                          return (
-                          <div key={daySummary.date} className="border rounded-md bg-white overflow-hidden shadow-sm">
-                              <div className="grid grid-cols-5 gap-0 items-center text-xs p-2 bg-indigo-600 text-white font-bold uppercase">
-                                  <div className="text-center border-r border-indigo-400">FECHA: {daySummary.date}</div>
-                                  <div className="text-center border-r border-indigo-400">CANT: {daySummary.cantProgramada.toLocaleString()}</div>
-                                  <div className="text-center border-r border-indigo-400">REQ: {daySummary.tiempoTotalH.toFixed(1)}h</div>
-                                  <div className="text-center border-r border-indigo-400">DISP: {TIEMPO_DISPONIBLE_DIARIO_TOTAL.toFixed(1)}h</div>
-                                  <div className="text-center">OCUPACIÓN: {capacidadOcupadaTotal.toFixed(1)}%</div>
-                              </div>
-                              <div className="overflow-x-auto">
-                                <table className="min-w-full text-[11px]">
-                                  <thead className="bg-gray-100 text-gray-600 uppercase border-b">
-                                    <tr>
-                                      <th className="px-3 py-1.5 text-left font-bold border-r">Mesa</th>
-                                      <th className="px-3 py-1.5 text-left font-bold border-r">Personal</th>
-                                      <th className="px-2 py-1.5 text-center font-bold border-r">Cant</th>
-                                      <th className="px-2 py-1.5 text-center font-bold border-r">Horas Req</th>
-                                      <th className="px-2 py-1.5 text-center font-bold">Ocupación %</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {daySummary.mesas.map((mesa) => {
-                                      const capMesa = (mesa.tiempoRequeridoH / TIEMPO_DISPONIBLE_POR_MESA) * 100;
-                                      return (
-                                        <tr key={mesa.code} className="border-b last:border-0">
-                                          <td className="px-3 py-1 font-semibold border-r">{mesa.name}</td>
-                                          <td className="px-3 py-1 border-r text-blue-600 truncate max-w-[150px]">{mesa.assignedTapicero}</td>
-                                          <td className="px-2 py-1 text-center font-mono border-r">{mesa.cantProgramada}</td>
-                                          <td className="px-2 py-1 text-center font-mono border-r">{mesa.tiempoRequeridoH.toFixed(2)}</td>
-                                          <td className={cn("px-2 py-1 text-center font-bold font-mono", capMesa > 100 ? "text-red-600 bg-red-50" : "text-blue-600")}>
-                                            {capMesa.toFixed(1)}%
-                                          </td>
-                                        </tr>
-                                      );
-                                    })}
-                                  </tbody>
-                                </table>
-                              </div>
-                          </div>
-                          );
-                        })
-                      ) : (
-                        <p className="p-4 text-center text-gray-500 text-sm italic bg-white rounded-md border">Selecciona fechas para analizar capacidad.</p>
-                      )}
+                  <h4 className="text-[13px] font-bold text-gray-800 mb-4 text-center uppercase tracking-wide flex items-center justify-center gap-2">
+                    <History className="w-4 h-4 text-indigo-600" /> ESTADO DE ÓRDENES (CRONOLÓGICO)
+                  </h4>
+                  <div className="grid grid-cols-3 gap-0 items-center text-sm border rounded-md bg-white min-h-[80px]">
+                      <div className="text-center border-r border-dashed border-gray-300 p-2 flex flex-col justify-center bg-red-50/30">
+                          <p className="text-[9px] text-red-600 font-bold uppercase mb-1">ATRASADAS</p>
+                          <p className="font-bold text-sm text-red-700">{statusSummary.pastCant.toLocaleString()}</p>
+                          <p className="text-[10px] text-red-500 font-mono">{statusSummary.pastHours.toFixed(1)}h</p>
+                      </div>
+                      <div className="text-center border-r border-dashed border-gray-300 p-2 flex flex-col justify-center bg-blue-50/30">
+                          <p className="text-[9px] text-blue-600 font-bold uppercase mb-1">HOY</p>
+                          <p className="font-bold text-sm text-blue-700">{statusSummary.todayCant.toLocaleString()}</p>
+                          <p className="text-[10px] text-blue-500 font-mono">{statusSummary.todayHours.toFixed(1)}h</p>
+                      </div>
+                      <div className="text-center p-2 flex flex-col justify-center bg-green-50/30">
+                          <p className="text-[9px] text-green-600 font-bold uppercase mb-1">POR PLANIFICAR</p>
+                          <p className="font-bold text-sm text-green-700">{statusSummary.futureCant.toLocaleString()}</p>
+                          <p className="text-[10px] text-green-500 font-mono">{statusSummary.futureHours.toFixed(1)}h</p>
+                      </div>
                   </div>
                 </div>
+            </div>
+          )}
+
+          {displayMode === 'plan' && (
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 shadow-sm">
+              <h4 className="text-[13px] font-bold text-gray-800 mb-4 text-center uppercase tracking-wide flex items-center justify-center gap-2">
+                <ListChecks className="w-4 h-4 text-indigo-600" /> Desglose por Fecha y Mesa (Filtro Actual)
+              </h4>
+              <div className="space-y-4 max-h-[500px] overflow-y-auto">
+                  {selectedDates.length > 0 ? (
+                    planSummaryByDate.map((daySummary) => {
+                      const capacidadOcupadaTotal = (daySummary.tiempoTotalH / TIEMPO_DISPONIBLE_DIARIO_TOTAL) * 100;
+                      return (
+                      <div key={daySummary.date} className="border rounded-md bg-white overflow-hidden shadow-sm">
+                          <div className="grid grid-cols-5 gap-0 items-center text-xs p-2 bg-indigo-600 text-white font-bold uppercase">
+                              <div className="text-center border-r border-indigo-400">FECHA: {daySummary.date}</div>
+                              <div className="text-center border-r border-indigo-400">CANT: {daySummary.cantProgramada.toLocaleString()}</div>
+                              <div className="text-center border-r border-indigo-400">REQ: {daySummary.tiempoTotalH.toFixed(1)}h</div>
+                              <div className="text-center border-r border-indigo-400">DISP: {TIEMPO_DISPONIBLE_DIARIO_TOTAL.toFixed(1)}h</div>
+                              <div className="text-center">OCUPACIÓN: {capacidadOcupadaTotal.toFixed(1)}%</div>
+                          </div>
+                          <div className="overflow-x-auto">
+                            <table className="min-w-full text-[11px]">
+                              <thead className="bg-gray-100 text-gray-600 uppercase border-b">
+                                <tr>
+                                  <th className="px-3 py-1.5 text-left font-bold border-r">Mesa</th>
+                                  <th className="px-3 py-1.5 text-left font-bold border-r">Personal</th>
+                                  <th className="px-2 py-1.5 text-center font-bold border-r">Cant</th>
+                                  <th className="px-2 py-1.5 text-center font-bold border-r">Horas Req</th>
+                                  <th className="px-2 py-1.5 text-center font-bold">Ocupación %</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {daySummary.mesas.map((mesa) => {
+                                  const capMesa = (mesa.tiempoRequeridoH / TIEMPO_DISPONIBLE_POR_MESA) * 100;
+                                  return (
+                                    <tr key={mesa.code} className="border-b last:border-0">
+                                      <td className="px-3 py-1 font-semibold border-r">{mesa.name}</td>
+                                      <td className="px-3 py-1 border-r text-blue-600 truncate max-w-[150px]">{mesa.assignedTapicero}</td>
+                                      <td className="px-2 py-1 text-center font-mono border-r">{mesa.cantProgramada}</td>
+                                      <td className="px-2 py-1 text-center font-mono border-r">{mesa.tiempoRequeridoH.toFixed(2)}</td>
+                                      <td className={cn("px-2 py-1 text-center font-bold font-mono", capMesa > 100 ? "text-red-600 bg-red-50" : "text-blue-600")}>
+                                        {capMesa.toFixed(1)}%
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                      </div>
+                      );
+                    })
+                  ) : (
+                    <p className="p-4 text-center text-gray-500 text-sm italic bg-white rounded-md border">Selecciona fechas para analizar capacidad.</p>
+                  )}
+              </div>
             </div>
           )}
         </div>
@@ -675,7 +735,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
         </div>
         <div className="flex items-center space-x-2">
           <Button variant="outline" size="sm" onClick={() => goToPage(1)} disabled={pagination.currentPage === 1}>Primera</Button>
-          <Button variant="outline" size="sm" onClick={() => goToPage(pagination.currentPage - 1)} disabled={pagination.currentPage === 1}>Ant.</Button>
+          <Button variant="outline" size="sm" onClick={() => handlePrevious} disabled={pagination.currentPage === 1}>Ant.</Button>
           <span className="text-xs font-bold px-2">{pagination.currentPage} / {totalPagesLocal}</span>
           <Button variant="outline" size="sm" onClick={() => goToPage(pagination.currentPage + 1)} disabled={pagination.currentPage >= totalPagesLocal}>Sig.</Button>
           <Button variant="outline" size="sm" onClick={() => goToPage(totalPagesLocal)} disabled={pagination.currentPage >= totalPagesLocal}>Última</Button>
