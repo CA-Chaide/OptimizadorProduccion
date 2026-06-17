@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -233,6 +232,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [jornadaNocturnaSel, setJornadaNocturnaSel] = useState("0");
   const [workstationConfigs, setWorkstationConfigs] = useState<Record<string, WorkstationConfig>>({});
 
+  // Estados para fechas dinámicas de órdenes FERT
+  const [targetDate1000, setTargetDate1000] = useState<string>("");
+  const [targetDate2000, setTargetDate2000] = useState<string>("");
+
   useEffect(() => {
     setIsMounted(true);
   }, []);
@@ -283,6 +286,24 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return pn.startsWith('HR-') ? pn : `HR-${pn}`;
   }, [tiemposProduccion, kpiMaestroData]);
 
+  // Inicializar fechas dinámicas basadas en días laborales
+  useEffect(() => {
+    if (isMounted) {
+      const addBusinessDays = (days: number) => {
+        let date = new Date();
+        let count = 0;
+        while (count < days) {
+          date.setDate(date.getDate() + 1);
+          const day = date.getDay();
+          if (day !== 0 && day !== 6) count++; // Solo Lun-Vie
+        }
+        return date.toISOString().split('T')[0];
+      };
+      if (!targetDate1000) setTargetDate1000(addBusinessDays(3));
+      if (!targetDate2000) setTargetDate2000(addBusinessDays(2));
+    }
+  }, [isMounted, targetDate1000, targetDate2000]);
+
   const fetchBaseData = useCallback(async () => {
     try {
       setIsLoading(true);
@@ -302,7 +323,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const fetchOrdenesFert = useCallback(async () => {
     setIsLoadingFert(true);
     try {
-      const response = await serviciosService.getOrdenesFert(1, 1000);
+      const response = await serviciosService.getOrdenesFert(1, 2000);
       setOrdenesFert(response.data || []);
     } catch (error: any) {
       console.error('Error fetching Fert orders:', error);
@@ -328,7 +349,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const fetchOrdenesPrevisionales = useCallback(async () => {
     setIsLoadingPrevisionales(true);
     try {
-      const response = await serviciosService.OrdenesProvisionalesPaginados(1, 1000);
+      const response = await serviciosService.OrdenesProvisionalesPaginados(1, 2000);
       setOrdenesPrevisionalesData(response.data || []);
     } catch (error: any) {
       console.error('Error fetching Provisional orders:', error);
@@ -342,17 +363,19 @@ export const TacticalPlanForrosSection: React.FC = () => {
     setIsLoadingListaMateriales(true);
     try {
       const rowsPerPage = 5000;
-      const firstResponse = await serviciosService.ReporteExplosionMateriales(1, rowsPerPage);
+      // Solicitar el primer bloque
+      const firstResponse = await serviciosService.getMaestroMaterialesExplosion('1000', '', 1, rowsPerPage);
       const firstData = firstResponse.data || [];
-      const total = firstResponse.totalRegistros || firstResponse.totalRecords || 0;
+      const total = firstResponse.totalRegistros || firstResponse.totalRecords || firstResponse.totalRows || 0;
       
       let allData = [...firstData];
       const totalPages = Math.ceil(total / rowsPerPage);
       
+      // Si hay más páginas, solicitarlas de forma concurrente
       if (totalPages > 1) {
         const promises = [];
         for (let p = 2; p <= totalPages; p++) {
-          promises.push(serviciosService.ReporteExplosionMateriales(p, rowsPerPage));
+          promises.push(serviciosService.getMaestroMaterialesExplosion('1000', '', p, rowsPerPage));
         }
         const responses = await Promise.all(promises);
         responses.forEach(res => {
@@ -420,22 +443,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return Array.from(codes);
   }, [restricciones, forrosGruposList]);
 
-  // Lógica de filtrado de Órdenes FERT con segmentación por Centro y Fecha (+Días Laborales)
+  // Lógica de filtrado de Órdenes FERT con segmentación por Centro y Fecha seleccionada
   const processedOrdenesFert = useMemo(() => {
-    const addBusinessDays = (days: number) => {
-      let date = new Date();
-      let count = 0;
-      while (count < days) {
-        date.setDate(date.getDate() + 1);
-        const day = date.getDay();
-        if (day !== 0 && day !== 6) count++; // Solo Lun-Vie
-      }
-      return date.toISOString().split('T')[0];
-    };
-
-    const targetDate1000 = addBusinessDays(3);
-    const targetDate2000 = addBusinessDays(2);
-
     const fert1000 = ordenesFert.filter(order => {
       const centro = String(order['Centro'] || order['CENTRO'] || '').trim();
       const resp = String(order['RESPCTRLPROD'] || order['RESP_CTRL_PROD'] || '').trim().replace(/^0+/, '');
@@ -450,8 +459,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
       return centro === '2000' && (resp === '3' || resp === '6') && date === targetDate2000;
     });
 
-    return { fert1000, fert2000, targetDate1000, targetDate2000 };
-  }, [ordenesFert]);
+    return { fert1000, fert2000 };
+  }, [ordenesFert, targetDate1000, targetDate2000]);
 
   const filteredOrdenesPrevisionales = useMemo(() => {
     let filtered = ordenesPrevisionalesData.filter(order => {
@@ -890,14 +899,20 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       <div>
                         <CardTitle className="text-2xl font-black uppercase tracking-tight">Órdenes FERT - Centro 1000 (UIO)</CardTitle>
                         <CardDescription className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-1">
-                          Filtrado por RESP 003, 004 • Fecha Meta: {processedOrdenesFert.targetDate1000} (+3 días laborales)
+                          Filtrado por RESP 003, 004 • FECHA META: {targetDate1000} (+3 DÍAS LABORALES)
                         </CardDescription>
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
-                      <Badge className="bg-white/10 text-white border-white/20 font-mono font-black text-xs px-3 py-1 rounded-lg backdrop-blur-md flex items-center gap-2">
-                        <CalendarDays className="w-3 h-3 text-sky-400" /> {processedOrdenesFert.targetDate1000}
-                      </Badge>
+                      <div className="flex items-center bg-slate-800 border border-slate-700 rounded-lg px-3 py-1 gap-2">
+                        <CalendarDays className="w-3.5 h-3.5 text-sky-400" />
+                        <input 
+                          type="date" 
+                          value={targetDate1000} 
+                          onChange={(e) => setTargetDate1000(e.target.value)}
+                          className="bg-transparent border-none text-white text-[10px] font-bold focus:ring-0 outline-none p-0 cursor-pointer"
+                        />
+                      </div>
                       <Badge className="bg-indigo-500 text-white border-none font-mono font-black text-sm px-4 py-1.5 rounded-xl">{processedOrdenesFert.fert1000.length} REG</Badge>
                     </div>
                   </div>
@@ -924,7 +939,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                         </tbody>
                       </table>
                     ) : (
-                      <div className="py-20 text-center text-slate-400 uppercase font-black tracking-widest text-xs opacity-40">No hay registros para Centro 1000 en la fecha meta</div>
+                      <div className="py-20 text-center text-slate-400 uppercase font-black tracking-widest text-xs opacity-40">No hay registros para Centro 1000 en la fecha meta seleccionada</div>
                     )}
                   </div>
                 </CardContent>
@@ -941,14 +956,20 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       <div>
                         <CardTitle className="text-2xl font-black uppercase tracking-tight">Órdenes FERT - Centro 2000 (GYE)</CardTitle>
                         <CardDescription className="text-white/60 font-bold uppercase text-[10px] tracking-widest mt-1">
-                          Filtrado por RESP 003, 006 • Fecha Meta: {processedOrdenesFert.targetDate2000} (+2 días laborales)
+                          Filtrado por RESP 003, 006 • FECHA META: {targetDate2000} (+2 DÍAS LABORALES)
                         </CardDescription>
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
-                      <Badge className="bg-white/10 text-white border-white/20 font-mono font-black text-xs px-3 py-1 rounded-lg backdrop-blur-md flex items-center gap-2">
-                        <CalendarDays className="w-3 h-3 text-sky-300" /> {processedOrdenesFert.targetDate2000}
-                      </Badge>
+                      <div className="flex items-center bg-white/10 border border-white/20 rounded-lg px-3 py-1 gap-2">
+                        <CalendarDays className="w-3.5 h-3.5 text-sky-300" />
+                        <input 
+                          type="date" 
+                          value={targetDate2000} 
+                          onChange={(e) => setTargetDate2000(e.target.value)}
+                          className="bg-transparent border-none text-white text-[10px] font-bold focus:ring-0 outline-none p-0 cursor-pointer"
+                        />
+                      </div>
                       <Badge className="bg-white text-indigo-700 border-none font-mono font-black text-sm px-4 py-1.5 rounded-xl">{processedOrdenesFert.fert2000.length} REG</Badge>
                     </div>
                   </div>
@@ -975,7 +996,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                         </tbody>
                       </table>
                     ) : (
-                      <div className="py-20 text-center text-slate-400 uppercase font-black tracking-widest text-xs opacity-40">No hay registros para Centro 2000 en la fecha meta</div>
+                      <div className="py-20 text-center text-slate-400 uppercase font-black tracking-widest text-xs opacity-40">No hay registros para Centro 2000 en la fecha meta seleccionada</div>
                     )}
                   </div>
                 </CardContent>
