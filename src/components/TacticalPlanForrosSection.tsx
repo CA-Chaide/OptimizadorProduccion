@@ -170,11 +170,11 @@ const MachineCard = ({
           <table className="w-full border-collapse">
             <thead className="bg-slate-100/80 sticky top-0 z-10 text-slate-500 font-black uppercase tracking-widest text-left">
               <tr>
-                <th className="px-4 py-3 border-b border-slate-200">CODMATERIAL</th>
-                <th className="px-4 py-3 border-b border-slate-200 min-w-[200px]">NOMBRE</th>
-                <th className="px-4 py-3 border-b border-slate-200 text-right">CANTIDAD</th>
-                <th className="px-4 py-3 border-b border-slate-200 text-center">FECHA INICIO</th>
-                <th className="px-4 py-3 border-b border-slate-200 text-right text-indigo-700 bg-indigo-50/30">TIEMPO DE PRODUCCIÓN</th>
+                <th className="px-4 py-3 border-b border-slate-200 uppercase">CodMaterial</th>
+                <th className="px-4 py-3 border-b border-slate-200 min-w-[200px] uppercase">Nombre</th>
+                <th className="px-4 py-3 border-b border-slate-200 text-right uppercase">Cantidad</th>
+                <th className="px-4 py-3 border-b border-slate-200 text-center uppercase">Fecha Inicio</th>
+                <th className="px-4 py-3 border-b border-slate-200 text-right text-indigo-700 bg-indigo-50/30 uppercase">Tiempo de Producción</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -339,9 +339,30 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const fetchListaMateriales = useCallback(async () => {
     setIsLoadingListaMateriales(true);
     try {
-      // Petición al API según firma centro, fert
-      const response = await serviciosService.ReporteExplosionMateriales('1000', '');
-      setListaMaterialesData(response.data || []);
+      const rowsPerPage = 5000;
+      let allData: any[] = [];
+      
+      // Primera petición para obtener el total y el primer bloque
+      const firstResponse = await serviciosService.getMaestroMaterialesExplosion('1000', '', 1, rowsPerPage);
+      const data = firstResponse.data || [];
+      allData = [...data];
+      
+      // Determinar si hay más páginas basadas en el total de registros
+      const totalRegistros = firstResponse.totalRegistros || firstResponse.totalRecords || 0;
+      const totalPages = Math.ceil(totalRegistros / rowsPerPage);
+      
+      if (totalPages > 1) {
+        const promises = [];
+        for (let p = 2; p <= totalPages; p++) {
+          promises.push(serviciosService.getMaestroMaterialesExplosion('1000', '', p, rowsPerPage));
+        }
+        const responses = await Promise.all(promises);
+        responses.forEach(res => {
+          if (res.data) allData = [...allData, ...res.data];
+        });
+      }
+      
+      setListaMaterialesData(allData);
     } catch (error: any) {
       console.error('Error fetching BOM list:', error);
       addNotification('error', `Error al cargar Lista de Materiales: ${error.message}`);
@@ -1064,7 +1085,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <CardTitle className="text-2xl font-black text-slate-900 uppercase">LISTA DE MATERIALES</CardTitle>
-                  <CardDescription className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-1">Explosión de Materiales (BOM) - ReporteExplosionMateriales</CardDescription>
+                  <CardDescription className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-1">Explosión de Materiales (BOM) - MaestroMaterialesExplosionPaginado</CardDescription>
                 </div>
                 <div className="bg-emerald-600 p-3 rounded-2xl text-white shadow-lg shadow-emerald-500/20">
                   <ListTree className="w-6 h-6" />
@@ -1076,7 +1097,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 {isLoadingListaMateriales ? (
                   <div className="flex items-center justify-center py-20">
                     <Loader2 className="w-10 h-10 animate-spin text-emerald-600" />
-                    <span className="ml-4 text-slate-500 font-black uppercase tracking-widest text-xs">Consultando explosión de materiales...</span>
+                    <span className="ml-4 text-slate-500 font-black uppercase tracking-widest text-xs">Consultando explosión de materiales (Paginado)...</span>
                   </div>
                 ) : listaMaterialesData.length > 0 ? (
                   <table className="w-full text-[11px] border-collapse">
