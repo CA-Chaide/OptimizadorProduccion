@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -340,7 +339,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     restricciones.forEach(r => {
       if (forroGroupCodes.has(r.codigo_grupo)) {
         const normName = r.nombre_restriccion.toUpperCase().trim();
-        if (normName === 'RESPCTRLPROD' || normName === 'RESP_CTRL_PROD') {
+        if (normName === 'RESP_CTRL_PROD' || normName === 'RESPCTRLPROD') {
           const values = r.valor_restriccion.split('&');
           values.forEach(v => {
             const clean = v.trim().replace(/^0+/, '');
@@ -463,8 +462,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return match ? (Number(match.Tiempo || match.Tiempo_Min || 0) * quantity) : 0;
   }, [tiemposProduccion, normalizeMaterialCode, getResolvedPuesto]);
 
-  // Obtiene el tiempo unitario desde el Maestro de Forros (KPI) - Convirtiendo de segundos a minutos
-  const getKPITimeInMinutesForOrder = useCallback((order: any) => {
+  // Obtiene el tiempo unitario desde el Maestro de Forros (KPI) - En segundos
+  const getKPITimeSecondsForOrder = useCallback((order: any) => {
     if (!kpiMaestroData || kpiMaestroData.length === 0) return null;
     
     const materialCode = normalizeMaterialCode(order['MATERIAL'] || order['CodMaterial'] || '');
@@ -478,8 +477,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
       String(kpi.HRUTA).trim().toUpperCase() === hojaRuta.trim().toUpperCase()
     );
 
-    // Se asume que TPromedio viene en segundos del backend, se divide por 60 para mostrar minutos
-    return match ? (Number(match.TPromedio) / 60) : null;
+    return match ? Number(match.TPromedio) : null;
   }, [kpiMaestroData, normalizeMaterialCode, getResolvedPuesto, mapToHojaRuta]);
 
   const toggleWorkstationShift = (p: string, shift: 'day' | 'night') => {
@@ -868,7 +866,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                             if (normKey === 'MAQUINA' || normKey === 'PUESTOTRABAJO' || normKey === 'PUESTO_TRABAJO') {
                               headerCells.push(
                                 <th key="col-tiempo-prod" className="px-6 py-4 text-[10px] uppercase font-bold text-sky-400 bg-slate-800 shadow-inner whitespace-nowrap">
-                                  Tiempo producción (min)
+                                  Tiempo producción (s)
                                 </th>
                               );
                             }
@@ -879,7 +877,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {filteredOrdenesPrevisionales.map((item, i) => {
-                        const kpiTimeMin = getKPITimeInMinutesForOrder(item);
+                        const kpiTimeSec = getKPITimeSecondsForOrder(item);
                         const keys = Object.keys(item);
                         const rowCells = [];
                         
@@ -895,9 +893,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
                           if (normKey === 'MAQUINA' || normKey === 'PUESTOTRABAJO' || normKey === 'PUESTO_TRABAJO') {
                             rowCells.push(
                               <td key={`tiempo-prod-${i}`} className="px-6 py-4 font-mono font-black text-indigo-600 bg-indigo-50/30 text-center border-x border-slate-100 min-w-[120px]">
-                                {kpiTimeMin !== null ? (
-                                  <span className="flex items-center justify-center gap-1" title="Tiempo convertido de segundos a minutos">
-                                    {kpiTimeMin.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                {kpiTimeSec !== null ? (
+                                  <span className="flex items-center justify-center gap-1" title="Tiempo promedio en segundos (Maestro KPI)">
+                                    {kpiTimeSec.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                   </span>
                                 ) : (
                                   <span className="text-slate-300 italic flex items-center justify-center gap-1" title="No se encontró coincidencia en Maestro KPI">
