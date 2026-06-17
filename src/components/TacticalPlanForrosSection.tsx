@@ -65,11 +65,6 @@ interface WorkstationConfig {
   isNightActive: boolean;
 }
 
-/**
- * Componente: MachineCard
- * Tarjeta de control de carga para cada puesto de trabajo en los tableros técnicos.
- * Filtra órdenes previsionales por Hoja de Ruta técnica (Columna MAQUINA).
- */
 const MachineCard = ({ 
   puestoName, 
   small = false, 
@@ -93,7 +88,6 @@ const MachineCard = ({
 }) => {
   const hrCode = mapToHojaRuta(puestoName).trim().toUpperCase();
   
-  // Filtrar órdenes que coincidan con la Hoja de Ruta de este puesto (columna MAQUINA)
   const filteredOrders = orders.filter(o => {
     const orderHR = String(o['MAQUINA'] || o['Maquina'] || '').trim().toUpperCase();
     return orderHR === hrCode;
@@ -231,7 +225,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [versionesFabricacionData, setVersionesFabricacionData] = useState<any[]>([]);
 
   const [isLoading, setIsLoading] = useState(true);
-  const [isLoadingTiempos, setIsLoadingTiempos] = useState(false);
   const [isLoadingFert, setIsLoadingFert] = useState(false);
   const [isLoadingKPI, setIsLoadingKPI] = useState(false);
   const [isLoadingPrevisionales, setIsLoadingPrevisionales] = useState(false);
@@ -242,7 +235,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [jornadaNocturnaSel, setJornadaNocturnaSel] = useState("0");
   const [workstationConfigs, setWorkstationConfigs] = useState<Record<string, WorkstationConfig>>({});
 
-  // Estados para fechas dinámicas de órdenes FERT
   const [targetDate1000, setTargetDate1000] = useState<string>("");
   const [targetDate2000, setTargetDate2000] = useState<string>("");
 
@@ -260,7 +252,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     const pn = String(puestoName || '').toUpperCase().trim();
     if (!pn || pn === '—' || pn === 'NULL') return '';
     
-    // Validación contra el Maestro KPI prioritariamente
     if (kpiMaestroData && kpiMaestroData.length > 0) {
       const matchByCategory = kpiMaestroData.find(k => 
         String(k.Categoria || '').toUpperCase().trim() === pn
@@ -273,7 +264,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
       if (matchByHR && matchByHR.HRUTA) return matchByHR.HRUTA;
     }
 
-    // Mapeos específicos predefinidos
     if (pn === 'ACOLCHADORA09') return 'HR-ACH09';
     if (pn === 'COSEDORA-ACH02') return 'HR-PEF02';
     if (pn === 'COSEDORA-ACH08') return 'HR-PEF08';
@@ -290,7 +280,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
       if (hr && hr.startsWith('HR-')) return hr;
     }
 
-    // Lógica por sufijos numéricos
     const numMatch = pn.match(/\d+/);
     const num = numMatch ? numMatch[0].padStart(2, '0') : '';
     if (pn.includes('COSEDORA') || pn.includes('PEGADORA') || pn.includes('PEF')) return `HR-PEF${num}`;
@@ -299,7 +288,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return pn.startsWith('HR-') ? pn : `HR-${pn}`;
   }, [tiemposProduccion, kpiMaestroData]);
 
-  // Lógica de cálculo de fechas laborables
   useEffect(() => {
     if (isMounted) {
       const addBusinessDays = (days: number) => {
@@ -308,7 +296,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
         while (count < days) {
           date.setDate(date.getDate() + 1);
           const day = date.getDay();
-          if (day !== 0 && day !== 6) count++; // Salta Sábados y Domingos
+          if (day !== 0 && day !== 6) count++;
         }
         return date.toISOString().split('T')[0];
       };
@@ -372,13 +360,12 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
   }, [addNotification]);
 
-  // Carga paginada de BOM usando getMaestroMaterialesExplosion
   const fetchListaMateriales = useCallback(async () => {
     setIsLoadingListaMateriales(true);
     try {
       const rowsPerPage = 5000;
-      // Primera petición para obtener el total y el primer bloque
-      const firstResponse = await serviciosService.getMaestroMaterialesExplosion('1000', '', 1, rowsPerPage);
+      // USANDO EL MÉTODO SOLICITADO: ReporteExplosionMateriales
+      const firstResponse = await serviciosService.ReporteExplosionMateriales(1, rowsPerPage);
       const firstData = firstResponse.data || [];
       const total = firstResponse.totalRegistros || firstResponse.totalRecords || firstResponse.totalRows || 0;
       
@@ -388,7 +375,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
       if (totalPages > 1) {
         const promises = [];
         for (let p = 2; p <= totalPages; p++) {
-          promises.push(serviciosService.getMaestroMaterialesExplosion('1000', '', p, rowsPerPage));
+          promises.push(serviciosService.ReporteExplosionMateriales(p, rowsPerPage));
         }
         const responses = await Promise.all(promises);
         responses.forEach(res => {
@@ -456,7 +443,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return Array.from(codes);
   }, [restricciones, forrosGruposList]);
 
-  // Filtrado y resúmenes de Órdenes FERT segmentadas
   const { fert1000, fert2000, summary1000, summary2000 } = useMemo(() => {
     const filter1000 = ordenesFert.filter(order => {
       const centro = String(order['Centro'] || order['CENTRO'] || '').trim();
@@ -677,7 +663,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
     return (
       <div className="space-y-6">
-        {/* Tabla Resumen */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Card className="md:col-span-1 rounded-3xl border-none shadow-sm ring-1 ring-slate-100 overflow-hidden">
             <div className={cn("px-6 py-3 text-white font-black text-xs uppercase tracking-widest flex items-center gap-2", color)}>
@@ -706,7 +691,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
           </Card>
         </div>
 
-        {/* Tabla Principal */}
         <Card className="rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden shadow-sm border-none">
           <CardHeader className={cn("text-white p-8", color)}>
             <div className="flex items-center justify-between">
@@ -780,7 +764,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   return (
     <div className="p-6 md:p-8 space-y-6 bg-slate-50/40 min-h-screen font-body">
-      {/* Header Principal */}
       <div className="flex flex-col xl:flex-row items-center justify-between gap-6 bg-white p-7 rounded-[2rem] border border-slate-200 shadow-sm">
         <div className="flex items-center space-x-6">
           <div className="bg-slate-950 p-5 rounded-[1.5rem] text-white shadow-xl ring-4 ring-slate-100">
@@ -1028,12 +1011,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
             </div>
           ) : (
             <div className="space-y-16">
-              {/* Sección Centro 1000 */}
               <div className="space-y-6">
                 {renderFertTable(fert1000, summary1000, "Órdenes FERT - Centro 1000 (UIO)", targetDate1000, setTargetDate1000, "bg-slate-900")}
               </div>
-
-              {/* Sección Centro 2000 */}
               <div className="space-y-6">
                 {renderFertTable(fert2000, summary2000, "Órdenes FERT - Centro 2000 (GYE)", targetDate2000, setTargetDate2000, "bg-indigo-700")}
               </div>
@@ -1058,27 +1038,17 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 <div className="flex items-center gap-2 text-xs font-black text-slate-400 uppercase tracking-widest">
                   <Filter className="w-4 h-4 text-indigo-600" /> Filtros Activos:
                 </div>
-                
-                <Badge className="bg-slate-950 text-white border-none font-mono text-[10px] font-black py-1 px-3 rounded-lg shadow-sm">
-                  CENTRO: 1000
-                </Badge>
-
+                <Badge className="bg-slate-950 text-white border-none font-mono text-[10px] font-black py-1 px-3 rounded-lg shadow-sm">CENTRO: 1000</Badge>
                 {allowedRespCodes.length > 0 ? (
                   <>
                     <div className="text-[10px] font-black text-slate-300">|</div>
-                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">RESP:</div>
                     {allowedRespCodes.map(code => (
-                      <Badge key={code} className="bg-indigo-50 text-indigo-700 border-indigo-200 font-mono text-[10px] font-black py-1 px-3 rounded-lg">
-                        {code}
-                      </Badge>
+                      <Badge key={code} className="bg-indigo-50 text-indigo-700 border-indigo-200 font-mono text-[10px] font-black py-1 px-3 rounded-lg">RESP: {code}</Badge>
                     ))}
                   </>
                 ) : (
-                  <Badge variant="outline" className="text-slate-400 font-bold uppercase text-[9px] px-3 py-1 rounded-lg">
-                    Sin restricción RESP
-                  </Badge>
+                  <Badge variant="outline" className="text-slate-400 font-bold uppercase text-[9px] px-3 py-1 rounded-lg">Sin restricción RESP</Badge>
                 )}
-                
                 <div className="ml-auto text-[10px] font-black text-slate-400 uppercase tracking-widest">
                   Registros: <span className="text-indigo-600">{filteredOrdenesPrevisionales.length}</span>
                 </div>
@@ -1088,73 +1058,49 @@ export const TacticalPlanForrosSection: React.FC = () => {
               <div className="overflow-x-auto max-h-[70vh] relative">
                 {isLoadingPrevisionales ? (
                   <div className="flex items-center justify-center py-24">
-                    <Loader2 className="w-10 h-10 animate-spin text-indigo-500" />
-                    <span className="ml-4 text-slate-500 font-black uppercase tracking-widest text-xs">Filtrando órdenes...</span>
+                    <Loader2 className="w-10 h-10 animate-spin text-indigo-50" />
                   </div>
-                ) : filteredOrdenesPrevisionales.length > 0 ? (
+                ) : (
                   <table className="w-full text-[11px] border-collapse">
                     <thead className="bg-slate-900 sticky top-0 z-10 text-white text-left uppercase tracking-widest font-black">
                       <tr>
-                        {(() => {
-                          if (filteredOrdenesPrevisionales.length === 0) return null;
-                          const keys = Object.keys(filteredOrdenesPrevisionales[0]);
-                          const headerCells = [];
-                          for (const key of keys) {
-                            headerCells.push(<th key={key} className="px-6 py-4 whitespace-nowrap text-[10px] uppercase font-bold text-slate-300">{key}</th>);
-                            const normKey = key.toUpperCase().trim();
-                            if (normKey === 'MAQUINA' || normKey === 'PUESTOTRABAJO' || normKey === 'PUESTO_TRABAJO') {
-                              headerCells.push(
-                                <th key="col-tiempo-prod" className="px-6 py-4 text-[10px] uppercase font-bold text-sky-400 bg-slate-800 shadow-inner whitespace-nowrap">
-                                  Tiempo producción (s)
-                                </th>
-                              );
-                            }
-                          }
-                          return headerCells;
-                        })()}
+                        {filteredOrdenesPrevisionales.length > 0 && Object.keys(filteredOrdenesPrevisionales[0]).map((key) => {
+                          const normKey = key.toUpperCase().trim();
+                          const isTechnical = normKey === 'MAQUINA' || normKey === 'PUESTOTRABAJO' || normKey === 'PUESTO_TRABAJO';
+                          return (
+                            <React.Fragment key={key}>
+                              <th className="px-6 py-4 whitespace-nowrap text-[10px] uppercase font-bold text-slate-300">{key}</th>
+                              {isTechnical && (
+                                <th className="px-6 py-4 text-[10px] uppercase font-bold text-sky-400 bg-slate-800 shadow-inner whitespace-nowrap">Tiempo producción (s)</th>
+                              )}
+                            </React.Fragment>
+                          );
+                        })}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {filteredOrdenesPrevisionales.map((item, i) => {
-                        const kpiTimeSec = getKPITimeSecondsForOrder(item);
-                        const keys = Object.keys(item);
-                        const rowCells = [];
-                        for (const key of keys) {
-                          const val = item[key];
-                          rowCells.push(
-                            <td key={key} className="px-6 py-4 font-medium text-slate-600 whitespace-normal break-words leading-tight min-w-[150px]">
-                              {val === null || val === undefined ? '—' : String(val)}
-                            </td>
-                          );
-                          const normKey = key.toUpperCase().trim();
-                          if (normKey === 'MAQUINA' || normKey === 'PUESTOTRABAJO' || normKey === 'PUESTO_TRABAJO') {
-                            rowCells.push(
-                              <td key={`tiempo-prod-${i}`} className="px-6 py-4 font-mono font-black text-indigo-600 bg-indigo-50/30 text-center border-x border-slate-100 min-w-[120px]">
-                                {kpiTimeSec !== null ? (
-                                  <span className="flex items-center justify-center gap-1" title="Tiempo promedio en segundos (Maestro KPI)">
-                                    {kpiTimeSec.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                  </span>
-                                ) : (
-                                  <span className="text-slate-300 italic flex items-center justify-center gap-1" title="No se encontró coincidencia en Maestro KPI">
-                                    —
-                                  </span>
+                      {filteredOrdenesPrevisionales.map((item, i) => (
+                        <tr key={i} className="hover:bg-slate-50 transition-colors text-[10px]">
+                          {Object.keys(item).map((key) => {
+                            const val = item[key];
+                            const normKey = key.toUpperCase().trim();
+                            const isTechnical = normKey === 'MAQUINA' || normKey === 'PUESTOTRABAJO' || normKey === 'PUESTO_TRABAJO';
+                            const kpiTimeSec = getKPITimeSecondsForOrder(item);
+                            return (
+                              <React.Fragment key={key}>
+                                <td className="px-6 py-4 font-medium text-slate-600 whitespace-normal break-words leading-tight min-w-[150px]">{val ?? '—'}</td>
+                                {isTechnical && (
+                                  <td className="px-6 py-4 font-mono font-black text-indigo-600 bg-indigo-50/30 text-center border-x border-slate-100 min-w-[120px]">
+                                    {kpiTimeSec !== null ? kpiTimeSec.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
+                                  </td>
                                 )}
-                              </td>
+                              </React.Fragment>
                             );
-                          }
-                        }
-                        return (
-                          <tr key={i} className="hover:bg-slate-50 transition-colors text-[10px]">
-                            {rowCells}
-                          </tr>
-                        );
-                      })}
+                          })}
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
-                ) : (
-                  <div className="py-24 text-center text-slate-400 uppercase font-black tracking-widest text-xs opacity-40">
-                    No se encontraron órdenes para el Centro 1000 con las restricciones aplicadas
-                  </div>
                 )}
               </div>
             </CardContent>
@@ -1167,7 +1113,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <CardTitle className="text-2xl font-black text-slate-900 uppercase">LISTA DE MATERIALES</CardTitle>
-                  <CardDescription className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-1">Explosión de Materiales (BOM) - Paginado</CardDescription>
+                  <CardDescription className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-1">Explosión de Materiales (BOM) - ReporteExplosionMateriales</CardDescription>
                 </div>
                 <div className="bg-emerald-600 p-3 rounded-2xl text-white shadow-lg shadow-emerald-500/20">
                   <ListTree className="w-6 h-6" />
@@ -1179,41 +1125,35 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 {isLoadingListaMateriales ? (
                   <div className="flex items-center justify-center py-20">
                     <Loader2 className="w-10 h-10 animate-spin text-emerald-600" />
-                    <span className="ml-4 text-slate-500 font-black uppercase tracking-widest text-xs">Descargando explosión de materiales completa...</span>
+                    <span className="ml-4 text-slate-500 font-black uppercase tracking-widest text-xs">Descargando reporte de explosión completo...</span>
                   </div>
                 ) : listaMaterialesData.length > 0 ? (
                   <table className="w-full text-[11px] border-collapse">
                     <thead className="bg-slate-900 sticky top-0 z-10 text-white text-left uppercase tracking-widest font-black">
                       <tr>
-                        <th className="px-6 py-4 whitespace-nowrap text-[10px] uppercase font-bold text-slate-300">Nivel</th>
-                        <th className="px-6 py-4 whitespace-nowrap text-[10px] uppercase font-bold text-slate-300">Centro</th>
-                        <th className="px-6 py-4 whitespace-nowrap text-[10px] uppercase font-bold text-slate-300">Fert Principal</th>
-                        <th className="px-6 py-4 whitespace-nowrap text-[10px] uppercase font-bold text-slate-300">Descripción Fert</th>
-                        <th className="px-6 py-4 whitespace-nowrap text-[10px] uppercase font-bold text-slate-300">Material Padre</th>
-                        <th className="px-6 py-4 whitespace-nowrap text-[10px] uppercase font-bold text-slate-300">Componente</th>
-                        <th className="px-6 py-4 whitespace-nowrap text-[10px] uppercase font-bold text-slate-300">Descripción Componente</th>
-                        <th className="px-6 py-4 whitespace-nowrap text-[10px] uppercase font-bold text-slate-300 text-right">Cantidad Unitaria</th>
-                        <th className="px-6 py-4 whitespace-nowrap text-[10px] uppercase font-bold text-slate-300 text-right">Cantidad Acumulada</th>
+                        {Object.keys(listaMaterialesData[0]).map((key) => (
+                          <th key={key} className="px-6 py-4 whitespace-nowrap text-[10px] uppercase font-bold text-slate-300">{key}</th>
+                        ))}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {listaMaterialesData.map((row, i) => (
                         <tr key={i} className="hover:bg-slate-50 transition-colors text-[10px]">
-                          <td className="px-6 py-4 font-bold text-slate-700">{row.NIVEL}</td>
-                          <td className="px-6 py-4 text-slate-600">{row.CENTRO}</td>
-                          <td className="px-6 py-4 font-mono font-bold text-indigo-600">{row.FERT_PRINCIPAL}</td>
-                          <td className="px-6 py-4 text-slate-600 whitespace-normal break-words leading-tight min-w-[200px]">{row.DESCRIPCION_FERT}</td>
-                          <td className="px-6 py-4 font-mono text-slate-500">{row.MATERIAL_PADRE}</td>
-                          <td className="px-6 py-4 font-mono font-bold text-slate-800">{row.COMPONENTE}</td>
-                          <td className="px-6 py-4 text-slate-600 whitespace-normal break-words leading-tight min-w-[200px]">{row.DESCRIPCION_COMPONENTE}</td>
-                          <td className="px-6 py-4 text-right font-mono font-bold text-slate-900">{Number(row.CANTIDAD_UNITARIA).toLocaleString(undefined, { minimumFractionDigits: 3 })}</td>
-                          <td className="px-6 py-4 text-right font-mono font-bold text-indigo-700 bg-indigo-50/30">{Number(row.CANTIDAD_ACUMULADA).toLocaleString(undefined, { minimumFractionDigits: 3 })}</td>
+                          {Object.entries(row).map(([key, val]: [string, any], j) => (
+                            <td key={j} className={cn(
+                              "px-6 py-4 font-medium text-slate-600",
+                              (key === 'COMPONENTE' || key === 'FERT_PRINCIPAL') && "font-mono font-bold text-indigo-700",
+                              (key === 'CANTIDAD_UNITARIA' || key === 'CANTIDAD_ACUMULADA') && "text-right font-mono font-black"
+                            )}>
+                              {typeof val === 'number' ? val.toLocaleString(undefined, { minimumFractionDigits: 3 }) : (val ?? '—')}
+                            </td>
+                          ))}
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 ) : (
-                  <div className="py-20 text-center text-slate-400 uppercase font-black tracking-widest text-xs opacity-40">No hay datos de materiales disponibles</div>
+                  <div className="py-20 text-center text-slate-400 uppercase font-black tracking-widest text-xs opacity-40">No hay datos de explosión disponibles</div>
                 )}
               </div>
             </CardContent>
@@ -1238,7 +1178,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 {isLoadingVersiones ? (
                   <div className="flex items-center justify-center py-20">
                     <Loader2 className="w-10 h-10 animate-spin text-orange-600" />
-                    <span className="ml-4 text-slate-500 font-black uppercase tracking-widest text-xs">Consultando versiones...</span>
                   </div>
                 ) : versionesFabricacionData.length > 0 ? (
                   <table className="w-full text-[11px] border-collapse">
@@ -1253,9 +1192,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       {versionesFabricacionData.map((row, i) => (
                         <tr key={i} className="hover:bg-slate-50 transition-colors text-[10px]">
                           {Object.values(row).map((val: any, j) => (
-                            <td key={j} className="px-6 py-4 font-medium text-slate-600 whitespace-nowrap">
-                              {val === null || val === undefined ? '—' : String(val)}
-                            </td>
+                            <td key={j} className="px-6 py-4 font-medium text-slate-600 whitespace-nowrap">{val ?? '—'}</td>
                           ))}
                         </tr>
                       ))}
@@ -1384,10 +1321,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     <CardDescription className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-1">Auditoría técnica de tiempos promedio por material y hoja de ruta</CardDescription>
                   </div>
                 </div>
-                <div className="bg-white/5 border border-white/10 rounded-2xl px-5 py-3 text-center">
-                  <span className="block text-[8px] text-slate-500 uppercase font-black tracking-widest">Registros</span>
-                  <span className="text-xl font-mono font-black text-sky-400">{kpiMaestroData.length}</span>
-                </div>
               </div>
             </CardHeader>
             <CardContent className="p-0">
@@ -1395,7 +1328,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 {isLoadingKPI ? (
                   <div className="flex items-center justify-center py-24">
                     <Loader2 className="w-10 h-10 animate-spin text-indigo-500" />
-                    <span className="ml-4 text-slate-500 font-black uppercase tracking-widest text-xs">Consultando Maestro de Forros...</span>
                   </div>
                 ) : (
                   <table className="w-full text-[11px] border-collapse">
@@ -1418,11 +1350,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
                           <td className="px-6 py-4 font-black text-slate-800 uppercase whitespace-normal break-words leading-tight min-w-[250px]">{t.Categoria}</td>
                         </tr>
                       ))}
-                      {kpiMaestroData.length === 0 && (
-                        <tr>
-                          <td colSpan={4} className="py-20 text-center text-slate-400 uppercase font-black tracking-widest text-[9px] opacity-40">No hay datos de KPI disponibles</td>
-                        </tr>
-                      )}
                     </tbody>
                   </table>
                 )}
