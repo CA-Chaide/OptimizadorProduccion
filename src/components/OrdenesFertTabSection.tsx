@@ -379,17 +379,17 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
       const hours = ((Number(o.CANTPROGRAMADA) || 0) * t) / 60;
       const cant = (Number(o.CANTPROGRAMADA) || 0);
 
-      // Atrasadas: Todo lo anterior a hoy
+      // ATRASADAS: Todo lo estrictamente anterior a hoy
       if (o.FECHA < todayStr) {
         pastCant += cant;
         pastHours += hours;
       } 
-      // Hoy: Específicamente la carga de hoy
+      // HOY: Específicamente la carga de hoy
       else if (o.FECHA === todayStr) {
         todayCant += cant;
         todayHours += hours;
       }
-      // Por Planificar: Desde la fecha objetivo en adelante (T+3)
+      // POR PLANIFICAR: Desde la fecha objetivo en adelante (T+3)
       else if (o.FECHA >= targetPlanningDateStr) {
         futureCant += cant;
         futureHours += hours;
@@ -646,13 +646,14 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
                               <div className="text-center">OCUPACIÓN: {capacidadOcupadaTotal.toFixed(1)}%</div>
                           </div>
                           <div className="overflow-x-auto">
-                            <table className="min-w-full text-[11px]">
+                            <table className="min-w-full text-xs">
                               <thead className="bg-gray-100 text-gray-600 uppercase border-b">
                                 <tr>
                                   <th className="px-3 py-1.5 text-left font-bold border-r">Mesa</th>
                                   <th className="px-3 py-1.5 text-left font-bold border-r">Personal</th>
                                   <th className="px-2 py-1.5 text-center font-bold border-r">Cant</th>
                                   <th className="px-2 py-1.5 text-center font-bold border-r">Horas Req</th>
+                                  <th className="px-2 py-1.5 text-center font-bold border-r">Horas Disp</th>
                                   <th className="px-2 py-1.5 text-center font-bold">Ocupación %</th>
                                 </tr>
                               </thead>
@@ -665,6 +666,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
                                       <td className="px-3 py-1 border-r text-blue-600 truncate max-w-[150px]">{mesa.assignedTapicero}</td>
                                       <td className="px-2 py-1 text-center font-mono border-r">{mesa.cantProgramada}</td>
                                       <td className="px-2 py-1 text-center font-mono border-r">{mesa.tiempoRequeridoH.toFixed(2)}</td>
+                                      <td className="px-2 py-1 text-center font-mono border-r text-gray-500">{TIEMPO_DISPONIBLE_POR_MESA.toFixed(2)}</td>
                                       <td className={cn("px-2 py-1 text-center font-bold font-mono", capMesa > 100 ? "text-red-600 bg-red-50" : "text-blue-600")}>
                                         {capMesa.toFixed(1)}%
                                       </td>
