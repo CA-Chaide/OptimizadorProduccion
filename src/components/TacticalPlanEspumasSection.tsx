@@ -17,7 +17,8 @@ import {
   GraduationCap,
   Check,
   TrendingUp,
-  ShoppingCart
+  ShoppingCart,
+  RefreshCw
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -103,7 +104,10 @@ const parseSAPDate = (dateStr: string): Date | null => {
   // Caso 1: Formato regional DD/MM/YYYY HH:mm
   if (str.includes('/')) {
     const [datePart, timePart] = str.split(' ');
-    const [day, month, year] = datePart.split('/').map(Number);
+    if (!datePart) return null;
+    const dateParts = datePart.split('/');
+    if (dateParts.length < 3) return null;
+    const [day, month, year] = dateParts.map(Number);
     const [hours, minutes] = timePart ? timePart.split(':').map(Number) : [0, 0];
     const date = new Date(year, month - 1, day, hours, minutes);
     return isNaN(date.getTime()) ? null : date;
@@ -128,14 +132,16 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const [mantenimientos, setMantenimientos] = useState<any[]>([]);
   const [habilidades, setHabilidades] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [selectedDate, setSelectedDate] = useState<string>('all');
+  
+  // Selección múltiple de fechas
+  const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set());
   const [viewDate, setViewDate] = useState<Date | null>(null);
 
   useEffect(() => { 
     setMounted(true); 
     const now = new Date();
     setViewDate(now);
-    setSelectedDate(now.toISOString().split('T')[0]);
+    setSelectedDates(new Set([now.toISOString().split('T')[0]]));
   }, []);
 
   const initData = useCallback(async () => {
@@ -164,10 +170,15 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       setTiemposEnsamblado(times.data?.data || times.data || []);
       setMantenimientos(maint.data || []);
       setHabilidades(Array.isArray(habs.data) ? habs.data : []);
+      
+      addNotification('success', 'Datos sincronizados correctamente desde SAP.');
+    } catch (e) {
+      console.error('Error init TacticalPlanEspumas:', e);
+      addNotification('error', 'Error al sincronizar datos operativos.');
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [addNotification]);
 
   useEffect(() => {
     if (mounted) initData();
@@ -278,22 +289,47 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const matchResp = respCodes.length === 0 || respCodes.includes(itemResp);
       if (!matchResp) return false;
 
-      if (selectedDate !== 'all') {
+      if (selectedDates.size > 0) {
         const dFull = String(o.FECHAINICIO || o.FECHA || '').trim();
         const itemDate = dFull.includes('T') ? dFull.split('T')[0] : dFull;
-        if (itemDate !== selectedDate) return false;
+        if (!selectedDates.has(itemDate)) return false;
       }
       return true;
     });
   };
 
-  const provC1000 = useMemo(() => filterData(ordenes, '1000'), [ordenes, grupos, restriccionesArray, selectedDate]);
-  const provC2000 = useMemo(() => filterData(ordenes, '2000'), [ordenes, grupos, restriccionesArray, selectedDate]);
-  const fertC1000 = useMemo(() => filterData(ordenesFert, '1000'), [ordenesFert, grupos, restriccionesArray, selectedDate]);
-  const fertC2000 = useMemo(() => filterData(ordenesFert, '2000'), [ordenesFert, grupos, restriccionesArray, selectedDate]);
+  const provC1000 = useMemo(() => filterData(ordenes, '1000'), [ordenes, grupos, restriccionesArray, selectedDates]);
+  const provC2000 = useMemo(() => filterData(ordenes, '2000'), [ordenes, grupos, restriccionesArray, selectedDates]);
+  const fertC1000 = useMemo(() => filterData(ordenesFert, '1000'), [ordenesFert, grupos, restriccionesArray, selectedDates]);
+  const fertC2000 = useMemo(() => filterData(ordenesFert, '2000'), [ordenesFert, grupos, restriccionesArray, selectedDates]);
+
+  const uniqueMantenimientos = useMemo(() => {
+    const seenMachine = new Set<string>();
+    return mantenimientos
+      .filter(m => {
+        const dStr = String(m.FECHA_OT_PRG_INI || m.FECHA_PRO || m.FECHA_INI || '').trim();
+        if (!dStr || dStr === 'null') return selectedDates.size === 0;
+        
+        let normalizedDate = '';
+        if (dStr.includes('T')) normalizedDate = dStr.split('T')[0];
+        else if (dStr.includes('/')) {
+          const parts = dStr.split(' ')[0].split('/');
+          if (parts.length === 3) normalizedDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+        } else normalizedDate = dStr;
+
+        return selectedDates.size === 0 || selectedDates.has(normalizedDate);
+      })
+      .filter(m => {
+        const machineId = String(m.ID_MAQUINA || m.MAQUINA || '').trim();
+        if (!machineId) return true; 
+        if (seenMachine.has(machineId)) return false;
+        seenMachine.add(machineId);
+        return true;
+      });
+  }, [mantenimientos, selectedDates]);
 
   const getMachineMTTO = (maquinaCode: string) => {
-    if (selectedDate === 'all') return 0;
+    if (selectedDates.size === 0) return 0;
     return uniqueMantenimientos
       .filter(m => {
         const mMachine = String(m.ID_MAQUINA || m.MAQUINA || '').toUpperCase();
@@ -314,45 +350,12 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return [...provData, ...fertData].reduce((sum, o) => sum + calculateEngineering(o).hours, 0);
   };
 
-  const formatMTTODate = (dateStr: any) => {
-    const d = parseSAPDate(dateStr);
-    if (!d) return '—';
-    return format(d, 'dd/MM/yyyy HH:mm', { locale: es });
+  const toggleDateSelection = (dateStr: string) => {
+    const next = new Set(selectedDates);
+    if (next.has(dateStr)) next.delete(dateStr);
+    else next.add(dateStr);
+    setSelectedDates(next);
   };
-
-  const calculateMTTOCapacity = (start: any, end: any): string => {
-    const s = parseSAPDate(start);
-    const e = parseSAPDate(end);
-    if (!s || !e) return '0.0';
-    const diffHrs = (e.getTime() - s.getTime()) / (1000 * 60 * 60);
-    return Math.max(0, diffHrs).toFixed(1);
-  };
-
-  // Filtrado y De-duplicación de Mantenimientos por MAQUINA
-  const uniqueMantenimientos = useMemo(() => {
-    const seenMachine = new Set<string>();
-    return mantenimientos
-      .filter(m => {
-        const dStr = String(m.FECHA_OT_PRG_INI || m.FECHA_PRO || m.FECHA_INI || '').trim();
-        if (!dStr || dStr === 'null') return selectedDate === 'all';
-        
-        let normalizedDate = '';
-        if (dStr.includes('T')) normalizedDate = dStr.split('T')[0];
-        else if (dStr.includes('/')) {
-          const parts = dStr.split(' ')[0].split('/');
-          if (parts.length === 3) normalizedDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
-        } else normalizedDate = dStr;
-
-        return selectedDate === 'all' || normalizedDate === selectedDate;
-      })
-      .filter(m => {
-        const machineId = String(m.ID_MAQUINA || m.MAQUINA || '').trim();
-        if (!machineId) return true; 
-        if (seenMachine.has(machineId)) return false;
-        seenMachine.add(machineId);
-        return true;
-      });
-  }, [mantenimientos, selectedDate]);
 
   if (!mounted) return null;
 
@@ -375,6 +378,63 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             <p className="text-xs text-gray-500 font-medium">Coche 2m | Ingeniería de Planta | Engineering Model v2.2</p>
           </div>
         </div>
+
+        <div className="flex items-center gap-3">
+          <Button 
+            onClick={initData} 
+            disabled={isLoading}
+            variant="outline"
+            className="h-10 px-4 rounded-xl border-gray-200 gap-2 font-bold text-[10px] uppercase shadow-sm"
+          >
+            {isLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />} Actualizar
+          </Button>
+
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className="h-10 px-4 rounded-xl border-gray-200 gap-2 font-bold text-[10px] uppercase shadow-sm">
+                <Filter className="w-3 h-3 text-primary" /> 
+                {selectedDates.size === 0 ? 'Filtro Fecha' : `${selectedDates.size} Días Seleccionados`}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-60 p-0 border-none shadow-2xl rounded-2xl overflow-hidden mt-2" align="end">
+              <div className="bg-white p-3 font-sans text-left">
+                {viewDate && (
+                  <>
+                    <div className="flex items-center justify-between mb-3 text-left">
+                      <h3 className="text-[10px] font-bold text-gray-800 capitalize">{format(viewDate, 'MMMM yyyy', { locale: es })}</h3>
+                      <div className="flex gap-1">
+                        <Button variant="ghost" size="icon" onClick={() => setViewDate(subMonths(viewDate, 1))} className="h-6 h-6"><ChevronLeft className="w-3 h-3" /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => setViewDate(addMonths(viewDate, 1))} className="h-6 h-6"><ChevronRight className="w-3 h-3" /></Button>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-7 gap-y-1 text-center">
+                      {['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO'].map((d, i) => <div key={i} className="text-[8px] font-bold text-gray-300 uppercase py-1">{d}</div>)}
+                      {calendarDays.map((day, idx) => {
+                        if (!day) return <div key={idx} />;
+                        const dStr = format(day, 'yyyy-MM-dd');
+                        const isSelected = selectedDates.has(dStr);
+                        return (
+                          <button 
+                            key={dStr} 
+                            onClick={() => toggleDateSelection(dStr)} 
+                            className={cn(
+                              "relative h-7 w-7 mx-auto rounded-xl flex items-center justify-center transition-all", 
+                              isSelected ? "bg-primary text-white shadow-md" : "hover:bg-gray-100"
+                            )}
+                          >
+                            <span className={cn("text-[10px] font-bold", !datesWithOrders.has(dStr) && !isSelected ? "text-gray-200" : "")}>{format(day, 'd')}</span>
+                            {datesWithOrders.has(dStr) && !isSelected && <div className="absolute bottom-1 w-1 h-1 bg-primary/40 rounded-full" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+                <Button variant="ghost" size="sm" className="w-full text-[9px] font-bold uppercase text-primary h-7 mt-1 rounded-lg hover:bg-primary/5" onClick={() => setSelectedDates(new Set())}>Limpiar Filtros</Button>
+              </div>
+            </PopoverContent>
+          </Popover>
+        </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
@@ -394,53 +454,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         </TabsList>
 
         <TabsContent value="resumenOperativo" className="animate-in fade-in duration-300 space-y-4">
-          <div className="flex justify-between items-center bg-gray-50 p-3 rounded-2xl border border-gray-100">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-primary/10 rounded-xl text-primary"><Activity className="w-4 h-4" /></div>
-              <div>
-                <p className="text-[9px] font-black uppercase text-gray-400 tracking-widest">Tablero de Mando Diario</p>
-                <h3 className="text-[10px] font-black text-gray-700 uppercase">{selectedDate === 'all' ? 'Vista Consolidada' : `Fecha: ${selectedDate}`}</h3>
-              </div>
-            </div>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className="h-8 px-4 rounded-xl border-gray-200 gap-2 font-bold text-[10px] uppercase shadow-sm">
-                  <Filter className="w-3 h-3 text-primary" /> Filtrar Fecha
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-60 p-0 border-none shadow-2xl rounded-2xl overflow-hidden mt-2" align="end">
-                <div className="bg-white p-3 font-sans text-left">
-                  {viewDate && (
-                    <>
-                      <div className="flex items-center justify-between mb-3 text-left">
-                        <h3 className="text-[10px] font-bold text-gray-800 capitalize">{format(viewDate, 'MMMM yyyy', { locale: es })}</h3>
-                        <div className="flex gap-1">
-                          <Button variant="ghost" size="icon" onClick={() => setViewDate(subMonths(viewDate, 1))} className="h-6 h-6"><ChevronLeft className="w-3 h-3" /></Button>
-                          <Button variant="ghost" size="icon" onClick={() => setViewDate(addMonths(viewDate, 1))} className="h-6 h-6"><ChevronRight className="w-3 h-3" /></Button>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-7 gap-y-1 text-center">
-                        {['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO'].map((d, i) => <div key={i} className="text-[8px] font-bold text-gray-300 uppercase py-1">{d}</div>)}
-                        {calendarDays.map((day, idx) => {
-                          if (!day) return <div key={idx} />;
-                          const dStr = format(day, 'yyyy-MM-dd');
-                          const sel = selectedDate === dStr;
-                          return (
-                            <button key={dStr} onClick={() => setSelectedDate(sel ? 'all' : dStr)} className={cn("relative h-7 w-7 mx-auto rounded-xl flex items-center justify-center transition-all", sel ? "bg-primary text-white shadow-md" : "hover:bg-gray-100")}>
-                              <span className={cn("text-[10px] font-bold", !datesWithOrders.has(dStr) && !sel ? "text-gray-200" : "")}>{format(day, 'd')}</span>
-                              {datesWithOrders.has(dStr) && !sel && <div className="absolute bottom-1 w-1 h-1 bg-primary/40 rounded-full" />}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </>
-                  )}
-                  <Button variant="ghost" size="sm" className="w-full text-[9px] font-bold uppercase text-primary h-7 mt-1 rounded-lg hover:bg-primary/5" onClick={() => setSelectedDate('all')}>Ver Todo</Button>
-                </div>
-              </PopoverContent>
-            </Popover>
-          </div>
-
           <div className="grid grid-cols-1 gap-6">
             {Object.entries(OPERATIVE_BASE).map(([centro, machines]) => (
               <Card key={centro} className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
@@ -509,7 +522,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                       <div className="p-2 bg-slate-900 rounded-xl text-white shadow-lg"><Activity className="w-4 h-4" /></div>
                       <h3 className="text-sm font-black uppercase tracking-tighter text-slate-800">CENTRO {centro === '1000' ? 'QUITO' : 'GUAYAQUIL'}</h3>
                     </div>
-                    <Badge className="bg-yellow-400 text-black font-black text-[9px] uppercase px-4 shadow-sm border-none">Periodo: {selectedDate === 'all' ? 'PLAN CONSOLIDADO' : selectedDate}</Badge>
+                    <Badge className="bg-yellow-400 text-black font-black text-[9px] uppercase px-4 shadow-sm border-none">
+                      {selectedDates.size === 0 ? 'PLAN CONSOLIDADO' : `${selectedDates.size} Días Seleccionados`}
+                    </Badge>
                   </div>
                   <Card className="rounded-3xl border border-gray-200 shadow-2xl overflow-hidden bg-white">
                     <div className="overflow-x-auto">
@@ -624,24 +639,25 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-100 font-bold">
                   {uniqueMantenimientos.length === 0 ? (
-                    <tr><td colSpan={10} className="py-24 text-slate-300 font-bold uppercase italic">Sin mantenimientos detectados para esta fecha</td></tr>
+                    <tr><td colSpan={10} className="py-24 text-slate-300 font-bold uppercase italic">Sin mantenimientos detectados para el periodo seleccionado</td></tr>
                   ) : (
-                    uniqueMantenimientos.map((m, i) => (
-                      <tr key={`${m.ID_MAQUINA}-${i}`} className="hover:bg-amber-50/30">
-                        <td className="px-4 py-3 border-r border-gray-100 text-slate-700">{String(m.ID_PLANTA || '—')}</td>
-                        <td className="px-4 py-3 border-r border-gray-100 text-left uppercase text-slate-700">{String(m.PLANTA || '—')}</td>
-                        <td className="px-4 py-3 border-r border-gray-100 text-slate-700">{String(m.ID_AREA || '—')}</td>
-                        <td className="px-4 py-3 border-r border-gray-100 text-left uppercase text-slate-700">{String(m.AREA || '—')}</td>
-                        <td className="px-4 py-3 border-r border-gray-100 text-indigo-900 font-black">{String(m.ID_MAQUINA || '—')}</td>
-                        <td className="px-4 py-3 border-r border-gray-100 text-left uppercase text-indigo-900 font-black">{String(m.MAQUINA || '—')}</td>
-                        <td className="px-4 py-3 border-r border-gray-100 font-mono text-slate-900 text-left">{String(m.OT_PRG_ID || '—')}</td>
-                        <td className="px-4 py-3 border-r border-gray-100 text-left font-mono text-slate-700">{formatMTTODate(m.FECHA_OT_PRG_INI || m.FECHA_INI || m.FECHA_PRO)}</td>
-                        <td className="px-4 py-3 border-r border-gray-100 text-left font-mono text-slate-700">{formatMTTODate(m.FECHA_OT_PRG_FIN || m.FECHA_FIN || m.FECHA_PRO)}</td>
-                        <td className="px-4 py-3 text-center font-mono font-black text-amber-700 bg-amber-500/5">
-                          {calculateMTTOCapacity(m.FECHA_OT_PRG_INI || m.FECHA_INI || m.FECHA_PRO, m.FECHA_OT_PRG_FIN || m.FECHA_FIN || m.FECHA_PRO)}
-                        </td>
-                      </tr>
-                    ))
+                    uniqueMantenimientos.map((m, i) => {
+                      const dur = calculateMTTOCapacity(m.FECHA_OT_PRG_INI || m.FECHA_INI || m.FECHA_PRO, m.FECHA_OT_PRG_FIN || m.FECHA_FIN || m.FECHA_PRO);
+                      return (
+                        <tr key={`${m.ID_MAQUINA}-${i}`} className="hover:bg-amber-50/30">
+                          <td className="px-4 py-3 border-r border-gray-100 text-slate-700 font-black">{String(m.ID_PLANTA || '—')}</td>
+                          <td className="px-4 py-3 border-r border-gray-100 text-left uppercase text-slate-700">{String(m.PLANTA || '—')}</td>
+                          <td className="px-4 py-3 border-r border-gray-100 text-slate-700">{String(m.ID_AREA || '—')}</td>
+                          <td className="px-4 py-3 border-r border-gray-100 text-left uppercase text-slate-700">{String(m.AREA || '—')}</td>
+                          <td className="px-4 py-3 border-r border-gray-100 text-indigo-900 font-black">{String(m.ID_MAQUINA || '—')}</td>
+                          <td className="px-4 py-3 border-r border-gray-100 text-left uppercase text-indigo-900 font-black">{String(m.MAQUINA || '—')}</td>
+                          <td className="px-4 py-3 border-r border-gray-100 font-mono text-slate-900 text-left font-black">{String(m.OT_PRG_ID || '—')}</td>
+                          <td className="px-4 py-3 border-r border-gray-100 text-left font-mono text-slate-700 font-black">{m.FECHA_OT_PRG_INI || '—'}</td>
+                          <td className="px-4 py-3 border-r border-gray-100 text-left font-mono text-slate-700 font-black">{m.FECHA_OT_PRG_FIN || '—'}</td>
+                          <td className="px-4 py-3 text-center font-mono font-black text-amber-700 bg-amber-500/5">{dur}</td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
