@@ -10,7 +10,7 @@ export const serviciosService = {
       method: "GET",
       headers: { "Content-Type": "application/json" },
     });
-    if (!response.ok) {
+    if (!status) {
       const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
@@ -422,6 +422,22 @@ export const serviciosService = {
         .json()
         .catch(() => ({ message: "Error desconocido" }));
       throw new Error(errorBody.message || "Error al obtener KPI Maestro de Forros");
+    }
+    return response.json();
+  },
+
+  async ReporteExplosionMateriales(centro: string, fert: string): Promise<BodyResponse<any>> {
+    const response = await fetch(API_URL + "/ReporteExplosionMateriales", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ 
+        centro: centro,
+        fert: fert
+      }),
+    });
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({ message: "Error al consultar la explosión de materiales." }));
+      throw new Error(errorBody.message || "Error al consultar la explosión de materiales.");
     }
     return response.json();
   },

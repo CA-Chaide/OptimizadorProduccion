@@ -338,7 +338,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const fetchListaMateriales = useCallback(async () => {
     setIsLoadingListaMateriales(true);
     try {
-      const response = await serviciosService.getMaestroMaterialesExplosion('1000', '', 1, 1000);
+      const response = await serviciosService.ReporteExplosionMateriales('1000', '');
       setListaMaterialesData(response.data || []);
     } catch (error: any) {
       console.error('Error fetching BOM list:', error);
