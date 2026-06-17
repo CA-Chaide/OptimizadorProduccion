@@ -242,33 +242,20 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const fertC1000 = useMemo(() => filterData(ordenesFert, '1000'), [ordenesFert, grupos, restriccionesArray, selectedDate]);
   const fertC2000 = useMemo(() => filterData(ordenesFert, '2000'), [ordenesFert, grupos, restriccionesArray, selectedDate]);
 
-  const datesWithOrders = useMemo(() => {
-    if (!mounted) return new Set<string>();
-    const dates = new Set<string>();
-    [...ordenes, ...ordenesFert].forEach(o => {
-      const d = String(o.FECHAINICIO || o.FECHA || o.fecha_inicio || '').trim();
-      if (d && d !== 'null') dates.add(d.includes('T') ? d.split('T')[0] : d);
-    });
-    return dates;
-  }, [ordenes, ordenesFert, mounted]);
-
-  const calendarDays = useMemo(() => {
-    if (!mounted || !viewDate) return [];
-    const start = startOfMonth(viewDate);
-    const end = endOfMonth(viewDate);
-    const days = eachDayOfInterval({ start, end });
-    const startDay = getDay(start);
-    const pad = startDay === 0 ? 6 : startDay - 1;
-    return [...Array(pad).fill(null), ...days];
-  }, [viewDate, mounted]);
-
   const getMachineMTTO = (maquinaCode: string) => {
     if (selectedDate === 'all') return 0;
     return mantenimientos
       .filter(m => {
-        const mDate = String(m.FECHA_OT_PRG_INI || m.FECHA_PRO || m.FECHA_INI || '').split('T')[0];
+        const dStr = String(m.FECHA_OT_PRG_INI || m.FECHA_PRO || m.FECHA_INI || '').trim();
+        let normalizedDate = '';
+        if (dStr.includes('T')) normalizedDate = dStr.split('T')[0];
+        else if (dStr.includes('/')) {
+          const parts = dStr.split(' ')[0].split('/');
+          if (parts.length === 3) normalizedDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+        } else normalizedDate = dStr;
+
         const mMachine = String(m.ID_MAQUINA || m.MAQUINA || '').toUpperCase();
-        return mDate === selectedDate && (mMachine.includes(maquinaCode.toUpperCase()) || maquinaCode.toUpperCase().includes(mMachine));
+        return normalizedDate === selectedDate && (mMachine.includes(maquinaCode.toUpperCase()) || maquinaCode.toUpperCase().includes(mMachine));
       })
       .reduce((sum, m) => sum + safeNum(m.T_MTTO_PLANIFICADO || m.TIEMPO), 0);
   };
@@ -277,6 +264,34 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const provData = centro === '1000' ? provC1000 : provC2000;
     const fertData = centro === '1000' ? fertC1000 : fertC2000;
     return [...provData, ...fertData].reduce((sum, o) => sum + calculateEngineering(o).hours, 0);
+  };
+
+  /**
+   * Helpers para Auditoría Técnica de Mantenimiento
+   */
+  const formatMTTODate = (dateStr: any) => {
+    if (!dateStr) return '—';
+    const str = String(dateStr).trim();
+    if (!str || str === 'null' || str === 'undefined') return '—';
+    try {
+      const d = new Date(str);
+      if (isNaN(d.getTime())) return str; // Si falla el parseo nativo, devolver original
+      return format(d, 'dd/MM/yyyy HH:mm', { locale: es });
+    } catch {
+      return str;
+    }
+  };
+
+  const calculateMTTOCapacity = (start: any, end: any): string => {
+    try {
+      const s = new Date(String(start));
+      const e = new Date(String(end));
+      if (isNaN(s.getTime()) || isNaN(e.getTime())) return '0.0';
+      const diffHrs = (e.getTime() - s.getTime()) / (1000 * 60 * 60);
+      return diffHrs.toFixed(1);
+    } catch {
+      return '0.0';
+    }
   };
 
   if (!mounted) return null;
@@ -543,14 +558,24 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                     <th className="px-4 py-4 border-r border-amber-100 text-left">MAQUINA</th>
                     <th className="px-4 py-4 border-r border-amber-100">OT_PRG_ID</th>
                     <th className="px-4 py-4 border-r border-amber-100 text-left">FECHA_OT_PRG_INI</th>
-                    <th className="px-4 py-4 text-left">FECHA_OT_PRG_FIN</th>
+                    <th className="px-4 py-4 border-r border-amber-100 text-left">FECHA_OT_PRG_FIN</th>
+                    <th className="px-4 py-4 text-center bg-amber-500/10">T_MTTO_PLANIFICADO (H)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 font-bold">
                   {mantenimientos.filter(m => {
                     const dStr = String(m.FECHA_OT_PRG_INI || m.FECHA_PRO || m.FECHA_INI || '').trim();
-                    const itemDate = dStr.includes('T') ? dStr.split('T')[0] : dStr;
-                    return selectedDate === 'all' || itemDate === selectedDate;
+                    if (!dStr || dStr === 'null') return selectedDate === 'all';
+                    
+                    let normalizedDate = '';
+                    if (dStr.includes('T')) {
+                      normalizedDate = dStr.split('T')[0];
+                    } else if (dStr.includes('/')) {
+                      const parts = dStr.split(' ')[0].split('/');
+                      if (parts.length === 3) normalizedDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+                    } else normalizedDate = dStr;
+
+                    return selectedDate === 'all' || normalizedDate === selectedDate;
                   }).map((m, i) => (
                     <tr key={i} className="hover:bg-amber-50/30">
                       <td className="px-4 py-3 border-r border-gray-100 text-slate-400">{String(m.ID_PLANTA || '—')}</td>
@@ -560,8 +585,11 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                       <td className="px-4 py-3 border-r border-gray-100 text-indigo-600">{String(m.ID_MAQUINA || '—')}</td>
                       <td className="px-4 py-3 border-r border-gray-100 text-left uppercase text-slate-600">{String(m.MAQUINA || '—')}</td>
                       <td className="px-4 py-3 border-r border-gray-100 font-mono text-slate-400">{String(m.OT_PRG_ID || '—')}</td>
-                      <td className="px-4 py-3 border-r border-gray-100 text-left font-mono text-slate-500">{String(m.FECHA_OT_PRG_INI || m.FECHA_INI || m.FECHA_PRO || '—')}</td>
-                      <td className="px-4 py-3 text-left font-mono text-slate-500">{String(m.FECHA_OT_PRG_FIN || m.FECHA_FIN || m.FECHA_PRO || '—')}</td>
+                      <td className="px-4 py-3 border-r border-gray-100 text-left font-mono text-slate-500">{formatMTTODate(m.FECHA_OT_PRG_INI || m.FECHA_INI || m.FECHA_PRO)}</td>
+                      <td className="px-4 py-3 border-r border-gray-100 text-left font-mono text-slate-500">{formatMTTODate(m.FECHA_OT_PRG_FIN || m.FECHA_FIN || m.FECHA_PRO)}</td>
+                      <td className="px-4 py-3 text-center font-mono font-black text-amber-700 bg-amber-500/5">
+                        {calculateMTTOCapacity(m.FECHA_OT_PRG_INI || m.FECHA_INI || m.FECHA_PRO, m.FECHA_OT_PRG_FIN || m.FECHA_FIN || m.FECHA_PRO)}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
