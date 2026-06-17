@@ -118,6 +118,17 @@ const parseSAPDate = (dateStr: string): Date | null => {
   return isNaN(isoDate.getTime()) ? null : isoDate;
 };
 
+/**
+ * Calcula la duración de mantenimiento en horas
+ */
+const calculateMTTOCapacity = (start: string, end: string): string => {
+  const s = parseSAPDate(start);
+  const e = parseSAPDate(end);
+  if (!s || !e) return '0.0';
+  const diffHrs = (e.getTime() - s.getTime()) / (1000 * 60 * 60);
+  return Math.max(0, diffHrs).toFixed(1);
+};
+
 export const TacticalPlanEspumasSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanEspumas');
   const { addNotification } = useAppContext();
@@ -336,11 +347,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         return mMachine.includes(maquinaCode.toUpperCase()) || maquinaCode.toUpperCase().includes(mMachine);
       })
       .reduce((sum, m) => {
-        const s = parseSAPDate(m.FECHA_OT_PRG_INI || m.FECHA_INI || m.FECHA_PRO);
-        const e = parseSAPDate(m.FECHA_OT_PRG_FIN || m.FECHA_FIN || m.FECHA_PRO);
-        if (!s || !e) return sum;
-        const diffHrs = (e.getTime() - s.getTime()) / (1000 * 60 * 60);
-        return sum + Math.max(0, diffHrs);
+        const durStr = calculateMTTOCapacity(m.FECHA_OT_PRG_INI || m.FECHA_INI || m.FECHA_PRO, m.FECHA_OT_PRG_FIN || m.FECHA_FIN || m.FECHA_PRO);
+        return sum + safeNum(durStr);
       }, 0);
   };
 
