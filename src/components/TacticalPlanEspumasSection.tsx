@@ -50,7 +50,6 @@ const MAX_STACK_HEIGHT_CM = 200;
 const SECONDS_PER_LOAD_VUELTA = 300; 
 const SECONDS_PER_MANEUVER_DESC = 45; 
 
-// Paros programados segmentados
 const PARO_PROG_T1 = 1.27;
 const PARO_PROG_T2 = 0.77;
 
@@ -86,7 +85,6 @@ const parseSAPDate = (dateStr: string): Date | null => {
   const str = String(dateStr).trim();
   if (!str || str === 'null' || str === 'undefined') return null;
 
-  // Manejo de formato DD/MM/YYYY HH:mm
   if (str.includes('/')) {
     const [datePart, timePart] = str.split(' ');
     if (!datePart) return null;
@@ -124,11 +122,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const [habilidades, setHabilidades] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
-  // Selección múltiple de fechas
   const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set());
   const [viewDate, setViewDate] = useState<Date | null>(null);
 
-  // Estado para horas operativas manuales (Quito y GYE)
   const [manualHours, setManualHours] = useState<Record<string, number>>({});
 
   useEffect(() => { 
@@ -168,7 +164,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       addNotification('success', 'Datos sincronizados correctamente desde SAP.');
     } catch (e) {
       console.error('Error init TacticalPlanEspumas:', e);
-      addNotification('error', 'Error al sincronizar datos operativos.');
     } finally {
       setIsLoading(false);
     }
@@ -178,7 +173,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     if (mounted) initData();
   }, [mounted, initData]);
 
-  // Auditoría de Mantenimientos por Máquina (De-duplicado por recurso)
   const uniqueMantenimientos = useMemo(() => {
     const seenMachine = new Set<string>();
     return mantenimientos
@@ -204,7 +198,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       });
   }, [mantenimientos, selectedDates]);
 
-  // Búsqueda de MTTO por Recurso y Fecha Seleccionada
   const getMachineMTTO = (maquinaCode: string) => {
     if (selectedDates.size === 0) return 0;
     return uniqueMantenimientos
@@ -296,17 +289,18 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return { ...info, subblocks, sbPerLoad, blocks20m, loads, hours, indivMin, qty, tCargaSec, tDescargaSec, totalSapSec };
   };
 
-  const filterData = (data: any[], centro: string) => {
+  const filterData = (data: any[], centro: string, applyDateFilter: boolean = true, ignoreRestrictions: boolean = false) => {
     const relevantGroups = grupos.filter(g => String(g.centro).trim() === centro);
     const groupIds = relevantGroups.map(g => g.codigo_grupo);
     const groupRest = restriccionesArray.filter(r => groupIds.includes(r.codigo_grupo));
 
-    const respCodes = groupRest
+    // Si ignoreRestrictions es true (para FERT), no cargamos códigos restrictivos
+    const respCodes = ignoreRestrictions ? [] : groupRest
       .filter(r => r.nombre_restriccion === 'RESPCONTROLPROD')
       .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
       .filter(v => v !== '');
     
-    const almCodes = groupRest
+    const almCodes = ignoreRestrictions ? [] : groupRest
       .filter(r => r.nombre_restriccion === 'ALMACEN')
       .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
       .filter(v => v !== '');
@@ -316,14 +310,14 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       if (c !== centro) return false;
       
       const itemAlmValue = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
-      const matchAlm = almCodes.length === 0 || almCodes.includes(itemAlmValue);
+      const matchAlm = ignoreRestrictions || almCodes.length === 0 || almCodes.includes(itemAlmValue);
       if (!matchAlm) return false;
 
       const itemResp = String(o.RESPCONTROLPROD || o.RespControlProd || o.RESP_CONTROL_PROD || o.RespCtrlProd || '').trim();
-      const matchResp = respCodes.length === 0 || respCodes.includes(itemResp);
+      const matchResp = ignoreRestrictions || respCodes.length === 0 || respCodes.includes(itemResp);
       if (!matchResp) return false;
 
-      if (selectedDates.size > 0) {
+      if (applyDateFilter && selectedDates.size > 0) {
         const dFull = String(o.FECHAINICIO || o.FECHA || '').trim();
         const itemDate = dFull.includes('T') ? dFull.split('T')[0] : dFull;
         if (!selectedDates.has(itemDate)) return false;
@@ -334,8 +328,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
   const provC1000 = useMemo(() => filterData(ordenes, '1000'), [ordenes, grupos, restriccionesArray, selectedDates]);
   const provC2000 = useMemo(() => filterData(ordenes, '2000'), [ordenes, grupos, restriccionesArray, selectedDates]);
-  const fertC1000 = useMemo(() => filterData(ordenesFert, '1000'), [ordenesFert, grupos, restriccionesArray, selectedDates]);
-  const fertC2000 = useMemo(() => filterData(ordenesFert, '2000'), [ordenesFert, grupos, restriccionesArray, selectedDates]);
+  
+  // Órdenes FERT flexibilizadas para mostrar todos los responsables y almacenes (ignoreRestrictions = true)
+  const fertC1000 = useMemo(() => filterData(ordenesFert, '1000', true, true), [ordenesFert, grupos, restriccionesArray, selectedDates]);
+  const fertC2000 = useMemo(() => filterData(ordenesFert, '2000', true, true), [ordenesFert, grupos, restriccionesArray, selectedDates]);
 
   const getCenterPlannedHoursTotal = (centro: string) => {
     const provData = centro === '1000' ? provC1000 : provC2000;
@@ -343,7 +339,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return [...provData, ...fertData].reduce((sum, o) => sum + calculateEngineering(o).hours, 0);
   };
 
-  // Obtener restricción de horas operativa del grupo CORTE Y LAMINADO
   const defaultOpHour = useMemo(() => {
     const clGroup = grupos.find(g => g.nombre_grupo.toLowerCase().includes('corte y laminado'));
     const htRest = clGroup ? restriccionesArray.find(r => r.codigo_grupo === clGroup.codigo_grupo && r.nombre_restriccion === 'HORAS_TRABAJO') : null;
@@ -607,7 +602,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         <TabsContent value="mantenimiento" className="animate-in fade-in duration-300">
            <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
             <div className="overflow-x-auto max-h-[600px] relative text-center">
-              <table className="w-full border-collapse font-sans text-[9px]">
+              <table className="w-full border-collapse font-sans text-[10px]">
                 <thead className="bg-[#fef3c7] sticky top-0 z-10 text-amber-900 uppercase font-black tracking-widest border-b border-amber-200">
                   <tr>
                     <th className="px-4 py-4 border-r border-amber-100">ID_PLANTA</th>
@@ -619,7 +614,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                     <th className="px-4 py-4 border-r border-amber-100 text-left">OT_PRG_ID</th>
                     <th className="px-4 py-4 border-r border-amber-100 text-left">FECHA_INI</th>
                     <th className="px-4 py-4 border-r border-amber-100 text-left">FECHA_FIN</th>
-                    <th className="px-4 py-4 text-center bg-amber-500/10">DURACIÓN (H)</th>
+                    <th className="px-4 py-4 text-center bg-amber-500/10">T_MTTO_PLANIFICADO (H)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 font-bold">
@@ -632,7 +627,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <tr key={`${m.ID_MAQUINA}-${i}`} className="hover:bg-amber-50/30 transition-colors">
                           <td className="px-4 py-3 border-r border-gray-100 text-slate-700 font-black">{String(m.ID_PLANTA || '—')}</td>
                           <td className="px-4 py-3 border-r border-gray-100 text-left uppercase text-slate-700">{String(m.PLANTA || '—')}</td>
-                          <td className="px-4 py-3 border-r border-gray-100 text-slate-700">{String(m.ID_AREA || '—')}</td>
+                          <td className="px-4 py-3 border-r border-gray-100 text-slate-700 font-black">{String(m.ID_AREA || '—')}</td>
                           <td className="px-4 py-3 border-r border-gray-100 text-left uppercase text-slate-700">{String(m.AREA || '—')}</td>
                           <td className="px-4 py-3 border-r border-gray-100 text-indigo-900 font-black">{String(m.ID_MAQUINA || '—')}</td>
                           <td className="px-4 py-3 border-r border-gray-100 text-left uppercase text-indigo-900 font-black">{String(m.MAQUINA || '—')}</td>
@@ -736,7 +731,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                     </thead>
                     <tbody className="divide-y divide-gray-50 font-bold">
                       {center.d.length === 0 ? (
-                        <tr><td colSpan={10} className="py-8 text-slate-300 font-bold uppercase italic">Sin órdenes FERT registradas para los criterios de almacén y responsable aplicados</td></tr>
+                        <tr><td colSpan={10} className="py-8 text-slate-300 font-bold uppercase italic">Sin órdenes FERT registradas en este centro para las fechas seleccionadas</td></tr>
                       ) : (
                         center.d.map((o, i) => {
                           const eng = calculateEngineering(o);
