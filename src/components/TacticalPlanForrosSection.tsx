@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -19,7 +20,8 @@ import {
   PackageSearch,
   SearchCode,
   Database,
-  Filter
+  Filter,
+  Info
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -330,7 +332,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     });
   }, [grupos]);
 
-  // Extraer códigos de RESPCONTROLPROD permitidos desde restricciones de Forros (Separador &)
   const allowedRespCodes = useMemo(() => {
     const codes = new Set<string>();
     const forroGroupCodes = new Set(forrosGruposList.map(g => g.codigo_grupo));
@@ -339,10 +340,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
       if (forroGroupCodes.has(r.codigo_grupo)) {
         const normName = r.nombre_restriccion.toUpperCase().trim();
         if (normName === 'RESPCTRLPROD' || normName === 'RESP_CTRL_PROD') {
-          // El separador es '&' según requerimiento
           const values = r.valor_restriccion.split('&');
           values.forEach(v => {
-            const clean = v.trim().replace(/^0+/, ''); // Normalizar quitando ceros a la izquierda
+            const clean = v.trim().replace(/^0+/, '');
             if (clean) codes.add(clean);
           });
         }
@@ -352,19 +352,15 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return Array.from(codes);
   }, [restricciones, forrosGruposList]);
 
-  // Filtrado de Órdenes Previsionales basado en RESPCONTROLPROD y CENTRO 1000
   const filteredOrdenesPrevisionales = useMemo(() => {
-    // 1. Filtrar primero por CENTRO 1000 (Mandatorio)
     let filtered = ordenesPrevisionalesData.filter(order => {
       const centroField = Object.keys(order).find(k => k.toUpperCase().trim() === 'CENTRO');
       const centroVal = String(order[centroField || 'Centro'] || '').trim();
       return centroVal === '1000';
     });
 
-    // 2. Aplicar filtro de Responsabilidad si hay restricciones configuradas
     if (allowedRespCodes.length > 0) {
       filtered = filtered.filter(order => {
-        // Buscar el campo de responsable de forma flexible
         const respField = Object.keys(order).find(k => {
           const uk = k.toUpperCase();
           return uk === 'RESPCONTROLPROD' || uk === 'RESP_CTRL_PROD' || uk === 'RESPONSABLE' || uk === 'RESP';
@@ -465,6 +461,24 @@ export const TacticalPlanForrosSection: React.FC = () => {
     
     return match ? (Number(match.Tiempo || match.Tiempo_Min || 0) * quantity) : 0;
   }, [tiemposProduccion, normalizeMaterialCode, getResolvedPuesto]);
+
+  // Nueva función para obtener el tiempo unitario desde el Maestro de Forros (KPI)
+  const getKPITimeForOrder = useCallback((order: any) => {
+    if (!kpiMaestroData || kpiMaestroData.length === 0) return null;
+    
+    const materialCode = normalizeMaterialCode(order['MATERIAL'] || order['CodMaterial'] || '');
+    const puestoName = getResolvedPuesto(order);
+    const hojaRuta = mapToHojaRuta(puestoName);
+    
+    if (!materialCode || !hojaRuta) return null;
+
+    const match = kpiMaestroData.find(kpi => 
+      normalizeMaterialCode(kpi.CodigoMaterial) === materialCode && 
+      String(kpi.HRUTA).trim().toUpperCase() === hojaRuta.trim().toUpperCase()
+    );
+
+    return match ? Number(match.TPromedio) : null;
+  }, [kpiMaestroData, normalizeMaterialCode, getResolvedPuesto, mapToHojaRuta]);
 
   const toggleWorkstationShift = (p: string, shift: 'day' | 'night') => {
     setWorkstationConfigs(prev => {
@@ -800,7 +814,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 </div>
               </div>
               
-              {/* Sección de filtros aplicados */}
               <div className="mt-6 flex flex-wrap items-center gap-3 p-4 bg-white border border-slate-200 rounded-2xl shadow-sm">
                 <div className="flex items-center gap-2 text-xs font-black text-slate-400 uppercase tracking-widest">
                   <Filter className="w-4 h-4 text-indigo-600" /> Filtros Activos:
@@ -842,21 +855,38 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   <table className="w-full text-[11px] border-collapse">
                     <thead className="bg-slate-900 sticky top-0 z-10 text-white text-left uppercase tracking-widest font-black">
                       <tr>
+                        {/* Nueva columna Tiempo de Producción */}
+                        <th className="px-6 py-4 text-[10px] uppercase font-bold text-sky-400 bg-slate-800 shadow-inner">Tiempo producción (min)</th>
                         {Object.keys(filteredOrdenesPrevisionales[0]).map((key) => (
                           <th key={key} className="px-6 py-4 whitespace-nowrap text-[10px] uppercase font-bold text-slate-300">{key}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {filteredOrdenesPrevisionales.map((item, i) => (
-                        <tr key={i} className="hover:bg-slate-50 transition-colors text-[10px]">
-                          {Object.values(item).map((val: any, j) => (
-                            <td key={j} className="px-6 py-4 font-medium text-slate-600 whitespace-normal break-words leading-tight min-w-[150px]">
-                              {val === null || val === undefined ? '—' : String(val)}
+                      {filteredOrdenesPrevisionales.map((item, i) => {
+                        const kpiTime = getKPITimeForOrder(item);
+                        return (
+                          <tr key={i} className="hover:bg-slate-50 transition-colors text-[10px]">
+                            {/* Celda del tiempo de producción cruzado */}
+                            <td className="px-6 py-4 font-mono font-black text-indigo-600 bg-indigo-50/30 text-center border-r border-slate-100">
+                              {kpiTime !== null ? (
+                                <span className="flex items-center justify-center gap-1">
+                                  {kpiTime.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
+                              ) : (
+                                <span className="text-slate-300 italic flex items-center justify-center gap-1" title="No se encontró coincidencia en Maestro KPI">
+                                  —
+                                </span>
+                              )}
                             </td>
-                          ))}
-                        </tr>
-                      ))}
+                            {Object.values(item).map((val: any, j) => (
+                              <td key={j} className="px-6 py-4 font-medium text-slate-600 whitespace-normal break-words leading-tight min-w-[150px]">
+                                {val === null || val === undefined ? '—' : String(val)}
+                              </td>
+                            ))}
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 ) : (
