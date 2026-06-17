@@ -109,7 +109,7 @@ const parseDimensionsEnhanced = (desc: string) => {
 
 const extractAperture = (desc: string): string => {
   const d = String(desc || '').toUpperCase();
-  // Buscamos específicamente los patrones 194.5, 206, 219, 228
+  // Buscamos específicamente los patrones técnicos solicitados: 194.5, 206, 219, 228
   const match = d.match(/(194\.5|206|219|228)/);
   return match ? match[0] : '—';
 };
@@ -455,7 +455,11 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return inventarioSAP.filter(row => {
       const alm = String(row.ALMACEN || '').trim();
       const matchAlm = allowedAlmacenes.length === 0 || allowedAlmacenes.includes(alm);
-      return matchAlm;
+      
+      const nombre = String(row.NOMBRE || row.DESCRIPCION || '').toUpperCase();
+      const matchTipo = nombre.includes('LAMINA CILINDRICA');
+      
+      return matchAlm && matchTipo;
     });
   }, [inventarioSAP, restriccionesArray]);
 
