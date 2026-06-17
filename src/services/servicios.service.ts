@@ -284,7 +284,7 @@ export const serviciosService = {
       const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      throw new Error(errorBody.message || "Failed to fecth Materiales OP");
     }
     return response.json();
   },

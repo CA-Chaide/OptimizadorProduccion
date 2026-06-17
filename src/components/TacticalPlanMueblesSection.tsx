@@ -13,6 +13,7 @@ import { TiemposEnsambladoTab } from './TiemposEnsambladoTab';
 import { CuboInventariosTab } from './CuboInventariosTab';
 import { CuboInventariosTelasTab } from './CuboInventariosTelasTab';
 import { HabilidadesMueblesTab } from './HabilidadesMueblesTab';
+import { MaterialesBrutosTab } from './MaterialesBrutosTab';
 import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
 import { serviciosService } from '@/services/servicios.service';
@@ -217,6 +218,7 @@ export const TacticalPlanMueblesSection: React.FC = () => {
               <TabsTrigger value="habilidades" className="text-sm py-2 px-1">Habilidades</TabsTrigger>
               <TabsTrigger value="cascos" className="text-sm py-2 px-1">Cascos</TabsTrigger>
               <TabsTrigger value="telas" className="text-sm py-2 px-1">Telas</TabsTrigger>
+              <TabsTrigger value="materialesBrutos" className="text-sm py-2 px-1">Materiales Brutos</TabsTrigger>
               <TabsTrigger value="plan" className="text-sm py-2 px-1 font-bold">PLAN</TabsTrigger>
           </TabsList>
           
@@ -294,6 +296,19 @@ export const TacticalPlanMueblesSection: React.FC = () => {
                   </CardHeader>
                   <CardContent>
                       <CuboInventariosTelasTab />
+                  </CardContent>
+              </Card>
+          </TabsContent>
+          <TabsContent value="materialesBrutos" className="mt-4">
+              <Card>
+                  <CardHeader>
+                      <CardTitle>Maestro de Materiales Brutos</CardTitle>
+                      <CardDescription>
+                          Consulta paginada del maestro de materiales (Materia Prima y Componentes).
+                      </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                      <MaterialesBrutosTab />
                   </CardContent>
               </Card>
           </TabsContent>
