@@ -426,13 +426,13 @@ export const serviciosService = {
     return response.json();
   },
 
-  async ReporteExplosionMateriales(centro: string, fert: string): Promise<BodyResponse<any>> {
+  async ReporteExplosionMateriales(rows: number, rowsPerPage: number): Promise<BodyResponse<any>> {
     const response = await fetch(API_URL + "/ReporteExplosionMateriales", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ 
-        centro: centro,
-        fert: fert
+        rows: rows,
+        rowsPerPage: rowsPerPage
       }),
     });
     if (!response.ok) {
