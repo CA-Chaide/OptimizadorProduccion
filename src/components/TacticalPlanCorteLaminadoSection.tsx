@@ -85,7 +85,6 @@ const parseDimensionsEnhanced = (desc: string) => {
   const densMatch = d.match(/D(\d+)/);
   const densidad = densMatch ? densMatch[1] : '—';
 
-  // Manejo especial de materiales CV (parte del proceso de espesor 3.5)
   if (d.includes('CV')) {
     return { densidad, distancia: 60, altura: 206, espesor: 3.5 };
   }
@@ -109,7 +108,6 @@ const parseDimensionsEnhanced = (desc: string) => {
 
 const extractAperture = (desc: string): string => {
   const d = String(desc || '').toUpperCase();
-  // Valores solicitados: 194.5 / 206 / 219 / 228
   const match = d.match(/(194\.5|206|219|228)/);
   return match ? match[0] : '—';
 };
@@ -363,25 +361,14 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       
       groupMap.forEach(items => {
         const totalKgGroup = items.reduce((s, r) => s + r.consumoKg, 0);
-        
-        // Criterio A: Tomar stocks iniciales de bodegas en UN
         const totalStockUnGroup = items.reduce((s, r) => s + r.stockUN1006 + r.stockUN1008 + r.stockUN1015, 0);
-        
-        // Criterio C: Contrastar con cantidad necesaria (Consumo OF)
         const totalConsumoUnGroup = items.reduce((s, r) => s + r.consumoUn, 0);
-        
-        // Recomendación: Si Consumo > Stock, fabricar la diferencia neta
         const groupDeficit = Math.max(0, totalConsumoUnGroup - totalStockUnGroup);
 
         items.forEach(row => {
-          // Criterio B: Nivel de participación por espesor y tipo
           row.porcentajeNecesidad = totalKgGroup > 0 ? (row.consumoKg / totalKgGroup) : 0;
-          
-          // Recomendación Proporcional
           row.planUn = groupDeficit > 0 ? Math.ceil(groupDeficit * row.porcentajeNecesidad) : 0;
-          
           row.planKg = row.planUn * row.peso;
-          // T. Proceso (H) = (T. Rollo Min * Plan UN) / 60
           row.tProceso = ((row.looperTRolloMin || 0) * row.planUn) / 60;
         });
       });
@@ -464,6 +451,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     setExpandedGroups(next);
   };
 
+  const activeCorridas = useMemo(() => groupedNeeds.filter(g => g.totalPlanUn > 0), [groupedNeeds]);
+
   if (!mounted) {
     return <div className="p-4 md:p-6 min-h-screen bg-white" />;
   }
@@ -542,38 +531,49 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         </TabsList>
 
         <TabsContent value="resumen" className="space-y-6 animate-in fade-in duration-300">
-           <div className="flex items-center gap-8 bg-[#1e293b] p-5 rounded-[2.5rem] border border-white/5 shadow-2xl text-white">
+           <div className="flex items-center gap-8 bg-[#1e293b] p-6 rounded-[2.5rem] border border-white/5 shadow-2xl text-white">
              <div className="flex items-start gap-8 flex-1">
-                <div className="flex flex-col gap-1 flex-1 text-left min-w-[220px]">
-                   <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Nro de Corridas = {groupedNeeds.length}</span>
-                   <div className="flex flex-col gap-1.5 mt-2 pl-1 text-left overflow-y-auto max-h-24 custom-scrollbar">
-                        {groupedNeeds.map((g) => {
+                {/* SECCION IZQUIERDA: CORRIDAS ACTIVAS */}
+                <div className="flex flex-col gap-1 flex-1 text-left min-w-[250px]">
+                   <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Nro de Corridas = {activeCorridas.length}</span>
+                   <div className="flex flex-col gap-1.5 mt-2 pl-1 text-left overflow-y-auto max-h-32 custom-scrollbar">
+                        {activeCorridas.length > 0 ? activeCorridas.map((g) => {
                           const colorObj = getDensityColor(g.densidad);
                           const borderClass = colorObj.split(' ')[0].replace('border-l', 'bg');
                           return (
                             <div key={`${g.apertura}-${g.densidad}`} className="flex items-center gap-2">
-                               <div className={cn("w-1.5 h-1.5 rounded-full", borderClass)} />
+                               <div className={cn("w-2 h-2 rounded-full", borderClass)} />
                                <span className="text-[9px] font-black text-[#facc15] uppercase tracking-widest">
                                  Corrida_Tecnica {g.apertura} - {g.densidad}
                                </span>
                             </div>
                           );
-                        })}
+                        }) : <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest italic">Sin corridas recomendadas</span>}
                    </div>
                 </div>
 
-                <div className="flex flex-col gap-1 border-l border-white/10 pl-8 text-right min-w-[150px]">
-                   <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Cant. Necesaria (KG)</span>
-                   <p className="text-2xl font-black font-mono text-[#f87171] tracking-tighter">
-                     {totalsUnified.kg.toLocaleString(undefined, { minimumFractionDigits: 1 }).replace('.', ',')}
-                   </p>
+                {/* SECCION DERECHA A: DEMANDA BRUTA */}
+                <div className="flex flex-col gap-4 border-l border-white/10 pl-8 text-right min-w-[180px]">
+                   <div>
+                     <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Cant. Necesaria (KG)</span>
+                     <p className="text-2xl font-black font-mono text-[#f87171] tracking-tighter">
+                       {totalsUnified.kg.toLocaleString(undefined, { minimumFractionDigits: 1 }).replace('.', ',')}
+                     </p>
+                   </div>
+                   <div className="pt-2 border-t border-white/5">
+                     <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Cant. Necesaria (UND)</span>
+                     <p className="text-xl font-black font-mono text-indigo-400 tracking-tighter">
+                       {Math.round(totalsUnified.un).toLocaleString()}
+                     </p>
+                   </div>
                 </div>
 
-                <div className="flex flex-col gap-3 border-l border-white/10 pl-8 text-right min-w-[160px]">
+                {/* SECCION DERECHA B: PLAN DE FABRICACION */}
+                <div className="flex flex-col gap-4 border-l border-white/10 pl-8 text-right min-w-[200px]">
                    <div>
-                     <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Cant. Necesaria (und)</span>
-                     <p className="text-2xl font-black font-mono text-indigo-400 tracking-tighter">
-                       {Math.round(totalsUnified.un).toLocaleString()}
+                     <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Rollos a Fabricar (Plan)</span>
+                     <p className="text-2xl font-black font-mono text-[#facc15] tracking-tighter">
+                       {Math.round(totalsUnified.planUn).toLocaleString()}
                      </p>
                    </div>
                    <div className="pt-2 border-t border-white/5">
