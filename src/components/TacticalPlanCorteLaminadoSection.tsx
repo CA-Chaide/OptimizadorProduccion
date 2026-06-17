@@ -53,6 +53,7 @@ interface UnifiedNeedRow {
   peso: number;
   consumoKg: number;
   consumoUn: number;
+  nroRollos: number;
   stock1006: number;
   stock1008: number;
   stock1015: number;
@@ -104,7 +105,6 @@ const parseDimensionsEnhanced = (desc: string) => {
 
 const extractAperture = (desc: string): string => {
   const d = String(desc || '').toUpperCase();
-  // Aperturas actualizadas: 194.5, 206, 219, 228
   const match = d.match(/(194\.5|206|219|228)/);
   return match ? match[0] : '—';
 };
@@ -112,15 +112,15 @@ const extractAperture = (desc: string): string => {
 const getDensityColor = (dens: string) => {
   const d = dens.toLowerCase().replace('d', '');
   switch (d) {
-    case '15': return 'border-l-blue-500 bg-blue-50/40 text-blue-900';
-    case '18': return 'border-l-emerald-500 bg-emerald-50/40 text-emerald-900';
-    case '20': return 'border-l-purple-500 bg-purple-50/40 text-purple-900';
-    case '23': return 'border-l-amber-500 bg-amber-50/40 text-amber-900';
-    case '25': return 'border-l-pink-500 bg-pink-50/40 text-pink-900';
-    case '26': return 'border-l-teal-500 bg-teal-50/40 text-teal-900';
-    case '30': return 'border-l-orange-500 bg-orange-50/40 text-orange-900';
-    case '40': return 'border-l-indigo-500 bg-indigo-50/40 text-indigo-900';
-    default: return 'border-l-slate-500 bg-slate-50/40 text-slate-900';
+    case '15': return 'border-l-blue-600 bg-blue-50/50 text-blue-900';
+    case '18': return 'border-l-emerald-600 bg-emerald-50/50 text-emerald-900';
+    case '20': return 'border-l-purple-600 bg-purple-50/50 text-purple-900';
+    case '23': return 'border-l-amber-600 bg-amber-50/50 text-amber-900';
+    case '25': return 'border-l-pink-600 bg-pink-50/50 text-pink-900';
+    case '26': return 'border-l-teal-600 bg-teal-50/50 text-teal-900';
+    case '30': return 'border-l-orange-600 bg-orange-50/50 text-orange-900';
+    case '40': return 'border-l-indigo-600 bg-indigo-50/50 text-indigo-900';
+    default: return 'border-l-slate-400 bg-slate-50/50 text-slate-900';
   }
 };
 
@@ -211,9 +211,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (mounted) {
-      initData();
-    }
+    if (mounted) initData();
   }, [mounted, initData]);
 
   const filteredOrders = useMemo(() => {
@@ -316,6 +314,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   peso: finalPeso,
                   consumoKg: kgTotal,
                   consumoUn: 0,
+                  nroRollos: 0,
                   stock1006: s1006,
                   stock1008: s1008,
                   stock1015: s1015,
@@ -343,10 +342,14 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         setResumenProgress({ current: i + 1, total: uniqueMaterials.length });
       }
 
-      const finalArray = Array.from(consolidatedMap.values()).map(row => ({
-        ...row,
-        consumoUn: row.peso > 0 ? row.consumoKg / row.peso : 0
-      }));
+      const finalArray = Array.from(consolidatedMap.values()).map(row => {
+        const cUn = row.peso > 0 ? row.consumoKg / row.peso : 0;
+        return {
+          ...row,
+          consumoUn: cUn,
+          nroRollos: cUn // Basado en total consumo por densidad/material
+        };
+      });
       
       const groupMap = new Map<string, UnifiedNeedRow[]>();
       finalArray.forEach(row => {
@@ -367,7 +370,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       });
 
       setUnifiedNeeds(finalArray.sort((a, b) => b.consumoKg - a.consumoKg));
-      addNotification('success', 'Auditoría de Aperturas y Bloques completada con éxito.');
+      addNotification('success', 'Actualización técnica completada con éxito.');
     } finally { 
       setIsProcessingResumen(false); 
     }
@@ -378,6 +381,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       densidad: string; apertura: string; items: UnifiedNeedRow[]; totalKg: number; totalUn: number;
       total1006: number; total1008: number; total1015: number; totalPlanUn: number; totalPlanKg: number;
       totalUN1006: number; totalUN1008: number; totalUN1015: number; totalTProceso: number;
+      totalRollos: number;
     }>();
     unifiedNeeds.forEach(item => {
       const key = `${item.apertura}|${item.densidad}`;
@@ -385,13 +389,14 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         map.set(key, { 
           densidad: item.densidad, apertura: item.apertura, items: [], totalKg: 0, totalUn: 0,
           total1006: 0, total1008: 0, total1015: 0, totalPlanUn: 0, totalPlanKg: 0,
-          totalUN1006: 0, totalUN1008: 0, totalUN1015: 0, totalTProceso: 0
+          totalUN1006: 0, totalUN1008: 0, totalUN1015: 0, totalTProceso: 0, totalRollos: 0
         });
       }
       const group = map.get(key)!;
       group.items.push(item);
       group.totalKg += item.consumoKg;
       group.totalUn += item.consumoUn;
+      group.totalRollos += item.nroRollos;
       group.total1006 += item.stock1006;
       group.total1008 += item.stock1008;
       group.total1015 += item.stock1015;
@@ -409,6 +414,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return unifiedNeeds.reduce((acc, row) => ({
       kg: acc.kg + row.consumoKg,
       un: acc.un + row.consumoUn,
+      rollos: acc.rollos + row.nroRollos,
       planUn: acc.planUn + row.planUn,
       planKg: acc.planKg + row.planKg,
       stock1006: acc.stock1006 + row.stock1006,
@@ -418,7 +424,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       stockUN1008: acc.stockUN1008 + row.stockUN1008,
       stockUN1015: acc.stockUN1015 + row.stockUN1015,
       tProceso: acc.tProceso + row.tProceso
-    }), { kg: 0, un: 0, planUn: 0, planKg: 0, stock1006: 0, stock1008: 0, stock1015: 0, stockUN1006: 0, stockUN1008: 0, stockUN1015: 0, tProceso: 0 });
+    }), { kg: 0, un: 0, rollos: 0, planUn: 0, planKg: 0, stock1006: 0, stock1008: 0, stock1015: 0, stockUN1006: 0, stockUN1008: 0, stockUN1015: 0, tProceso: 0 });
   }, [unifiedNeeds]);
 
   const densityBreakdown = useMemo(() => {
@@ -450,9 +456,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     });
   }, [inventarioSAP, restriccionesArray]);
 
-  if (!mounted) {
-    return <div className="p-4 md:p-6 min-h-screen bg-white" />;
-  }
+  if (!mounted) return <div className="p-4 md:p-6 min-h-screen bg-white" />;
 
   return (
     <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
@@ -564,7 +568,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   <tr className="bg-[#ffff00] text-black uppercase font-black tracking-tighter text-[11px] border-b-2 border-black/10">
                     <th className="px-4 py-4 border-r border-black/5 text-left w-32">Material</th>
                     <th className="px-6 py-4 border-r border-black/5 text-left min-w-[200px]">Descripción</th>
-                    <th className="px-2 py-4 border-r border-black/5 bg-indigo-50/50">Peso UN (Kg)</th>
+                    <th className="px-2 py-4 border-r border-black/5 bg-indigo-50/50">Peso (Kg)</th>
                     <th className="px-2 py-4 border-r border-black/5 bg-indigo-50/50">Dens.</th>
                     <th className="px-2 py-4 border-r border-black/5 bg-indigo-50/50">Esp.</th>
                     <th className="px-2 py-4 border-r border-black/5 bg-indigo-50/50">T. Rollo (Min)</th>
@@ -575,8 +579,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     <th className="px-3 py-4 border-r border-black/5 bg-blue-50/50">Stock 1015 (Kg)</th>
                     <th className="px-2 py-4 border-r border-black/5 bg-cyan-50/50 text-cyan-800">UN 1015</th>
                     <th className="px-4 py-4 border-r border-black/5 text-right bg-orange-100/30">Consumo OF [Kg]</th>
-                    <th className="px-6 py-4 border-r border-black/5 bg-[#cfe2f3]">Peso Teor. (Kg)</th>
-                    <th className="px-4 py-4 border-r border-black/5 text-center">% Nec.</th>
+                    <th className="px-3 py-4 border-r border-black/5 bg-[#cfe2f3] text-indigo-900 font-black">Nro. Rollos</th>
+                    <th className="px-3 py-4 border-r border-black/5 text-center">% Nec.</th>
                     <th className="px-4 py-4 border-r border-black/5 text-right font-black bg-[#fee2e2] text-red-900">PLAN (UN)</th>
                     <th className="px-4 py-4 border-r border-black/5 text-right font-black bg-[#fee2e2] text-red-900">PLAN (KG)</th>
                     <th className="px-4 py-4 text-right font-black bg-indigo-900 text-white">T. PROCESO (Min)</th>
@@ -607,7 +611,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                           >
                             <td className="px-4 py-4 flex items-center gap-2 text-left">
                                {isExpanded ? <Minus className="w-3 h-3 text-red-500" /> : <Plus className="w-3 h-3 text-indigo-500" />}
-                               <span className="font-black text-[10px] uppercase tracking-widest opacity-70">Corrida_Tecnica {group.apertura} - d{group.densidad}</span>
+                               <span className="font-black text-[10px] uppercase tracking-widest opacity-70">Corrida_Tecnica {group.apertura} - {group.densidad}</span>
                             </td>
                             <td className="px-6 py-4 text-left text-indigo-900 font-black uppercase">Subtotal Corrida</td>
                             <td colSpan={4} className="bg-indigo-50/10"></td>
@@ -618,7 +622,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                             <td className="px-3 py-4 text-slate-400 font-mono">{(group.total1015).toLocaleString()}</td>
                             <td className="px-2 py-4 text-cyan-600/50 font-mono">{(group.totalUN1015).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
                             <td className="px-4 py-4 text-right font-mono font-black text-indigo-900 bg-indigo-50/50">{group.totalKg.toLocaleString(undefined, { minimumFractionDigits: 1 })}</td>
-                            <td className="px-6 py-4 bg-[#cfe2f3]/30 font-mono text-slate-300">—</td>
+                            <td className="px-3 py-4 bg-[#cfe2f3]/50 font-mono text-indigo-800">{Math.round(group.totalRollos).toLocaleString()}</td>
                             <td className="px-4 py-4 text-center font-black text-indigo-300">100%</td>
                             <td className="px-4 py-4 text-right font-mono font-black text-red-900 bg-[#fee2e2]/50">{group.totalPlanUn.toLocaleString()}</td>
                             <td className="px-4 py-4 text-right font-mono font-black text-red-900 bg-[#fee2e2]/50">{group.totalPlanKg.toLocaleString(undefined, { minimumFractionDigits: 1 })}</td>
@@ -639,8 +643,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                               <td className="px-3 py-3 border-r border-gray-100 font-mono text-slate-400">{item.stock1015 > 0 ? item.stock1015.toLocaleString() : '—'}</td>
                               <td className="px-2 py-3 border-r border-gray-100 font-mono text-cyan-600 bg-cyan-50/10">{item.stockUN1015 > 0 ? Math.round(item.stockUN1015).toLocaleString() : '—'}</td>
                               <td className="px-4 py-3 border-r border-gray-100 text-right font-mono font-bold text-indigo-400">{item.consumoKg.toLocaleString(undefined, { minimumFractionDigits: 1 })}</td>
-                              <td className="px-6 py-3 border-r border-gray-100 bg-[#cfe2f3] font-mono font-black text-indigo-700">{item.peso.toFixed(2)}</td>
-                              <td className="px-4 py-3 border-r border-black/10 text-center font-black text-slate-300">{(item.porcentajeNecesidad * 100).toFixed(0)}%</td>
+                              <td className="px-3 py-3 border-r border-gray-100 bg-[#cfe2f3]/20 font-mono font-black text-indigo-600">{Math.round(item.nroRollos).toLocaleString()}</td>
+                              <td className="px-4 py-3 border-r border-gray-100 text-center font-black text-slate-300">{(item.porcentajeNecesidad * 100).toFixed(0)}%</td>
                               <td className="px-4 py-3 border-r border-black/10 text-right font-mono font-black text-red-500 bg-[#fee2e2]/20">{item.planUn.toLocaleString()}</td>
                               <td className="px-4 py-3 border-r border-black/10 text-right font-mono font-black text-red-500 bg-[#fee2e2]/20">{item.planKg.toLocaleString(undefined, { minimumFractionDigits: 1 })}</td>
                               <td className="px-4 py-3 text-right font-mono font-black text-indigo-600 bg-indigo-50/30">{formatNum(item.tProceso, 1)}</td>
