@@ -23,7 +23,8 @@ import {
   ListTree,
   Cog,
   Truck,
-  CalendarDays
+  CalendarDays,
+  FileText
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -90,7 +91,7 @@ const MachineCard = ({
   normalizeMaterialCode: (code: string | number) => string;
 }) => {
   const hrCode = mapToHojaRuta(puestoName);
-  const totalTimeHours = orders.reduce((sum, o) => sum + calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || 0), o), 0) / 3600;
+  const totalTimeHours = orders.reduce((sum, o) => sum + calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0), o), 0) / 3600;
   const capacityHours = (config.isDayActive ? horasNetasDiurnas : 0) + (config.isNightActive ? horasNetasNocturnas : 0);
   const utilization = capacityHours > 0 ? (totalTimeHours / capacityHours) * 100 : 0;
   const isOverloaded = utilization > 100;
@@ -171,26 +172,27 @@ const MachineCard = ({
           <table className="w-full border-collapse">
             <thead className="bg-slate-100/80 sticky top-0 z-10 text-slate-500 font-black uppercase tracking-widest text-left">
               <tr>
-                <th className="px-4 py-3 border-b border-slate-200 uppercase">CodMaterial</th>
-                <th className="px-4 py-3 border-b border-slate-200 min-w-[200px] uppercase">Nombre</th>
-                <th className="px-4 py-3 border-b border-slate-200 text-right uppercase">Cantidad</th>
-                <th className="px-4 py-3 border-b border-slate-200 text-center uppercase">Fecha Inicio</th>
-                <th className="px-4 py-3 border-b border-slate-200 text-right text-indigo-700 bg-indigo-50/30 uppercase">Tiempo de Producción</th>
+                <th className="px-4 py-3 border-b border-slate-200">CODMATERIAL</th>
+                <th className="px-4 py-3 border-b border-slate-200 min-w-[200px]">NOMBRE</th>
+                <th className="px-4 py-3 border-b border-slate-200 text-right">CANTIDAD</th>
+                <th className="px-4 py-3 border-b border-slate-200 text-center">FECHA INICIO</th>
+                <th className="px-4 py-3 border-b border-slate-200 text-right text-indigo-700 bg-indigo-50/30">TIEMPO DE PRODUCCIÓN</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {orders.length > 0 ? orders.map((o, i) => {
-                const tSeconds = calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || 0), o);
+                const qty = Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0);
+                const tSeconds = calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', qty, o);
                 const tHours = tSeconds / 3600;
-                const materialCode = o['CodMaterial'] || normalizeMaterialCode(o['MATERIAL'] || '');
+                const materialCode = o['CodMaterial'] || o['CodMaterial'] || normalizeMaterialCode(o['MATERIAL'] || '');
                 const materialName = o['NOMBRE'] || o['TEXTOMATERIAL'] || o['Material'] || '—';
-                const fechaInicio = o['FECHAINICIO'] || '—';
+                const fechaInicio = o['FECHAINICIO'] || o['FECHA'] || '—';
                 
                 return (
                   <tr key={i} className="hover:bg-indigo-50/30 transition-colors">
                     <td className="px-4 py-3 font-mono font-bold text-slate-700 whitespace-nowrap">{materialCode}</td>
                     <td className="px-4 py-3 text-slate-600 font-medium whitespace-normal break-words leading-tight">{materialName}</td>
-                    <td className="px-4 py-3 text-right font-mono font-black text-slate-800">{Number(o['CANTIDAD'] || 0).toLocaleString()}</td>
+                    <td className="px-4 py-3 text-right font-mono font-black text-slate-800">{qty.toLocaleString()}</td>
                     <td className="px-4 py-3 text-center font-medium text-slate-500">{fechaInicio}</td>
                     <td className="px-4 py-3 text-right font-mono font-black text-indigo-600 bg-indigo-50/10">{tHours.toFixed(2)}h</td>
                   </tr>
@@ -323,7 +325,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const fetchOrdenesFert = useCallback(async () => {
     setIsLoadingFert(true);
     try {
-      const response = await serviciosService.getOrdenesFert(1, 2000);
+      const response = await serviciosService.getOrdenesFert(1, 5000);
       setOrdenesFert(response.data || []);
     } catch (error: any) {
       console.error('Error fetching Fert orders:', error);
@@ -363,7 +365,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     setIsLoadingListaMateriales(true);
     try {
       const rowsPerPage = 5000;
-      // Solicitar el primer bloque
       const firstResponse = await serviciosService.getMaestroMaterialesExplosion('1000', '', 1, rowsPerPage);
       const firstData = firstResponse.data || [];
       const total = firstResponse.totalRegistros || firstResponse.totalRecords || firstResponse.totalRows || 0;
@@ -371,7 +372,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
       let allData = [...firstData];
       const totalPages = Math.ceil(total / rowsPerPage);
       
-      // Si hay más páginas, solicitarlas de forma concurrente
       if (totalPages > 1) {
         const promises = [];
         for (let p = 2; p <= totalPages; p++) {
@@ -443,23 +443,38 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return Array.from(codes);
   }, [restricciones, forrosGruposList]);
 
-  // Lógica de filtrado de Órdenes FERT con segmentación por Centro y Fecha seleccionada
-  const processedOrdenesFert = useMemo(() => {
-    const fert1000 = ordenesFert.filter(order => {
+  // Lógica de filtrado y resumen de Órdenes FERT
+  const { fert1000, fert2000, summary1000, summary2000 } = useMemo(() => {
+    const filter1000 = ordenesFert.filter(order => {
       const centro = String(order['Centro'] || order['CENTRO'] || '').trim();
       const resp = String(order['RESPCTRLPROD'] || order['RESP_CTRL_PROD'] || '').trim().replace(/^0+/, '');
       const date = String(order['FECHA'] || order['FECHA_INICIO'] || order['FECHAINICIO'] || '').split('T')[0];
       return centro === '1000' && (resp === '3' || resp === '4') && date === targetDate1000;
     });
 
-    const fert2000 = ordenesFert.filter(order => {
+    const filter2000 = ordenesFert.filter(order => {
       const centro = String(order['Centro'] || order['CENTRO'] || '').trim();
       const resp = String(order['RESPCTRLPROD'] || order['RESP_CTRL_PROD'] || '').trim().replace(/^0+/, '');
       const date = String(order['FECHA'] || order['FECHA_INICIO'] || order['FECHAINICIO'] || '').split('T')[0];
       return centro === '2000' && (resp === '3' || resp === '6') && date === targetDate2000;
     });
 
-    return { fert1000, fert2000 };
+    const getSummary = (orders: any[]) => {
+      const map = new Map<string, number>();
+      orders.forEach(o => {
+        const resp = String(o['RESPCTRLPROD'] || o['RESP_CTRL_PROD'] || 'S/R').trim().replace(/^0+/, '');
+        const qty = Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0);
+        map.set(resp, (map.get(resp) || 0) + qty);
+      });
+      return Array.from(map.entries()).map(([resp, total]) => ({ resp, total }));
+    };
+
+    return { 
+      fert1000: filter1000, 
+      fert2000: filter2000,
+      summary1000: getSummary(filter1000),
+      summary2000: getSummary(filter2000)
+    };
   }, [ordenesFert, targetDate1000, targetDate2000]);
 
   const filteredOrdenesPrevisionales = useMemo(() => {
@@ -636,6 +651,118 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const horasNetasDiurnasVal = parseFloat(jornadaDiurnaSel || "0") * 0.84;
   const horasNetasNocturnasVal = parseFloat(jornadaNocturnaSel || "0") * 0.84;
 
+  const renderFertTable = (orders: any[], summary: any[], title: string, date: string, setDate: (d: string) => void, color: string) => {
+    const fertCols = [
+      { id: 'CENTRO', key: 'Centro' },
+      { id: 'ORDEN', key: 'ORDEN' },
+      { id: 'MATERIAL', key: 'CodMaterial' },
+      { id: 'NOMBRE', key: 'Material' },
+      { id: 'CANTPROGRAMADA', key: 'CANTIDAD' },
+      { id: 'FECHA', key: 'FECHA' },
+      { id: 'RESPCTRLPROD', key: 'RESPCTRLPROD' }
+    ];
+
+    return (
+      <div className="space-y-6">
+        {/* Tabla Resumen */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <Card className="md:col-span-1 rounded-3xl border-none shadow-sm ring-1 ring-slate-100 overflow-hidden">
+            <div className={cn("px-6 py-3 text-white font-black text-xs uppercase tracking-widest flex items-center gap-2", color)}>
+              <BarChart3 className="w-4 h-4" /> Resumen por Responsable
+            </div>
+            <CardContent className="p-0">
+              <table className="w-full text-[11px] border-collapse">
+                <thead className="bg-slate-50 text-slate-500 uppercase font-black tracking-widest border-b">
+                  <tr>
+                    <th className="px-4 py-3 text-left">RESPCTRLPROD</th>
+                    <th className="px-4 py-3 text-right">TOTAL CANTIDAD</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {summary.length > 0 ? summary.map((s, i) => (
+                    <tr key={i} className="hover:bg-slate-50/50">
+                      <td className="px-4 py-3 font-bold text-slate-700">Responsable {s.resp}</td>
+                      <td className="px-4 py-3 text-right font-mono font-black text-indigo-600">{Math.round(s.total).toLocaleString()}</td>
+                    </tr>
+                  )) : (
+                    <tr><td colSpan={2} className="py-8 text-center text-slate-400 italic">Sin datos</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Tabla Principal */}
+        <Card className="rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden shadow-sm border-none">
+          <CardHeader className={cn("text-white p-8", color)}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="bg-white/10 p-3 rounded-2xl text-white backdrop-blur-sm border border-white/10">
+                  <PackageSearch className="w-6 h-6" />
+                </div>
+                <div>
+                  <CardTitle className="text-2xl font-black uppercase tracking-tight">{title}</CardTitle>
+                  <CardDescription className="text-white/60 font-bold uppercase text-[10px] tracking-widest mt-1">
+                    Visualización de carga operativa segmentada
+                  </CardDescription>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="flex items-center bg-white/10 border border-white/20 rounded-lg px-3 py-1 gap-2">
+                  <CalendarDays className="w-3.5 h-3.5 text-white" />
+                  <input 
+                    type="date" 
+                    value={date} 
+                    onChange={(e) => setDate(e.target.value)}
+                    className="bg-transparent border-none text-white text-[10px] font-bold focus:ring-0 outline-none p-0 cursor-pointer"
+                  />
+                </div>
+                <Badge className="bg-white text-slate-900 border-none font-mono font-black text-sm px-4 py-1.5 rounded-xl">{orders.length} REG</Badge>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto max-h-[50vh]">
+              {orders.length > 0 ? (
+                <table className="w-full text-[11px] border-collapse">
+                  <thead className="bg-slate-100 sticky top-0 z-10 text-slate-600 text-left uppercase tracking-widest font-black">
+                    <tr>
+                      {fertCols.map((col) => (
+                        <th key={col.id} className="px-6 py-4 whitespace-nowrap text-[10px] uppercase font-bold">{col.id}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {orders.map((order, i) => (
+                      <tr key={i} className="hover:bg-indigo-50 transition-colors">
+                        {fertCols.map((col) => {
+                          let val = order[col.key] || order[col.id] || order[col.id.toLowerCase()];
+                          if (col.id === 'FECHA' && val) val = String(val).split('T')[0];
+                          if (col.id === 'CANTPROGRAMADA' && val) val = Math.round(Number(val)).toLocaleString();
+                          return (
+                            <td key={col.id} className={cn(
+                              "px-6 py-4 font-medium text-slate-600 whitespace-nowrap",
+                              col.id === 'MATERIAL' && "font-mono font-bold",
+                              col.id === 'CANTPROGRAMADA' && "text-right font-black text-slate-900",
+                              col.id === 'NOMBRE' && "whitespace-normal break-words min-w-[250px]"
+                            )}>{val ?? '—'}</td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="py-20 text-center text-slate-400 uppercase font-black tracking-widest text-xs opacity-40">No hay registros para este centro en la fecha seleccionada</div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  };
+
   if (!isMounted) return null;
 
   return (
@@ -736,8 +863,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   <tbody className="divide-y divide-slate-100">
                     {uniquePuestos.map((p, idx) => {
                       const orders = filterOrdersByHR(p);
-                      const totalUnits = orders.reduce((sum, o) => sum + Number(o['CANTIDAD'] || 0), 0);
-                      const totalTimeHours = orders.reduce((sum, o) => sum + calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || 0), o), 0) / 3600;
+                      const totalUnits = orders.reduce((sum, o) => sum + Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0), 0);
+                      const totalTimeHours = orders.reduce((sum, o) => sum + calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0), o), 0) / 3600;
                       const config = workstationConfigs[p] || { machine: p, isDayActive: true, isNightActive: false };
                       const capacityHours = (config.isDayActive ? horasNetasDiurnasVal : 0) + (config.isNightActive ? horasNetasNocturnasVal : 0);
                       const utilization = capacityHours > 0 ? (totalTimeHours / capacityHours) * 100 : 0;
@@ -880,127 +1007,23 @@ export const TacticalPlanForrosSection: React.FC = () => {
           </div>
         </TabsContent>
 
-        <TabsContent value="ordenes-fert" className="space-y-8 pb-20">
+        <TabsContent value="ordenes-fert" className="space-y-12 pb-20">
           {isLoadingFert ? (
             <div className="flex items-center justify-center py-20 bg-white rounded-3xl border border-slate-200">
               <Loader2 className="w-10 h-10 animate-spin text-indigo-600" />
               <span className="ml-4 text-slate-500 font-black uppercase tracking-widest text-xs">Cargando órdenes FERT...</span>
             </div>
           ) : (
-            <div className="space-y-10">
+            <div className="space-y-16">
               {/* Sección Centro 1000 */}
-              <Card className="rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden shadow-sm border-none">
-                <CardHeader className="bg-slate-900 text-white p-8">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div className="bg-indigo-600 p-3 rounded-2xl text-white shadow-lg shadow-indigo-500/20">
-                        <MapPin className="w-6 h-6" />
-                      </div>
-                      <div>
-                        <CardTitle className="text-2xl font-black uppercase tracking-tight">Órdenes FERT - Centro 1000 (UIO)</CardTitle>
-                        <CardDescription className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-1">
-                          Filtrado por RESP 003, 004 • FECHA META: {targetDate1000} (+3 DÍAS LABORALES)
-                        </CardDescription>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <div className="flex items-center bg-slate-800 border border-slate-700 rounded-lg px-3 py-1 gap-2">
-                        <CalendarDays className="w-3.5 h-3.5 text-sky-400" />
-                        <input 
-                          type="date" 
-                          value={targetDate1000} 
-                          onChange={(e) => setTargetDate1000(e.target.value)}
-                          className="bg-transparent border-none text-white text-[10px] font-bold focus:ring-0 outline-none p-0 cursor-pointer"
-                        />
-                      </div>
-                      <Badge className="bg-indigo-500 text-white border-none font-mono font-black text-sm px-4 py-1.5 rounded-xl">{processedOrdenesFert.fert1000.length} REG</Badge>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="p-0">
-                  <div className="overflow-x-auto max-h-[50vh]">
-                    {processedOrdenesFert.fert1000.length > 0 ? (
-                      <table className="w-full text-[11px] border-collapse">
-                        <thead className="bg-slate-100 sticky top-0 z-10 text-slate-600 text-left uppercase tracking-widest font-black">
-                          <tr>
-                            {Object.keys(processedOrdenesFert.fert1000[0]).map((key) => (
-                              <th key={key} className="px-6 py-4 whitespace-nowrap text-[10px] uppercase font-bold">{key}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {processedOrdenesFert.fert1000.map((order, i) => (
-                            <tr key={i} className="hover:bg-indigo-50 transition-colors">
-                              {Object.values(order).map((val: any, j) => (
-                                <td key={j} className="px-6 py-4 font-medium text-slate-600 whitespace-normal break-words min-w-[150px]">{val ?? '—'}</td>
-                              ))}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    ) : (
-                      <div className="py-20 text-center text-slate-400 uppercase font-black tracking-widest text-xs opacity-40">No hay registros para Centro 1000 en la fecha meta seleccionada</div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
+              <div className="space-y-6">
+                {renderFertTable(fert1000, summary1000, "Órdenes FERT - Centro 1000 (UIO)", targetDate1000, setTargetDate1000, "bg-slate-900")}
+              </div>
 
               {/* Sección Centro 2000 */}
-              <Card className="rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden shadow-sm border-none">
-                <CardHeader className="bg-indigo-700 text-white p-8">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div className="bg-white/10 p-3 rounded-2xl text-white backdrop-blur-sm border border-white/10">
-                        <Truck className="w-6 h-6" />
-                      </div>
-                      <div>
-                        <CardTitle className="text-2xl font-black uppercase tracking-tight">Órdenes FERT - Centro 2000 (GYE)</CardTitle>
-                        <CardDescription className="text-white/60 font-bold uppercase text-[10px] tracking-widest mt-1">
-                          Filtrado por RESP 003, 006 • FECHA META: {targetDate2000} (+2 DÍAS LABORALES)
-                        </CardDescription>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <div className="flex items-center bg-white/10 border border-white/20 rounded-lg px-3 py-1 gap-2">
-                        <CalendarDays className="w-3.5 h-3.5 text-sky-300" />
-                        <input 
-                          type="date" 
-                          value={targetDate2000} 
-                          onChange={(e) => setTargetDate2000(e.target.value)}
-                          className="bg-transparent border-none text-white text-[10px] font-bold focus:ring-0 outline-none p-0 cursor-pointer"
-                        />
-                      </div>
-                      <Badge className="bg-white text-indigo-700 border-none font-mono font-black text-sm px-4 py-1.5 rounded-xl">{processedOrdenesFert.fert2000.length} REG</Badge>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="p-0">
-                  <div className="overflow-x-auto max-h-[50vh]">
-                    {processedOrdenesFert.fert2000.length > 0 ? (
-                      <table className="w-full text-[11px] border-collapse">
-                        <thead className="bg-slate-100 sticky top-0 z-10 text-slate-600 text-left uppercase tracking-widest font-black">
-                          <tr>
-                            {Object.keys(processedOrdenesFert.fert2000[0]).map((key) => (
-                              <th key={key} className="px-6 py-4 whitespace-nowrap text-[10px] uppercase font-bold">{key}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {processedOrdenesFert.fert2000.map((order, i) => (
-                            <tr key={i} className="hover:bg-indigo-50 transition-colors">
-                              {Object.values(order).map((val: any, j) => (
-                                <td key={j} className="px-6 py-4 font-medium text-slate-600 whitespace-normal break-words min-w-[150px]">{val ?? '—'}</td>
-                              ))}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    ) : (
-                      <div className="py-20 text-center text-slate-400 uppercase font-black tracking-widest text-xs opacity-40">No hay registros para Centro 2000 en la fecha meta seleccionada</div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
+              <div className="space-y-6">
+                {renderFertTable(fert2000, summary2000, "Órdenes FERT - Centro 2000 (GYE)", targetDate2000, setTargetDate2000, "bg-indigo-700")}
+              </div>
             </div>
           )}
         </TabsContent>
