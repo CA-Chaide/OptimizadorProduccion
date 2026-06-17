@@ -294,20 +294,18 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
   const getMachineMTTO = (maquinaCode: string) => {
     if (selectedDate === 'all') return 0;
-    return mantenimientos
+    return uniqueMantenimientos
       .filter(m => {
-        const dStr = String(m.FECHA_OT_PRG_INI || m.FECHA_PRO || m.FECHA_INI || '').trim();
-        let normalizedDate = '';
-        if (dStr.includes('T')) normalizedDate = dStr.split('T')[0];
-        else if (dStr.includes('/')) {
-          const parts = dStr.split(' ')[0].split('/');
-          if (parts.length === 3) normalizedDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
-        } else normalizedDate = dStr;
-
         const mMachine = String(m.ID_MAQUINA || m.MAQUINA || '').toUpperCase();
-        return normalizedDate === selectedDate && (mMachine.includes(maquinaCode.toUpperCase()) || maquinaCode.toUpperCase().includes(mMachine));
+        return mMachine.includes(maquinaCode.toUpperCase()) || maquinaCode.toUpperCase().includes(mMachine);
       })
-      .reduce((sum, m) => sum + safeNum(m.T_MTTO_PLANIFICADO || m.TIEMPO), 0);
+      .reduce((sum, m) => {
+        const s = parseSAPDate(m.FECHA_OT_PRG_INI || m.FECHA_INI || m.FECHA_PRO);
+        const e = parseSAPDate(m.FECHA_OT_PRG_FIN || m.FECHA_FIN || m.FECHA_PRO);
+        if (!s || !e) return sum;
+        const diffHrs = (e.getTime() - s.getTime()) / (1000 * 60 * 60);
+        return sum + Math.max(0, diffHrs);
+      }, 0);
   };
 
   const getCenterPlannedHoursTotal = (centro: string) => {
@@ -330,9 +328,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return Math.max(0, diffHrs).toFixed(1);
   };
 
-  // Filtrado y De-duplicación de Mantenimientos por OT_PRG_ID
+  // Filtrado y De-duplicación de Mantenimientos por MAQUINA
   const uniqueMantenimientos = useMemo(() => {
-    const seenOT = new Set<string>();
+    const seenMachine = new Set<string>();
     return mantenimientos
       .filter(m => {
         const dStr = String(m.FECHA_OT_PRG_INI || m.FECHA_PRO || m.FECHA_INI || '').trim();
@@ -348,10 +346,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         return selectedDate === 'all' || normalizedDate === selectedDate;
       })
       .filter(m => {
-        const otId = String(m.OT_PRG_ID || '').trim();
-        if (!otId || otId === '—') return true; 
-        if (seenOT.has(otId)) return false;
-        seenOT.add(otId);
+        const machineId = String(m.ID_MAQUINA || m.MAQUINA || '').trim();
+        if (!machineId) return true; 
+        if (seenMachine.has(machineId)) return false;
+        seenMachine.add(machineId);
         return true;
       });
   }, [mantenimientos, selectedDate]);
@@ -550,7 +548,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                           </tr>
                           <tr className="hover:bg-slate-50 text-orange-600">
                             <td className="px-6 py-2 border-r border-gray-100 bg-gray-50/50 uppercase">MTTO Preventivo</td>
-                            {machines.map(m => <td key={`${m.code}-mtto`} className="px-4 py-2 border-r border-gray-100 text-center font-mono">{getMachineMTTO(m.code) > 0 ? getMachineMTTO(m.code) : '—'}</td>)}
+                            {machines.map(m => <td key={`${m.code}-mtto`} className="px-4 py-2 border-r border-gray-100 text-center font-mono">{getMachineMTTO(m.code) > 0 ? getMachineMTTO(m.code).toFixed(1) : '—'}</td>)}
                             <td className="px-4 py-2 text-center font-mono bg-orange-50/30 border-l-2 border-indigo-500/10">{totalMTTO > 0 ? totalMTTO.toFixed(1) : '—'}</td>
                           </tr>
                           <tr className="bg-slate-900 text-slate-300">
@@ -629,12 +627,12 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                     <tr><td colSpan={10} className="py-24 text-slate-300 font-bold uppercase italic">Sin mantenimientos detectados para esta fecha</td></tr>
                   ) : (
                     uniqueMantenimientos.map((m, i) => (
-                      <tr key={`${m.OT_PRG_ID}-${i}`} className="hover:bg-amber-50/30">
+                      <tr key={`${m.ID_MAQUINA}-${i}`} className="hover:bg-amber-50/30">
                         <td className="px-4 py-3 border-r border-gray-100 text-slate-700">{String(m.ID_PLANTA || '—')}</td>
                         <td className="px-4 py-3 border-r border-gray-100 text-left uppercase text-slate-700">{String(m.PLANTA || '—')}</td>
                         <td className="px-4 py-3 border-r border-gray-100 text-slate-700">{String(m.ID_AREA || '—')}</td>
                         <td className="px-4 py-3 border-r border-gray-100 text-left uppercase text-slate-700">{String(m.AREA || '—')}</td>
-                        <td className="px-4 py-3 border-r border-gray-100 text-indigo-900">{String(m.ID_MAQUINA || '—')}</td>
+                        <td className="px-4 py-3 border-r border-gray-100 text-indigo-900 font-black">{String(m.ID_MAQUINA || '—')}</td>
                         <td className="px-4 py-3 border-r border-gray-100 text-left uppercase text-indigo-900 font-black">{String(m.MAQUINA || '—')}</td>
                         <td className="px-4 py-3 border-r border-gray-100 font-mono text-slate-900 text-left">{String(m.OT_PRG_ID || '—')}</td>
                         <td className="px-4 py-3 border-r border-gray-100 text-left font-mono text-slate-700">{formatMTTODate(m.FECHA_OT_PRG_INI || m.FECHA_INI || m.FECHA_PRO)}</td>
