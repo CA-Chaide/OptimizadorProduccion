@@ -365,7 +365,6 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
   }, [orders, tiemposMap]);
 
   const statusSummary = useMemo(() => {
-    // Calcular la fecha objetivo de planificación (Hoy + 3 días laborables)
     const getTargetDateStr = () => {
       const today = new Date();
       let daysAdded = 0;
@@ -391,17 +390,14 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
       const hours = ((Number(o.CANTPROGRAMADA) || 0) * t) / 60;
       const cant = (Number(o.CANTPROGRAMADA) || 0);
 
-      // ATRASADAS: Todo lo estrictamente anterior a hoy
       if (o.FECHA < todayStr) {
         pastCant += cant;
         pastHours += hours;
       } 
-      // HOY: Específicamente la carga de hoy
       else if (o.FECHA === todayStr) {
         todayCant += cant;
         todayHours += hours;
       }
-      // POR PLANIFICAR: Desde la fecha objetivo en adelante (T+3)
       else if (o.FECHA >= targetPlanningDateStr) {
         futureCant += cant;
         futureHours += hours;
@@ -508,7 +504,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
   const handleDateChange = (dates: string[]) => {
     setSelectedDates(dates);
     setPagination(prev => ({ ...prev, currentPage: 1 }));
-    setExplosionResults([]); // Limpiar explosión al cambiar filtros
+    setExplosionResults([]); 
   };
 
   // Función para Explosión de Materiales
@@ -521,7 +517,6 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
     setIsExploding(true);
     setExplosionResults([]);
     
-    // 1. Identificar FERTs únicos y su demanda acumulada en la selección actual
     const fertDemandMap = new Map<string, number>();
     filteredOrders.forEach(o => {
         const code = normalizeMaterialCode(o.MATERIAL);
@@ -534,7 +529,6 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
     try {
         addNotification('info', `Iniciando explosión de ${uniqueFerts.length} materiales únicos...`);
         
-        // 2. Consultar explosión para cada FERT
         for (const fert of uniqueFerts) {
             const res = await serviciosService.getMaestroMaterialesExplosion('1000', fert, 1, 5000);
             if (res.data) {
@@ -542,7 +536,8 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
                 const parentDemand = fertDemandMap.get(fert) || 0;
                 
                 components.forEach((comp: any) => {
-                    const cantBase = Number(comp.CANT_COMPONENTE || comp.CANTIDAD || 0);
+                    // Usar campos COMPONENTE, DESCRIPCION_COMPONENTE, CANTIDAD_ACUMULADA del JSON proporcionado
+                    const cantBase = Number(comp.CANTIDAD_ACUMULADA || comp.CANTIDAD_UNITARIA || 0);
                     allComponents.push({
                         ...comp,
                         calculatedNeeded: cantBase * parentDemand
@@ -551,14 +546,13 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
             }
         }
 
-        // 3. Agrupar y sumar por componente
         const grouped = new Map<string, ComponentExplosion>();
         allComponents.forEach(c => {
-            const id = String(c.MAT_COMPONENTE || c.MATERIAL || c.ID || 'Unknown');
+            const id = String(c.COMPONENTE || 'Unknown');
             if (!grouped.has(id)) {
                 grouped.set(id, {
                     id,
-                    description: c.DESC_COMPONENTE || c.NOMBRE || c.DESCRIPCION || 'Sin Descripción',
+                    description: c.DESCRIPCION_COMPONENTE || 'Sin Descripción',
                     unit: c.UNIDAD || 'UN',
                     totalNeeded: 0
                 });
