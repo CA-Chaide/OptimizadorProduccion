@@ -70,7 +70,7 @@ interface UnifiedNeedRow {
   porcentajeNecesidad: number;
   planUn: number;
   planKg: number;
-  tProceso: number;
+  tProceso: number; // Ahora calculado en Horas
 }
 
 const safeNum = (val: any): number => {
@@ -347,7 +347,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         return {
           ...row,
           consumoUn: cUn,
-          nroRollos: cUn // Basado en total consumo por densidad/material
+          nroRollos: cUn 
         };
       });
       
@@ -365,7 +365,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           row.porcentajeNecesidad = totalKgGroup > 0 ? (row.consumoKg / totalKgGroup) : 0;
           row.planUn = Math.round(targetPlanUn * row.porcentajeNecesidad);
           row.planKg = row.planUn * row.peso;
-          row.tProceso = (row.looperTRolloMin || 0) * row.planKg;
+          // CORRECCIÓN TÉCNICA: T. Proceso = (T.Rollo * Plan UN) / 60 [Horas]
+          row.tProceso = ((row.looperTRolloMin || 0) * row.planUn) / 60;
         });
       });
 
@@ -427,21 +428,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     }), { kg: 0, un: 0, rollos: 0, planUn: 0, planKg: 0, stock1006: 0, stock1008: 0, stock1015: 0, stockUN1006: 0, stockUN1008: 0, stockUN1015: 0, tProceso: 0 });
   }, [unifiedNeeds]);
 
-  const densityBreakdown = useMemo(() => {
-    const map = new Map<string, number>();
-    groupedNeeds.forEach(g => {
-      map.set(g.densidad, (map.get(g.densidad) || 0) + 1);
-    });
-    return Array.from(map.entries()).sort((a,b) => a[0].localeCompare(b[0]));
-  }, [groupedNeeds]);
-
-  const toggleGroup = (key: string) => {
-    const next = new Set(expandedGroups);
-    if (next.has(key)) next.delete(key);
-    else next.add(key);
-    setExpandedGroups(next);
-  };
-
   const filteredInventario = useMemo(() => {
     const allowedAlmacenes = restriccionesArray
       .filter(r => r.nombre_restriccion === 'ALmacen_Consumo')
@@ -455,6 +441,13 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       return matchAlm && matchName;
     });
   }, [inventarioSAP, restriccionesArray]);
+
+  const toggleGroup = (key: string) => {
+    const next = new Set(expandedGroups);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    setExpandedGroups(next);
+  };
 
   if (!mounted) return <div className="p-4 md:p-6 min-h-screen bg-white" />;
 
@@ -548,14 +541,19 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 </div>
                 <div className="flex flex-col gap-1 flex-1 text-left">
                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Nro De Aperturas o corridas = {groupedNeeds.length}</span>
-                   <div className="flex flex-col gap-1 mt-1 pl-1 text-left">
-                        {densityBreakdown.map(([dens, count]) => (
-                          <div key={dens} className="flex items-center gap-2">
-                             <span className="text-[10px] font-black text-[#facc15] uppercase tracking-tight">
-                               - D{dens} = {count} CORRIDA{count !== 1 ? 'S' : ''}
-                             </span>
-                          </div>
-                        ))}
+                   <div className="flex flex-col gap-2 mt-2 pl-1 text-left overflow-y-auto max-h-24">
+                        {groupedNeeds.map((g) => {
+                          const colorObj = getDensityColor(g.densidad);
+                          const borderClass = colorObj.split(' ')[0].replace('border-l', 'bg');
+                          return (
+                            <div key={`${g.apertura}-${g.densidad}`} className="flex items-center gap-2">
+                               <div className={cn("w-1.5 h-1.5 rounded-full", borderClass)} />
+                               <span className="text-[9px] font-black text-[#facc15] uppercase tracking-widest">
+                                 Corrida_Tecnica {g.apertura} - {g.densidad}
+                               </span>
+                            </div>
+                          );
+                        })}
                    </div>
                 </div>
              </div>
@@ -583,7 +581,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     <th className="px-3 py-4 border-r border-black/5 text-center">% Nec.</th>
                     <th className="px-4 py-4 border-r border-black/5 text-right font-black bg-[#fee2e2] text-red-900">PLAN (UN)</th>
                     <th className="px-4 py-4 border-r border-black/5 text-right font-black bg-[#fee2e2] text-red-900">PLAN (KG)</th>
-                    <th className="px-4 py-4 text-right font-black bg-indigo-900 text-white">T. PROCESO (Min)</th>
+                    <th className="px-4 py-4 text-right font-black bg-indigo-900 text-white">T. PROCESO (H)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 font-bold">
