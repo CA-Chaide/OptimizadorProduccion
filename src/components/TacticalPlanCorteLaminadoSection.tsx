@@ -70,7 +70,7 @@ interface UnifiedNeedRow {
   porcentajeNecesidad: number;
   planUn: number;
   planKg: number;
-  tProceso: number; // Ahora calculado en Horas
+  tProceso: number; 
 }
 
 const safeNum = (val: any): number => {
@@ -105,6 +105,7 @@ const parseDimensionsEnhanced = (desc: string) => {
 
 const extractAperture = (desc: string): string => {
   const d = String(desc || '').toUpperCase();
+  // Valores solicitados: 194.5 / 206 / 219 / 228
   const match = d.match(/(194\.5|206|219|228)/);
   return match ? match[0] : '—';
 };
@@ -437,8 +438,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return inventarioSAP.filter(row => {
       const alm = String(row.ALMACEN || '').trim();
       const matchAlm = allowedAlmacenes.length === 0 || allowedAlmacenes.includes(alm);
-      const matchName = String(row.NOMBRE || '').toUpperCase().includes('LAMINA CILINDRICA');
-      return matchAlm && matchName;
+      return matchAlm;
     });
   }, [inventarioSAP, restriccionesArray]);
 
@@ -533,14 +533,22 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                      {totalsUnified.kg.toLocaleString(undefined, { minimumFractionDigits: 1 }).replace('.', ',')}
                    </p>
                 </div>
-                <div className="flex flex-col gap-1 border-r border-white/10 px-10 text-left">
-                   <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Cantidad necesaria (und)</span>
-                   <p className="text-4xl font-black font-mono text-indigo-400 tracking-tighter">
-                     {Math.round(totalsUnified.un).toLocaleString()}
-                   </p>
+                <div className="flex flex-col gap-4 border-r border-white/10 px-10 text-left">
+                   <div>
+                     <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Cantidad necesaria (und)</span>
+                     <p className="text-4xl font-black font-mono text-indigo-400 tracking-tighter">
+                       {Math.round(totalsUnified.un).toLocaleString()}
+                     </p>
+                   </div>
+                   <div className="pt-2 border-t border-white/5">
+                     <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Tiempo Total (H)</span>
+                     <p className="text-2xl font-black font-mono text-emerald-400 tracking-tighter">
+                       {totalsUnified.tProceso.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+                     </p>
+                   </div>
                 </div>
                 <div className="flex flex-col gap-1 flex-1 text-left">
-                   <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Nro De Aperturas o corridas = {groupedNeeds.length}</span>
+                   <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Nro de Corridas = {groupedNeeds.length}</span>
                    <div className="flex flex-col gap-2 mt-2 pl-1 text-left overflow-y-auto max-h-24">
                         {groupedNeeds.map((g) => {
                           const colorObj = getDensityColor(g.densidad);
@@ -630,9 +638,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                             <tr key={`${groupKey}-${iIdx}`} className="bg-white hover:bg-blue-50/10 transition-colors">
                               <td className="px-4 py-3 border-r border-gray-100 font-mono text-indigo-600 text-left pl-8">{item.material}</td>
                               <td className="px-6 py-3 border-r border-gray-100 text-left text-gray-400 uppercase leading-tight italic text-[10px] truncate max-w-[250px]">{item.descripcion}</td>
-                              <td className="px-2 py-3 border-r border-gray-100 font-mono text-indigo-900 bg-indigo-50/10">{item.looperPesoUN || '—'}</td>
-                              <td className="px-2 py-3 border-r border-gray-100 font-bold text-indigo-900 bg-indigo-50/10">{item.looperDensidad}</td>
-                              <td className="px-2 py-3 border-r border-gray-100 font-mono text-indigo-900 bg-indigo-50/10">{item.looperEspesor || '—'}</td>
+                              <td className="px-2 py-3 border-r border-gray-100 font-mono text-indigo-900 bg-indigo-50/10">{item.peso.toFixed(2)}</td>
+                              <td className="px-2 py-3 border-r border-gray-100 font-bold text-indigo-900 bg-indigo-50/10">{item.densidad}</td>
+                              <td className="px-2 py-3 border-r border-gray-100 font-mono text-indigo-900 bg-indigo-50/10">{item.espesor || '—'}</td>
                               <td className="px-2 py-3 border-r border-gray-100 font-mono font-black text-indigo-900 bg-indigo-50/10">{item.looperTRolloMin || '—'}</td>
                               <td className="px-3 py-3 border-r border-gray-100 font-mono text-slate-400">{item.stock1006 > 0 ? item.stock1006.toLocaleString() : '—'}</td>
                               <td className="px-2 py-3 border-r border-gray-100 font-mono text-cyan-600 bg-cyan-50/10">{item.stockUN1006 > 0 ? Math.round(item.stockUN1006).toLocaleString() : '—'}</td>
