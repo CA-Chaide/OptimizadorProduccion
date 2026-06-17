@@ -72,6 +72,7 @@ const MachineCard = ({
   normalizeMaterialCode: (code: string | number) => string;
 }) => {
   const hrCode = mapToHojaRuta(puestoName);
+  // Cálculo de carga horaria (el tiempo llega en minutos desde calculateProductionTime)
   const totalTimeHours = orders.reduce((sum, o) => sum + calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || 0), o), 0) / 60;
   const capacityHours = (config.isDayActive ? horasNetasDiurnas : 0) + (config.isNightActive ? horasNetasNocturnas : 0);
   const utilization = capacityHours > 0 ? (totalTimeHours / capacityHours) * 100 : 0;
@@ -163,7 +164,7 @@ const MachineCard = ({
             <tbody className="divide-y divide-slate-100">
               {orders.length > 0 ? orders.map((o, i) => {
                 const t = calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || 0), o) / 60;
-                const materialCode = o['CodMaterial'] || normalizeMaterialCode(o['MATERIAL']);
+                const materialCode = o['CodMaterial'] || normalizeMaterialCode(o['MATERIAL'] || '');
                 const materialName = o['NOMBRE'] || o['TEXTOMATERIAL'] || o['Material'] || '—';
                 return (
                   <tr key={i} className="hover:bg-indigo-50/30 transition-colors">
@@ -193,7 +194,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [grupos, setGrupos] = useState<Grupo[]>([]);
   const [restricciones, setRestricciones] = useState<Restriccion[]>([]);
   const [tiemposProduccion, setTiemposProduccion] = useState<any[]>([]);
-  const [dailyOrders, setDailyOrders] = useState<any[]>([]);
   const [ordenesFert, setOrdenesFert] = useState<any[]>([]);
   const [kpiMaestroData, setKpiMaestroData] = useState<any[]>([]);
   const [ordenesPrevisionalesData, setOrdenesPrevisionalesData] = useState<any[]>([]);
@@ -203,14 +203,12 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [isLoadingKPI, setIsLoadingKPI] = useState(false);
   const [isLoadingPrevisionales, setIsLoadingPrevisionales] = useState(false);
   
-  const [executionDate, setExecutionDate] = useState<string>('');
   const [jornadaDiurnaSel, setJornadaDiurnaSel] = useState("8.75");
   const [jornadaNocturnaSel, setJornadaNocturnaSel] = useState("0");
   const [workstationConfigs, setWorkstationConfigs] = useState<Record<string, WorkstationConfig>>({});
 
   useEffect(() => {
     setIsMounted(true);
-    setExecutionDate(new Date().toISOString().split('T')[0]);
   }, []);
 
   const DIURNA_OPTIONS = [
@@ -238,7 +236,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     const pn = String(puestoName || '').toUpperCase().trim();
     if (!pn || pn === '—' || pn === 'NULL') return '';
     
-    // Mapeos explícitos
     if (pn === 'ACOLCHADORA09') return 'HR-ACH09';
     if (pn === 'COSEDORA-ACH02') return 'HR-PEF02';
     if (pn === 'COSEDORA-ACH08') return 'HR-PEF08';
@@ -352,6 +349,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return Array.from(codes);
   }, [restricciones, forrosGruposList]);
 
+  // ÓRDENES PREVISIONALES FILTRADAS (Centro 1000 y RespCtrlProd)
   const filteredOrdenesPrevisionales = useMemo(() => {
     let filtered = ordenesPrevisionalesData.filter(order => {
       const centroField = Object.keys(order).find(k => k.toUpperCase().trim() === 'CENTRO');
@@ -365,9 +363,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
           const uk = k.toUpperCase();
           return uk === 'RESPCONTROLPROD' || uk === 'RESP_CTRL_PROD' || uk === 'RESPONSABLE' || uk === 'RESP';
         });
-
         if (!respField) return true;
-
         const orderResp = String(order[respField] || '').trim().replace(/^0+/, '');
         return allowedRespCodes.includes(orderResp);
       });
@@ -393,17 +389,11 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
   }, [forrosGruposList]);
 
-  const fetchDailyOrders = useCallback(async () => {
-    if (!isMounted) return;
-    try {
-      const response = await serviciosService.OrdenesProvisionalesAlphaPaginados(1, 10000);
-      if (response && response.data) {
-        setDailyOrders(response.data);
-      }
-    } catch (error) {
-      console.error('Error fetching daily orders:', error);
+  useEffect(() => {
+    if (isMounted && forrosGruposList.length > 0) {
+      fetchTiemposProduccion();
     }
-  }, [isMounted]);
+  }, [isMounted, forrosGruposList, fetchTiemposProduccion]);
 
   const getResolvedPuesto = useCallback((order: any) => {
     const orderFields = ['PuestoTrabajo', 'MAQUINA', 'Maquina'];
@@ -424,12 +414,13 @@ export const TacticalPlanForrosSection: React.FC = () => {
       const p = String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').trim().toUpperCase();
       if (p && p !== 'NULL' && p !== '-' && p !== '—') pSet.add(p);
     });
-    dailyOrders.forEach(o => {
+    // Considerar puestos resueltos en las órdenes previsionales filtradas
+    filteredOrdenesPrevisionales.forEach(o => {
       const p = getResolvedPuesto(o);
       if (p && p !== '') pSet.add(p);
     });
     return Array.from(pSet).sort();
-  }, [tiemposProduccion, dailyOrders, getResolvedPuesto]);
+  }, [tiemposProduccion, filteredOrdenesPrevisionales, getResolvedPuesto]);
 
   useEffect(() => {
     if (uniquePuestos.length > 0 && Object.keys(workstationConfigs).length === 0) {
@@ -441,18 +432,32 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
   }, [uniquePuestos, workstationConfigs]);
 
-  useEffect(() => {
-    if (isMounted && forrosGruposList.length > 0) {
-      fetchTiemposProduccion();
-      fetchDailyOrders();
-    }
-  }, [isMounted, forrosGruposList, fetchTiemposProduccion, fetchDailyOrders]);
+  // Obtiene el tiempo unitario desde el Maestro de Forros (KPI) - En segundos
+  const getKPITimeSecondsForOrder = useCallback((order: any) => {
+    if (!kpiMaestroData || kpiMaestroData.length === 0) return null;
+    const materialCode = normalizeMaterialCode(order['MATERIAL'] || order['CodMaterial'] || '');
+    const puestoName = getResolvedPuesto(order);
+    const hojaRuta = mapToHojaRuta(puestoName);
+    if (!materialCode || !hojaRuta) return null;
+    const match = kpiMaestroData.find(kpi => 
+      normalizeMaterialCode(kpi.CodigoMaterial) === materialCode && 
+      String(kpi.HRUTA).trim().toUpperCase() === hojaRuta.trim().toUpperCase()
+    );
+    return match ? Number(match.TPromedio) : null;
+  }, [kpiMaestroData, normalizeMaterialCode, getResolvedPuesto, mapToHojaRuta]);
 
+  // Calcula el tiempo de producción (devuelve minutos)
   const calculateProductionTime = useCallback((material: string, quantity: number, order: any) => {
     if (!material) return 0;
+    
+    // Intenta obtener tiempo de Maestro KPI primero (segundos)
+    const kpiSec = getKPITimeSecondsForOrder(order);
+    if (kpiSec !== null) {
+      return (kpiSec * quantity) / 60; // Retorna en minutos
+    }
+
     const normMaterial = normalizeMaterialCode(material);
     const puesto = getResolvedPuesto(order);
-    
     const match = tiemposProduccion.find(t => {
       const mNormInternal = normalizeMaterialCode(t.CodMaterial || t.Material || '');
       const tPuesto = String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').trim().toUpperCase();
@@ -460,25 +465,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }) || tiemposProduccion.find(t => normalizeMaterialCode(t.CodMaterial || t.Material || '') === normMaterial);
     
     return match ? (Number(match.Tiempo || match.Tiempo_Min || 0) * quantity) : 0;
-  }, [tiemposProduccion, normalizeMaterialCode, getResolvedPuesto]);
-
-  // Obtiene el tiempo unitario desde el Maestro de Forros (KPI) - En segundos
-  const getKPITimeSecondsForOrder = useCallback((order: any) => {
-    if (!kpiMaestroData || kpiMaestroData.length === 0) return null;
-    
-    const materialCode = normalizeMaterialCode(order['MATERIAL'] || order['CodMaterial'] || '');
-    const puestoName = getResolvedPuesto(order);
-    const hojaRuta = mapToHojaRuta(puestoName);
-    
-    if (!materialCode || !hojaRuta) return null;
-
-    const match = kpiMaestroData.find(kpi => 
-      normalizeMaterialCode(kpi.CodigoMaterial) === materialCode && 
-      String(kpi.HRUTA).trim().toUpperCase() === hojaRuta.trim().toUpperCase()
-    );
-
-    return match ? Number(match.TPromedio) : null;
-  }, [kpiMaestroData, normalizeMaterialCode, getResolvedPuesto, mapToHojaRuta]);
+  }, [tiemposProduccion, normalizeMaterialCode, getResolvedPuesto, getKPITimeSecondsForOrder]);
 
   const toggleWorkstationShift = (p: string, shift: 'day' | 'night') => {
     setWorkstationConfigs(prev => {
@@ -558,14 +545,18 @@ export const TacticalPlanForrosSection: React.FC = () => {
             <div className="bg-indigo-700 p-3 rounded-2xl text-white"><MapPin className="w-5 h-5" /></div>
             <div>
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">GYE (2000)</p>
-              <p className="text-2xl font-black text-slate-900 font-mono">{dailyOrders.filter(o => String(o.Centro).trim() === '2000').length.toLocaleString()}</p>
+              <p className="text-2xl font-black text-slate-900 font-mono">
+                {filteredOrdenesPrevisionales.filter(o => String(o.Centro).trim() === '2000').length.toLocaleString()}
+              </p>
             </div>
           </div>
           <div className="bg-slate-50 border border-slate-100 rounded-3xl p-5 flex items-center gap-5 min-w-[200px]">
             <div className="bg-slate-800 p-3 rounded-2xl text-white"><MapPin className="w-5 h-5" /></div>
             <div>
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">UIO (1000)</p>
-              <p className="text-2xl font-black text-slate-900 font-mono">{dailyOrders.filter(o => String(o.Centro).trim() === '1000').length.toLocaleString()}</p>
+              <p className="text-2xl font-black text-slate-900 font-mono">
+                {filteredOrdenesPrevisionales.filter(o => String(o.Centro).trim() === '1000').length.toLocaleString()}
+              </p>
             </div>
           </div>
         </div>
@@ -605,7 +596,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
         <TabsContent value="resumen-produccion">
           <Card className="rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden shadow-sm">
             <CardHeader className="bg-slate-50/50 border-b border-slate-200 p-10">
-              <CardTitle className="text-2xl font-black text-slate-900 uppercase">Salud de Planta</CardTitle>
+              <CardTitle className="text-2xl font-black text-slate-900 uppercase">Salud de Planta (Órdenes Previsionales)</CardTitle>
             </CardHeader>
             <CardContent className="p-0">
               <div className="overflow-x-auto">
@@ -622,7 +613,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {uniquePuestos.map((p, idx) => {
-                      const orders = dailyOrders.filter(o => getResolvedPuesto(o) === p);
+                      const orders = filteredOrdenesPrevisionales.filter(o => getResolvedPuesto(o) === p);
                       const totalUnits = orders.reduce((sum, o) => sum + Number(o['CANTIDAD'] || 0), 0);
                       const totalTimeHours = orders.reduce((sum, o) => sum + calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || 0), o), 0) / 60;
                       const config = workstationConfigs[p] || { machine: p, isDayActive: true, isNightActive: false };
@@ -668,7 +659,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   {achNames.length > 0 && (
                     <MachineCard 
                       puestoName={achNames[0]} 
-                      orders={dailyOrders.filter(o => getResolvedPuesto(o) === achNames[0])}
+                      orders={filteredOrdenesPrevisionales.filter(o => getResolvedPuesto(o) === achNames[0])}
                       calculateProductionTime={calculateProductionTime}
                       config={workstationConfigs[achNames[0]] || { machine: achNames[0], isDayActive: true, isNightActive: false }}
                       horasNetasDiurnas={horasNetasDiurnas}
@@ -680,7 +671,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   {pefNames.length > 0 && (
                     <MachineCard 
                       puestoName={pefNames[0]} 
-                      orders={dailyOrders.filter(o => getResolvedPuesto(o) === pefNames[0])}
+                      orders={filteredOrdenesPrevisionales.filter(o => getResolvedPuesto(o) === pefNames[0])}
                       calculateProductionTime={calculateProductionTime}
                       config={workstationConfigs[pefNames[0]] || { machine: pefNames[0], isDayActive: true, isNightActive: false }}
                       horasNetasDiurnas={horasNetasDiurnas}
@@ -702,7 +693,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 key={pName} 
                 puestoName={pName} 
                 small 
-                orders={dailyOrders.filter(o => getResolvedPuesto(o) === pName)}
+                orders={filteredOrdenesPrevisionales.filter(o => getResolvedPuesto(o) === pName)}
                 calculateProductionTime={calculateProductionTime}
                 config={workstationConfigs[pName] || { machine: pName, isDayActive: true, isNightActive: false }}
                 horasNetasDiurnas={horasNetasDiurnas}
@@ -721,7 +712,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 key={pName} 
                 puestoName={pName} 
                 small 
-                orders={dailyOrders.filter(o => getResolvedPuesto(o) === pName)}
+                orders={filteredOrdenesPrevisionales.filter(o => getResolvedPuesto(o) === pName)}
                 calculateProductionTime={calculateProductionTime}
                 config={workstationConfigs[pName] || { machine: pName, isDayActive: true, isNightActive: false }}
                 horasNetasDiurnas={horasNetasDiurnas}
@@ -740,7 +731,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 key={pName} 
                 puestoName={pName} 
                 small 
-                orders={dailyOrders.filter(o => getResolvedPuesto(o) === pName)}
+                orders={filteredOrdenesPrevisionales.filter(o => getResolvedPuesto(o) === pName)}
                 calculateProductionTime={calculateProductionTime}
                 config={workstationConfigs[pName] || { machine: pName, isDayActive: true, isNightActive: false }}
                 horasNetasDiurnas={horasNetasDiurnas}
@@ -855,13 +846,11 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   <table className="w-full text-[11px] border-collapse">
                     <thead className="bg-slate-900 sticky top-0 z-10 text-white text-left uppercase tracking-widest font-black">
                       <tr>
-                        {/* Se itera sobre las columnas originales pero detectamos dónde inyectar la columna de tiempo */}
                         {(() => {
                           const keys = Object.keys(filteredOrdenesPrevisionales[0]);
                           const headerCells = [];
                           for (const key of keys) {
                             headerCells.push(<th key={key} className="px-6 py-4 whitespace-nowrap text-[10px] uppercase font-bold text-slate-300">{key}</th>);
-                            // Si es la columna de máquina, inyectamos Tiempo producción justo después
                             const normKey = key.toUpperCase().trim();
                             if (normKey === 'MAQUINA' || normKey === 'PUESTOTRABAJO' || normKey === 'PUESTO_TRABAJO') {
                               headerCells.push(
@@ -880,7 +869,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
                         const kpiTimeSec = getKPITimeSecondsForOrder(item);
                         const keys = Object.keys(item);
                         const rowCells = [];
-                        
                         for (const key of keys) {
                           const val = item[key];
                           rowCells.push(
@@ -888,7 +876,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
                               {val === null || val === undefined ? '—' : String(val)}
                             </td>
                           );
-                          
                           const normKey = key.toUpperCase().trim();
                           if (normKey === 'MAQUINA' || normKey === 'PUESTOTRABAJO' || normKey === 'PUESTO_TRABAJO') {
                             rowCells.push(
@@ -906,7 +893,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
                             );
                           }
                         }
-                        
                         return (
                           <tr key={i} className="hover:bg-slate-50 transition-colors text-[10px]">
                             {rowCells}
@@ -967,14 +953,12 @@ export const TacticalPlanForrosSection: React.FC = () => {
               {workstationGroups.map((group, gIdx) => {
                 const availableItems = group.items.filter(item => uniquePuestos.includes(item));
                 if (availableItems.length === 0) return null;
-
                 return (
                   <div key={gIdx} className="space-y-6">
                     <div className="flex items-center gap-4">
                       <div className="h-8 w-1.5 bg-indigo-600 rounded-full" />
                       <h3 className="text-lg font-black text-indigo-950 uppercase tracking-tighter">{group.title}</h3>
                     </div>
-
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                       {availableItems.map(p => {
                         const config = workstationConfigs[p] || { machine: p, isDayActive: true, isNightActive: false };
@@ -995,28 +979,22 @@ export const TacticalPlanForrosSection: React.FC = () => {
                                 </div>
                               </div>
                             </div>
-                            
                             <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-100">
                               <button 
                                 onClick={() => toggleWorkstationShift(p, 'day')}
                                 className={cn(
                                   "flex-1 h-12 rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm border-2",
-                                  config.isDayActive 
-                                    ? "bg-amber-500 text-white border-amber-600 shadow-amber-200" 
-                                    : "bg-white text-slate-300 border-slate-100"
+                                  config.isDayActive ? "bg-amber-500 text-white border-amber-600 shadow-amber-200" : "bg-white text-slate-300 border-slate-100"
                                 )}
                               >
                                 <Sun className="w-4 h-4" />
                                 <span className="text-[10px] font-black uppercase tracking-widest">{config.isDayActive ? 'Día ON' : 'Día OFF'}</span>
                               </button>
-                              
                               <button 
                                 onClick={() => toggleWorkstationShift(p, 'night')}
                                 className={cn(
                                   "flex-1 h-12 rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm border-2",
-                                  config.isNightActive 
-                                    ? "bg-indigo-700 text-white border-indigo-800 shadow-indigo-200" 
-                                    : "bg-white text-slate-300 border-slate-100"
+                                  config.isNightActive ? "bg-indigo-700 text-white border-indigo-800 shadow-indigo-200" : "bg-white text-slate-300 border-slate-100"
                                 )}
                               >
                                 <Moon className="w-4 h-4" />
