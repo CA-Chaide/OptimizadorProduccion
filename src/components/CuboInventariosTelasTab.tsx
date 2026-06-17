@@ -1,13 +1,15 @@
 
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { serviciosService } from '@/services/servicios.service';
 import { useAppContext } from '@/context/AppProvider';
-import { Package, Loader2, Search } from 'lucide-react';
+import { Package, Loader2, Search, AlertTriangle } from 'lucide-react';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 
 interface CuboInventariosItem {
   [key: string]: any;
@@ -59,16 +61,20 @@ export const CuboInventariosTelasTab: React.FC = () => {
 
                 if (fetchedData.length > 0 && columns.length === 0) {
                     let originalColumns = Object.keys(fetchedData[0]);
+                    
+                    // Reemplazar Etiqueta por Alerta
+                    let filteredColumns = originalColumns.map(col => col === 'Etiqueta' ? 'ALERTA STOCK' : col);
+
                     const stockActualCol = 'StockActual';
                     const descripcionCol = 'Descripcion';
-                    const stockActualIndex = originalColumns.indexOf(stockActualCol);
+                    const stockActualIndex = filteredColumns.indexOf(stockActualCol);
                     if (stockActualIndex > -1) {
-                        originalColumns.splice(stockActualIndex, 1);
+                        filteredColumns.splice(stockActualIndex, 1);
                     }
-                    const descripcionIndex = originalColumns.indexOf(descripcionCol);
+                    const descripcionIndex = filteredColumns.indexOf(descripcionCol);
                     const targetIndex = descripcionIndex !== -1 ? descripcionIndex + 1 : 2;
-                    originalColumns.splice(targetIndex, 0, stockActualCol);
-                    setColumns(originalColumns);
+                    filteredColumns.splice(targetIndex, 0, stockActualCol);
+                    setColumns(filteredColumns);
                 }
 
             } catch (error) {
@@ -220,12 +226,36 @@ export const CuboInventariosTelasTab: React.FC = () => {
                         {displayedData.map((row, idx) => (
                            <TableRow key={idx} className="hover:bg-gray-50">
                                 {columns.map((col, colIndex) => {
+                                    if (col === 'ALERTA STOCK') {
+                                        const stock = Number(row['StockActual']) || 0;
+                                        return (
+                                            <TableCell key={`${idx}-${col}`} className="px-4 py-2 text-center border-r border-dashed border-gray-200 last:border-r-0">
+                                                {stock < 300 ? (
+                                                    <div className="flex justify-center">
+                                                        <Badge variant="destructive" className="animate-pulse flex items-center gap-1 text-[10px] px-2 py-0 h-5">
+                                                            <AlertTriangle className="h-3 w-3" />
+                                                            CRÍTICO
+                                                        </Badge>
+                                                    </div>
+                                                ) : (
+                                                    <Badge variant="outline" className="text-emerald-600 border-emerald-200 bg-emerald-50 text-[10px] h-5 px-2">
+                                                        Suficiente
+                                                    </Badge>
+                                                )}
+                                            </TableCell>
+                                        );
+                                    }
+
                                     let displayValue = String(row[col] ?? '-');
                                     if (col === 'Material') {
                                         displayValue = displayValue.slice(-8);
                                     }
                                     return (
-                                        <TableCell key={`${idx}-${col}`} className={`px-4 py-2 text-center border-r border-dashed border-gray-200 last:border-r-0 ${col === 'StockActual' && Number(row[col]) > 0 ? 'font-bold text-green-700 bg-green-50/30' : ''}`}>
+                                        <TableCell key={`${idx}-${col}`} className={cn(
+                                            "px-4 py-2 text-center border-r border-dashed border-gray-200 last:border-r-0",
+                                            col === 'StockActual' && Number(row[col]) > 0 && "font-bold text-green-700 bg-green-50/30",
+                                            col === 'StockActual' && Number(row[col]) < 300 && "text-red-700 bg-red-50/30"
+                                        )}>
                                             {displayValue}
                                         </TableCell>
                                     );
