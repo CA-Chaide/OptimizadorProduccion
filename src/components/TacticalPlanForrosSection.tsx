@@ -74,8 +74,7 @@ const MachineCard = ({
   normalizeMaterialCode: (code: string | number) => string;
 }) => {
   const hrCode = mapToHojaRuta(puestoName);
-  // Cálculo de carga horaria (el tiempo llega en minutos desde calculateProductionTime)
-  const totalTimeHours = orders.reduce((sum, o) => sum + calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || 0), o), 0) / 60;
+  const totalTimeHours = orders.reduce((sum, o) => sum + calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || 0), o), 0) / 3600;
   const capacityHours = (config.isDayActive ? horasNetasDiurnas : 0) + (config.isNightActive ? horasNetasNocturnas : 0);
   const utilization = capacityHours > 0 ? (totalTimeHours / capacityHours) * 100 : 0;
   const isOverloaded = utilization > 100;
@@ -165,7 +164,8 @@ const MachineCard = ({
             </thead>
             <tbody className="divide-y divide-slate-100">
               {orders.length > 0 ? orders.map((o, i) => {
-                const t = calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || 0), o) / 60;
+                const tSeconds = calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || 0), o);
+                const tHours = tSeconds / 3600;
                 const materialCode = o['CodMaterial'] || normalizeMaterialCode(o['MATERIAL'] || '');
                 const materialName = o['NOMBRE'] || o['TEXTOMATERIAL'] || o['Material'] || '—';
                 const fechaInicio = o['FECHAINICIO'] || '—';
@@ -176,7 +176,7 @@ const MachineCard = ({
                     <td className="px-4 py-3 text-slate-600 font-medium whitespace-normal break-words leading-tight">{materialName}</td>
                     <td className="px-4 py-3 text-right font-mono font-black text-slate-800">{Number(o['CANTIDAD'] || 0).toLocaleString()}</td>
                     <td className="px-4 py-3 text-center font-medium text-slate-500">{fechaInicio}</td>
-                    <td className="px-4 py-3 text-right font-mono font-black text-indigo-600 bg-indigo-50/10">{t.toFixed(2)}h</td>
+                    <td className="px-4 py-3 text-right font-mono font-black text-indigo-600 bg-indigo-50/10">{tHours.toFixed(2)}h</td>
                   </tr>
                 );
               }) : (
@@ -220,36 +220,16 @@ export const TacticalPlanForrosSection: React.FC = () => {
     setIsMounted(true);
   }, []);
 
-  const DIURNA_OPTIONS = [
-    { label: "07:00 - 15:45 (8.75h)", value: "8.75" },
-    { label: "07:00 - 17:00 (10.0h)", value: "10.0" },
-    { label: "07:00 - 18:00 (11.0h)", value: "11.0" }
-  ];
-
-  const NOCTURNA_OPTIONS = [
-    { label: "Sin Jornada Nocturna", value: "0" },
-    { label: "19:00 - 05:30 (10.5h)", value: "10.5" },
-    { label: "21:00 - 05:30 (8.5h)", value: "8.5" }
-  ];
-
-  const horasNetasDiurnas = useMemo(() => parseFloat(jornadaDiurnaSel || "0") * 0.84, [jornadaDiurnaSel]);
-  const horasNetasNocturnas = useMemo(() => parseFloat(jornadaNocturnaSel || "0") * 0.84, [jornadaNocturnaSel]);
-
   const normalizeMaterialCode = useCallback((code: string | number): string => {
     if (!code) return '';
     const codeStr = String(code).trim();
     return codeStr.replace(/^0+/, '');
   }, []);
 
-  /**
-   * Función: mapToHojaRuta
-   * Resuelve el código de Hoja de Ruta (HRUTA) para un puesto de trabajo validando contra KPI TIEMPOS.
-   */
   const mapToHojaRuta = useCallback((puestoName: string): string => {
     const pn = String(puestoName || '').toUpperCase().trim();
     if (!pn || pn === '—' || pn === 'NULL') return '';
     
-    // PRIORIDAD 1: Validación Directa contra KPI MAESTRO FORROS
     if (kpiMaestroData && kpiMaestroData.length > 0) {
       const matchByCategory = kpiMaestroData.find(k => 
         String(k.Categoria || '').toUpperCase().trim() === pn
@@ -265,6 +245,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
     if (pn === 'ACOLCHADORA09') return 'HR-ACH09';
     if (pn === 'COSEDORA-ACH02') return 'HR-PEF02';
     if (pn === 'COSEDORA-ACH08') return 'HR-PEF08';
+    if (pn === 'BORDADORA-BANDA01') return 'HR-BO01';
+    if (pn.includes('FORRO-COLCHONES')) return 'HR-FORRO';
 
     const matchEns = tiemposProduccion.find(t => {
       const tp = String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').toUpperCase().trim();
@@ -403,11 +385,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return Array.from(codes);
   }, [restricciones, forrosGruposList]);
 
-  // ÓRDENES PREVISIONALES FILTRADAS (Centro 1000 y RespCtrlProd)
   const filteredOrdenesPrevisionales = useMemo(() => {
     let filtered = ordenesPrevisionalesData.filter(order => {
-      const centroField = Object.keys(order).find(k => k.toUpperCase().trim() === 'CENTRO');
-      const centroVal = String(order[centroField || 'Centro'] || '').trim();
+      const centroVal = String(order['Centro'] || '').trim();
       return centroVal === '1000';
     });
 
@@ -502,7 +482,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     if (!material) return 0;
     const kpiSec = getKPITimeSecondsForOrder(order);
     if (kpiSec !== null) {
-      return (kpiSec * quantity) / 60;
+      return (kpiSec * quantity);
     }
     const normMaterial = normalizeMaterialCode(material);
     const puesto = getResolvedPuesto(order);
@@ -511,7 +491,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
       const tPuesto = String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').trim().toUpperCase();
       return mNormInternal === normMaterial && tPuesto === puesto;
     }) || tiemposProduccion.find(t => normalizeMaterialCode(t.CodMaterial || t.Material || '') === normMaterial);
-    return match ? (Number(match.Tiempo || match.Tiempo_Min || 0) * quantity) : 0;
+    return match ? (Number(match.Tiempo || match.Tiempo_Min || 0) * 60 * quantity) : 0;
   }, [tiemposProduccion, normalizeMaterialCode, getResolvedPuesto, getKPITimeSecondsForOrder]);
 
   const toggleWorkstationShift = (p: string, shift: 'day' | 'night') => {
@@ -527,10 +507,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     });
   };
 
-  /**
-   * Helper: filterOrdersByHR
-   * Filtra las órdenes basándose en la coincidencia de Hoja de Ruta (HRUTA) resuelta.
-   */
   const filterOrdersByHR = useCallback((puestoName: string) => {
     const targetHR = mapToHojaRuta(puestoName).trim().toUpperCase();
     if (!targetHR) return [];
@@ -580,11 +556,13 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
   ];
 
+  const horasNetasDiurnasVal = parseFloat(jornadaDiurnaSel || "0") * 0.84;
+  const horasNetasNocturnasVal = parseFloat(jornadaNocturnaSel || "0") * 0.84;
+
   if (!isMounted) return null;
 
   return (
     <div className="p-6 md:p-8 space-y-6 bg-slate-50/40 min-h-screen font-body">
-      {/* Header Principal */}
       <div className="flex flex-col xl:flex-row items-center justify-between gap-6 bg-white p-7 rounded-[2rem] border border-slate-200 shadow-sm">
         <div className="flex items-center space-x-6">
           <div className="bg-slate-950 p-5 rounded-[1.5rem] text-white shadow-xl ring-4 ring-slate-100">
@@ -681,9 +659,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     {uniquePuestos.map((p, idx) => {
                       const orders = filterOrdersByHR(p);
                       const totalUnits = orders.reduce((sum, o) => sum + Number(o['CANTIDAD'] || 0), 0);
-                      const totalTimeHours = orders.reduce((sum, o) => sum + calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || 0), o), 0) / 60;
+                      const totalTimeHours = orders.reduce((sum, o) => sum + calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || 0), o), 0) / 3600;
                       const config = workstationConfigs[p] || { machine: p, isDayActive: true, isNightActive: false };
-                      const capacityHours = (config.isDayActive ? horasNetasDiurnas : 0) + (config.isNightActive ? horasNetasNocturnas : 0);
+                      const capacityHours = (config.isDayActive ? horasNetasDiurnasVal : 0) + (config.isNightActive ? horasNetasNocturnasVal : 0);
                       const utilization = capacityHours > 0 ? (totalTimeHours / capacityHours) * 100 : 0;
                       const hrCode = mapToHojaRuta(p);
                       return (
@@ -733,8 +711,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       orders={filterOrdersByHR(achNames[0])}
                       calculateProductionTime={calculateProductionTime}
                       config={workstationConfigs[achNames[0]] || { machine: achNames[0], isDayActive: true, isNightActive: false }}
-                      horasNetasDiurnas={horasNetasDiurnas}
-                      horasNetasNocturnas={horasNetasNocturnas}
+                      horasNetasDiurnas={horasNetasDiurnasVal}
+                      horasNetasNocturnas={horasNetasNocturnasVal}
                       mapToHojaRuta={mapToHojaRuta}
                       normalizeMaterialCode={normalizeMaterialCode}
                     />
@@ -745,8 +723,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       orders={filterOrdersByHR(pefNames[0])}
                       calculateProductionTime={calculateProductionTime}
                       config={workstationConfigs[pefNames[0]] || { machine: pefNames[0], isDayActive: true, isNightActive: false }}
-                      horasNetasDiurnas={horasNetasDiurnas}
-                      horasNetasNocturnas={horasNetasNocturnas}
+                      horasNetasDiurnas={horasNetasDiurnasVal}
+                      horasNetasNocturnas={horasNetasNocturnasVal}
                       mapToHojaRuta={mapToHojaRuta}
                       normalizeMaterialCode={normalizeMaterialCode}
                     />
@@ -777,8 +755,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 orders={filterOrdersByHR(pName)}
                 calculateProductionTime={calculateProductionTime}
                 config={workstationConfigs[pName] || { machine: pName, isDayActive: true, isNightActive: false }}
-                horasNetasDiurnas={horasNetasDiurnas}
-                horasNetasNocturnas={horasNetasNocturnas}
+                horasNetasDiurnas={horasNetasDiurnasVal}
+                horasNetasNocturnas={horasNetasNocturnasVal}
                 mapToHojaRuta={mapToHojaRuta}
                 normalizeMaterialCode={normalizeMaterialCode}
               />
@@ -796,8 +774,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 orders={filterOrdersByHR(pName)}
                 calculateProductionTime={calculateProductionTime}
                 config={workstationConfigs[pName] || { machine: pName, isDayActive: true, isNightActive: false }}
-                horasNetasDiurnas={horasNetasDiurnas}
-                horasNetasNocturnas={horasNetasNocturnas}
+                horasNetasDiurnas={horasNetasDiurnasVal}
+                horasNetasNocturnas={horasNetasNocturnasVal}
                 mapToHojaRuta={mapToHojaRuta}
                 normalizeMaterialCode={normalizeMaterialCode}
               />
@@ -815,8 +793,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 orders={filterOrdersByHR(pName)}
                 calculateProductionTime={calculateProductionTime}
                 config={workstationConfigs[pName] || { machine: pName, isDayActive: true, isNightActive: false }}
-                horasNetasDiurnas={horasNetasDiurnas}
-                horasNetasNocturnas={horasNetasNocturnas}
+                horasNetasDiurnas={horasNetasDiurnasVal}
+                horasNetasNocturnas={horasNetasNocturnasVal}
                 mapToHojaRuta={mapToHojaRuta}
                 normalizeMaterialCode={normalizeMaterialCode}
               />
@@ -1107,7 +1085,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     </Select>
                     <div className="bg-amber-50 border border-amber-100 p-4 rounded-2xl flex justify-between items-center">
                       <span className="text-[10px] font-black text-amber-700 uppercase">Capacidad Neta (D)</span>
-                      <span className="font-mono font-black text-amber-900">{horasNetasDiurnas.toFixed(2)}h</span>
+                      <span className="font-mono font-black text-amber-900">{horasNetasDiurnasVal.toFixed(2)}h</span>
                     </div>
                  </div>
                  <div className="space-y-5">
@@ -1122,7 +1100,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     </Select>
                     <div className="bg-indigo-50 border border-indigo-100 p-4 rounded-2xl flex justify-between items-center">
                       <span className="text-[10px] font-black text-indigo-700 uppercase">Capacidad Neta (N)</span>
-                      <span className="font-mono font-black text-indigo-900">{horasNetasNocturnas.toFixed(2)}h</span>
+                      <span className="font-mono font-black text-indigo-900">{horasNetasNocturnasVal.toFixed(2)}h</span>
                     </div>
                  </div>
                </CardContent>
@@ -1141,7 +1119,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                       {availableItems.map(p => {
                         const config = workstationConfigs[p] || { machine: p, isDayActive: true, isNightActive: false };
-                        const capPuesto = (config.isDayActive ? horasNetasDiurnas : 0) + (config.isNightActive ? horasNetasNocturnas : 0);
+                        const capPuesto = (config.isDayActive ? horasNetasDiurnasVal : 0) + (config.isNightActive ? horasNetasNocturnasVal : 0);
                         const hrCode = mapToHojaRuta(p);
                         return (
                           <div key={p} className="flex flex-col p-6 border-2 border-slate-100 rounded-[2rem] bg-white hover:border-indigo-200 transition-all shadow-sm">
