@@ -49,6 +49,7 @@ interface WorkstationConfig {
 /**
  * Componente: MachineCard
  * Tarjeta de control de carga para cada puesto de trabajo en los tableros técnicos.
+ * Ahora con columnas: CODMATERIAL, NOMBRE, CANTIDAD, FECHA INICIO, TIEMPO DE PRODUCCIÓN.
  */
 const MachineCard = ({ 
   puestoName, 
@@ -154,11 +155,11 @@ const MachineCard = ({
           <table className="w-full border-collapse">
             <thead className="bg-slate-100/80 sticky top-0 z-10 text-slate-500 font-black uppercase tracking-widest text-left">
               <tr>
-                <th className="px-4 py-3 border-b border-slate-200">Material</th>
-                <th className="px-4 py-3 border-b border-slate-200 min-w-[250px]">Nombre</th>
-                <th className="px-4 py-3 border-b border-slate-200 text-indigo-600">HR</th>
-                <th className="px-4 py-3 border-b border-slate-200 text-right">Cant.</th>
-                <th className="px-4 py-3 border-b border-slate-200 text-right text-indigo-700 bg-indigo-50/30">T. (h)</th>
+                <th className="px-4 py-3 border-b border-slate-200">CODMATERIAL</th>
+                <th className="px-4 py-3 border-b border-slate-200 min-w-[200px]">NOMBRE</th>
+                <th className="px-4 py-3 border-b border-slate-200 text-right">CANTIDAD</th>
+                <th className="px-4 py-3 border-b border-slate-200 text-center">FECHA INICIO</th>
+                <th className="px-4 py-3 border-b border-slate-200 text-right text-indigo-700 bg-indigo-50/30">TIEMPO DE PRODUCCIÓN</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -166,13 +167,15 @@ const MachineCard = ({
                 const t = calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || 0), o) / 60;
                 const materialCode = o['CodMaterial'] || normalizeMaterialCode(o['MATERIAL'] || '');
                 const materialName = o['NOMBRE'] || o['TEXTOMATERIAL'] || o['Material'] || '—';
+                const fechaInicio = o['FECHAINICIO'] || '—';
+                
                 return (
                   <tr key={i} className="hover:bg-indigo-50/30 transition-colors">
                     <td className="px-4 py-3 font-mono font-bold text-slate-700 whitespace-nowrap">{materialCode}</td>
                     <td className="px-4 py-3 text-slate-600 font-medium whitespace-normal break-words leading-tight">{materialName}</td>
-                    <td className="px-4 py-3 font-bold text-indigo-700">{hrCode || '—'}</td>
                     <td className="px-4 py-3 text-right font-mono font-black text-slate-800">{Number(o['CANTIDAD'] || 0).toLocaleString()}</td>
-                    <td className="px-4 py-3 text-right font-mono font-black text-indigo-600 bg-indigo-50/10">{t.toFixed(2)}</td>
+                    <td className="px-4 py-3 text-center font-medium text-slate-500">{fechaInicio}</td>
+                    <td className="px-4 py-3 text-right font-mono font-black text-indigo-600 bg-indigo-50/10">{t.toFixed(2)}h</td>
                   </tr>
                 );
               }) : (
@@ -242,25 +245,21 @@ export const TacticalPlanForrosSection: React.FC = () => {
     
     // PRIORIDAD 1: Validación Directa contra KPI MAESTRO FORROS
     if (kpiMaestroData && kpiMaestroData.length > 0) {
-      // Intentar buscar por categoría (que suele coincidir con el nombre del puesto en Forros)
       const matchByCategory = kpiMaestroData.find(k => 
         String(k.Categoria || '').toUpperCase().trim() === pn
       );
       if (matchByCategory && matchByCategory.HRUTA) return matchByCategory.HRUTA;
 
-      // Intentar buscar si el puesto está contenido en el nombre de la HRUTA
       const matchByHR = kpiMaestroData.find(k => 
         String(k.HRUTA || '').toUpperCase().includes(pn)
       );
       if (matchByHR && matchByHR.HRUTA) return matchByHR.HRUTA;
     }
 
-    // PRIORIDAD 2: Mapeos históricos conocidos
     if (pn === 'ACOLCHADORA09') return 'HR-ACH09';
     if (pn === 'COSEDORA-ACH02') return 'HR-PEF02';
     if (pn === 'COSEDORA-ACH08') return 'HR-PEF08';
 
-    // PRIORIDAD 3: Búsqueda en Tiempos de Ensamblado (Maestros secundarios)
     const matchEns = tiemposProduccion.find(t => {
       const tp = String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').toUpperCase().trim();
       return tp === pn;
@@ -271,7 +270,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
       if (hr && hr.startsWith('HR-')) return hr;
     }
 
-    // PRIORIDAD 4: Inferencia por patrón de nombre
     const numMatch = pn.match(/\d+/);
     const num = numMatch ? numMatch[0].padStart(2, '0') : '';
     if (pn.includes('COSEDORA') || pn.includes('PEGADORA') || pn.includes('PEF')) return `HR-PEF${num}`;
@@ -436,7 +434,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
       const p = String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').trim().toUpperCase();
       if (p && p !== 'NULL' && p !== '-' && p !== '—') pSet.add(p);
     });
-    // Considerar puestos resueltos en las órdenes previsionales filtradas
     filteredOrdenesPrevisionales.forEach(o => {
       const p = getResolvedPuesto(o);
       if (p && p !== '') pSet.add(p);
@@ -454,7 +451,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
   }, [uniquePuestos, workstationConfigs]);
 
-  // Obtiene el tiempo unitario desde el Maestro de Forros (KPI) - En segundos
   const getKPITimeSecondsForOrder = useCallback((order: any) => {
     if (!kpiMaestroData || kpiMaestroData.length === 0) return null;
     const materialCode = normalizeMaterialCode(order['MATERIAL'] || order['CodMaterial'] || '');
@@ -468,16 +464,12 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return match ? Number(match.TPromedio) : null;
   }, [kpiMaestroData, normalizeMaterialCode, getResolvedPuesto, mapToHojaRuta]);
 
-  // Calcula el tiempo de producción (devuelve minutos)
   const calculateProductionTime = useCallback((material: string, quantity: number, order: any) => {
     if (!material) return 0;
-    
-    // Intenta obtener tiempo de Maestro KPI primero (segundos)
     const kpiSec = getKPITimeSecondsForOrder(order);
     if (kpiSec !== null) {
-      return (kpiSec * quantity) / 60; // Retorna en minutos
+      return (kpiSec * quantity) / 60;
     }
-
     const normMaterial = normalizeMaterialCode(material);
     const puesto = getResolvedPuesto(order);
     const match = tiemposProduccion.find(t => {
@@ -485,7 +477,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
       const tPuesto = String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').trim().toUpperCase();
       return mNormInternal === normMaterial && tPuesto === puesto;
     }) || tiemposProduccion.find(t => normalizeMaterialCode(t.CodMaterial || t.Material || '') === normMaterial);
-    
     return match ? (Number(match.Tiempo || match.Tiempo_Min || 0) * quantity) : 0;
   }, [tiemposProduccion, normalizeMaterialCode, getResolvedPuesto, getKPITimeSecondsForOrder]);
 
@@ -501,6 +492,19 @@ export const TacticalPlanForrosSection: React.FC = () => {
       };
     });
   };
+
+  /**
+   * Helper: filterOrdersByHR
+   * Filtra las órdenes basándose en la coincidencia de Hoja de Ruta (HRUTA) resuelta.
+   */
+  const filterOrdersByHR = useCallback((puestoName: string) => {
+    const targetHR = mapToHojaRuta(puestoName).trim().toUpperCase();
+    if (!targetHR) return [];
+    return filteredOrdenesPrevisionales.filter(o => {
+      const orderHR = mapToHojaRuta(getResolvedPuesto(o)).trim().toUpperCase();
+      return orderHR === targetHR;
+    });
+  }, [filteredOrdenesPrevisionales, mapToHojaRuta, getResolvedPuesto]);
 
   const workstationGroups = [
     { 
@@ -568,7 +572,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
             <div>
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">GYE (2000)</p>
               <p className="text-2xl font-black text-slate-900 font-mono">
-                {filteredOrdenesPrevisionales.filter(o => String(o.Centro).trim() === '2000').length.toLocaleString()}
+                {ordenesPrevisionalesData.filter(o => String(o.Centro).trim() === '2000').length.toLocaleString()}
               </p>
             </div>
           </div>
@@ -577,7 +581,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
             <div>
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">UIO (1000)</p>
               <p className="text-2xl font-black text-slate-900 font-mono">
-                {filteredOrdenesPrevisionales.filter(o => String(o.Centro).trim() === '1000').length.toLocaleString()}
+                {filteredOrdenesPrevisionales.length.toLocaleString()}
               </p>
             </div>
           </div>
@@ -635,7 +639,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {uniquePuestos.map((p, idx) => {
-                      const orders = filteredOrdenesPrevisionales.filter(o => getResolvedPuesto(o) === p);
+                      const orders = filterOrdersByHR(p);
                       const totalUnits = orders.reduce((sum, o) => sum + Number(o['CANTIDAD'] || 0), 0);
                       const totalTimeHours = orders.reduce((sum, o) => sum + calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || 0), o), 0) / 60;
                       const config = workstationConfigs[p] || { machine: p, isDayActive: true, isNightActive: false };
@@ -686,7 +690,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   {achNames.length > 0 && (
                     <MachineCard 
                       puestoName={achNames[0]} 
-                      orders={filteredOrdenesPrevisionales.filter(o => getResolvedPuesto(o) === achNames[0])}
+                      orders={filterOrdersByHR(achNames[0])}
                       calculateProductionTime={calculateProductionTime}
                       config={workstationConfigs[achNames[0]] || { machine: achNames[0], isDayActive: true, isNightActive: false }}
                       horasNetasDiurnas={horasNetasDiurnas}
@@ -698,7 +702,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   {pefNames.length > 0 && (
                     <MachineCard 
                       puestoName={pefNames[0]} 
-                      orders={filteredOrdenesPrevisionales.filter(o => getResolvedPuesto(o) === pefNames[0])}
+                      orders={filterOrdersByHR(pefNames[0])}
                       calculateProductionTime={calculateProductionTime}
                       config={workstationConfigs[pefNames[0]] || { machine: pefNames[0], isDayActive: true, isNightActive: false }}
                       horasNetasDiurnas={horasNetasDiurnas}
@@ -720,7 +724,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 key={pName} 
                 puestoName={pName} 
                 small 
-                orders={filteredOrdenesPrevisionales.filter(o => getResolvedPuesto(o) === pName)}
+                orders={filterOrdersByHR(pName)}
                 calculateProductionTime={calculateProductionTime}
                 config={workstationConfigs[pName] || { machine: pName, isDayActive: true, isNightActive: false }}
                 horasNetasDiurnas={horasNetasDiurnas}
@@ -739,7 +743,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 key={pName} 
                 puestoName={pName} 
                 small 
-                orders={filteredOrdenesPrevisionales.filter(o => getResolvedPuesto(o) === pName)}
+                orders={filterOrdersByHR(pName)}
                 calculateProductionTime={calculateProductionTime}
                 config={workstationConfigs[pName] || { machine: pName, isDayActive: true, isNightActive: false }}
                 horasNetasDiurnas={horasNetasDiurnas}
@@ -758,7 +762,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 key={pName} 
                 puestoName={pName} 
                 small 
-                orders={filteredOrdenesPrevisionales.filter(o => getResolvedPuesto(o) === pName)}
+                orders={filterOrdersByHR(pName)}
                 calculateProductionTime={calculateProductionTime}
                 config={workstationConfigs[pName] || { machine: pName, isDayActive: true, isNightActive: false }}
                 horasNetasDiurnas={horasNetasDiurnas}
