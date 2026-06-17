@@ -91,7 +91,7 @@ const MachineCard = ({
             <Badge className="w-fit bg-indigo-600 text-white font-black text-[10px] uppercase tracking-widest px-3 py-1 rounded-lg border-none shadow-md shadow-indigo-200">
               {hrCode}
             </Badge>
-            <h3 className="text-2xl font-black uppercase tracking-tighter text-indigo-950 flex items-center gap-2 break-words">
+            <h3 className="text-2xl font-black uppercase tracking-tighter text-indigo-950 flex items-center gap-2 break-words leading-tight">
               <Cpu className="w-6 h-6 text-indigo-600 shrink-0" />
               <span>{puestoName}</span>
             </h3>
@@ -279,6 +279,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const fetchOrdenesFert = useCallback(async () => {
     setIsLoadingFert(true);
     try {
+      // Paginación por defecto para visualización técnica
       const response = await serviciosService.getOrdenesFert(1, 1000);
       setOrdenesFert(response.data || []);
     } catch (error: any) {
@@ -429,33 +430,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
       };
     });
   };
-
-  /**
-   * Filtrado dinámico de Órdenes Previsionales basado en restricciones de grupo
-   */
-  const filteredOrdenesPrevisionales = useMemo(() => {
-    if (ordenesPrevisionalesData.length === 0) return [];
-    
-    // 1. Obtener IDs de los grupos de forros
-    const forrosGroupIds = forrosGruposList.map(g => g.codigo_grupo);
-    
-    // 2. Extraer los valores permitidos de RespCtrlProd de las restricciones
-    const allowedRespCodes = restricciones
-      .filter(r => forrosGroupIds.includes(r.codigo_grupo) && r.nombre_restriccion === 'RespCtrlProd')
-      .map(r => String(r.valor_restriccion || '').trim())
-      .filter(val => val !== '');
-      
-    if (allowedRespCodes.length === 0) {
-      console.warn('[TacticalPlanForros] No se encontraron restricciones RespCtrlProd para los grupos de forros.');
-      return ordenesPrevisionalesData;
-    }
-
-    // 3. Filtrar los datos de órdenes previsionales
-    return ordenesPrevisionalesData.filter(order => {
-      const orderRespCode = String(order.RESPCONTROLPROD || '').trim();
-      return allowedRespCodes.includes(orderRespCode);
-    });
-  }, [ordenesPrevisionalesData, forrosGruposList, restricciones]);
 
   const workstationGroups = [
     { 
@@ -771,7 +745,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <CardTitle className="text-2xl font-black text-slate-900 uppercase">Órdenes Previsionales</CardTitle>
-                  <CardDescription className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-1">Filtradas automáticamente por RESPCONTROLPROD (División Forros)</CardDescription>
+                  <CardDescription className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-1">Listado completo de órdenes previsionales del backend</CardDescription>
                 </div>
                 <div className="bg-sky-600 p-3 rounded-2xl text-white shadow-lg shadow-sky-500/20">
                   <SearchCode className="w-6 h-6" />
@@ -785,17 +759,17 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     <Loader2 className="w-10 h-10 animate-spin text-indigo-500" />
                     <span className="ml-4 text-slate-500 font-black uppercase tracking-widest text-xs">Consultando órdenes previsionales...</span>
                   </div>
-                ) : filteredOrdenesPrevisionales.length > 0 ? (
+                ) : ordenesPrevisionalesData.length > 0 ? (
                   <table className="w-full text-[11px] border-collapse">
                     <thead className="bg-slate-900 sticky top-0 z-10 text-white text-left uppercase tracking-widest font-black">
                       <tr>
-                        {Object.keys(filteredOrdenesPrevisionales[0]).map((key) => (
+                        {Object.keys(ordenesPrevisionalesData[0]).map((key) => (
                           <th key={key} className="px-6 py-4 whitespace-nowrap text-[10px] uppercase font-bold text-slate-300">{key}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {filteredOrdenesPrevisionales.map((item, i) => (
+                      {ordenesPrevisionalesData.map((item, i) => (
                         <tr key={i} className="hover:bg-slate-50 transition-colors text-[10px]">
                           {Object.values(item).map((val: any, j) => (
                             <td key={j} className="px-6 py-4 font-medium text-slate-600 whitespace-nowrap">
@@ -807,7 +781,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     </tbody>
                   </table>
                 ) : (
-                  <div className="py-20 text-center text-slate-400 uppercase font-black tracking-widest text-xs opacity-40">No se encontraron órdenes para los responsables de Forros</div>
+                  <div className="py-20 text-center text-slate-400 uppercase font-black tracking-widest text-xs opacity-40">No se encontraron órdenes previsionales</div>
                 )}
               </div>
             </CardContent>
