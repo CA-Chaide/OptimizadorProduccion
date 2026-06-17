@@ -279,7 +279,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const fetchOrdenesFert = useCallback(async () => {
     setIsLoadingFert(true);
     try {
-      // Paginación por defecto para visualización técnica
       const response = await serviciosService.getOrdenesFert(1, 1000);
       setOrdenesFert(response.data || []);
     } catch (error: any) {
@@ -331,6 +330,31 @@ export const TacticalPlanForrosSection: React.FC = () => {
       return name.includes('FORRO') || name.includes('CHN') || name.includes('BASE') || name.includes('BANDA') || name.includes('ACOLCHADO') || name.includes('TAPAS');
     });
   }, [grupos]);
+
+  // Filtrado de Órdenes Previsionales por RESPCONTROLPROD de la división Forros
+  const filteredOrdenesPrevisionales = useMemo(() => {
+    if (ordenesPrevisionalesData.length === 0) return [];
+    
+    const forrosGroupCodes = forrosGruposList.map(g => g.codigo_grupo);
+    const validRespCodes = restricciones
+      .filter(r => 
+        forrosGroupCodes.includes(r.codigo_grupo) && 
+        (r.nombre_restriccion?.toUpperCase().includes('RESPCTRLPROD') || r.nombre_restriccion?.toUpperCase().includes('RESP_CTRL_PROD'))
+      )
+      .map(r => String(r.valor_restriccion || '').trim().replace(/^0+/, ''))
+      .filter(Boolean);
+
+    // Validación: Si no hay restricciones definidas para Forros, mostramos todo por defecto para evitar tabla vacía accidental
+    if (validRespCodes.length === 0) {
+      console.warn('[TacticalPlanForros] No se encontraron restricciones RespCtrlProd para los grupos de Forros. Mostrando todos los registros.');
+      return ordenesPrevisionalesData;
+    }
+
+    return ordenesPrevisionalesData.filter(order => {
+      const respRaw = String(order.RESPCONTROLPROD || '').trim().replace(/^0+/, '');
+      return validRespCodes.includes(respRaw);
+    });
+  }, [ordenesPrevisionalesData, forrosGruposList, restricciones]);
 
   const fetchTiemposProduccion = useCallback(async () => {
     if (forrosGruposList.length === 0) return;
@@ -745,7 +769,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <CardTitle className="text-2xl font-black text-slate-900 uppercase">Órdenes Previsionales</CardTitle>
-                  <CardDescription className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-1">Listado completo de órdenes previsionales del backend</CardDescription>
+                  <CardDescription className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-1">
+                    Filtrado por división Forros (RESPCONTROLPROD)
+                  </CardDescription>
                 </div>
                 <div className="bg-sky-600 p-3 rounded-2xl text-white shadow-lg shadow-sky-500/20">
                   <SearchCode className="w-6 h-6" />
@@ -759,17 +785,17 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     <Loader2 className="w-10 h-10 animate-spin text-indigo-500" />
                     <span className="ml-4 text-slate-500 font-black uppercase tracking-widest text-xs">Consultando órdenes previsionales...</span>
                   </div>
-                ) : ordenesPrevisionalesData.length > 0 ? (
+                ) : filteredOrdenesPrevisionales.length > 0 ? (
                   <table className="w-full text-[11px] border-collapse">
                     <thead className="bg-slate-900 sticky top-0 z-10 text-white text-left uppercase tracking-widest font-black">
                       <tr>
-                        {Object.keys(ordenesPrevisionalesData[0]).map((key) => (
+                        {Object.keys(filteredOrdenesPrevisionales[0]).map((key) => (
                           <th key={key} className="px-6 py-4 whitespace-nowrap text-[10px] uppercase font-bold text-slate-300">{key}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {ordenesPrevisionalesData.map((item, i) => (
+                      {filteredOrdenesPrevisionales.map((item, i) => (
                         <tr key={i} className="hover:bg-slate-50 transition-colors text-[10px]">
                           {Object.values(item).map((val: any, j) => (
                             <td key={j} className="px-6 py-4 font-medium text-slate-600 whitespace-nowrap">
@@ -781,7 +807,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     </tbody>
                   </table>
                 ) : (
-                  <div className="py-20 text-center text-slate-400 uppercase font-black tracking-widest text-xs opacity-40">No se encontraron órdenes previsionales</div>
+                  <div className="py-20 text-center text-slate-400 uppercase font-black tracking-widest text-xs opacity-40">No se encontraron órdenes previsionales para esta división</div>
                 )}
               </div>
             </CardContent>
