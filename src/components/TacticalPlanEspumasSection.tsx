@@ -349,7 +349,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       })
       .filter(m => {
         const otId = String(m.OT_PRG_ID || '').trim();
-        if (!otId || otId === '—') return true; // Permitir registros sin ID (aunque no debería haber)
+        if (!otId || otId === '—') return true; 
         if (seenOT.has(otId)) return false;
         seenOT.add(otId);
         return true;
@@ -618,7 +618,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                     <th className="px-4 py-4 border-r border-amber-100 text-left">AREA</th>
                     <th className="px-4 py-4 border-r border-amber-100">ID_MAQUINA</th>
                     <th className="px-4 py-4 border-r border-amber-100 text-left">MAQUINA</th>
-                    <th className="px-4 py-4 border-r border-amber-100">OT_PRG_ID</th>
+                    <th className="px-4 py-4 border-r border-amber-100 text-left">OT_PRG_ID</th>
                     <th className="px-4 py-4 border-r border-amber-100 text-left">FECHA_OT_PRG_INI</th>
                     <th className="px-4 py-4 border-r border-amber-100 text-left">FECHA_OT_PRG_FIN</th>
                     <th className="px-4 py-4 text-center bg-amber-500/10">T_MTTO_PLANIFICADO (H)</th>
@@ -635,8 +635,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <td className="px-4 py-3 border-r border-gray-100 text-slate-700">{String(m.ID_AREA || '—')}</td>
                         <td className="px-4 py-3 border-r border-gray-100 text-left uppercase text-slate-700">{String(m.AREA || '—')}</td>
                         <td className="px-4 py-3 border-r border-gray-100 text-indigo-900">{String(m.ID_MAQUINA || '—')}</td>
-                        <td className="px-4 py-3 border-r border-gray-100 text-left uppercase text-indigo-900">{String(m.MAQUINA || '—')}</td>
-                        <td className="px-4 py-3 border-r border-gray-100 font-mono text-slate-900">{String(m.OT_PRG_ID || '—')}</td>
+                        <td className="px-4 py-3 border-r border-gray-100 text-left uppercase text-indigo-900 font-black">{String(m.MAQUINA || '—')}</td>
+                        <td className="px-4 py-3 border-r border-gray-100 font-mono text-slate-900 text-left">{String(m.OT_PRG_ID || '—')}</td>
                         <td className="px-4 py-3 border-r border-gray-100 text-left font-mono text-slate-700">{formatMTTODate(m.FECHA_OT_PRG_INI || m.FECHA_INI || m.FECHA_PRO)}</td>
                         <td className="px-4 py-3 border-r border-gray-100 text-left font-mono text-slate-700">{formatMTTODate(m.FECHA_OT_PRG_FIN || m.FECHA_FIN || m.FECHA_PRO)}</td>
                         <td className="px-4 py-3 text-center font-mono font-black text-amber-700 bg-amber-500/5">
