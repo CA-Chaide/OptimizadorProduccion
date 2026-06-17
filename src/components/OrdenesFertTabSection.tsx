@@ -366,6 +366,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
       return result.toISOString().split('T')[0];
     };
 
+    const todayStr = new Date().toISOString().split('T')[0];
     const targetPlanningDateStr = getTargetDateStr();
 
     let pastCant = 0, pastHours = 0;
@@ -378,20 +379,18 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
       const hours = ((Number(o.CANTPROGRAMADA) || 0) * t) / 60;
       const cant = (Number(o.CANTPROGRAMADA) || 0);
 
-      // Atrasadas: Todo lo anterior a la fecha de planificación objetivo
-      if (o.FECHA < targetPlanningDateStr) {
+      // Atrasadas: Todo lo anterior a hoy
+      if (o.FECHA < todayStr) {
         pastCant += cant;
         pastHours += hours;
       } 
-      
-      // Hoy: Específicamente la carga de la fecha objetivo
-      if (o.FECHA === targetPlanningDateStr) {
+      // Hoy: Específicamente la carga de hoy
+      else if (o.FECHA === todayStr) {
         todayCant += cant;
         todayHours += hours;
       }
-
-      // Por Planificar: Desde la fecha objetivo en adelante (Acumulativo)
-      if (o.FECHA >= targetPlanningDateStr) {
+      // Por Planificar: Desde la fecha objetivo en adelante (T+3)
+      else if (o.FECHA >= targetPlanningDateStr) {
         futureCant += cant;
         futureHours += hours;
       }
@@ -609,17 +608,17 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
                   </h4>
                   <div className="grid grid-cols-3 gap-0 items-center text-sm border rounded-md bg-white min-h-[80px]">
                       <div className="text-center border-r border-dashed border-gray-300 p-2 flex flex-col justify-center bg-red-50/30">
-                          <p className="text-[9px] text-red-600 font-bold uppercase mb-1" title="Órdenes antes de la fecha objetivo">ATRASADAS</p>
+                          <p className="text-[9px] text-red-600 font-bold uppercase mb-1" title="Órdenes antes de hoy">ATRASADAS</p>
                           <p className="font-bold text-sm text-red-700">{statusSummary.pastCant.toLocaleString()}</p>
                           <p className="text-[10px] text-red-500 font-mono">{statusSummary.pastHours.toFixed(1)}h</p>
                       </div>
                       <div className="text-center border-r border-dashed border-gray-300 p-2 flex flex-col justify-center bg-blue-50/30">
-                          <p className="text-[9px] text-blue-600 font-bold uppercase mb-1" title="Carga del tercer día laborable">HOY (T+3)</p>
+                          <p className="text-[9px] text-blue-600 font-bold uppercase mb-1" title="Carga del día de hoy">HOY</p>
                           <p className="font-bold text-sm text-blue-700">{statusSummary.todayCant.toLocaleString()}</p>
                           <p className="text-[10px] text-blue-500 font-mono">{statusSummary.todayHours.toFixed(1)}h</p>
                       </div>
                       <div className="text-center p-2 flex flex-col justify-center bg-green-50/30">
-                          <p className="text-[9px] text-green-600 font-bold uppercase mb-1" title="Carga total desde la fecha objetivo en adelante">POR PLANIFICAR</p>
+                          <p className="text-[9px] text-green-600 font-bold uppercase mb-1" title="Carga total desde el 3er día laborable en adelante">POR PLANIFICAR</p>
                           <p className="font-bold text-sm text-green-700">{statusSummary.futureCant.toLocaleString()}</p>
                           <p className="text-[10px] text-green-500 font-mono">{statusSummary.futureHours.toFixed(1)}h</p>
                       </div>
