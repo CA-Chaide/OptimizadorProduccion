@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -329,6 +330,32 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return Math.max(0, diffHrs).toFixed(1);
   };
 
+  // Filtrado y De-duplicación de Mantenimientos por OT_PRG_ID
+  const uniqueMantenimientos = useMemo(() => {
+    const seenOT = new Set<string>();
+    return mantenimientos
+      .filter(m => {
+        const dStr = String(m.FECHA_OT_PRG_INI || m.FECHA_PRO || m.FECHA_INI || '').trim();
+        if (!dStr || dStr === 'null') return selectedDate === 'all';
+        
+        let normalizedDate = '';
+        if (dStr.includes('T')) normalizedDate = dStr.split('T')[0];
+        else if (dStr.includes('/')) {
+          const parts = dStr.split(' ')[0].split('/');
+          if (parts.length === 3) normalizedDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+        } else normalizedDate = dStr;
+
+        return selectedDate === 'all' || normalizedDate === selectedDate;
+      })
+      .filter(m => {
+        const otId = String(m.OT_PRG_ID || '').trim();
+        if (!otId || otId === '—') return true; // Permitir registros sin ID (aunque no debería haber)
+        if (seenOT.has(otId)) return false;
+        seenOT.add(otId);
+        return true;
+      });
+  }, [mantenimientos, selectedDate]);
+
   if (!mounted) return null;
 
   if (isLoading) {
@@ -542,7 +569,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                             <td className="px-4 py-3 text-center font-black font-mono text-indigo-900 bg-indigo-100 border-l-2 border-indigo-500/30">{totalPlanificado > 0 ? totalPlanificado.toFixed(1) : '0.0'}</td>
                           </tr>
                           <tr className="bg-slate-50 border-t-2 border-gray-200">
-                            <td className="px-6 py-3 border-r border-gray-200 uppercase font-black text-slate-700">% OCUPACIÓN</td>
+                            <td className="px-6 py-3 border-r border-gray-100 uppercase font-black text-slate-700">% OCUPACIÓN</td>
                             {machines.map(m => <td key={`${m.code}-perc-cell`} className="px-4 py-3 border-r border-gray-100 text-center font-black text-xs text-slate-200">—</td>)}
                             <td className={cn("px-4 py-3 text-center font-black border-l-2 border-indigo-500/30 text-base", totalOcupacion > 100 ? "text-red-700" : "text-emerald-700")}>
                               {totalOcupacion > 0 ? `${totalOcupacion.toFixed(1)}%` : '0%'}
@@ -598,35 +625,26 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 font-bold">
-                  {mantenimientos.filter(m => {
-                    const dStr = String(m.FECHA_OT_PRG_INI || m.FECHA_PRO || m.FECHA_INI || '').trim();
-                    if (!dStr || dStr === 'null') return selectedDate === 'all';
-                    
-                    let normalizedDate = '';
-                    if (dStr.includes('T')) {
-                      normalizedDate = dStr.split('T')[0];
-                    } else if (dStr.includes('/')) {
-                      const parts = dStr.split(' ')[0].split('/');
-                      if (parts.length === 3) normalizedDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
-                    } else normalizedDate = dStr;
-
-                    return selectedDate === 'all' || normalizedDate === selectedDate;
-                  }).map((m, i) => (
-                    <tr key={i} className="hover:bg-amber-50/30">
-                      <td className="px-4 py-3 border-r border-gray-100 text-slate-700">{String(m.ID_PLANTA || '—')}</td>
-                      <td className="px-4 py-3 border-r border-gray-100 text-left uppercase text-slate-700">{String(m.PLANTA || '—')}</td>
-                      <td className="px-4 py-3 border-r border-gray-100 text-slate-700">{String(m.ID_AREA || '—')}</td>
-                      <td className="px-4 py-3 border-r border-gray-100 text-left uppercase text-slate-700">{String(m.AREA || '—')}</td>
-                      <td className="px-4 py-3 border-r border-gray-100 text-indigo-900">{String(m.ID_MAQUINA || '—')}</td>
-                      <td className="px-4 py-3 border-r border-gray-100 text-left uppercase text-indigo-900">{String(m.MAQUINA || '—')}</td>
-                      <td className="px-4 py-3 border-r border-gray-100 font-mono text-slate-900">{String(m.OT_PRG_ID || '—')}</td>
-                      <td className="px-4 py-3 border-r border-gray-100 text-left font-mono text-slate-700">{formatMTTODate(m.FECHA_OT_PRG_INI || m.FECHA_INI || m.FECHA_PRO)}</td>
-                      <td className="px-4 py-3 border-r border-gray-100 text-left font-mono text-slate-700">{formatMTTODate(m.FECHA_OT_PRG_FIN || m.FECHA_FIN || m.FECHA_PRO)}</td>
-                      <td className="px-4 py-3 text-center font-mono font-black text-amber-700 bg-amber-500/5">
-                        {calculateMTTOCapacity(m.FECHA_OT_PRG_INI || m.FECHA_INI || m.FECHA_PRO, m.FECHA_OT_PRG_FIN || m.FECHA_FIN || m.FECHA_PRO)}
-                      </td>
-                    </tr>
-                  ))}
+                  {uniqueMantenimientos.length === 0 ? (
+                    <tr><td colSpan={10} className="py-24 text-slate-300 font-bold uppercase italic">Sin mantenimientos detectados para esta fecha</td></tr>
+                  ) : (
+                    uniqueMantenimientos.map((m, i) => (
+                      <tr key={`${m.OT_PRG_ID}-${i}`} className="hover:bg-amber-50/30">
+                        <td className="px-4 py-3 border-r border-gray-100 text-slate-700">{String(m.ID_PLANTA || '—')}</td>
+                        <td className="px-4 py-3 border-r border-gray-100 text-left uppercase text-slate-700">{String(m.PLANTA || '—')}</td>
+                        <td className="px-4 py-3 border-r border-gray-100 text-slate-700">{String(m.ID_AREA || '—')}</td>
+                        <td className="px-4 py-3 border-r border-gray-100 text-left uppercase text-slate-700">{String(m.AREA || '—')}</td>
+                        <td className="px-4 py-3 border-r border-gray-100 text-indigo-900">{String(m.ID_MAQUINA || '—')}</td>
+                        <td className="px-4 py-3 border-r border-gray-100 text-left uppercase text-indigo-900">{String(m.MAQUINA || '—')}</td>
+                        <td className="px-4 py-3 border-r border-gray-100 font-mono text-slate-900">{String(m.OT_PRG_ID || '—')}</td>
+                        <td className="px-4 py-3 border-r border-gray-100 text-left font-mono text-slate-700">{formatMTTODate(m.FECHA_OT_PRG_INI || m.FECHA_INI || m.FECHA_PRO)}</td>
+                        <td className="px-4 py-3 border-r border-gray-100 text-left font-mono text-slate-700">{formatMTTODate(m.FECHA_OT_PRG_FIN || m.FECHA_FIN || m.FECHA_PRO)}</td>
+                        <td className="px-4 py-3 text-center font-mono font-black text-amber-700 bg-amber-500/5">
+                          {calculateMTTOCapacity(m.FECHA_OT_PRG_INI || m.FECHA_INI || m.FECHA_PRO, m.FECHA_OT_PRG_FIN || m.FECHA_FIN || m.FECHA_PRO)}
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
