@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { serviciosService } from '@/services/servicios.service';
 import { useAppContext } from '@/context/AppProvider';
-import { Package, Check, ChevronsUpDown, Loader2, BellRing, AlertTriangle, Clock, Calendar, LayoutDashboard, History, ListChecks } from 'lucide-react';
+import { Package, Check, ChevronsUpDown, Loader2, BellRing, AlertTriangle, Clock, Calendar, LayoutDashboard, History, ListChecks, ChevronUp, ChevronDown } from 'lucide-react';
 import type { OrdenFert, ProvisionalOrder, Restriccion } from '@/types/interfaces';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -353,9 +353,20 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
   }, [orders, tiemposMap]);
 
   const statusSummary = useMemo(() => {
-    const today = new Date();
-    today.setHours(0,0,0,0);
-    const todayStr = today.toISOString().split('T')[0];
+    // Calcular la fecha objetivo de planificación (Hoy + 3 días laborables)
+    const getTargetDateStr = () => {
+      const today = new Date();
+      let daysAdded = 0;
+      let result = new Date(today);
+      while (daysAdded < 3) {
+        result.setDate(result.getDate() + 1);
+        const day = result.getDay();
+        if (day !== 0 && day !== 6) daysAdded++;
+      }
+      return result.toISOString().split('T')[0];
+    };
+
+    const targetPlanningDateStr = getTargetDateStr();
 
     let pastCant = 0, pastHours = 0;
     let todayCant = 0, todayHours = 0;
@@ -367,13 +378,20 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
       const hours = ((Number(o.CANTPROGRAMADA) || 0) * t) / 60;
       const cant = (Number(o.CANTPROGRAMADA) || 0);
 
-      if (o.FECHA < todayStr) {
+      // Atrasadas: Todo lo anterior a la fecha de planificación objetivo
+      if (o.FECHA < targetPlanningDateStr) {
         pastCant += cant;
         pastHours += hours;
-      } else if (o.FECHA === todayStr) {
+      } 
+      
+      // Hoy: Específicamente la carga de la fecha objetivo
+      if (o.FECHA === targetPlanningDateStr) {
         todayCant += cant;
         todayHours += hours;
-      } else {
+      }
+
+      // Por Planificar: Desde la fecha objetivo en adelante (Acumulativo)
+      if (o.FECHA >= targetPlanningDateStr) {
         futureCant += cant;
         futureHours += hours;
       }
@@ -584,24 +602,24 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
                   </div>
                 </div>
 
-                {/* Card 2: ESTADO DE ÓRDENES (Cronológico) */}
+                {/* Card 2: ESTADO DE ÓRDENES (Cronológico basado en planificación 3 días) */}
                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 shadow-sm">
                   <h4 className="text-[13px] font-bold text-gray-800 mb-4 text-center uppercase tracking-wide flex items-center justify-center gap-2">
                     <History className="w-4 h-4 text-indigo-600" /> ESTADO DE ÓRDENES (CRONOLÓGICO)
                   </h4>
                   <div className="grid grid-cols-3 gap-0 items-center text-sm border rounded-md bg-white min-h-[80px]">
                       <div className="text-center border-r border-dashed border-gray-300 p-2 flex flex-col justify-center bg-red-50/30">
-                          <p className="text-[9px] text-red-600 font-bold uppercase mb-1">ATRASADAS</p>
+                          <p className="text-[9px] text-red-600 font-bold uppercase mb-1" title="Órdenes antes de la fecha objetivo">ATRASADAS</p>
                           <p className="font-bold text-sm text-red-700">{statusSummary.pastCant.toLocaleString()}</p>
                           <p className="text-[10px] text-red-500 font-mono">{statusSummary.pastHours.toFixed(1)}h</p>
                       </div>
                       <div className="text-center border-r border-dashed border-gray-300 p-2 flex flex-col justify-center bg-blue-50/30">
-                          <p className="text-[9px] text-blue-600 font-bold uppercase mb-1">HOY</p>
+                          <p className="text-[9px] text-blue-600 font-bold uppercase mb-1" title="Carga del tercer día laborable">HOY (T+3)</p>
                           <p className="font-bold text-sm text-blue-700">{statusSummary.todayCant.toLocaleString()}</p>
                           <p className="text-[10px] text-blue-500 font-mono">{statusSummary.todayHours.toFixed(1)}h</p>
                       </div>
                       <div className="text-center p-2 flex flex-col justify-center bg-green-50/30">
-                          <p className="text-[9px] text-green-600 font-bold uppercase mb-1">POR PLANIFICAR</p>
+                          <p className="text-[9px] text-green-600 font-bold uppercase mb-1" title="Carga total desde la fecha objetivo en adelante">POR PLANIFICAR</p>
                           <p className="font-bold text-sm text-green-700">{statusSummary.futureCant.toLocaleString()}</p>
                           <p className="text-[10px] text-green-500 font-mono">{statusSummary.futureHours.toFixed(1)}h</p>
                       </div>
@@ -735,7 +753,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
         </div>
         <div className="flex items-center space-x-2">
           <Button variant="outline" size="sm" onClick={() => goToPage(1)} disabled={pagination.currentPage === 1}>Primera</Button>
-          <Button variant="outline" size="sm" onClick={() => handlePrevious} disabled={pagination.currentPage === 1}>Ant.</Button>
+          <Button variant="outline" size="sm" onClick={() => goToPage(pagination.currentPage - 1)} disabled={pagination.currentPage === 1}>Ant.</Button>
           <span className="text-xs font-bold px-2">{pagination.currentPage} / {totalPagesLocal}</span>
           <Button variant="outline" size="sm" onClick={() => goToPage(pagination.currentPage + 1)} disabled={pagination.currentPage >= totalPagesLocal}>Sig.</Button>
           <Button variant="outline" size="sm" onClick={() => goToPage(totalPagesLocal)} disabled={pagination.currentPage >= totalPagesLocal}>Última</Button>
