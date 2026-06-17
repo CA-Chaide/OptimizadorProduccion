@@ -90,7 +90,7 @@ const MachineCard = ({
         <div className="mb-6">
           <div className="flex flex-col gap-2">
             <Badge className="w-fit bg-indigo-600 text-white font-black text-[10px] uppercase tracking-widest px-3 py-1 rounded-lg border-none shadow-md shadow-indigo-200">
-              {hrCode}
+              {hrCode || 'S/HR'}
             </Badge>
             <h3 className="text-2xl font-black uppercase tracking-tighter text-indigo-950 flex items-center gap-2 break-words leading-tight">
               <Cpu className="w-6 h-6 text-indigo-600 shrink-0" />
@@ -170,7 +170,7 @@ const MachineCard = ({
                   <tr key={i} className="hover:bg-indigo-50/30 transition-colors">
                     <td className="px-4 py-3 font-mono font-bold text-slate-700 whitespace-nowrap">{materialCode}</td>
                     <td className="px-4 py-3 text-slate-600 font-medium whitespace-normal break-words leading-tight">{materialName}</td>
-                    <td className="px-4 py-3 font-bold text-indigo-700">{hrCode}</td>
+                    <td className="px-4 py-3 font-bold text-indigo-700">{hrCode || '—'}</td>
                     <td className="px-4 py-3 text-right font-mono font-black text-slate-800">{Number(o['CANTIDAD'] || 0).toLocaleString()}</td>
                     <td className="px-4 py-3 text-right font-mono font-black text-indigo-600 bg-indigo-50/10">{t.toFixed(2)}</td>
                   </tr>
@@ -232,31 +232,53 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return codeStr.replace(/^0+/, '');
   }, []);
 
+  /**
+   * Función: mapToHojaRuta
+   * Resuelve el código de Hoja de Ruta (HRUTA) para un puesto de trabajo validando contra KPI TIEMPOS.
+   */
   const mapToHojaRuta = useCallback((puestoName: string): string => {
     const pn = String(puestoName || '').toUpperCase().trim();
     if (!pn || pn === '—' || pn === 'NULL') return '';
     
+    // PRIORIDAD 1: Validación Directa contra KPI MAESTRO FORROS
+    if (kpiMaestroData && kpiMaestroData.length > 0) {
+      // Intentar buscar por categoría (que suele coincidir con el nombre del puesto en Forros)
+      const matchByCategory = kpiMaestroData.find(k => 
+        String(k.Categoria || '').toUpperCase().trim() === pn
+      );
+      if (matchByCategory && matchByCategory.HRUTA) return matchByCategory.HRUTA;
+
+      // Intentar buscar si el puesto está contenido en el nombre de la HRUTA
+      const matchByHR = kpiMaestroData.find(k => 
+        String(k.HRUTA || '').toUpperCase().includes(pn)
+      );
+      if (matchByHR && matchByHR.HRUTA) return matchByHR.HRUTA;
+    }
+
+    // PRIORIDAD 2: Mapeos históricos conocidos
     if (pn === 'ACOLCHADORA09') return 'HR-ACH09';
     if (pn === 'COSEDORA-ACH02') return 'HR-PEF02';
     if (pn === 'COSEDORA-ACH08') return 'HR-PEF08';
 
-    const match = tiemposProduccion.find(t => {
+    // PRIORIDAD 3: Búsqueda en Tiempos de Ensamblado (Maestros secundarios)
+    const matchEns = tiemposProduccion.find(t => {
       const tp = String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').toUpperCase().trim();
       return tp === pn;
     });
 
-    if (match) {
-      const hr = String(match.HojaRuta || match['HOJA DE RUTA'] || '').trim();
+    if (matchEns) {
+      const hr = String(matchEns.HojaRuta || matchEns['HOJA DE RUTA'] || '').trim();
       if (hr && hr.startsWith('HR-')) return hr;
     }
 
+    // PRIORIDAD 4: Inferencia por patrón de nombre
     const numMatch = pn.match(/\d+/);
     const num = numMatch ? numMatch[0].padStart(2, '0') : '';
     if (pn.includes('COSEDORA') || pn.includes('PEGADORA') || pn.includes('PEF')) return `HR-PEF${num}`;
     if (pn.includes('ACOLCHADORA') || pn.includes('ACH')) return `HR-ACH${num}`;
     
     return pn.startsWith('HR-') ? pn : `HR-${pn}`;
-  }, [tiemposProduccion]);
+  }, [tiemposProduccion, kpiMaestroData]);
 
   const fetchBaseData = useCallback(async () => {
     try {
@@ -619,10 +641,15 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       const config = workstationConfigs[p] || { machine: p, isDayActive: true, isNightActive: false };
                       const capacityHours = (config.isDayActive ? horasNetasDiurnas : 0) + (config.isNightActive ? horasNetasNocturnas : 0);
                       const utilization = capacityHours > 0 ? (totalTimeHours / capacityHours) * 100 : 0;
+                      const hrCode = mapToHojaRuta(p);
                       return (
                         <tr key={idx} className="hover:bg-slate-50 transition-all">
                           <td className="px-8 py-5 font-black text-slate-900 uppercase whitespace-nowrap">{p}</td>
-                          <td className="px-8 py-5 font-mono font-black text-indigo-700 uppercase whitespace-nowrap">{mapToHojaRuta(p)}</td>
+                          <td className="px-8 py-5 font-mono font-black text-indigo-700 uppercase whitespace-nowrap">
+                            <Badge className="bg-indigo-50 text-indigo-700 border-indigo-200 font-bold px-3 py-1 rounded-lg">
+                              {hrCode || 'S/HR'}
+                            </Badge>
+                          </td>
                           <td className="px-8 py-5 text-right font-mono font-black text-slate-800">{totalUnits.toLocaleString()}</td>
                           <td className="px-8 py-5 text-right font-mono font-black text-indigo-700 bg-indigo-50/40">{totalTimeHours.toFixed(2)}h</td>
                           <td className="px-8 py-5 text-right font-mono font-bold text-slate-900">{capacityHours.toFixed(2)}h</td>
@@ -963,6 +990,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       {availableItems.map(p => {
                         const config = workstationConfigs[p] || { machine: p, isDayActive: true, isNightActive: false };
                         const capPuesto = (config.isDayActive ? horasNetasDiurnas : 0) + (config.isNightActive ? horasNetasNocturnas : 0);
+                        const hrCode = mapToHojaRuta(p);
                         return (
                           <div key={p} className="flex flex-col p-6 border-2 border-slate-100 rounded-[2rem] bg-white hover:border-indigo-200 transition-all shadow-sm">
                             <div className="flex items-center justify-between mb-4">
@@ -970,7 +998,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                                 <p className="font-black text-indigo-950 uppercase text-lg leading-tight mb-2 break-words">{p}</p>
                                 <div className="flex flex-wrap gap-2">
                                   <Badge className="bg-indigo-600 text-white border-none font-mono text-[10px] uppercase font-bold tracking-widest px-2.5 py-0.5 rounded-lg shadow-sm">
-                                    {mapToHojaRuta(p)}
+                                    {hrCode || 'S/HR'}
                                   </Badge>
                                   <div className="flex items-center gap-1.5 bg-emerald-50 text-emerald-700 px-3 py-1 rounded-xl border border-emerald-100 shadow-sm">
                                     <Clock className="w-3 h-3" />
