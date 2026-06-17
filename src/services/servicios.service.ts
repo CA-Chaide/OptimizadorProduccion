@@ -1,4 +1,3 @@
-
 import type { BodyListResponse } from "@/types/body-list-response";
 import type { BodyResponse } from "@/types/body-response";
 import { environment } from "@/environments/environments.prod";
@@ -15,7 +14,7 @@ export const serviciosService = {
       const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      throw new Error(errorBody.message || "Failed to fetch Habilidades OP");
     }
     return response.json();
   },
@@ -24,13 +23,13 @@ export const serviciosService = {
     const response = await fetch(API_URL + "/cuboInventarios", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({page: page, rowsPerPage: rows}),
+      body: JSON.stringify({ page: page, rowsPerPage: rows }),
     });
     if (!response.ok) {
       const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      throw new Error(errorBody.message || "Failed to fetch Inventarios OP");
     }
     return response.json();
   },
@@ -45,7 +44,7 @@ export const serviciosService = {
       const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      throw new Error(errorBody.message || "Failed to fetch Presupuesto");
     }
     return response.json();
   },
@@ -63,7 +62,7 @@ export const serviciosService = {
       const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      throw new Error(errorBody.message || "Failed to fetch Tiempos Ensamblado");
     }
     return response.json();
   },
@@ -77,7 +76,7 @@ export const serviciosService = {
       const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      throw new Error(errorBody.message || "Failed to fetch Diccionario Datos");
     }
     return response.json();
   },
@@ -91,7 +90,7 @@ export const serviciosService = {
       const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      throw new Error(errorBody.message || "Failed to fetch Diccionario Fuentes");
     }
     return response.json();
   },
@@ -105,7 +104,7 @@ export const serviciosService = {
       const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      throw new Error(errorBody.message || "Failed to fetch Centros");
     }
     return response.json();
   },
@@ -119,7 +118,7 @@ export const serviciosService = {
       const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      throw new Error(errorBody.message || "Failed to fetch Meses");
     }
     return response.json();
   },
@@ -133,7 +132,7 @@ export const serviciosService = {
       const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      throw new Error(errorBody.message || "Failed to fetch Years");
     }
     return response.json();
   },
@@ -148,12 +147,10 @@ export const serviciosService = {
       const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      throw new Error(errorBody.message || "Failed to fetch Presupuesto Centro/Año");
     }
     return response.json();
   },
-
-
 
   async getPresupuestoPorMesesYAnio(anio: string, centro: string, meses: string, page: number, rows: number): Promise<BodyResponse<any>> {
     const response = await fetch(API_URL + "/presupuestoPorMesesYAnio", {
@@ -165,13 +162,11 @@ export const serviciosService = {
       const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      throw new Error(errorBody.message || "Failed to fetch Presupuesto Meses/Año");
     }
     return response.json();
   },
 
-
-  //////Consultas a la tabla unificada
   async getMaestroPorMesesYAnio(anio: string, centro: string, meses: string, page: number, rows: number): Promise<BodyResponse<any>> {
     const response = await fetch(API_URL + "/MaestroPorMesesYAnio", {
       method: "POST",
@@ -182,11 +177,10 @@ export const serviciosService = {
       const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      throw new Error(errorBody.message || "Failed to fetch Maestro Meses/Año");
     }
     return response.json();
   },
-
 
   async getMaestroPorCentroYAnio(anio: string, centro: string, meses: string, page: number, rows: number): Promise<BodyResponse<any>> {
     const response = await fetch(API_URL + "/MaestroPorCentroYAnio", {
@@ -198,14 +192,10 @@ export const serviciosService = {
       const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      throw new Error(errorBody.message || "Failed to fetch Maestro Centro/Año");
     }
     return response.json();
   },
-
-
-
-  /////////Metodos para el Plan de Mediano Plazo
 
   async getTiempoMaximoDeFabricacionMaterial(CodigoMaterial: string, CentroFabricacion: string, LineaFabricacion: string, Categoria: string, Necesidad: number): Promise<BodyResponse<any>> {
     const response = await fetch(API_URL + "/TiempoEstimadoFabricacionNecesidad", {
@@ -217,7 +207,7 @@ export const serviciosService = {
       const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      throw new Error(errorBody.message || "Failed to fetch Tiempo Estimado");
     }
     return response.json();
   },
@@ -232,11 +222,10 @@ export const serviciosService = {
       const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      throw new Error(errorBody.message || "Failed to fetch Tiempos Canon");
     }
     return response.json();
   },
-
 
   async getTiempoCanonicoEnFuncionDelCuelloCanonico(CodigoMaterial: string, CentroFabricacion: string, LineaFabricacion: string, Categoria: string, Necesidad: number): Promise<BodyResponse<any>> {
     const response = await fetch(API_URL + "/TiempoEstimadoFabricacionNecesidad", {
@@ -248,17 +237,10 @@ export const serviciosService = {
       const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      throw new Error(errorBody.message || "Failed to fetch Tiempo Estimado");
     }
     return response.json();
   },
-
-
-
-
-
-
-  ////////////////////endpoints para el plan a corto plazo
 
   async getHabilidadesOperadorPorEstacion(): Promise<BodyResponse<any>> {
     const response = await fetch(API_URL + "/HabilidadesOperadorPorEstacion", {
@@ -269,7 +251,7 @@ export const serviciosService = {
       const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      throw new Error(errorBody.message || "Failed to fetch Habilidades");
     }
     return response.json();
   },
@@ -284,11 +266,10 @@ export const serviciosService = {
       const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Materiales OP");
+      throw new Error(errorBody.message || "Failed to fetch Materiales");
     }
     return response.json();
   },
-
 
   async ListarMantenimientoPreventivosProgramados(): Promise<BodyResponse<any>> {
     const response = await fetch(API_URL + "/ListarMantenimientosPreventivos", {
@@ -299,11 +280,10 @@ export const serviciosService = {
       const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      throw new Error(errorBody.message || "Failed to fetch Mantenimientos");
     }
     return response.json();
   },
-
 
   async OrdenesProvisionalesPaginados(page: number, rowsPerPage: number): Promise<BodyResponse<any>> {
     const response = await fetch(API_URL + "/OrdenesProvisionalesPaginadas", {
@@ -315,11 +295,10 @@ export const serviciosService = {
       const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      throw new Error(errorBody.message || "Failed to fetch Ordenes Provisionales");
     }
     return response.json();
   },
-
 
   async VersionesFabricacion(page: number, rowsPerPage: number): Promise<BodyResponse<any>> {
     const response = await fetch(API_URL + "/VersionesFabricacionMateriales", {
@@ -331,11 +310,10 @@ export const serviciosService = {
       const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      throw new Error(errorBody.message || "Failed to fetch Versiones");
     }
     return response.json();
   },
-  
 
   async getOrdenesFert(page: number, rowsPerPage: number): Promise<BodyResponse<any>> {
     const response = await fetch(API_URL + "/OrdenesFertPaginadas", {
@@ -347,11 +325,11 @@ export const serviciosService = {
       const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      throw new Error(errorBody.message || "Failed to fetch Ordenes Fert");
     }
     return response.json();
   },
-  
+
   async getTiemposEnsambladobyCentroyCodigoGrupo(Centro: string, CodigoGrupo: number): Promise<BodyResponse<any>> {
     const response = await fetch(API_URL + "/TiemposEnsambladoPorCentroYCodigoGrupo", {
       method: "POST",
@@ -362,8 +340,72 @@ export const serviciosService = {
       const errorBody = await response
         .json()
         .catch(() => ({ message: "Error desconocido" }));
-      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+      throw new Error(errorBody.message || "Failed to fetch Tiempos/Grupo");
     }
     return response.json();
-  }
+  },
+
+  async getMaestroMaterialesExplosion(centro: string, fert: string, page: number, rowsPerPage: number): Promise<BodyResponse<any>> {
+    const response = await fetch(API_URL + "/MaestroMaterialesExplosionPaginado", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ 
+        Centro: centro,
+        Fert: fert,
+        page: page, 
+        rowsPerPage: rowsPerPage,
+      }),
+    });
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({ message: "Error de red al consultar el Maestro de Materiales." }));
+      throw new Error(errorBody.message || "Error al consultar el Maestro de Materiales.");
+    }
+    return response.json();
+  },
+
+  async getTiempoAprovisionamientoMateriasPrimas(page: number, rowsPerPage: number): Promise<BodyResponse<any>> {
+    const response = await fetch(API_URL + "/TiempoAprovisionamientoMateriasPrimas", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ page: page, rowsPerPage: rowsPerPage }),
+    });
+    if (!response.ok) {
+      const errorBody = await response
+        .json()
+        .catch(() => ({ message: "Error desconocido" }));
+      throw new Error(errorBody.message || "Failed to fetch Tiempo Aprovisionamiento");
+    }
+    return response.json();
+  },
+
+  async getPendientesTotales(page: number, rowsPerPage: number): Promise<BodyResponse<any>> {
+    const response = await fetch(API_URL + "/CuboPendientesTotales", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ 
+        page: page,
+        rowsPerPage: rowsPerPage
+      }),
+    });
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({ message: "Error de red al consultar la producción estimada." }));
+      throw new Error(errorBody.message || "Error al consultar la producción estimada.");
+    }
+    return response.json();
+  },
+
+  async OrdenesProvisionalesAlphaPaginados(page: number, rowsPerPage: number): Promise<BodyResponse<any>> {
+    const response = await fetch(API_URL + "/OrdenesProvisionalesAlphaPaginadas", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ page: page, rowsPerPage: rowsPerPage }),
+    });
+    if (!response.ok) {
+      const errorBody = await response
+        .json()
+        .catch(() => ({ message: "Error desconocido" }));
+      throw new Error(errorBody.message || "Failed to fetch Ordenes Alpha");
+    }
+    return response.json();
+  },
 };
