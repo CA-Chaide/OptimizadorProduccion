@@ -230,6 +230,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [isLoadingPrevisionales, setIsLoadingPrevisionales] = useState(false);
   const [isLoadingListaMateriales, setIsLoadingListaMateriales] = useState(false);
   const [isLoadingVersiones, setIsLoadingVersiones] = useState(false);
+  const [isLoadingTiempos, setIsLoadingTiempos] = useState(false);
   const [bomDownloadProgress, setBomDownloadProgress] = useState(0);
   
   const [jornadaDiurnaSel, setJornadaDiurnaSel] = useState("8.75");
@@ -366,7 +367,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     setBomDownloadProgress(0);
     try {
       const rowsPerPage = 5000;
-      // FIRST BLOCK - Get total and first batch
       const firstResponse = await serviciosService.ReporteExplosionMateriales(1, rowsPerPage);
       const firstData = firstResponse.data || [];
       const total = firstResponse.totalRegistros || firstResponse.totalRecords || firstResponse.totalRows || 0;
@@ -375,10 +375,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
       const totalPages = Math.ceil(total / rowsPerPage);
       
       if (totalPages > 1) {
-        // SEQUENTIAL DOWNLOAD to avoid server overload
         for (let p = 2; p <= totalPages; p++) {
           setBomDownloadProgress(Math.round(((p - 1) / totalPages) * 100));
-          // WE WAIT (await) for each batch before asking for the next one
           const nextResponse = await serviciosService.ReporteExplosionMateriales(p, rowsPerPage);
           if (nextResponse.data) {
             allData = [...allData, ...nextResponse.data];
