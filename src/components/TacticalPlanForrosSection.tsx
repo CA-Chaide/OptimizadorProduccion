@@ -68,7 +68,7 @@ interface WorkstationConfig {
 /**
  * Componente: MachineCard
  * Tarjeta de control de carga para cada puesto de trabajo en los tableros técnicos.
- * Ahora filtra órdenes previsionales por Hoja de Ruta técnica.
+ * Filtra órdenes previsionales por Hoja de Ruta técnica (Columna MAQUINA).
  */
 const MachineCard = ({ 
   puestoName, 
@@ -377,6 +377,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     setIsLoadingListaMateriales(true);
     try {
       const rowsPerPage = 5000;
+      // Primera petición para obtener el total y el primer bloque
       const firstResponse = await serviciosService.getMaestroMaterialesExplosion('1000', '', 1, rowsPerPage);
       const firstData = firstResponse.data || [];
       const total = firstResponse.totalRegistros || firstResponse.totalRecords || firstResponse.totalRows || 0;
@@ -1166,7 +1167,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <CardTitle className="text-2xl font-black text-slate-900 uppercase">LISTA DE MATERIALES</CardTitle>
-                  <CardDescription className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-1">Explosión de Materiales (BOM) - getMaestroMaterialesExplosion</CardDescription>
+                  <CardDescription className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-1">Explosión de Materiales (BOM) - Paginado</CardDescription>
                 </div>
                 <div className="bg-emerald-600 p-3 rounded-2xl text-white shadow-lg shadow-emerald-500/20">
                   <ListTree className="w-6 h-6" />
@@ -1178,7 +1179,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 {isLoadingListaMateriales ? (
                   <div className="flex items-center justify-center py-20">
                     <Loader2 className="w-10 h-10 animate-spin text-emerald-600" />
-                    <span className="ml-4 text-slate-500 font-black uppercase tracking-widest text-xs">Consultando explosión de materiales (Paginado)...</span>
+                    <span className="ml-4 text-slate-500 font-black uppercase tracking-widest text-xs">Descargando explosión de materiales completa...</span>
                   </div>
                 ) : listaMaterialesData.length > 0 ? (
                   <table className="w-full text-[11px] border-collapse">
