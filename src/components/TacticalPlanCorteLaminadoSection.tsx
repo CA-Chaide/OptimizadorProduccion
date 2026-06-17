@@ -85,6 +85,7 @@ const parseDimensionsEnhanced = (desc: string) => {
   const densMatch = d.match(/D(\d+)/);
   const densidad = densMatch ? densMatch[1] : '—';
 
+  // Manejo especial de materiales CV solicitado: Espesor 3.5
   if (d.includes('CV')) {
     return { densidad, distancia: 60, altura: 206, espesor: 3.5 };
   }
@@ -108,6 +109,7 @@ const parseDimensionsEnhanced = (desc: string) => {
 
 const extractAperture = (desc: string): string => {
   const d = String(desc || '').toUpperCase();
+  // Buscamos específicamente los patrones 194.5, 206, 219, 228
   const match = d.match(/(194\.5|206|219|228)/);
   return match ? match[0] : '—';
 };
@@ -147,8 +149,11 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [kpiLooperData, setKpiLooperData] = useState<any[]>([]);
   const [inventarioSAP, setInventarioSAP] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [selectedDate, setSelectedDate] = useState<string>('all');
+  
+  // Selección múltiple de fechas
+  const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set());
   const [viewDate, setViewDate] = useState<Date | null>(null);
+  
   const [unifiedNeeds, setUnifiedNeeds] = useState<UnifiedNeedRow[]>([]);
   const [isProcessingResumen, setIsProcessingResumen] = useState(false);
   const [resumenProgress, setResumenProgress] = useState({ current: 0, total: 0 });
@@ -157,7 +162,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   useEffect(() => {
     setMounted(true);
     setViewDate(new Date());
-    setSelectedDate(format(new Date(), 'yyyy-MM-dd'));
+    // Por defecto seleccionar el día de hoy
+    const todayStr = format(new Date(), 'yyyy-MM-dd');
+    setSelectedDates(new Set([todayStr]));
   }, []);
 
   const datesWithOrders = useMemo(() => {
@@ -229,14 +236,16 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       if (centro === '2000') return false; 
       const responsable = String(o.RESPCONTROLPROD || o.RespControlProd || o.RESP_CONTROL_PROD || '').trim();
       if (allowedResps.length > 0 && !allowedResps.includes(responsable)) return false;
-      if (selectedDate !== 'all') {
+      
+      // Filtro de Selección Múltiple de Fechas
+      if (selectedDates.size > 0) {
         const dateRaw = String(o.FECHAINICIO || o.FECHA || '').trim();
         const date = dateRaw.includes('T') ? dateRaw.split('T')[0] : dateRaw;
-        if (date !== selectedDate) return false;
+        if (!selectedDates.has(date)) return false;
       }
       return true;
     });
-  }, [ordenes, selectedDate, grupos, restriccionesArray]);
+  }, [ordenes, selectedDates, grupos, restriccionesArray]);
 
   const handleProcessResumen = useCallback(async () => {
     if (filteredOrders.length === 0) {
@@ -289,6 +298,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 const looperMatch = kpiLooperData.find(k => cleanCode(k.Material) === compCode);
                 const finalPeso = looperMatch ? safeNum(looperMatch.PesoUN) : pesoTeorico;
 
+                // BUSQUEDA DE BLOQUE FORMULADO PARA DEFINIR APERTURA (Nivel +1)
                 const sourceBlock = rawData.find(row => 
                   cleanCode(row.MATERIAL_PADRE) === compCode && 
                   (row.DESCRIPCION_COMPONENTE || '').toUpperCase().includes('BLOQUE FORMULADO')
@@ -352,6 +362,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         };
       });
       
+      // CALCULO DE PLAN UN (RECOMENDACIÓN DE FABRICACIÓN)
       const groupMap = new Map<string, UnifiedNeedRow[]>();
       finalArray.forEach(row => {
         const k = `${row.apertura}|${row.densidad}`;
@@ -363,12 +374,16 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         const totalKgGroup = items.reduce((s, r) => s + r.consumoKg, 0);
         const totalStockUnGroup = items.reduce((s, r) => s + r.stockUN1006 + r.stockUN1008 + r.stockUN1015, 0);
         const totalConsumoUnGroup = items.reduce((s, r) => s + r.consumoUn, 0);
+        
+        // Déficit del grupo: si el stock total de rollos no cubre el consumo total
         const groupDeficit = Math.max(0, totalConsumoUnGroup - totalStockUnGroup);
 
         items.forEach(row => {
           row.porcentajeNecesidad = totalKgGroup > 0 ? (row.consumoKg / totalKgGroup) : 0;
+          // Recomendación: distribuir el déficit según el peso (participación) de cada material
           row.planUn = groupDeficit > 0 ? Math.ceil(groupDeficit * row.porcentajeNecesidad) : 0;
           row.planKg = row.planUn * row.peso;
+          // Cálculo Técnico T. Proceso (H): (Tiempo Rollo Min * Unidades a fabricar) / 60
           row.tProceso = ((row.looperTRolloMin || 0) * row.planUn) / 60;
         });
       });
@@ -451,7 +466,17 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     setExpandedGroups(next);
   };
 
-  const activeCorridas = useMemo(() => groupedNeeds.filter(g => g.totalPlanUn > 0), [groupedNeeds]);
+  const activeCorridas = useMemo(() => {
+    // Solo mostrar en el dashboard las corridas que tienen PLAN UN > 0
+    return groupedNeeds.filter(g => g.totalPlanUn > 0);
+  }, [groupedNeeds]);
+
+  const toggleDate = (dateStr: string) => {
+    const next = new Set(selectedDates);
+    if (next.has(dateStr)) next.delete(dateStr);
+    else next.add(dateStr);
+    setSelectedDates(next);
+  };
 
   if (!mounted) {
     return <div className="p-4 md:p-6 min-h-screen bg-white" />;
@@ -482,7 +507,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             <PopoverTrigger asChild>
               <button className="h-10 px-5 rounded-2xl border border-gray-200 bg-white hover:border-red-500/50 flex items-center gap-3 font-black text-[11px] uppercase shadow-sm transition-all">
                 <Filter className="w-4 h-4 text-red-500" /> 
-                {selectedDate === 'all' ? 'Plan Maestro' : selectedDate}
+                {selectedDates.size === 0 ? 'Plan Maestro' : `${selectedDates.size} días seleccionados`}
               </button>
             </PopoverTrigger>
             <PopoverContent className="w-[260px] p-0 border-none shadow-2xl rounded-2xl overflow-hidden mt-3" align="end">
@@ -499,16 +524,16 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   {calendarDays.map((day, idx) => {
                     if (!day) return <div key={idx} />;
                     const dStr = format(day, 'yyyy-MM-dd');
-                    const sel = selectedDate === dStr;
+                    const isSelected = selectedDates.has(dStr);
                     return (
-                      <button key={dStr} onClick={() => setSelectedDate(sel ? 'all' : dStr)} className={cn("relative h-8 w-8 mx-auto rounded-xl flex items-center justify-center transition-all", sel ? "bg-red-600 text-white shadow-md shadow-red-200" : "hover:bg-slate-50")}>
-                        <span className={cn("text-xs font-black", !datesWithOrders.has(dStr) && !sel ? "text-slate-200" : "text-slate-700")}>{format(day, 'd')}</span>
-                        {datesWithOrders.has(dStr) && !sel && <div className="absolute bottom-1.5 w-1 h-1 bg-red-400 rounded-full" />}
+                      <button key={dStr} onClick={() => toggleDate(dStr)} className={cn("relative h-8 w-8 mx-auto rounded-xl flex items-center justify-center transition-all", isSelected ? "bg-red-600 text-white shadow-md shadow-red-200" : "hover:bg-slate-50")}>
+                        <span className={cn("text-xs font-black", !datesWithOrders.has(dStr) && !isSelected ? "text-slate-200" : "text-slate-700")}>{format(day, 'd')}</span>
+                        {datesWithOrders.has(dStr) && !isSelected && <div className="absolute bottom-1.5 w-1 h-1 bg-red-400 rounded-full" />}
                       </button>
                     );
                   })}
                 </div>
-                <Button variant="ghost" size="sm" className="w-full text-[10px] font-black uppercase text-red-600 h-9 mt-1 rounded-xl hover:bg-red-50 tracking-widest" onClick={() => setSelectedDate('all')}>Ver Todo el Plan</Button>
+                <Button variant="ghost" size="sm" className="w-full text-[10px] font-black uppercase text-red-600 h-9 mt-1 rounded-xl hover:bg-red-50 tracking-widest" onClick={() => setSelectedDates(new Set())}>Ver Todo el Plan</Button>
               </div>
             </PopoverContent>
           </Popover>
@@ -531,9 +556,10 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         </TabsList>
 
         <TabsContent value="resumen" className="space-y-6 animate-in fade-in duration-300">
+           {/* DASHBOARD SUPERIOR: REUBICACIÓN Y SINCRONIZACIÓN */}
            <div className="flex items-center gap-8 bg-[#1e293b] p-6 rounded-[2.5rem] border border-white/5 shadow-2xl text-white">
              <div className="flex items-start gap-8 flex-1">
-                {/* SECCION IZQUIERDA: CORRIDAS ACTIVAS */}
+                {/* SECCION IZQUIERDA: CORRIDAS ACTIVAS (Filtradas por PLAN UN > 0) */}
                 <div className="flex flex-col gap-1 flex-1 text-left min-w-[250px]">
                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Nro de Corridas = {activeCorridas.length}</span>
                    <div className="flex flex-col gap-1.5 mt-2 pl-1 text-left overflow-y-auto max-h-32 custom-scrollbar">
@@ -552,7 +578,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                    </div>
                 </div>
 
-                {/* SECCION DERECHA A: DEMANDA BRUTA */}
+                {/* SECCION DERECHA A: DEMANDA BRUTA (KG y UN) */}
                 <div className="flex flex-col gap-4 border-l border-white/10 pl-8 text-right min-w-[180px]">
                    <div>
                      <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Cant. Necesaria (KG)</span>
@@ -568,7 +594,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                    </div>
                 </div>
 
-                {/* SECCION DERECHA B: PLAN DE FABRICACION */}
+                {/* SECCION DERECHA B: PLAN DE FABRICACION (Rollos y Horas) */}
                 <div className="flex flex-col gap-4 border-l border-white/10 pl-8 text-right min-w-[200px]">
                    <div>
                      <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Rollos a Fabricar (Plan)</span>
@@ -753,7 +779,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     <th className="px-6 py-5 border-r border-white/5">Peso UN (Kg)</th>
                     <th className="px-6 py-5 border-r border-white/5">Densidad</th>
                     <th className="px-6 py-5 border-r border-white/5">Espesor</th>
-                    <th className="px-6 py-5 border-r border-white/5">T. Rollo (Min)</th>
+                    <th className="px-6 py-5 border-r border-white/5 text-teal-400">T. Rollo (Min)</th>
                     <th className="px-6 py-5">T. Rollo (H)</th>
                   </tr>
                 </thead>
