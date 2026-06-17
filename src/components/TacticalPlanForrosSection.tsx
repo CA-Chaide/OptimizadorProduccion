@@ -230,6 +230,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [isLoadingPrevisionales, setIsLoadingPrevisionales] = useState(false);
   const [isLoadingListaMateriales, setIsLoadingListaMateriales] = useState(false);
   const [isLoadingVersiones, setIsLoadingVersiones] = useState(false);
+  const [bomDownloadProgress, setBomDownloadProgress] = useState(0);
   
   const [jornadaDiurnaSel, setJornadaDiurnaSel] = useState("8.75");
   const [jornadaNocturnaSel, setJornadaNocturnaSel] = useState("0");
@@ -362,9 +363,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   const fetchListaMateriales = useCallback(async () => {
     setIsLoadingListaMateriales(true);
+    setBomDownloadProgress(0);
     try {
       const rowsPerPage = 5000;
-      // USANDO EL MÉTODO SOLICITADO: ReporteExplosionMateriales
+      // FIRST BLOCK - Get total and first batch
       const firstResponse = await serviciosService.ReporteExplosionMateriales(1, rowsPerPage);
       const firstData = firstResponse.data || [];
       const total = firstResponse.totalRegistros || firstResponse.totalRecords || firstResponse.totalRows || 0;
@@ -373,17 +375,19 @@ export const TacticalPlanForrosSection: React.FC = () => {
       const totalPages = Math.ceil(total / rowsPerPage);
       
       if (totalPages > 1) {
-        const promises = [];
+        // SEQUENTIAL DOWNLOAD to avoid server overload
         for (let p = 2; p <= totalPages; p++) {
-          promises.push(serviciosService.ReporteExplosionMateriales(p, rowsPerPage));
+          setBomDownloadProgress(Math.round(((p - 1) / totalPages) * 100));
+          // WE WAIT (await) for each batch before asking for the next one
+          const nextResponse = await serviciosService.ReporteExplosionMateriales(p, rowsPerPage);
+          if (nextResponse.data) {
+            allData = [...allData, ...nextResponse.data];
+          }
         }
-        const responses = await Promise.all(promises);
-        responses.forEach(res => {
-          if (res.data) allData = [...allData, ...res.data];
-        });
       }
       
       setListaMaterialesData(allData);
+      setBomDownloadProgress(100);
     } catch (error: any) {
       console.error('Error fetching BOM list:', error);
       addNotification('error', `Error al cargar Lista de Materiales: ${error.message}`);
@@ -1119,13 +1123,22 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   <ListTree className="w-6 h-6" />
                 </div>
               </div>
+              {isLoadingListaMateriales && (
+                <div className="mt-6 space-y-2">
+                  <div className="flex justify-between text-xs font-black text-emerald-700 uppercase tracking-widest">
+                    <span>Sincronizando explosión de materiales...</span>
+                    <span>{bomDownloadProgress}%</span>
+                  </div>
+                  <Progress value={bomDownloadProgress} className="h-2 bg-emerald-100 [&>div]:bg-emerald-600" />
+                </div>
+              )}
             </CardHeader>
             <CardContent className="p-0">
               <div className="overflow-x-auto max-h-[70vh] relative">
-                {isLoadingListaMateriales ? (
-                  <div className="flex items-center justify-center py-20">
-                    <Loader2 className="w-10 h-10 animate-spin text-emerald-600" />
-                    <span className="ml-4 text-slate-500 font-black uppercase tracking-widest text-xs">Descargando reporte de explosión completo...</span>
+                {isLoadingListaMateriales && listaMaterialesData.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-32 space-y-4">
+                    <Loader2 className="w-12 h-12 animate-spin text-emerald-600" />
+                    <span className="text-slate-500 font-black uppercase tracking-widest text-xs">Descargando reporte completo...</span>
                   </div>
                 ) : listaMaterialesData.length > 0 ? (
                   <table className="w-full text-[11px] border-collapse">

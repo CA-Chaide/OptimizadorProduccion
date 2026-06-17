@@ -430,7 +430,7 @@ export const serviciosService = {
     const response = await fetch(API_URL + "/ReporteExplosionMateriales", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ 
+      body: JSON.stringify({  
         rows: rows,
         rowsPerPage: rowsPerPage
       }),
