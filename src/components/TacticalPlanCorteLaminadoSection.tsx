@@ -84,6 +84,12 @@ const parseDimensionsEnhanced = (desc: string) => {
   const d = desc.toUpperCase();
   const densMatch = d.match(/D(\d+)/);
   const densidad = densMatch ? densMatch[1] : '—';
+
+  // Manejo especial de materiales CV (parte del proceso de espesor 3.5)
+  if (d.includes('CV')) {
+    return { densidad, distancia: 60, altura: 206, espesor: 3.5 };
+  }
+
   const dimMatch = d.match(/(\d+(?:\.\d+)?)\s*[xX*]\s*(\d+(?:\.\d+)?)(?:\s*[xX*]\s*(\d+(?:\.\d+)?))?/);
   const alturaOriginal = dimMatch ? parseFloat(dimMatch[1]) : 0;
   const espesor = dimMatch ? parseFloat(dimMatch[2]) : 0;
@@ -357,10 +363,23 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       
       groupMap.forEach(items => {
         const totalKgGroup = items.reduce((s, r) => s + r.consumoKg, 0);
-        const targetPlanUn = 40; 
+        
+        // Criterio A: Tomar stocks iniciales de bodegas en UN
+        const totalStockUnGroup = items.reduce((s, r) => s + r.stockUN1006 + r.stockUN1008 + r.stockUN1015, 0);
+        
+        // Criterio C: Contrastar con cantidad necesaria (Consumo OF)
+        const totalConsumoUnGroup = items.reduce((s, r) => s + r.consumoUn, 0);
+        
+        // Recomendación: Si Consumo > Stock, fabricar la diferencia neta
+        const groupDeficit = Math.max(0, totalConsumoUnGroup - totalStockUnGroup);
+
         items.forEach(row => {
+          // Criterio B: Nivel de participación por espesor y tipo
           row.porcentajeNecesidad = totalKgGroup > 0 ? (row.consumoKg / totalKgGroup) : 0;
-          row.planUn = Math.round(targetPlanUn * row.porcentajeNecesidad);
+          
+          // Recomendación Proporcional
+          row.planUn = groupDeficit > 0 ? Math.ceil(groupDeficit * row.porcentajeNecesidad) : 0;
+          
           row.planKg = row.planUn * row.peso;
           // T. Proceso (H) = (T. Rollo Min * Plan UN) / 60
           row.tProceso = ((row.looperTRolloMin || 0) * row.planUn) / 60;
@@ -525,7 +544,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         <TabsContent value="resumen" className="space-y-6 animate-in fade-in duration-300">
            <div className="flex items-center gap-8 bg-[#1e293b] p-5 rounded-[2.5rem] border border-white/5 shadow-2xl text-white">
              <div className="flex items-start gap-8 flex-1">
-                {/* Nro de Corridas (Lado Izquierdo - Expandido para legibilidad) */}
                 <div className="flex flex-col gap-1 flex-1 text-left min-w-[220px]">
                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Nro de Corridas = {groupedNeeds.length}</span>
                    <div className="flex flex-col gap-1.5 mt-2 pl-1 text-left overflow-y-auto max-h-24 custom-scrollbar">
@@ -544,7 +562,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                    </div>
                 </div>
 
-                {/* KG Block (Desplazado a la Derecha) */}
                 <div className="flex flex-col gap-1 border-l border-white/10 pl-8 text-right min-w-[150px]">
                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Cant. Necesaria (KG)</span>
                    <p className="text-2xl font-black font-mono text-[#f87171] tracking-tighter">
@@ -552,7 +569,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                    </p>
                 </div>
 
-                {/* UN / Hours Block (Extremo Derecho) */}
                 <div className="flex flex-col gap-3 border-l border-white/10 pl-8 text-right min-w-[160px]">
                    <div>
                      <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Cant. Necesaria (und)</span>
@@ -685,7 +701,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-50 font-bold">
                   {filteredOrders.length === 0 ? (
-                    <tr><td colSpan={8} className="py-24 text-slate-300 font-black uppercase tracking-widest text-center italic">No se detectaron órdenes para los criterios aplicados</td></tr>
+                    <tr><td colSpan={8} className="py-24 text-slate-300 font-black uppercase tracking-widest italic">No se detectaron órdenes para los criterios aplicados</td></tr>
                   ) : (
                     filteredOrders.map((o, i) => {
                       const matCode = cleanCode(String(o.MATERIAL || '').match(/^(\d+)/)?.[1]);
