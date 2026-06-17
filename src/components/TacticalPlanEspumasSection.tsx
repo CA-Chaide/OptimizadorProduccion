@@ -266,11 +266,11 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     if (selectedDate === 'all') return 0;
     return mantenimientos
       .filter(m => {
-        const mDate = String(m.FECHA_PRO || m.FECHA_INI || '').split('T')[0];
-        const mMachine = String(m.MAQUINA || m.ID_MAQUINA || '').toUpperCase();
+        const mDate = String(m.FECHA_OT_PRG_INI || m.FECHA_PRO || m.FECHA_INI || '').split('T')[0];
+        const mMachine = String(m.ID_MAQUINA || m.MAQUINA || '').toUpperCase();
         return mDate === selectedDate && (mMachine.includes(maquinaCode.toUpperCase()) || maquinaCode.toUpperCase().includes(mMachine));
       })
-      .reduce((sum, m) => sum + safeNum(m.TIEMPO), 0);
+      .reduce((sum, m) => sum + safeNum(m.T_MTTO_PLANIFICADO || m.TIEMPO), 0);
   };
 
   const getCenterPlannedHoursTotal = (centro: string) => {
@@ -535,23 +535,29 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               <table className="w-full border-collapse font-sans text-[9px]">
                 <thead className="bg-[#fef3c7] sticky top-0 z-10 text-amber-900 uppercase font-black tracking-widest border-b border-amber-200">
                   <tr>
-                    <th className="px-4 py-4 border-r border-amber-100">ID Planta</th>
-                    <th className="px-4 py-4 border-r border-amber-100 text-left">Máquina</th>
-                    <th className="px-4 py-4 border-r border-amber-100 text-left">Desde</th>
-                    <th className="px-4 py-4 border-r border-amber-100 text-left">Hasta</th>
-                    <th className="px-4 py-4 border-r border-amber-100">Tiempo (H)</th>
-                    <th className="px-4 py-4">Estado</th>
+                    <th className="px-4 py-4 border-r border-amber-100">ID_PLANTA</th>
+                    <th className="px-4 py-4 border-r border-amber-100">ID_MAQUINA</th>
+                    <th className="px-4 py-4 border-r border-amber-100 text-left">MAQUINA</th>
+                    <th className="px-4 py-4 border-r border-amber-100">OT_PRG_ID</th>
+                    <th className="px-4 py-4 border-r border-amber-100 text-left">FECHA_OT_PRG_INI</th>
+                    <th className="px-4 py-4 border-r border-amber-100 text-left">FECHA_OT_PRG_FIN</th>
+                    <th className="px-4 py-4 text-red-900">T_MTTO_PLANIFICADO</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 font-bold">
-                  {mantenimientos.filter(m => selectedDate === 'all' || (String(m.FECHA_PRO || m.FECHA_INI || '').split('T')[0]) === selectedDate).map((m, i) => (
+                  {mantenimientos.filter(m => {
+                    const dStr = String(m.FECHA_OT_PRG_INI || m.FECHA_PRO || m.FECHA_INI || '').trim();
+                    const itemDate = dStr.includes('T') ? dStr.split('T')[0] : dStr;
+                    return selectedDate === 'all' || itemDate === selectedDate;
+                  }).map((m, i) => (
                     <tr key={i} className="hover:bg-amber-50/30">
                       <td className="px-4 py-3 border-r border-gray-100 text-slate-400">{String(m.ID_PLANTA || '—')}</td>
-                      <td className="px-4 py-3 border-r border-gray-100 text-left uppercase">{String(m.MAQUINA || '—')}</td>
-                      <td className="px-4 py-3 border-r border-gray-100 text-left font-mono">{String(m.FECHA_INI || m.FECHA_PRO || '—')}</td>
-                      <td className="px-4 py-3 border-r border-gray-100 text-left font-mono">{String(m.FECHA_FIN || '—')}</td>
-                      <td className="px-4 py-3 border-r border-gray-100 font-black text-red-600">{String(m.TIEMPO || '0')}h</td>
-                      <td className="px-4 py-3 font-mono">{String(m.STATUS || 'P')}</td>
+                      <td className="px-4 py-3 border-r border-gray-100 text-indigo-600">{String(m.ID_MAQUINA || '—')}</td>
+                      <td className="px-4 py-3 border-r border-gray-100 text-left uppercase text-slate-600">{String(m.MAQUINA || '—')}</td>
+                      <td className="px-4 py-3 border-r border-gray-100 font-mono text-slate-400">{String(m.OT_PRG_ID || '—')}</td>
+                      <td className="px-4 py-3 border-r border-gray-100 text-left font-mono text-slate-500">{String(m.FECHA_OT_PRG_INI || m.FECHA_INI || m.FECHA_PRO || '—')}</td>
+                      <td className="px-4 py-3 border-r border-gray-100 text-left font-mono text-slate-500">{String(m.FECHA_OT_PRG_FIN || m.FECHA_FIN || '—')}</td>
+                      <td className="px-4 py-3 font-black text-red-600 bg-red-50/10">{String(m.T_MTTO_PLANIFICADO || m.TIEMPO || '0')}h</td>
                     </tr>
                   ))}
                 </tbody>
