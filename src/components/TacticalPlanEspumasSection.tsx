@@ -44,14 +44,6 @@ const safeNum = (val: any): number => {
   return isNaN(n) ? 0 : n;
 };
 
-const formatNum = (val: any, decimals: number = 2): string => {
-  const n = safeNum(val);
-  return n.toLocaleString(undefined, { 
-    minimumFractionDigits: decimals, 
-    maximumFractionDigits: decimals 
-  });
-};
-
 const cleanCode = (code: any): string => {
   return String(code || '').replace(/^0+/, '').trim();
 };
@@ -128,6 +120,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const [habilidades, setHabilidades] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
+  // Selección múltiple de fechas - Inicializados como estables para SSR
   const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set());
   const [viewDate, setViewDate] = useState<Date | null>(null);
   const [manualHours, setManualHours] = useState<Record<string, number>>({});
@@ -139,7 +132,16 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     setSelectedDates(new Set([now.toISOString().split('T')[0]]));
   }, []);
 
-  const extractMaterialInfo = (item: any) => {
+  const formatNum = useCallback((val: any, decimals: number = 2): string => {
+    const n = safeNum(val);
+    if (!mounted) return '';
+    return n.toLocaleString(undefined, { 
+      minimumFractionDigits: decimals, 
+      maximumFractionDigits: decimals 
+    });
+  }, [mounted]);
+
+  const extractMaterialInfo = useCallback((item: any) => {
     const matStr = String(item.MATERIAL || item.Material || item.CodMaterial || '').trim();
     const nameStr = String(item.NOMBRE || item.NombreMaterial || item.Descripcion || '').trim();
     const catStr = String(item.CATEGORIA || item.Categoria || '').trim();
@@ -157,9 +159,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const densM = catStr.match(/D(\d+)/i) || desc.match(/D-?(\d+)/i);
     if (densM) dims.dens = densM[1];
     return { code, desc, catStr, ...dims };
-  };
+  }, []);
 
-  const calculateEngineering = (o: any) => {
+  const calculateEngineering = useCallback((o: any) => {
     const info = extractMaterialInfo(o);
     const qty = safeNum(o.CANTIDAD || o.CANTPROGRAMADA || 0);
     const ancho = parseFloat(info.ancho) || 0;
@@ -190,7 +192,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const indivMin = qty > 0 ? (totalTimeSec / qty) / 60 : 0;
 
     return { ...info, subblocks, sbPerLoad, blocks20m, loads, hours, indivMin, qty };
-  };
+  }, [extractMaterialInfo, tiemposEnsamblado]);
 
   const initData = useCallback(async () => {
     setIsLoading(true);
@@ -203,7 +205,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       setGrupos(filteredGroups);
       const gIds = filteredGroups.map(g => g.codigo_grupo);
 
-      const [restrs, provs, ferts, times, maint, skills] = await Promise.all([
+      const [restrs, provs, ferts, times, maint, skillsRes] = await Promise.all([
         restriccionService.getAll(),
         serviciosService.OrdenesProvisionalesPaginados(1, 20000),
         serviciosService.getOrdenesFert(1, 20000),
@@ -217,7 +219,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       setOrdersFert(ferts.data?.data || ferts.data || []);
       setTiemposEnsamblado(times.data?.data || times.data || []);
       setMantenimientos(maint.data || []);
-      setHabilidades(skills.data || []);
+      setHabilidades(skillsRes.data || []);
       
     } catch (e) {
       console.error('Error init TacticalPlanEspumas:', e);
@@ -243,7 +245,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       }, 0);
   };
 
-  const filterData = (data: any[], centro: string, applyDateFilter: boolean = true, isFert: boolean = false) => {
+  const filterData = (data: any[], centro: string, isFert: boolean = false) => {
     const relevantGroups = grupos.filter(g => String(g.centro).trim() === centro);
     const groupIds = relevantGroups.map(g => g.codigo_grupo);
     const groupRest = restriccionesArray.filter(r => groupIds.includes(r.codigo_grupo));
@@ -253,8 +255,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
       .filter(v => v !== '');
 
+    const almCodes = groupRest
+      .filter(r => r.nombre_restriccion === 'ALMACEN')
+      .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
+      .filter(v => v !== '');
+
     return data.filter(o => {
-      const itemCentro = String(o.CENTRO || o.Centro || '').trim();
+      const itemCentro = String(o.CENTRO || o.Centro || o.centro || '').trim();
       if (itemCentro !== centro) return false;
       
       const dFull = String(o.FECHAINICIO || o.FECHA || '').trim();
@@ -262,10 +269,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const matchDate = selectedDates.size === 0 || selectedDates.has(itemDate);
       if (!matchDate) return false;
 
-      // Órdenes FERT: Según requerimiento, eliminamos filtros de responsable y almacén
+      // Órdenes FERT: Visibilidad total por planta sin filtros de grupo (como solicitado)
       if (isFert) return true;
 
-      // Órdenes Provisionales: Filtro estricto por almacén y responsable
+      // Órdenes Provisionales: Filtro estricto por almacén y responsable del área
       const itemAlm = String(o.ALMACEN || o.Almacen || '').trim();
       const matchAlm = (centro === '1000' && itemAlm === '1006') || (centro === '2000' && itemAlm === '2006');
       if (!matchAlm) return false;
@@ -281,9 +288,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
   const provC1000 = useMemo(() => filterData(ordenes, '1000'), [ordenes, grupos, restriccionesArray, selectedDates]);
   const provC2000 = useMemo(() => filterData(ordenes, '2000'), [ordenes, grupos, restriccionesArray, selectedDates]);
-  
-  const fertC1000 = useMemo(() => filterData(ordenesFert, '1000', true, true), [ordenesFert, selectedDates]);
-  const fertC2000 = useMemo(() => filterData(ordenesFert, '2000', true, true), [ordenesFert, selectedDates]);
+  const fertC1000 = useMemo(() => filterData(ordenesFert, '1000', true), [ordenesFert, selectedDates]);
+  const fertC2000 = useMemo(() => filterData(ordenesFert, '2000', true), [ordenesFert, selectedDates]);
 
   const defaultOpHour = useMemo(() => {
     const clGroup = grupos.find(g => g.nombre_grupo.toLowerCase().includes('corte y laminado'));
@@ -310,6 +316,15 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return [...Array(padding).fill(null), ...days];
   }, [viewDate]);
 
+  if (!mounted) return null;
+
+  if (isLoading) return (
+    <div className="flex flex-col items-center justify-center p-20 gap-4">
+      <Loader2 className="w-10 h-10 animate-spin text-primary" />
+      <p className="text-xs font-bold text-gray-400 uppercase tracking-widest animate-pulse">Sincronizando Módulo de Corte...</p>
+    </div>
+  );
+
   return (
     <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
       <div className="flex items-center justify-between pb-4 border-b border-gray-100">
@@ -328,32 +343,36 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <Popover>
             <PopoverTrigger asChild>
               <Button variant="outline" className="h-10 px-4 rounded-xl border-gray-200 gap-2 font-bold text-[10px] uppercase shadow-sm">
-                <Filter className="w-3 h-3 text-primary" /> {selectedDates.size === 0 ? 'Filtro Fecha' : `${selectedDates.size} Días`}
+                <Filter className="w-3 h-3 text-primary" /> {selectedDates.size === 0 ? 'Plan Maestro' : `${selectedDates.size} Días`}
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-64 p-0 border-none shadow-2xl rounded-2xl overflow-hidden mt-2" align="end">
               <div className="bg-white p-4 font-sans text-left">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-[10px] font-bold text-gray-800 capitalize">{viewDate ? format(viewDate, 'MMMM yyyy', { locale: es }) : ''}</h3>
-                  <div className="flex gap-1 bg-gray-50 p-1 rounded-lg">
-                    <Button variant="ghost" size="icon" onClick={() => setViewDate(subMonths(viewDate!, 1))} className="h-6 h-6"><ChevronLeft className="w-3 h-3" /></Button>
-                    <Button variant="ghost" size="icon" onClick={() => setViewDate(addMonths(viewDate!, 1))} className="h-6 h-6"><ChevronRight className="w-3 h-3" /></Button>
-                  </div>
-                </div>
-                <div className="grid grid-cols-7 gap-y-1 text-center">
-                  {['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO'].map(d => <div key={d} className="text-[8px] font-bold text-gray-300 uppercase py-1">{d}</div>)}
-                  {calendarDays.map((day, idx) => {
-                    if (!day) return <div key={idx} />;
-                    const dStr = format(day, 'yyyy-MM-dd');
-                    const sel = selectedDates.has(dStr);
-                    return (
-                      <button key={dStr} onClick={() => { const n = new Set(selectedDates); sel ? n.delete(dStr) : n.add(dStr); setSelectedDates(n); }} className={cn("relative h-8 w-8 mx-auto rounded-xl flex items-center justify-center transition-all", sel ? "bg-primary text-white shadow-md" : "hover:bg-gray-100")}>
-                        <span className={cn("text-[10px] font-bold", !datesWithOrders.has(dStr) && !sel ? "text-gray-200" : "")}>{format(day, 'd')}</span>
-                        {datesWithOrders.has(dStr) && !sel && <div className="absolute bottom-1 w-1 h-1 bg-primary/40 rounded-full" />}
-                      </button>
-                    );
-                  })}
-                </div>
+                {viewDate && (
+                  <>
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-[10px] font-bold text-gray-800 capitalize">{format(viewDate, 'MMMM yyyy', { locale: es })}</h3>
+                      <div className="flex gap-1 bg-gray-50 p-1 rounded-lg">
+                        <Button variant="ghost" size="icon" onClick={() => setViewDate(subMonths(viewDate!, 1))} className="h-6 h-6"><ChevronLeft className="w-3 h-3" /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => setViewDate(addMonths(viewDate!, 1))} className="h-6 h-6"><ChevronRight className="w-3 h-3" /></Button>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-7 gap-y-1 text-center">
+                      {['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO'].map(d => <div key={d} className="text-[8px] font-bold text-gray-300 uppercase py-1">{d}</div>)}
+                      {calendarDays.map((day, idx) => {
+                        if (!day) return <div key={idx} />;
+                        const dStr = format(day, 'yyyy-MM-dd');
+                        const sel = selectedDates.has(dStr);
+                        return (
+                          <button key={dStr} onClick={() => { const n = new Set(selectedDates); sel ? n.delete(dStr) : n.add(dStr); setSelectedDates(n); }} className={cn("relative h-8 w-8 mx-auto rounded-xl flex items-center justify-center transition-all", sel ? "bg-primary text-white shadow-md" : "hover:bg-gray-100")}>
+                            <span className={cn("text-[10px] font-bold", !datesWithOrders.has(dStr) && !sel ? "text-gray-200" : "")}>{format(day, 'd')}</span>
+                            {datesWithOrders.has(dStr) && !sel && <div className="absolute bottom-1 w-1 h-1 bg-primary/40 rounded-full" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
               </div>
             </PopoverContent>
           </Popover>
@@ -363,7 +382,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid grid-cols-5 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
           {[ 
-            { v: 'capacidad', l: 'Capacidad General', i: LayoutDashboard }, 
+            { v: 'capacidad', l: 'Capacidad Unificada', i: LayoutDashboard }, 
             { v: 'habilidades', l: 'Habilidades SAP', i: GraduationCap },
             { v: 'mantenimiento', l: 'MTTO Preventivo', i: Wrench }, 
             { v: 'ordenes', l: 'Provisionales', i: Package },
@@ -376,7 +395,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         </TabsList>
 
         <TabsContent value="capacidad" className="animate-in fade-in duration-300 space-y-12 text-left">
-          {[ { id: '1000', label: 'UIO' }, { id: '2000', label: 'GYE' } ].map(center => {
+          {[ { id: '1000', label: 'Quito' }, { id: '2000', label: 'Guayaquil' } ].map(center => {
             const machines = CAPACIDAD_CONFIG_BASE[center.id as '1000' | '2000'];
             const provOrders = center.id === '1000' ? provC1000 : provC2000;
             const fertOrders = center.id === '1000' ? fertC1000 : fertC2000;
@@ -414,9 +433,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <th className="px-3 py-5 border-r border-gray-50">MTTO SAP</th>
                         <th className="px-4 py-5 bg-indigo-50 text-indigo-900 border-r border-gray-100">Disp. Neta (H)</th>
                         <th className="px-4 py-5 text-blue-600 bg-blue-50/20 border-r border-gray-50">Total Ord_Prov</th>
-                        <th className="px-4 py-5 bg-[#0f172a] text-white">Ocup. Prov %</th>
+                        <th className="px-4 py-5 border-r border-gray-50">% Ocupación Prov</th>
                         <th className="px-4 py-5 text-teal-600 bg-teal-50/20 border-r border-gray-50">Total Ord_Fert</th>
-                        <th className="px-4 py-5 bg-[#0f172a] text-white">Ocup. Fert %</th>
+                        <th className="px-4 py-5">% Ocupación Fert</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50 font-bold text-center">
@@ -453,10 +472,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                             <td className="px-3 py-4 text-slate-300 font-mono">{PARO_PROG_T2}</td>
                             <td className={cn("px-3 py-4 font-mono", mtto > 0 ? "text-red-500 bg-red-50/30" : "text-slate-100")}>{mtto > 0 ? `${mtto}h` : '—'}</td>
                             <td className="px-4 py-4 font-mono font-black text-indigo-700 bg-indigo-50/20">{netAvailable.toFixed(1)}</td>
-                            <td className="px-4 py-4 text-slate-300 font-mono">—</td>
-                            <td className="px-4 py-4 text-slate-300 font-mono">—</td>
-                            <td className="px-4 py-4 text-slate-300 font-mono">—</td>
-                            <td className="px-4 py-4 text-slate-300 font-mono">—</td>
+                            <td className="px-4 py-4 text-slate-200 font-mono">—</td>
+                            <td className="px-4 py-4 text-slate-200 font-mono">—</td>
+                            <td className="px-4 py-4 text-slate-200 font-mono">—</td>
+                            <td className="px-4 py-4 text-slate-200 font-mono">—</td>
                           </tr>
                         );
                       })}
@@ -551,7 +570,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="ordenes" className="space-y-10 animate-in fade-in duration-300">
-           {[ {t: 'UIO 1000 (Alm: 1006)', d: provC1000, id: '1000', c: 'text-green-700', b: 'bg-green-600' }, {t: 'GYE 2000 (Alm: 2006)', d: provC2000, id: '2000', c: 'text-indigo-700', b: 'bg-indigo-600' } ].map((center, idx) => (
+           {[ {t: 'Quito 1000 (Alm: 1006)', d: provC1000, id: '1000', c: 'text-green-700', b: 'bg-green-600' }, {t: 'Guayaquil 2000 (Alm: 2006)', d: provC2000, id: '2000', c: 'text-indigo-700', b: 'bg-indigo-600' } ].map((center, idx) => (
              <div key={idx} className="space-y-4">
                 <h3 className={cn("text-[11px] font-bold uppercase flex items-center gap-2 px-1 text-left", center.c)}>
                   <div className={cn("w-2.5 h-2.5 rounded-full", center.b)} /> {center.t} ({center.d.length} órdenes)
@@ -603,7 +622,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="ordenesFert" className="space-y-10 animate-in fade-in duration-300">
-           {[ {t: 'UIO 1000 - Órdenes FERT', d: fertC1000, b: 'bg-green-600', c: 'text-green-700'}, {t: 'GYE 2000 - Órdenes FERT', d: fertC2000, b: 'bg-indigo-600', c: 'text-indigo-700'} ].map((center, idx) => (
+           {[ {t: 'Quito 1000 - Órdenes FERT', d: fertC1000, b: 'bg-green-600', c: 'text-green-700' }, {t: 'Guayaquil 2000 - Órdenes FERT', d: fertC2000, b: 'bg-indigo-600', c: 'text-indigo-700' } ].map((center, idx) => (
              <div key={idx} className="space-y-4">
                 <h3 className={cn("text-[11px] font-bold uppercase flex items-center gap-2 px-1 text-left", center.c)}>
                   <div className={cn("w-2.5 h-2.5 rounded-full", center.b)} /> {center.t} ({center.d.length} registros)
@@ -622,8 +641,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                           <th className="px-4 py-5 border-r border-white/5">UM</th>
                           <th className="px-6 py-5 border-r border-white/5">Resp.</th>
                           <th className="px-6 py-5 border-r border-white/5">Máquina</th>
-                          <th className="px-6 py-5 border-r border-white/10 text-blue-700 bg-blue-50/10">T. INDIV. (min)</th>
-                          <th className="px-6 py-5 border-r border-white/10 text-amber-700 bg-amber-50/10">T. TOTAL (H)</th>
+                          <th className="px-6 py-5 border-r border-white/10 text-blue-700 bg-blue-50/10 font-mono">T. INDIV. (min)</th>
+                          <th className="px-6 py-5 border-r border-white/10 text-amber-700 bg-amber-50/10 font-mono">T. TOTAL (H)</th>
                           <th className="px-6 py-5 border-r border-white/5 text-red-600 bg-red-50/10">CARGAS</th>
                           <th className="px-6 py-5">Alm.</th>
                         </tr>
