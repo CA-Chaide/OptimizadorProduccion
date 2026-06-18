@@ -76,7 +76,7 @@ const calculateMTTOCapacity = (start: string, end: string): string => {
 };
 
 const getResp = (o: any): string => {
-  return String(o.RESPCTRLPROD || o.RespControlProd || o.RESP_CONTROL_PROD || o.RESP_CP || '—').trim();
+  return String(o.RESPCONTROLPROD || o.RespControlProd || o.RESP_CONTROL_PROD || o.RESP_CP || '—').trim();
 };
 
 // Constantes de Ingeniería Planta v2.2
@@ -271,17 +271,18 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const itemDate = dFull.includes('T') ? dFull.split('T')[0] : dFull;
       if (selectedDates.size > 0 && !selectedDates.has(itemDate)) return false;
 
-      if (isFert) return true; // Auditoría total para FERT
-
-      // Provisionales: Filtro estricto por almacén y responsable
-      const itemAlm = String(o.ALMACEN || o.Almacen || '').trim();
-      const matchAlm = (centro === '1000' && itemAlm === '1006') || (centro === '2000' && itemAlm === '2006');
-      if (!matchAlm) return false;
-
+      // Filtro de Responsable (Aplicado a ambos según instrucción)
       if (respCodes.length > 0) {
         const itemResp = getResp(o);
         if (!respCodes.includes(itemResp)) return false;
       }
+
+      if (isFert) return true; 
+
+      // Provisionales: Filtro adicional de almacén
+      const itemAlm = String(o.ALMACEN || o.Almacen || '').trim();
+      const matchAlm = (centro === '1000' && itemAlm === '1006') || (centro === '2000' && itemAlm === '2006');
+      if (!matchAlm) return false;
 
       return true;
     });
@@ -289,8 +290,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
   const provC1000 = useMemo(() => filterData(ordenes, '1000'), [ordenes, grupos, restriccionesArray, selectedDates]);
   const provC2000 = useMemo(() => filterData(ordenes, '2000'), [ordenes, grupos, restriccionesArray, selectedDates]);
-  const fertC1000 = useMemo(() => filterData(ordenesFert, '1000', true), [ordenesFert, selectedDates]);
-  const fertC2000 = useMemo(() => filterData(ordenesFert, '2000', true), [ordenesFert, selectedDates]);
+  const fertC1000 = useMemo(() => filterData(ordenesFert, '1000', true), [ordenesFert, grupos, restriccionesArray, selectedDates]);
+  const fertC2000 = useMemo(() => filterData(ordenesFert, '2000', true), [ordenesFert, grupos, restriccionesArray, selectedDates]);
 
   const defaultOpHour = useMemo(() => {
     const clGroup = grupos.find(g => g.nombre_grupo.toLowerCase().includes('corte y laminado'));
@@ -339,7 +340,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         return (
                           <button key={dStr} onClick={() => { const n = new Set(selectedDates); sel ? n.delete(dStr) : n.add(dStr); setSelectedDates(n); }} className={cn("relative h-8 w-8 mx-auto rounded-xl flex items-center justify-center transition-all", sel ? "bg-primary text-white shadow-md shadow-primary/20" : "hover:bg-gray-100")}>
                             <span className={cn("text-[10px] font-bold", !datesWithOrders.has(dStr) && !sel ? "text-gray-200" : "")}>{format(day, 'd')}</span>
-                            {datesWithOrders.has(dStr) && !sel && <div className="absolute bottom-1.5 w-1 h-1 bg-primary/40 rounded-full" />}
+                            {datesWithOrders.has(dStr) && !sel && <div className="absolute bottom-1 w-1 h-1 bg-primary/40 rounded-full" />}
                           </button>
                         );
                       })}
@@ -599,9 +600,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                           <th className="px-6 py-5 border-r border-white/5">Cant.</th>
                           <th className="px-6 py-5 border-r border-white/5">Resp.</th>
                           <th className="px-6 py-5 border-r border-white/5">Máquina</th>
-                          <th className="px-6 py-5 border-r border-white/10 text-blue-700 bg-blue-50/10 font-mono">T. INDIV. (min)</th>
-                          <th className="px-6 py-5 border-r border-white/10 text-amber-700 bg-amber-50/10 font-mono">T. TOTAL (H)</th>
-                          <th className="px-6 py-5 border-r border-white/5 text-red-600 bg-red-50/10">CARGAS</th>
+                          <th className="px-6 py-5 border-r border-white/10 text-blue-700 bg-blue-500/10 font-mono">T. INDIV. (min)</th>
+                          <th className="px-6 py-5 border-r border-white/10 text-amber-700 bg-amber-500/10 font-mono">T. TOTAL (H)</th>
+                          <th className="px-6 py-5 border-r border-white/5 text-red-600 bg-red-500/10">CARGAS</th>
                           <th className="px-6 py-5">Centro</th>
                         </tr>
                       </thead>
