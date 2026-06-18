@@ -294,7 +294,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const groupIds = relevantGroups.map(g => g.codigo_grupo);
     const groupRest = restriccionesArray.filter(r => groupIds.includes(r.codigo_grupo));
 
-    // Si ignoreRestrictions es true (para FERT), no cargamos códigos restrictivos
     const respCodes = ignoreRestrictions ? [] : groupRest
       .filter(r => r.nombre_restriccion === 'RESPCONTROLPROD')
       .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
@@ -328,8 +327,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
   const provC1000 = useMemo(() => filterData(ordenes, '1000'), [ordenes, grupos, restriccionesArray, selectedDates]);
   const provC2000 = useMemo(() => filterData(ordenes, '2000'), [ordenes, grupos, restriccionesArray, selectedDates]);
-  
-  // Órdenes FERT flexibilizadas para mostrar todos los responsables y almacenes (ignoreRestrictions = true)
   const fertC1000 = useMemo(() => filterData(ordenesFert, '1000', true, true), [ordenesFert, grupos, restriccionesArray, selectedDates]);
   const fertC2000 = useMemo(() => filterData(ordenesFert, '2000', true, true), [ordenesFert, grupos, restriccionesArray, selectedDates]);
 
@@ -656,7 +653,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               </h3>
               <Card className="rounded-2xl border border-gray-100 shadow-md overflow-hidden bg-white">
                 <div className="overflow-x-auto">
-                  <table className="w-full border-collapse text-center font-sans text-[9px]">
+                  <table className="min-w-full border-collapse text-center font-sans text-[9px]">
                     <thead className="bg-gray-100 sticky top-0 z-10 text-slate-500 uppercase font-black tracking-tighter border-b border-gray-100">
                       <tr>
                         <th className="px-3 py-4 border-r border-gray-50">Orden</th>
@@ -714,24 +711,25 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               </h3>
               <Card className="rounded-2xl border border-gray-100 shadow-md overflow-hidden bg-white">
                 <div className="overflow-x-auto">
-                  <table className="w-full border-collapse text-center font-sans text-[9px]">
-                    <thead className="bg-slate-900 text-white uppercase font-black tracking-tighter border-b border-gray-100">
+                  <table className="min-w-full border-collapse text-center font-sans text-[9px]">
+                    <thead className="bg-gray-100 sticky top-0 z-10 text-slate-500 uppercase font-black tracking-tighter border-b border-gray-100">
                       <tr>
-                        <th className="px-3 py-4 border-r border-white/5">Orden</th>
-                        <th className="px-3 py-4 border-r border-white/5">Fecha</th>
-                        <th className="px-3 py-4 border-r border-white/5">Material</th>
-                        <th className="px-3 py-4 border-r border-white/5 text-left">Descripción</th>
+                        <th className="px-3 py-4 border-r border-gray-50">Orden</th>
+                        <th className="px-3 py-4 border-r border-gray-50">Fecha</th>
+                        <th className="px-3 py-4 border-r border-gray-50">Material</th>
+                        <th className="px-3 py-4 border-r border-gray-50 text-left">Descripción</th>
                         <th className="px-3 py-4 border-r border-white/10 font-black">Cant.</th>
-                        <th className="px-3 py-4 border-r border-white/10 font-black text-indigo-400 bg-indigo-500/10">Máquina</th>
-                        <th className="px-3 py-4 border-r border-white/10 bg-blue-500/10 text-blue-300">T. INDIV. (min)</th>
-                        <th className="px-3 py-4 border-r border-white/10 bg-amber-500/10 text-amber-300">T. TOTAL (H)</th>
-                        <th className="px-3 py-4 border-r border-white/5 text-red-300 bg-red-500/10 font-black">CARGAS</th>
-                        <th className="px-3 py-4 bg-slate-800 text-white font-black">Alm.</th>
+                        <th className="px-3 py-4 border-r border-white/10 font-black text-indigo-700 bg-indigo-50/20">Responsable</th>
+                        <th className="px-3 py-4 border-r border-white/10 font-black text-indigo-700 bg-indigo-50/20">Máquina</th>
+                        <th className="px-3 py-4 border-r border-white/10 bg-blue-500/10 text-blue-900">T. INDIV. (min)</th>
+                        <th className="px-3 py-4 border-r border-white/10 bg-amber-500/10 text-amber-900">T. TOTAL (H)</th>
+                        <th className="px-3 py-4 border-r border-white/5 text-red-600 bg-red-500/10 font-black">CARGAS</th>
+                        <th className="px-3 py-4 bg-slate-50 text-slate-900 font-black">Alm.</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50 font-bold">
                       {center.d.length === 0 ? (
-                        <tr><td colSpan={10} className="py-8 text-slate-300 font-bold uppercase italic">Sin órdenes FERT registradas en este centro para las fechas seleccionadas</td></tr>
+                        <tr><td colSpan={11} className="py-8 text-slate-300 font-bold uppercase italic">Sin órdenes FERT registradas en este centro para las fechas seleccionadas</td></tr>
                       ) : (
                         center.d.map((o, i) => {
                           const eng = calculateEngineering(o);
@@ -744,6 +742,11 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                               <td className="px-3 py-2 font-mono text-primary border-r border-gray-50">{eng.code}</td>
                               <td className="px-3 py-2 text-left border-r border-gray-50 uppercase text-gray-500 max-w-[200px] truncate">{eng.desc}</td>
                               <td className="px-3 py-2 border-r border-white/10 font-black text-gray-900 font-mono">{eng.qty.toLocaleString()}</td>
+                              <td className="px-3 py-2 border-r border-white/10">
+                                <Badge variant="outline" className="text-[10px] font-black bg-indigo-50 text-indigo-700 border-indigo-100">
+                                  {String(o.RESPCONTROLPROD || o.RespControlProd || '—')}
+                                </Badge>
+                              </td>
                               <td className="px-3 py-2 border-r border-white/10 font-black text-indigo-700 bg-indigo-50/5 uppercase">{String(o.MAQUINA || o.RECURSO || '—')}</td>
                               <td className="px-3 py-2 border-r border-white/10 font-mono text-blue-700 text-center">{eng.indivMin.toFixed(2)}</td>
                               <td className="px-3 py-2 border-r border-white/10 font-mono text-amber-700 text-center">{eng.hours.toFixed(2)}</td>
