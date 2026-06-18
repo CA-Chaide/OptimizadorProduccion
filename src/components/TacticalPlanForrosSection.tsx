@@ -65,7 +65,7 @@ interface WorkstationConfig {
   isNightActive: boolean;
 }
 
-const MachineCard = ({ 
+const MachineCard = React.memo(({ 
   puestoName, 
   small = false, 
   orders, 
@@ -88,15 +88,26 @@ const MachineCard = ({
 }) => {
   const hrCode = mapToHojaRuta(puestoName).trim().toUpperCase();
   
-  const filteredOrders = orders.filter(o => {
-    const orderHR = String(o['MAQUINA'] || o['Maquina'] || '').trim().toUpperCase();
-    return orderHR === hrCode;
-  });
+  // MEMOIZAR: Cálculos solo se hacen cuando los datos cambien realmente
+  const { filteredOrders, totalTimeHours, utilization, isOverloaded, capacityHours } = useMemo(() => {
+    const filtered = orders.filter(o => {
+      const orderHR = String(o['MAQUINA'] || o['Maquina'] || '').trim().toUpperCase();
+      return orderHR === hrCode;
+    });
 
-  const totalTimeHours = filteredOrders.reduce((sum, o) => sum + calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0), o), 0) / 3600;
-  const capacityHours = (config.isDayActive ? horasNetasDiurnas : 0) + (config.isNightActive ? horasNetasNocturnas : 0);
-  const utilization = capacityHours > 0 ? (totalTimeHours / capacityHours) * 100 : 0;
-  const isOverloaded = utilization > 100;
+    const totalSeconds = filtered.reduce((sum, o) => sum + calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0), o), 0);
+    const totalHours = totalSeconds / 3600;
+    const capacity = (config.isDayActive ? horasNetasDiurnas : 0) + (config.isNightActive ? horasNetasNocturnas : 0);
+    const util = capacity > 0 ? (totalHours / capacity) * 100 : 0;
+    
+    return {
+      filteredOrders: filtered,
+      totalTimeHours: totalHours,
+      utilization: util,
+      isOverloaded: util > 100,
+      capacityHours: capacity
+    };
+  }, [orders, hrCode, calculateProductionTime, config.isDayActive, config.isNightActive, horasNetasDiurnas, horasNetasNocturnas]);
 
   return (
     <div className={cn(
@@ -210,7 +221,14 @@ const MachineCard = ({
       </div>
     </div>
   );
-};
+}, (prevProps, nextProps) => {
+  // Custom equality check - re-render solo si estas props cambian
+  return prevProps.puestoName === nextProps.puestoName &&
+    prevProps.small === nextProps.small &&
+    prevProps.config === nextProps.config &&
+    prevProps.horasNetasDiurnas === nextProps.horasNetasDiurnas &&
+    prevProps.horasNetasNocturnas === nextProps.horasNetasNocturnas;
+});
 
 export const TacticalPlanForrosSection: React.FC = () => {
   const { addNotification } = useAppContext();
@@ -233,12 +251,43 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [isLoadingTiempos, setIsLoadingTiempos] = useState(false);
   const [bomDownloadProgress, setBomDownloadProgress] = useState(0);
   
+  // Lazy loading flags y caches de optimización
+  const [loadedTabs, setLoadedTabs] = useState<Set<string>>(new Set(['resumen-produccion', 'acolchado-tapas', 'bandas', 'interiores-corte', 'forros', 'personal-turnos']));
+  const hojaRutaCacheRef = React.useRef<Record<string, string>>({});
+  const kpiIndexRef = React.useRef<Record<string, any>>({});
+  const tiemposIndexRef = React.useRef<Record<string, any>>({});
+  const [dataReady, setDataReady] = useState(false);
+  
   const [jornadaDiurnaSel, setJornadaDiurnaSel] = useState("8.75");
   const [jornadaNocturnaSel, setJornadaNocturnaSel] = useState("0");
   const [workstationConfigs, setWorkstationConfigs] = useState<Record<string, WorkstationConfig>>({});
 
   const [targetDate1000, setTargetDate1000] = useState<string>("");
   const [targetDate2000, setTargetDate2000] = useState<string>("");
+
+  // Crear índices para búsquedas rápidas
+  useEffect(() => {
+    if (kpiMaestroData.length > 0) {
+      const newIndex: Record<string, any> = {};
+      kpiMaestroData.forEach(kpi => {
+        const key = `${String(kpi.CodigoMaterial || '').trim()}|${String(kpi.HRUTA || '').toUpperCase().trim()}`;
+        newIndex[key] = kpi;
+      });
+      kpiIndexRef.current = newIndex;
+    }
+  }, [kpiMaestroData]);
+  
+  useEffect(() => {
+    if (tiemposProduccion.length > 0) {
+      const newIndex: Record<string, any> = {};
+      tiemposProduccion.forEach(t => {
+        const key = String(t.CodMaterial || t.Material || '').trim();
+        if (!newIndex[key]) newIndex[key] = [];
+        newIndex[key].push(t);
+      });
+      tiemposIndexRef.current = newIndex;
+    }
+  }, [tiemposProduccion]);
 
   useEffect(() => {
     setIsMounted(true);
@@ -254,41 +303,53 @@ export const TacticalPlanForrosSection: React.FC = () => {
     const pn = String(puestoName || '').toUpperCase().trim();
     if (!pn || pn === '—' || pn === 'NULL') return '';
     
-    if (kpiMaestroData && kpiMaestroData.length > 0) {
-      const matchByCategory = kpiMaestroData.find(k => 
-        String(k.Categoria || '').toUpperCase().trim() === pn
-      );
-      if (matchByCategory && matchByCategory.HRUTA) return matchByCategory.HRUTA;
-
-      const matchByHR = kpiMaestroData.find(k => 
-        String(k.HRUTA || '').toUpperCase().includes(pn)
-      );
-      if (matchByHR && matchByHR.HRUTA) return matchByHR.HRUTA;
+    // CACHE: Verificar si ya fue calculado
+    if (hojaRutaCacheRef.current[pn]) {
+      return hojaRutaCacheRef.current[pn];
     }
-
-    if (pn === 'ACOLCHADORA09') return 'HR-ACH09';
-    if (pn === 'COSEDORA-ACH02') return 'HR-PEF02';
-    if (pn === 'COSEDORA-ACH08') return 'HR-PEF08';
-    if (pn === 'BORDADORA-BANDA01') return 'HR-BO01';
-    if (pn.includes('FORRO-COLCHONES')) return 'HR-FORRO';
-
-    const matchEns = tiemposProduccion.find(t => {
-      const tp = String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').toUpperCase().trim();
-      return tp === pn;
-    });
-
-    if (matchEns) {
-      const hr = String(matchEns.HojaRuta || matchEns['HOJA DE RUTA'] || '').trim();
-      if (hr && hr.startsWith('HR-')) return hr;
-    }
-
-    const numMatch = pn.match(/\d+/);
-    const num = numMatch ? numMatch[0].padStart(2, '0') : '';
-    if (pn.includes('COSEDORA') || pn.includes('PEGADORA') || pn.includes('PEF')) return `HR-PEF${num}`;
-    if (pn.includes('ACOLCHADORA') || pn.includes('ACH')) return `HR-ACH${num}`;
     
-    return pn.startsWith('HR-') ? pn : `HR-${pn}`;
-  }, [tiemposProduccion, kpiMaestroData]);
+    let result = '';
+    
+    // Mapeo hardcodeado (búsqueda O(1))
+    if (pn === 'ACOLCHADORA09') result = 'HR-ACH09';
+    else if (pn === 'COSEDORA-ACH02') result = 'HR-PEF02';
+    else if (pn === 'COSEDORA-ACH08') result = 'HR-PEF08';
+    else if (pn === 'BORDADORA-BANDA01') result = 'HR-BO01';
+    else if (pn.includes('FORRO-COLCHONES')) result = 'HR-FORRO';
+    
+    // Si no encontró en hardcoding, buscar en índice de tiempos (O(1) con índice)
+    if (!result && tiemposIndexRef.current[pn]) {
+      const tiemposList = tiemposIndexRef.current[pn];
+      if (Array.isArray(tiemposList) && tiemposList.length > 0) {
+        const hr = String(tiemposList[0].HojaRuta || tiemposList[0]['HOJA DE RUTA'] || '').trim();
+        if (hr && hr.startsWith('HR-')) result = hr;
+      }
+    }
+    
+    // Si aún no, buscar en KPI index por categoría
+    if (!result) {
+      for (const key in kpiIndexRef.current) {
+        const kpi = kpiIndexRef.current[key];
+        if (String(kpi.Categoria || '').toUpperCase().trim() === pn) {
+          result = kpi.HRUTA;
+          break;
+        }
+      }
+    }
+    
+    // Patrón de generación si no encontró
+    if (!result) {
+      const numMatch = pn.match(/\d+/);
+      const num = numMatch ? numMatch[0].padStart(2, '0') : '';
+      if (pn.includes('COSEDORA') || pn.includes('PEGADORA') || pn.includes('PEF')) result = `HR-PEF${num}`;
+      else if (pn.includes('ACOLCHADORA') || pn.includes('ACH')) result = `HR-ACH${num}`;
+      else result = pn.startsWith('HR-') ? pn : `HR-${pn}`;
+    }
+    
+    // CACHE: Guardar resultado para próximas llamadas
+    hojaRutaCacheRef.current[pn] = result;
+    return result;
+  }, []); // Sin dependencias - usa refs que se actualizan independientemente
 
   useEffect(() => {
     if (isMounted) {
@@ -407,16 +468,22 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
   }, [addNotification]);
 
+  // LAZY LOADING: Solo cargar datos esenciales al iniciar
   useEffect(() => {
     if (isMounted) {
       fetchBaseData();
-      fetchOrdenesFert();
-      fetchKPIMaestro();
-      fetchOrdenesPrevisionales();
-      fetchListaMateriales();
-      fetchVersionesFabricacion();
+      fetchKPIMaestro();  // Necesario para cálculos
+      fetchOrdenesPrevisionales();  // Necesario para resumen
+      // fetchOrdenesFert, fetchListaMateriales, fetchVersionesFabricacion se cargan ON DEMAND
     }
-  }, [isMounted, fetchBaseData, fetchOrdenesFert, fetchKPIMaestro, fetchOrdenesPrevisionales, fetchListaMateriales, fetchVersionesFabricacion]);
+  }, [isMounted, fetchBaseData, fetchKPIMaestro, fetchOrdenesPrevisionales]);
+  
+  // Marcar que datos esenciales están listos
+  useEffect(() => {
+    if (tiemposProduccion.length > 0 && kpiMaestroData.length > 0 && ordenesPrevisionalesData.length > 0) {
+      setDataReady(true);
+    }
+  }, [tiemposProduccion, kpiMaestroData, ordenesPrevisionalesData]);
 
   const forrosGruposList = useMemo(() => {
     return grupos.filter(g => {
@@ -548,28 +615,33 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return Array.from(pSet).sort();
   }, [tiemposProduccion, filteredOrdenesPrevisionales, getResolvedPuesto]);
 
+  // ROMPER CICLO: Solo inicializar workstationConfigs UNA sola vez basado en uniquePuestos
   useEffect(() => {
-    if (uniquePuestos.length > 0 && Object.keys(workstationConfigs).length === 0) {
-      const initial: Record<string, WorkstationConfig> = {};
-      uniquePuestos.forEach(p => {
-        initial[p] = { machine: p, isDayActive: true, isNightActive: false };
+    if (dataReady && uniquePuestos.length > 0) {
+      setWorkstationConfigs(prev => {
+        if (Object.keys(prev).length > 0) return prev; // Ya inicializado, no hacer nada
+        
+        const initial: Record<string, WorkstationConfig> = {};
+        uniquePuestos.forEach(p => {
+          initial[p] = { machine: p, isDayActive: true, isNightActive: false };
+        });
+        return initial;
       });
-      setWorkstationConfigs(initial);
     }
-  }, [uniquePuestos, workstationConfigs]);
+  }, [dataReady, uniquePuestos]); // Removido workstationConfigs de dependencias
 
   const getKPITimeSecondsForOrder = useCallback((order: any) => {
-    if (!kpiMaestroData || kpiMaestroData.length === 0) return null;
     const materialCode = normalizeMaterialCode(order['MATERIAL'] || order['CodMaterial'] || '');
     const puestoName = getResolvedPuesto(order);
     const hojaRuta = mapToHojaRuta(puestoName);
     if (!materialCode || !hojaRuta) return null;
-    const match = kpiMaestroData.find(kpi => 
-      normalizeMaterialCode(kpi.CodigoMaterial) === materialCode && 
-      String(kpi.HRUTA).trim().toUpperCase() === hojaRuta.trim().toUpperCase()
-    );
+    
+    // ÍNDICE: Usar búsqueda O(1) en lugar de find() en array
+    const key = `${materialCode}|${hojaRuta.toUpperCase().trim()}`;
+    const match = kpiIndexRef.current[key];
+    
     return match ? Number(match.TPromedio) : null;
-  }, [kpiMaestroData, normalizeMaterialCode, getResolvedPuesto, mapToHojaRuta]);
+  }, [normalizeMaterialCode, getResolvedPuesto, mapToHojaRuta]);
 
   const calculateProductionTime = useCallback((material: string, quantity: number, order: any) => {
     if (!material) return 0;
@@ -577,15 +649,22 @@ export const TacticalPlanForrosSection: React.FC = () => {
     if (kpiSec !== null) {
       return (kpiSec * quantity);
     }
+    
+    // Usar índice para búsqueda rápida
     const normMaterial = normalizeMaterialCode(material);
-    const puesto = getResolvedPuesto(order);
-    const match = tiemposProduccion.find(t => {
-      const mNormInternal = normalizeMaterialCode(t.CodMaterial || t.Material || '');
-      const tPuesto = String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').trim().toUpperCase();
-      return mNormInternal === normMaterial && tPuesto === puesto;
-    }) || tiemposProduccion.find(t => normalizeMaterialCode(t.CodMaterial || t.Material || '') === normMaterial);
-    return match ? (Number(match.Tiempo || match.Tiempo_Min || 0) * 60 * quantity) : 0;
-  }, [tiemposProduccion, normalizeMaterialCode, getResolvedPuesto, getKPITimeSecondsForOrder]);
+    const timesList = tiemposIndexRef.current[normMaterial];
+    
+    if (timesList && Array.isArray(timesList)) {
+      const puesto = getResolvedPuesto(order);
+      const match = timesList.find(t => {
+        const tPuesto = String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').trim().toUpperCase();
+        return tPuesto === puesto;
+      }) || timesList[0];
+      return match ? (Number(match.Tiempo || match.Tiempo_Min || 0) * 60 * quantity) : 0;
+    }
+    
+    return 0;
+  }, [normalizeMaterialCode, getResolvedPuesto, getKPITimeSecondsForOrder]);
 
   const toggleWorkstationShift = (p: string, shift: 'day' | 'night') => {
     setWorkstationConfigs(prev => {
@@ -803,7 +882,26 @@ export const TacticalPlanForrosSection: React.FC = () => {
         </div>
       </div>
 
-      <Tabs defaultValue="acolchado-tapas" className="w-full">
+      <Tabs 
+        defaultValue="acolchado-tapas" 
+        className="w-full"
+        onValueChange={(tabValue) => {
+          // Lazy loading: Cargar datos solo cuando se abre un tab
+          if (!loadedTabs.has(tabValue)) {
+            const newLoaded = new Set(loadedTabs);
+            newLoaded.add(tabValue);
+            setLoadedTabs(newLoaded);
+            
+            if (tabValue === 'ordenes-fert' && ordenesFert.length === 0) {
+              fetchOrdenesFert();
+            } else if (tabValue === 'lista-materiales' && listaMaterialesData.length === 0) {
+              fetchListaMateriales();
+            } else if (tabValue === 'versiones-fabricacion' && versionesFabricacionData.length === 0) {
+              fetchVersionesFabricacion();
+            }
+          }
+        }}
+      >
         <TabsList className="flex w-full h-auto bg-white border border-slate-200 p-2.5 mb-10 rounded-[2rem] shadow-sm overflow-x-auto justify-start">
           <TabsTrigger value="resumen-produccion" className="px-7 py-4 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[11px] font-black uppercase tracking-widest text-slate-500">
             <BarChart3 className="w-4 h-4 mr-2" /> Resumen
