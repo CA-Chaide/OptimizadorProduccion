@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -78,6 +77,10 @@ const formatNum = (val: any, decimals: number = 2): string => {
     minimumFractionDigits: decimals, 
     maximumFractionDigits: decimals 
   });
+};
+
+const cleanCode = (code: any): string => {
+  return String(code || '').replace(/^0+/, '').trim();
 };
 
 const parseSAPDate = (dateStr: string): Date | null => {
@@ -255,17 +258,17 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return { code, desc, ...dims };
   };
 
-  const filterData = (data: any[], centro: string, applyDateFilter: boolean = true, ignoreRestrictions: boolean = false) => {
+  const filterData = (data: any[], centro: string, applyDateFilter: boolean = true) => {
     const relevantGroups = grupos.filter(g => String(g.centro).trim() === centro);
     const groupIds = relevantGroups.map(g => g.codigo_grupo);
     const groupRest = restriccionesArray.filter(r => groupIds.includes(r.codigo_grupo));
 
-    const respCodes = ignoreRestrictions ? [] : groupRest
+    const respCodes = groupRest
       .filter(r => r.nombre_restriccion === 'RESPCONTROLPROD')
       .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
       .filter(v => v !== '');
     
-    const almCodes = ignoreRestrictions ? [] : groupRest
+    const almCodes = groupRest
       .filter(r => r.nombre_restriccion === 'ALMACEN')
       .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
       .filter(v => v !== '');
@@ -275,11 +278,11 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       if (c !== centro) return false;
       
       const itemAlmValue = String(o.ALMACEN || o.Almacen || o.almacen || '').trim();
-      const matchAlm = ignoreRestrictions || almCodes.length === 0 || almCodes.includes(itemAlmValue);
+      const matchAlm = almCodes.length === 0 || almCodes.includes(itemAlmValue);
       if (!matchAlm) return false;
 
       const itemResp = String(o.RESPCONTROLPROD || o.RespControlProd || o.RESP_CONTROL_PROD || o.RespCtrlProd || '').trim();
-      const matchResp = ignoreRestrictions || respCodes.length === 0 || respCodes.includes(itemResp);
+      const matchResp = respCodes.length === 0 || respCodes.includes(itemResp);
       if (!matchResp) return false;
 
       if (applyDateFilter && selectedDates.size > 0) {
@@ -294,9 +297,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const provC1000 = useMemo(() => filterData(ordenes, '1000'), [ordenes, grupos, restriccionesArray, selectedDates]);
   const provC2000 = useMemo(() => filterData(ordenes, '2000'), [ordenes, grupos, restriccionesArray, selectedDates]);
   
-  // Órdenes FERT ahora respetan las restricciones de Responsable (ignoreRestrictions = false)
-  const fertC1000 = useMemo(() => filterData(ordenesFert, '1000', true, false), [ordenesFert, grupos, restriccionesArray, selectedDates]);
-  const fertC2000 = useMemo(() => filterData(ordenesFert, '2000', true, false), [ordenesFert, grupos, restriccionesArray, selectedDates]);
+  const fertC1000 = useMemo(() => filterData(ordenesFert, '1000'), [ordenesFert, grupos, restriccionesArray, selectedDates]);
+  const fertC2000 = useMemo(() => filterData(ordenesFert, '2000'), [ordenesFert, grupos, restriccionesArray, selectedDates]);
 
   const getCenterPlannedHoursTotal = (centro: string) => {
     const provData = centro === '1000' ? provC1000 : provC2000;
