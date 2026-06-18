@@ -255,40 +255,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return { code, desc, ...dims };
   };
 
-  const calculateEngineering = (o: any) => {
-    const info = extractMaterialInfo(o);
-    const qty = safeNum(o.CANTIDAD || o.CANTPROGRAMADA || 0);
-    const ancho = parseFloat(info.ancho) || 0;
-    const largo = parseFloat(info.largo) || 0;
-    const esp = parseFloat(info.esp) || 0;
-    const densV = parseFloat(info.dens) || 0;
-
-    const singleBlockH = (densV < 30) ? 103 : 85;
-    const stackedH = singleBlockH * 2;
-    const usefulH = Math.min(MAX_STACK_HEIGHT_CM, stackedH);
-    const sheetsPerStack = esp > 0 ? Math.floor(usefulH / esp) : 1;
-    const subblocks = sheetsPerStack > 0 ? Math.ceil(qty / sheetsPerStack) : 0;
-    const piezasPorLargoBloque = largo > 0 ? Math.floor(BLOCK_20M_CM / largo) : 0;
-    const blocks20m = piezasPorLargoBloque > 0 ? (subblocks * 2) / piezasPorLargoBloque : 0;
-    const sbPerLoad = ancho > 0 ? Math.floor(CIRCUMFERENCE / (ancho + EFFECTIVE_GAP_CM)) : 1;
-    const loads = sbPerLoad > 0 ? Math.ceil(subblocks / sbPerLoad) : 0;
-
-    const tCargaSec = loads * SECONDS_PER_LOAD_VUELTA; 
-    const sheetsPerRep = (esp > 10) ? 4 : 3;
-    const totalRepsDescarga = sheetsPerRep > 0 ? Math.ceil(qty / sheetsPerRep) : qty;
-    const tDescargaSec = totalRepsDescarga * SECONDS_PER_MANEUVER_DESC;
-
-    const matchTime = tiemposEnsamblado.find(t => String(t.CodMaterial).slice(-8) === info.code);
-    const sapSecPerUnit = safeNum(matchTime?.Tiempo || 0);
-    const totalSapSec = qty * sapSecPerUnit;
-
-    const totalTimeSec = tCargaSec + tDescargaSec + totalSapSec;
-    const hours = totalTimeSec / 3600;
-    const indivMin = qty > 0 ? (totalTimeSec / qty) / 60 : 0;
-
-    return { ...info, subblocks, sbPerLoad, blocks20m, loads, hours, indivMin, qty, tCargaSec, tDescargaSec, totalSapSec };
-  };
-
   const filterData = (data: any[], centro: string, applyDateFilter: boolean = true, ignoreRestrictions: boolean = false) => {
     const relevantGroups = grupos.filter(g => String(g.centro).trim() === centro);
     const groupIds = relevantGroups.map(g => g.codigo_grupo);
@@ -327,13 +293,49 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
   const provC1000 = useMemo(() => filterData(ordenes, '1000'), [ordenes, grupos, restriccionesArray, selectedDates]);
   const provC2000 = useMemo(() => filterData(ordenes, '2000'), [ordenes, grupos, restriccionesArray, selectedDates]);
-  const fertC1000 = useMemo(() => filterData(ordenesFert, '1000', true, true), [ordenesFert, grupos, restriccionesArray, selectedDates]);
-  const fertC2000 = useMemo(() => filterData(ordenesFert, '2000', true, true), [ordenesFert, grupos, restriccionesArray, selectedDates]);
+  
+  // Órdenes FERT ahora respetan las restricciones de Responsable (ignoreRestrictions = false)
+  const fertC1000 = useMemo(() => filterData(ordenesFert, '1000', true, false), [ordenesFert, grupos, restriccionesArray, selectedDates]);
+  const fertC2000 = useMemo(() => filterData(ordenesFert, '2000', true, false), [ordenesFert, grupos, restriccionesArray, selectedDates]);
 
   const getCenterPlannedHoursTotal = (centro: string) => {
     const provData = centro === '1000' ? provC1000 : provC2000;
     const fertData = centro === '1000' ? fertC1000 : fertC2000;
     return [...provData, ...fertData].reduce((sum, o) => sum + calculateEngineering(o).hours, 0);
+  };
+
+  const calculateEngineering = (o: any) => {
+    const info = extractMaterialInfo(o);
+    const qty = safeNum(o.CANTIDAD || o.CANTPROGRAMADA || 0);
+    const ancho = parseFloat(info.ancho) || 0;
+    const largo = parseFloat(info.largo) || 0;
+    const esp = parseFloat(info.esp) || 0;
+    const densV = parseFloat(info.dens) || 0;
+
+    const singleBlockH = (densV < 30) ? 103 : 85;
+    const stackedH = singleBlockH * 2;
+    const usefulH = Math.min(MAX_STACK_HEIGHT_CM, stackedH);
+    const sheetsPerStack = esp > 0 ? Math.floor(usefulH / esp) : 1;
+    const subblocks = sheetsPerStack > 0 ? Math.ceil(qty / sheetsPerStack) : 0;
+    const piezasPorLargoBloque = largo > 0 ? Math.floor(BLOCK_20M_CM / largo) : 0;
+    const blocks20m = piezasPorLargoBloque > 0 ? (subblocks * 2) / piezasPorLargoBloque : 0;
+    const sbPerLoad = ancho > 0 ? Math.floor(CIRCUMFERENCE / (ancho + EFFECTIVE_GAP_CM)) : 1;
+    const loads = sbPerLoad > 0 ? Math.ceil(subblocks / sbPerLoad) : 0;
+
+    const tCargaSec = loads * SECONDS_PER_LOAD_VUELTA; 
+    const sheetsPerRep = (esp > 10) ? 4 : 3;
+    const totalRepsDescarga = sheetsPerRep > 0 ? Math.ceil(qty / sheetsPerRep) : qty;
+    const tDescargaSec = totalRepsDescarga * SECONDS_PER_MANEUVER_DESC;
+
+    const matchTime = tiemposEnsamblado.find(t => String(t.CodMaterial).slice(-8) === info.code);
+    const sapSecPerUnit = safeNum(matchTime?.Tiempo || 0);
+    const totalSapSec = qty * sapSecPerUnit;
+
+    const totalTimeSec = tCargaSec + tDescargaSec + totalSapSec;
+    const hours = totalTimeSec / 3600;
+    const indivMin = qty > 0 ? (totalTimeSec / qty) / 60 : 0;
+
+    return { ...info, subblocks, sbPerLoad, blocks20m, loads, hours, indivMin, qty, tCargaSec, tDescargaSec, totalSapSec };
   };
 
   const defaultOpHour = useMemo(() => {
@@ -654,13 +656,14 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               <Card className="rounded-2xl border border-gray-100 shadow-md overflow-hidden bg-white">
                 <div className="overflow-x-auto">
                   <table className="min-w-full border-collapse text-center font-sans text-[9px]">
-                    <thead className="bg-gray-100 sticky top-0 z-10 text-slate-500 uppercase font-black tracking-tighter border-b border-gray-100">
+                    <thead className="bg-[#1e293b] text-white border-b border-gray-100 uppercase font-black tracking-widest text-[9px] sticky top-0 z-10">
                       <tr>
                         <th className="px-3 py-4 border-r border-gray-50">Orden</th>
                         <th className="px-3 py-4 border-r border-gray-50">Fecha</th>
                         <th className="px-3 py-4 border-r border-gray-50">Material</th>
                         <th className="px-3 py-4 border-r border-gray-50 text-left">Descripción</th>
                         <th className="px-3 py-4 border-r border-gray-100 font-black">Cant.</th>
+                        <th className="px-3 py-4 border-r border-gray-100 font-black text-indigo-700 bg-indigo-50/20">Responsable</th>
                         <th className="px-3 py-4 border-r border-gray-100 font-black text-indigo-700 bg-indigo-50/20">Máquina</th>
                         <th className="px-3 py-4 border-r border-gray-100 bg-blue-50/20 text-blue-900">T. INDIV. (min)</th>
                         <th className="px-3 py-4 border-r border-gray-100 bg-amber-50/50 text-amber-900">T. TOTAL (H)</th>
@@ -670,19 +673,23 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                     </thead>
                     <tbody className="divide-y divide-gray-50 font-bold">
                       {center.d.length === 0 ? (
-                        <tr><td colSpan={10} className="py-8 text-slate-300 font-bold uppercase italic">Sin órdenes registradas para los criterios de almacén y responsable aplicados</td></tr>
+                        <tr><td colSpan={11} className="py-8 text-slate-300 font-bold uppercase italic">Sin órdenes registradas para los criterios de almacén y responsable aplicados</td></tr>
                       ) : (
                         center.d.map((o, i) => {
                           const eng = calculateEngineering(o);
                           const dRaw = String(o.FECHAINICIO || o.FECHA || '—').trim();
                           const date = dRaw.includes('T') ? dRaw.split('T')[0] : dRaw;
+                          const matCode = cleanCode(eng.code);
                           return (
                             <tr key={i} className="hover:bg-gray-50/50">
                               <td className="px-3 py-2 text-slate-400 border-r border-gray-50">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
                               <td className="px-3 py-2 border-r border-gray-100 font-mono text-[8px] text-gray-400">{date}</td>
-                              <td className="px-3 py-2 font-mono text-primary border-r border-gray-50">{eng.code}</td>
+                              <td className="px-3 py-2 font-mono text-primary border-r border-gray-50">{matCode}</td>
                               <td className="px-3 py-2 text-left border-r border-gray-50 uppercase text-gray-500 max-w-[200px] truncate">{eng.desc}</td>
                               <td className="px-3 py-2 border-r border-gray-100 font-black text-gray-900 font-mono">{eng.qty.toLocaleString()}</td>
+                              <td className="px-3 py-2 border-r border-gray-50">
+                                <Badge variant="outline" className="text-[10px] font-black bg-blue-50 text-blue-700 border-blue-100">{String(o.RESPCONTROLPROD || o.RespControlProd || '—')}</Badge>
+                              </td>
                               <td className="px-3 py-2 border-r border-gray-100 font-black text-indigo-700 bg-indigo-50/5 uppercase">{String(o.MAQUINA || o.RECURSO || '—')}</td>
                               <td className="px-3 py-2 border-r border-gray-100 font-mono text-blue-700 text-center">{eng.indivMin.toFixed(2)}</td>
                               <td className="px-3 py-2 border-r border-gray-100 font-mono text-amber-700 text-center">{eng.hours.toFixed(2)}</td>
@@ -712,14 +719,14 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               <Card className="rounded-2xl border border-gray-100 shadow-md overflow-hidden bg-white">
                 <div className="overflow-x-auto">
                   <table className="min-w-full border-collapse text-center font-sans text-[9px]">
-                    <thead className="bg-gray-100 sticky top-0 z-10 text-slate-500 uppercase font-black tracking-tighter border-b border-gray-100">
+                    <thead className="bg-[#1e293b] text-white border-b border-gray-100 uppercase font-black tracking-widest text-[9px] sticky top-0 z-10">
                       <tr>
-                        <th className="px-3 py-4 border-r border-gray-50">Orden</th>
-                        <th className="px-3 py-4 border-r border-gray-50">Fecha</th>
-                        <th className="px-3 py-4 border-r border-gray-50">Material</th>
-                        <th className="px-3 py-4 border-r border-gray-50 text-left">Descripción</th>
-                        <th className="px-3 py-4 border-r border-white/10 font-black">Cant.</th>
-                        <th className="px-3 py-4 border-r border-white/10 font-black text-indigo-700 bg-indigo-50/20">Responsable</th>
+                        <th className="px-3 py-4 border-r border-white/5">Orden</th>
+                        <th className="px-3 py-4 border-r border-white/5">Fecha</th>
+                        <th className="px-3 py-4 border-r border-white/5">Material</th>
+                        <th className="px-3 py-4 border-r border-white/10 text-left">Descripción</th>
+                        <th className="px-3 py-4 border-r border-white/5 font-black">Cant.</th>
+                        <th className="px-3 py-4 border-r border-white/5 font-black text-indigo-700 bg-indigo-50/20">Responsable</th>
                         <th className="px-3 py-4 border-r border-white/10 font-black text-indigo-700 bg-indigo-50/20">Máquina</th>
                         <th className="px-3 py-4 border-r border-white/10 bg-blue-500/10 text-blue-900">T. INDIV. (min)</th>
                         <th className="px-3 py-4 border-r border-white/10 bg-amber-500/10 text-amber-900">T. TOTAL (H)</th>
@@ -729,17 +736,18 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                     </thead>
                     <tbody className="divide-y divide-gray-50 font-bold">
                       {center.d.length === 0 ? (
-                        <tr><td colSpan={11} className="py-8 text-slate-300 font-bold uppercase italic">Sin órdenes FERT registradas en este centro para las fechas seleccionadas</td></tr>
+                        <tr><td colSpan={11} className="py-8 text-slate-300 font-bold uppercase italic">Sin órdenes FERT registradas en este centro para los criterios aplicados</td></tr>
                       ) : (
                         center.d.map((o, i) => {
                           const eng = calculateEngineering(o);
                           const dRaw = String(o.FECHA || o.FECHAINICIO || '—').trim();
                           const date = dRaw.includes('T') ? dRaw.split('T')[0] : dRaw;
+                          const matCode = cleanCode(eng.code);
                           return (
                             <tr key={i} className="hover:bg-gray-50/50">
                               <td className="px-3 py-2 text-slate-400 border-r border-gray-50">{o.ORDEN || '—'}</td>
                               <td className="px-3 py-2 border-r border-gray-100 font-mono text-[8px] text-gray-400">{date}</td>
-                              <td className="px-3 py-2 font-mono text-primary border-r border-gray-50">{eng.code}</td>
+                              <td className="px-3 py-2 font-mono text-primary border-r border-gray-50">{matCode}</td>
                               <td className="px-3 py-2 text-left border-r border-gray-50 uppercase text-gray-500 max-w-[200px] truncate">{eng.desc}</td>
                               <td className="px-3 py-2 border-r border-white/10 font-black text-gray-900 font-mono">{eng.qty.toLocaleString()}</td>
                               <td className="px-3 py-2 border-r border-white/10">
