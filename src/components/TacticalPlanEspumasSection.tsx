@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -19,7 +18,8 @@ import {
   ShoppingCart,
   Box,
   TrendingUp,
-  Info
+  Info,
+  MapPin
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -63,14 +63,12 @@ const parseSAPDate = (dateStr: string): Date | null => {
   
   if (str.includes('/')) {
     const [datePart, timePart] = str.split(' ');
-    if (!datePart) return null;
     const dateParts = datePart.split('/');
     if (dateParts.length < 3) return null;
     const [day, month, year] = dateParts.map(Number);
     const [hours, minutes] = timePart ? timePart.split(':').map(Number) : [0, 0];
     return new Date(year, month - 1, day, hours, minutes);
   }
-  
   const isoDate = new Date(str);
   return isNaN(isoDate.getTime()) ? null : isoDate;
 };
@@ -81,6 +79,10 @@ const calculateMTTOCapacity = (start: string, end: string): string => {
   if (!s || !e) return '0.0';
   const diffHrs = (e.getTime() - s.getTime()) / (1000 * 60 * 60);
   return Math.max(0, diffHrs).toFixed(1);
+};
+
+const getResp = (o: any): string => {
+  return String(o.RESPCONTROLPROD || o.RespControlProd || o.RESP_CONTROL_PROD || o.resp_control_prod || '—').trim();
 };
 
 // Constantes de Ingeniería Planta v2.2
@@ -123,7 +125,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const [ordenesFert, setOrdersFert] = useState<any[]>([]);
   const [tiemposEnsamblado, setTiemposEnsamblado] = useState<any[]>([]);
   const [mantenimientos, setMantenimientos] = useState<any[]>([]);
-  const [habilidades, setHabilidades] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
   const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set());
@@ -201,13 +202,12 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       setGrupos(filteredGroups);
       const gIds = filteredGroups.map(g => g.codigo_grupo);
 
-      const [restrs, provs, ferts, times, maint, habs] = await Promise.all([
+      const [restrs, provs, ferts, times, maint] = await Promise.all([
         restriccionService.getAll(),
         serviciosService.OrdenesProvisionalesPaginados(1, 20000),
         serviciosService.getOrdenesFert(1, 20000),
         serviciosService.getTiemposEnsamblado(1, 15000),
-        serviciosService.ListarMantenimientoPreventivosProgramados().catch(() => ({ data: [] })),
-        serviciosService.getHabilidadesOperadorPorEstacion().catch(() => ({ data: [] }))
+        serviciosService.ListarMantenimientoPreventivosProgramados().catch(() => ({ data: [] }))
       ]);
 
       setRestriccionesArray((restrs.data || []).filter((r: any) => gIds.includes(r.codigo_grupo)));
@@ -215,7 +215,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       setOrdersFert(ferts.data?.data || ferts.data || []);
       setTiemposEnsamblado(times.data?.data || times.data || []);
       setMantenimientos(maint.data || []);
-      setHabilidades(Array.isArray(habs.data) ? habs.data : []);
       
     } catch (e) {
       console.error('Error init TacticalPlanEspumas:', e);
@@ -241,7 +240,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       }, 0);
   };
 
-  const filterData = (data: any[], centro: string, tabId: string) => {
+  const filterData = (data: any[], centro: string, applyDateFilter: boolean = true, ignoreGroupFilters: boolean = false) => {
     const relevantGroups = grupos.filter(g => String(g.centro).trim() === centro);
     const groupIds = relevantGroups.map(g => g.codigo_grupo);
     const groupRest = restriccionesArray.filter(r => groupIds.includes(r.codigo_grupo));
@@ -255,32 +254,35 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const itemCentro = String(o.CENTRO || o.Centro || '').trim();
       if (itemCentro !== centro) return false;
       
-      // FILTRO ALMACÉN PARA PROVISIONALES
-      if (tabId === 'ordenes') {
-        const itemAlm = String(o.ALMACEN || o.Almacen || '').trim();
-        if (centro === '1000' && itemAlm !== '1006') return false;
-        if (centro === '2000' && itemAlm !== '2006') return false;
-        
-        if (respCodes.length > 0) {
-          const itemResp = String(o.RESPCONTROLPROD || o.RespControlProd || '').trim();
-          if (!respCodes.includes(itemResp)) return false;
-        }
+      const dFull = String(o.FECHAINICIO || o.FECHA || '').trim();
+      const itemDate = dFull.includes('T') ? dFull.split('T')[0] : dFull;
+      const matchDate = selectedDates.size === 0 || selectedDates.has(itemDate);
+
+      // Si es FERT y pedimos ignorar filtros de grupo (auditoría total)
+      if (ignoreGroupFilters) {
+        return matchDate;
       }
 
-      if (selectedDates.size > 0) {
-        const dFull = String(o.FECHAINICIO || o.FECHA || '').trim();
-        const itemDate = dFull.includes('T') ? dFull.split('T')[0] : dFull;
-        if (!selectedDates.has(itemDate)) return false;
+      // FILTRO ALMACÉN Y RESPONSABLE PARA PROVISIONALES
+      const itemAlm = String(o.ALMACEN || o.Almacen || '').trim();
+      const matchAlm = (centro === '1000' && itemAlm === '1006') || (centro === '2000' && itemAlm === '2006');
+      if (!matchAlm) return false;
+
+      if (respCodes.length > 0) {
+        const itemResp = getResp(o);
+        if (!respCodes.includes(itemResp)) return false;
       }
-      return true;
+
+      return matchDate;
     });
   };
 
-  const provC1000 = useMemo(() => filterData(ordenes, '1000', 'ordenes'), [ordenes, grupos, restriccionesArray, selectedDates]);
-  const provC2000 = useMemo(() => filterData(ordenes, '2000', 'ordenes'), [ordenes, grupos, restriccionesArray, selectedDates]);
+  const provC1000 = useMemo(() => filterData(ordenes, '1000'), [ordenes, grupos, restriccionesArray, selectedDates]);
+  const provC2000 = useMemo(() => filterData(ordenes, '2000'), [ordenes, grupos, restriccionesArray, selectedDates]);
   
-  const fertC1000 = useMemo(() => filterData(ordenesFert, '1000', 'ordenesFert'), [ordenesFert, selectedDates]);
-  const fertC2000 = useMemo(() => filterData(ordenesFert, '2000', 'ordenesFert'), [ordenesFert, selectedDates]);
+  // Órdenes FERT ignoran filtros de grupo para visualización completa
+  const fertC1000 = useMemo(() => filterData(ordenesFert, '1000', true, true), [ordenesFert, selectedDates]);
+  const fertC2000 = useMemo(() => filterData(ordenesFert, '2000', true, true), [ordenesFert, selectedDates]);
 
   const defaultOpHour = useMemo(() => {
     const clGroup = grupos.find(g => g.nombre_grupo.toLowerCase().includes('corte y laminado'));
@@ -403,19 +405,19 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
                 <Card className="rounded-3xl border border-gray-100 shadow-2xl overflow-hidden bg-white">
                   <table className="w-full border-collapse font-sans text-[10px]">
-                    <thead className="bg-[#f8fafc] text-slate-400 uppercase font-black tracking-tighter border-b border-gray-100">
+                    <thead className="bg-[#f8fafc] text-slate-400 uppercase font-black tracking-tighter border-b border-gray-100 text-center">
                       <tr>
                         <th className="px-6 py-5 text-left w-56">Máquina / Recurso</th>
-                        <th className="px-2 py-5 border-r border-gray-50 text-center">T1 (H)</th>
-                        <th className="px-2 py-5 border-r border-gray-50 text-center">T2 (H)</th>
-                        <th className="px-3 py-5 border-r border-gray-50 text-center">Paro T1</th>
-                        <th className="px-3 py-5 border-r border-gray-50 text-center">Paro T2</th>
-                        <th className="px-3 py-5 border-r border-gray-50 text-center">MTTO SAP</th>
-                        <th className="px-4 py-5 bg-indigo-50 text-indigo-900 border-r border-gray-100 text-center">Disp. Neta (H)</th>
-                        <th className="px-4 py-5 text-blue-600 bg-blue-50/20 border-r border-gray-50 text-center">Total Ord_Prov</th>
-                        <th className="px-4 py-5 bg-[#0f172a] text-white text-center">% Ocup. Prov</th>
-                        <th className="px-4 py-5 text-teal-600 bg-teal-50/20 border-r border-gray-50 text-center">Total Ord_Fert</th>
-                        <th className="px-4 py-5 bg-[#0f172a] text-white text-center">% Ocup. Fert</th>
+                        <th className="px-2 py-5 border-r border-gray-50 w-24">T1 (H)</th>
+                        <th className="px-2 py-5 border-r border-gray-50 w-24">T2 (H)</th>
+                        <th className="px-3 py-5 border-r border-gray-50">Paro T1</th>
+                        <th className="px-3 py-5 border-r border-gray-50">Paro T2</th>
+                        <th className="px-3 py-5 border-r border-gray-50">MTTO SAP</th>
+                        <th className="px-4 py-5 bg-indigo-50 text-indigo-900 border-r border-gray-100">Disp. Neta (H)</th>
+                        <th className="px-4 py-5 text-blue-600 bg-blue-50/20 border-r border-gray-50">Total Ord_Prov</th>
+                        <th className="px-4 py-5 bg-[#0f172a] text-white">Ocup. Prov %</th>
+                        <th className="px-4 py-5 text-teal-600 bg-teal-50/20 border-r border-gray-50">Total Ord_Fert</th>
+                        <th className="px-4 py-5 bg-[#0f172a] text-white">Ocup. Fert %</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50 font-bold">
@@ -425,12 +427,12 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         const mtto = getMachineMTTO(m.code);
                         const netAvailable = (hT1 + hT2 - PARO_PROG_T1 - PARO_PROG_T2 - mtto) * m.rendimiento;
                         return (
-                          <tr key={m.code} className="hover:bg-slate-50/80 transition-colors border-b border-gray-50">
+                          <tr key={m.code} className="hover:bg-slate-50/80 transition-colors border-b border-gray-50 text-center">
                             <td className="px-6 py-4 text-left">
                               <div className="text-indigo-900 font-black text-xs uppercase">{m.name}</div>
                               <div className="text-[8px] text-gray-400 font-bold">{m.code}</div>
                             </td>
-                            <td className="px-2 py-4 text-center">
+                            <td className="px-2 py-4">
                                 <select 
                                   className="bg-slate-100 border border-slate-200 rounded-lg px-1 py-0.5 text-[9px] font-black w-14 text-center"
                                   value={hT1}
@@ -439,7 +441,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                                   {Array.from({length: 14}, (_, i) => <option key={i} value={i}>{i}h</option>)}
                                 </select>
                             </td>
-                            <td className="px-2 py-4 text-center">
+                            <td className="px-2 py-4">
                                 <select 
                                   className="bg-slate-100 border border-slate-200 rounded-lg px-1 py-0.5 text-[9px] font-black w-14 text-center"
                                   value={hT2}
@@ -448,28 +450,28 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                                   {Array.from({length: 14}, (_, i) => <option key={i} value={i}>{i}h</option>)}
                                 </select>
                             </td>
-                            <td className="px-3 py-4 text-center text-slate-300 font-mono">{PARO_PROG_T1}</td>
-                            <td className="px-3 py-4 text-center text-slate-300 font-mono">{PARO_PROG_T2}</td>
-                            <td className={cn("px-3 py-4 text-center font-mono", mtto > 0 ? "text-red-500 bg-red-50/30" : "text-slate-100")}>{mtto > 0 ? `${mtto}h` : '—'}</td>
-                            <td className="px-4 py-4 text-center font-mono font-black text-indigo-700 bg-indigo-50/20">{netAvailable.toFixed(1)}</td>
-                            <td className="px-4 py-4 text-center text-slate-200 font-mono">—</td>
-                            <td className="px-4 py-4 text-center text-slate-200 font-mono">—</td>
-                            <td className="px-4 py-4 text-center text-slate-200 font-mono">—</td>
-                            <td className="px-4 py-4 text-center text-slate-200 font-mono">—</td>
+                            <td className="px-3 py-4 text-slate-300 font-mono">{PARO_PROG_T1}</td>
+                            <td className="px-3 py-4 text-slate-300 font-mono">{PARO_PROG_T2}</td>
+                            <td className={cn("px-3 py-4 font-mono", mtto > 0 ? "text-red-500 bg-red-50/30" : "text-slate-100")}>{mtto > 0 ? `${mtto}h` : '—'}</td>
+                            <td className="px-4 py-4 font-mono font-black text-indigo-700 bg-indigo-50/20">{netAvailable.toFixed(1)}</td>
+                            <td className="px-4 py-4 text-slate-300 font-mono">—</td>
+                            <td className="px-4 py-4 text-slate-300 font-mono">—</td>
+                            <td className="px-4 py-4 text-slate-300 font-mono">—</td>
+                            <td className="px-4 py-4 text-slate-300 font-mono">—</td>
                           </tr>
                         );
                       })}
                     </tbody>
                     <tfoot className="bg-[#1e293b] text-white font-black uppercase text-[10px]">
-                      <tr>
+                      <tr className="text-center">
                         <td colSpan={6} className="px-6 py-4 text-right tracking-widest border-r border-white/5">TOTAL PLANTA {center.label}</td>
-                        <td className="px-4 py-4 text-center bg-indigo-900 border-r border-white/5">{totals.disp.toFixed(1)}h</td>
-                        <td className="px-4 py-4 text-center bg-blue-900 border-r border-white/5">{plantLoadProv.toFixed(1)}h</td>
-                        <td className={cn("px-4 py-4 text-center bg-black/40 border-r border-white/5", (plantLoadProv / totals.disp * 100) > 100 ? "text-red-400" : "text-emerald-400")}>
+                        <td className="px-4 py-4 bg-indigo-900 border-r border-white/5 font-mono">{totals.disp.toFixed(1)}h</td>
+                        <td className="px-4 py-4 bg-blue-900/50 border-r border-white/5 font-mono text-blue-200">{plantLoadProv.toFixed(1)}h</td>
+                        <td className={cn("px-4 py-4 bg-black/40 border-r border-white/5 font-mono", (plantLoadProv / totals.disp * 100) > 100 ? "text-red-400" : "text-emerald-400")}>
                           {totals.disp > 0 ? ((plantLoadProv / totals.disp) * 100).toFixed(0) : 0}%
                         </td>
-                        <td className="px-4 py-4 text-center bg-teal-900 border-r border-white/5">{plantLoadFert.toFixed(1)}h</td>
-                        <td className={cn("px-4 py-4 text-center bg-black/40", (plantLoadFert / totals.disp * 100) > 100 ? "text-red-400" : "text-emerald-400")}>
+                        <td className="px-4 py-4 bg-teal-900/50 border-r border-white/5 font-mono text-teal-200">{plantLoadFert.toFixed(1)}h</td>
+                        <td className={cn("px-4 py-4 bg-black/40 font-mono", (plantLoadFert / totals.disp * 100) > 100 ? "text-red-400" : "text-emerald-400")}>
                           {totals.disp > 0 ? ((plantLoadFert / totals.disp) * 100).toFixed(0) : 0}%
                         </td>
                       </tr>
@@ -501,9 +503,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="mantenimiento" className="animate-in fade-in duration-300">
-          <Card className="rounded-3xl border border-gray-100 shadow-xl overflow-hidden bg-white">
-            <div className="overflow-x-auto max-h-[600px] relative text-left">
-              <table className="w-full border-collapse font-sans text-[10px] text-center">
+          <Card className="rounded-3xl border border-gray-100 shadow-xl overflow-hidden bg-white text-center">
+            <div className="overflow-x-auto max-h-[600px] relative">
+              <table className="w-full border-collapse font-sans text-[10px]">
                 <thead className="bg-[#fef3c7] sticky top-0 z-10 text-amber-900 uppercase font-black border-b border-amber-200">
                   <tr>
                     <th className="px-6 py-5 border-r border-amber-100">PLANTA</th>
@@ -574,12 +576,12 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                               <td className="px-6 py-4 font-mono font-black text-red-600 border-r border-gray-50">{matCode}</td>
                               <td className="px-6 py-4 text-left border-r border-gray-100 text-slate-600 uppercase truncate max-w-[200px]">{eng.desc}</td>
                               <td className="px-6 py-4 font-black text-slate-900 border-r border-gray-50 font-mono">{eng.qty}</td>
-                              <td className="px-6 py-4 border-r border-gray-50"><Badge variant="outline" className="text-[8px] bg-blue-50 text-blue-700">{String(o.RESPCONTROLPROD || '—')}</Badge></td>
+                              <td className="px-6 py-4 border-r border-gray-50"><Badge variant="outline" className="text-[8px] bg-blue-50 text-blue-700">{getResp(o)}</Badge></td>
                               <td className="px-6 py-4 font-bold text-slate-400 border-r border-gray-50 uppercase">{o.MAQUINA || '—'}</td>
                               <td className="px-6 py-4 border-r border-white/10 text-blue-700 bg-blue-50/10 font-mono">{eng.indivMin.toFixed(2)}</td>
                               <td className="px-6 py-4 border-r border-white/10 text-amber-700 bg-amber-50/10 font-mono">{eng.hours.toFixed(2)}</td>
-                              <td className="px-6 py-4 border-r border-gray-50 text-red-600 bg-red-50/20 font-mono">{eng.loads}</td>
-                              <td className="px-6 py-4 text-slate-200">{o.ALMACEN || '—'}</td>
+                              <td className="px-6 py-4 border-r border-gray-50 text-red-600 bg-red-50/20 font-mono">{Math.ceil(eng.loads)}</td>
+                              <td className="px-6 py-4 text-slate-200">{o.ALMACEN || o.Almacen || '—'}</td>
                             </tr>
                           );
                         })}
@@ -591,54 +593,49 @@ export const TacticalPlanEspumasSection: React.FC = () => {
            ))}
         </TabsContent>
 
-        <TabsContent value="ordenesFert" className="space-y-10 animate-in fade-in duration-300 text-center">
-           {[ {t: 'UIO 1000 - Órdenes FERT', d: fertC1000}, {t: 'GYE 2000 - Órdenes FERT', d: fertC2000} ].map((center, i) => (
-             <div key={i} className="space-y-4">
-                <h3 className="text-[11px] font-black uppercase text-slate-400 tracking-widest text-left px-2">{center.t} ({center.d.length} registros)</h3>
+        <TabsContent value="ordenesFert" className="space-y-10 animate-in fade-in duration-300">
+           {[ {t: 'UIO 1000 - Órdenes FERT', d: fertC1000}, {t: 'GYE 2000 - Órdenes FERT', d: fertC2000} ].map((center, idx) => (
+             <div key={idx} className="space-y-4">
+                <h3 className="text-[11px] font-black uppercase text-gray-400 tracking-widest text-left px-2">{center.t} ({center.d.length} registros)</h3>
                 <Card className="rounded-[2.5rem] border border-gray-100 shadow-xl overflow-hidden bg-white">
                   <div className="overflow-x-auto">
                     <table className="w-full text-center font-sans text-[10px]">
                       <thead className="bg-[#1e293b] text-white uppercase font-black border-b border-white/5">
                         <tr>
-                          <th className="px-4 py-5 border-r border-white/5">Orden</th>
-                          <th className="px-4 py-5 border-r border-white/5">Fecha</th>
-                          <th className="px-4 py-5 border-r border-white/5">Material</th>
+                          <th className="px-6 py-5 border-r border-white/5">Orden</th>
+                          <th className="px-6 py-5 border-r border-white/5">Fecha</th>
+                          <th className="px-6 py-5 border-r border-white/5">Material</th>
                           <th className="px-6 py-5 border-r border-white/10 text-left">Descripción</th>
-                          <th className="px-3 py-5 border-r border-white/5">Categoría</th>
-                          <th className="px-4 py-5 border-r border-white/5">Cant.</th>
-                          <th className="px-3 py-5 border-r border-white/5">UM</th>
-                          <th className="px-4 py-5 border-r border-white/5">Resp.</th>
-                          <th className="px-4 py-5 border-r border-white/5">Máquina</th>
-                          <th className="px-4 py-5 border-r border-white/10 text-blue-200 bg-blue-500/10">T. INDIV. (min)</th>
-                          <th className="px-4 py-5 border-r border-white/10 text-amber-200 bg-amber-500/10">T. TOTAL (H)</th>
-                          <th className="px-4 py-5 border-r border-white/5 text-red-400 bg-red-500/10">CARGAS</th>
-                          <th className="px-4 py-5">Almacén</th>
+                          <th className="px-6 py-5 border-r border-white/5">Categoría</th>
+                          <th className="px-6 py-5 border-r border-white/5">Cant.</th>
+                          <th className="px-4 py-5 border-r border-white/5">UM</th>
+                          <th className="px-6 py-5 border-r border-white/5">Resp.</th>
+                          <th className="px-6 py-5 border-r border-white/5">Máquina</th>
+                          <th className="px-6 py-5 border-r border-white/10 text-blue-200 bg-blue-500/10">T. INDIV. (min)</th>
+                          <th className="px-6 py-5 border-r border-white/10 text-amber-200 bg-amber-500/10">T. TOTAL (H)</th>
+                          <th className="px-6 py-5 border-r border-white/5 text-red-400 bg-red-500/10">CARGAS</th>
+                          <th className="px-6 py-5">Alm.</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-50 font-bold">
-                        {center.d.map((o, idx) => {
+                        {center.d.map((o, i) => {
                           const eng = calculateEngineering(o);
-                          const description = String(o.MATERIAL || '').replace(/^\d+\s*/, '') || o.NOMBRE || '—';
                           const matCode = cleanCode(eng.code);
                           return (
-                            <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
-                              <td className="px-4 py-4 text-slate-800 border-r border-gray-50">{o.ORDEN || '—'}</td>
-                              <td className="px-4 py-4 border-r border-gray-50 text-gray-400 font-mono text-[9px]">{String(o.FECHA || '').split('T')[0]}</td>
-                              <td className="px-4 py-4 font-mono font-black text-red-600 border-r border-gray-50">{matCode}</td>
-                              <td className="px-6 py-4 text-left border-r border-gray-100 text-slate-600 uppercase truncate max-w-[200px]">{description}</td>
-                              <td className="px-3 py-4 border-r border-gray-50 text-indigo-400 text-[8px] font-black uppercase">{String(o.CATEGORIA || '—')}</td>
-                              <td className="px-4 py-4 font-black text-slate-900 border-r border-gray-50 font-mono">{o.CANTIDAD || 0}</td>
-                              <td className="px-3 py-4 border-r border-gray-50 text-slate-300 text-[8px] uppercase">{o.UNIDAD || '—'}</td>
-                              <td className="px-4 py-4 border-r border-gray-50">
-                                <Badge variant="outline" className="text-[8px] bg-indigo-50 text-indigo-700 border-indigo-100">
-                                  {String(o.RESPCONTROLPROD || o.RespControlProd || o.Resp_Control_Prod || '—')}
-                                </Badge>
-                              </td>
-                              <td className="px-4 py-4 font-bold text-slate-400 border-r border-gray-50 uppercase">{o.MAQUINA || o.RECURSO || '—'}</td>
-                              <td className="px-4 py-4 border-r border-white/10 text-blue-700 bg-blue-50/10 font-mono">{eng.indivMin.toFixed(2)}</td>
-                              <td className="px-4 py-4 border-r border-white/10 text-amber-700 bg-amber-50/10 font-mono">{eng.hours.toFixed(2)}</td>
-                              <td className="px-4 py-4 border-r border-gray-50 text-red-600 bg-red-50/20 font-mono">{eng.loads}</td>
-                              <td className="px-4 py-4 text-slate-200">{o.ALMACEN || '—'}</td>
+                            <tr key={i} className="hover:bg-slate-50/50 transition-colors">
+                              <td className="px-6 py-4 text-slate-800 border-r border-gray-50">{o.ORDEN || o.ORDENPREVISIONAL || '—'}</td>
+                              <td className="px-6 py-4 border-r border-gray-50 text-gray-400 font-mono text-[9px]">{String(o.FECHA || '').split('T')[0]}</td>
+                              <td className="px-6 py-4 font-mono font-black text-red-600 border-r border-gray-50">{matCode}</td>
+                              <td className="px-6 py-4 text-left border-r border-gray-100 text-slate-600 uppercase truncate max-w-[200px]">{eng.desc}</td>
+                              <td className="px-6 py-4 border-r border-white/5 text-indigo-400 text-[8px] font-black uppercase">{String(o.CATEGORIA || '—')}</td>
+                              <td className="px-6 py-4 font-black text-slate-900 border-r border-gray-50 font-mono">{eng.qty}</td>
+                              <td className="px-4 py-4 border-r border-gray-50 text-slate-300 font-bold">{o.UNIDAD || '—'}</td>
+                              <td className="px-6 py-4 border-r border-gray-50"><Badge variant="outline" className="text-[8px] bg-indigo-50 text-indigo-700">{getResp(o)}</Badge></td>
+                              <td className="px-6 py-4 font-bold text-slate-400 border-r border-gray-50 uppercase">{o.MAQUINA || o.RECURSO || '—'}</td>
+                              <td className="px-6 py-4 border-r border-white/10 text-blue-700 bg-blue-50/10 font-mono">{eng.indivMin.toFixed(2)}</td>
+                              <td className="px-6 py-4 border-r border-white/10 text-amber-700 bg-amber-50/10 font-mono">{eng.hours.toFixed(2)}</td>
+                              <td className="px-6 py-4 border-r border-gray-50 text-red-600 bg-red-50/20 font-mono">{Math.ceil(eng.loads)}</td>
+                              <td className="px-6 py-4 text-slate-200">{o.ALMACEN || o.Almacen || '—'}</td>
                             </tr>
                           );
                         })}
