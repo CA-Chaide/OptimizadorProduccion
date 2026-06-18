@@ -14,10 +14,10 @@ import {
   Activity,
   Wrench,
   GraduationCap,
-  Check,
-  TrendingUp,
-  ShoppingCart,
   RefreshCw,
+  ShoppingCart,
+  Box,
+  TrendingUp,
   Info
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
@@ -32,7 +32,7 @@ import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 import { cn } from '@/lib/utils';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, parseISO, addMonths, subMonths } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 /**
@@ -59,6 +59,7 @@ const parseSAPDate = (dateStr: string): Date | null => {
   if (!dateStr) return null;
   const str = String(dateStr).trim();
   if (!str || str === 'null' || str === 'undefined') return null;
+  
   if (str.includes('/')) {
     const [datePart, timePart] = str.split(' ');
     if (!datePart) return null;
@@ -68,6 +69,7 @@ const parseSAPDate = (dateStr: string): Date | null => {
     const [hours, minutes] = timePart ? timePart.split(':').map(Number) : [0, 0];
     return new Date(year, month - 1, day, hours, minutes);
   }
+  
   const isoDate = new Date(str);
   return isNaN(isoDate.getTime()) ? null : isoDate;
 };
@@ -80,7 +82,7 @@ const calculateMTTOCapacity = (start: string, end: string): string => {
   return Math.max(0, diffHrs).toFixed(1);
 };
 
-// Constantes de Ingeniería
+// Constantes de Ingeniería Planta
 const CARRUSEL_DIAMETER_CM = 320;
 const CIRCUMFERENCE = Math.PI * CARRUSEL_DIAMETER_CM;
 const BASE_GAP_CM = 30; 
@@ -176,8 +178,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const totalRepsDescarga = sheetsPerRep > 0 ? Math.ceil(qty / sheetsPerRep) : qty;
     const tDescargaSec = totalRepsDescarga * SECONDS_PER_MANEUVER_DESC;
 
-    const matchTime = tiemposEnsamblado.find(t => String(t.CodMaterial).slice(-8) === info.code);
-    const sapSecPerUnit = safeNum(matchTime?.Tiempo || 0);
+    const matchTime = tiemposEnsamblado.find(t => String(t.CodMaterial || t.cod_material).slice(-8) === info.code);
+    const sapSecPerUnit = safeNum(matchTime?.Tiempo || matchTime?.tiempo || 0);
     const totalSapSec = qty * sapSecPerUnit;
 
     const totalTimeSec = tCargaSec + tDescargaSec + totalSapSec;
@@ -211,93 +213,67 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       setOrders(provs.data?.data || provs.data || []);
       setOrdersFert(ferts.data?.data || ferts.data || []);
       setTiemposEnsamblado(times.data?.data || times.data || []);
-      setMantenimientos(maint.data || []);
+      setMantenimientos(mantenimientosDeduplicados(maint.data || []));
       setHabilidades(Array.isArray(habs.data) ? habs.data : []);
       
-      addNotification('success', 'Datos sincronizados correctamente desde SAP.');
     } catch (e) {
       console.error('Error init TacticalPlanEspumas:', e);
     } finally {
       setIsLoading(false);
     }
-  }, [addNotification]);
+  }, []);
+
+  const mantenimientosDeduplicados = (data: any[]) => {
+    const seen = new Set();
+    return data.filter(m => {
+      const key = `${m.ID_MAQUINA}-${m.FECHA_OT_PRG_INI}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  };
 
   useEffect(() => { if (mounted) initData(); }, [mounted, initData]);
 
-  const uniqueMantenimientos = useMemo(() => {
-    const seenMachine = new Set<string>();
-    return mantenimientos.filter(m => {
-      const machineId = String(m.ID_MAQUINA || m.MAQUINA || '').trim();
-      if (!machineId) return true; 
-      if (seenMachine.has(machineId)) return false;
-      seenMachine.add(machineId);
-      return true;
-    });
-  }, [mantenimientos]);
-
   const getMachineMTTO = (maquinaCode: string) => {
     if (selectedDates.size === 0) return 0;
-    return uniqueMantenimientos
+    return mantenimientos
       .filter(m => {
         const mMachine = String(m.ID_MAQUINA || m.MAQUINA || '').toUpperCase();
-        return mMachine.includes(maquinaCode.toUpperCase()) || maquinaCode.toUpperCase().includes(mMachine);
+        if (!mMachine.includes(maquinaCode.toUpperCase()) && !maquinaCode.toUpperCase().includes(mMachine)) return false;
+        const dStr = String(m.FECHA_OT_PRG_INI || m.FECHA_INI || '').split('T')[0];
+        return selectedDates.has(dStr);
       })
       .reduce((sum, m) => {
-        const durStr = calculateMTTOCapacity(m.FECHA_OT_PRG_INI || m.FECHA_INI || m.FECHA_PRO, m.FECHA_OT_PRG_FIN || m.FECHA_FIN || m.FECHA_PRO);
+        const durStr = calculateMTTOCapacity(m.FECHA_OT_PRG_INI || m.FECHA_INI, m.FECHA_OT_PRG_FIN || m.FECHA_FIN);
         return sum + safeNum(durStr);
       }, 0);
   };
 
-  const datesWithOrders = useMemo(() => {
-    if (!mounted) return new Set<string>();
-    const dates = new Set<string>();
-    [...ordenes, ...ordenesFert].forEach(o => {
-      const d = String(o.FECHAINICIO || o.FECHA || '').trim();
-      if (d && d !== 'null') {
-        const normalized = d.includes('T') ? d.split('T')[0] : d;
-        dates.add(normalized);
-      }
-    });
-    return dates;
-  }, [ordenes, ordenesFert, mounted]);
-
-  const calendarDays = useMemo(() => {
-    if (!mounted || !viewDate) return [];
-    const start = startOfMonth(viewDate);
-    const end = endOfMonth(viewDate);
-    const days = eachDayOfInterval({ start, end });
-    const startDay = getDay(start);
-    const padding = startDay === 0 ? 6 : startDay - 1;
-    return [...Array(padding).fill(null), ...days];
-  }, [viewDate, mounted]);
-
-  const filterData = (data: any[], centro: string, applyRestrictions: boolean = true) => {
+  const filterData = (data: any[], centro: string, ignoreRestrictions: boolean = false) => {
     const relevantGroups = grupos.filter(g => String(g.centro).trim() === centro);
     const groupIds = relevantGroups.map(g => g.codigo_grupo);
     const groupRest = restriccionesArray.filter(r => groupIds.includes(r.codigo_grupo));
 
-    const respCodes = applyRestrictions ? groupRest
+    const respCodes = ignoreRestrictions ? [] : groupRest
       .filter(r => r.nombre_restriccion === 'RESPCONTROLPROD')
       .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
-      .filter(v => v !== '') : [];
+      .filter(v => v !== '');
     
-    const almCodes = applyRestrictions ? groupRest
+    const almCodes = ignoreRestrictions ? [] : groupRest
       .filter(r => r.nombre_restriccion === 'ALMACEN')
       .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
-      .filter(v => v !== '') : [];
+      .filter(v => v !== '');
 
     return data.filter(o => {
       const c = String(o.CENTRO || o.Centro || '').trim();
       if (c !== centro) return false;
       
-      if (applyRestrictions) {
+      if (!ignoreRestrictions) {
         const itemAlm = String(o.ALMACEN || o.Almacen || '').trim();
-        const matchAlm = almCodes.length === 0 || almCodes.includes(itemAlm);
-        if (!matchAlm) return false;
-
+        if (almCodes.length > 0 && !almCodes.includes(itemAlm)) return false;
         const itemResp = String(o.RESPCONTROLPROD || o.RespControlProd || '').trim();
-        const matchResp = respCodes.length === 0 || respCodes.includes(itemResp);
-        if (!matchResp) return false;
+        if (respCodes.length > 0 && !respCodes.includes(itemResp)) return false;
       }
 
       if (selectedDates.size > 0) {
@@ -309,18 +285,35 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     });
   };
 
-  const provC1000 = useMemo(() => filterData(ordenes, '1000', true), [ordenes, grupos, restriccionesArray, selectedDates]);
-  const provC2000 = useMemo(() => filterData(ordenes, '2000', true), [ordenes, grupos, restriccionesArray, selectedDates]);
-  
-  // ÓRDENES FERT: SIN FILTROS DE RESPONSABLE/ALMACEN SEGÚN SOLICITUD
-  const fertC1000 = useMemo(() => filterData(ordenesFert, '1000', false), [ordenesFert, selectedDates]);
-  const fertC2000 = useMemo(() => filterData(ordenesFert, '2000', false), [ordenesFert, selectedDates]);
+  const provC1000 = useMemo(() => filterData(ordenes, '1000'), [ordenes, grupos, restriccionesArray, selectedDates]);
+  const provC2000 = useMemo(() => filterData(ordenes, '2000'), [ordenes, grupos, restriccionesArray, selectedDates]);
+  const fertC1000 = useMemo(() => filterData(ordenesFert, '1000', true), [ordenesFert, selectedDates]);
+  const fertC2000 = useMemo(() => filterData(ordenesFert, '2000', true), [ordenesFert, selectedDates]);
 
   const defaultOpHour = useMemo(() => {
     const clGroup = grupos.find(g => g.nombre_grupo.toLowerCase().includes('corte y laminado'));
     const htRest = clGroup ? restriccionesArray.find(r => r.codigo_grupo === clGroup.codigo_grupo && r.nombre_restriccion === 'HORAS_TRABAJO') : null;
     return safeNum(htRest?.valor_restriccion) || 8;
   }, [grupos, restriccionesArray]);
+
+  const datesWithOrders = useMemo(() => {
+    const dates = new Set<string>();
+    [...ordenes, ...ordenesFert].forEach(o => {
+      const d = String(o.FECHAINICIO || o.FECHA || '').trim();
+      if (d && d !== 'null' && d !== 'undefined') dates.add(d.includes('T') ? d.split('T')[0] : d);
+    });
+    return dates;
+  }, [ordenes, ordenesFert]);
+
+  const calendarDays = useMemo(() => {
+    if (!viewDate) return [];
+    const start = startOfMonth(viewDate);
+    const end = endOfMonth(viewDate);
+    const days = eachDayOfInterval({ start, end });
+    const startDay = getDay(start);
+    const padding = startDay === 0 ? 6 : startDay - 1;
+    return [...Array(padding).fill(null), ...days];
+  }, [viewDate]);
 
   if (!mounted) return null;
 
@@ -336,21 +329,21 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-3">
-          <Button onClick={initData} disabled={isLoading} variant="outline" className="h-10 px-4 rounded-xl border-gray-200 gap-2 font-bold text-[10px] uppercase shadow-sm">
-            {isLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />} Actualizar
+          <Button onClick={initData} disabled={isLoading} variant="outline" className="h-10 px-4 rounded-xl border-gray-200 gap-2 font-bold text-[10px] uppercase shadow-sm hover:border-primary/50 transition-all">
+            {isLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />} ACTUALIZAR
           </Button>
 
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="outline" size="sm" className="h-10 px-4 rounded-xl border-gray-200 gap-2 font-bold text-[10px] uppercase shadow-sm">
+              <Button variant="outline" className="h-10 px-4 rounded-xl border-gray-200 gap-2 font-bold text-[10px] uppercase shadow-sm">
                 <Filter className="w-3 h-3 text-primary" /> {selectedDates.size === 0 ? 'Filtro Fecha' : `${selectedDates.size} Días`}
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-60 p-0 border-none shadow-2xl rounded-2xl overflow-hidden mt-2" align="end">
-              <div className="bg-white p-3 font-sans text-left">
-                <div className="flex items-center justify-between mb-3">
+            <PopoverContent className="w-64 p-0 border-none shadow-2xl rounded-2xl overflow-hidden mt-2" align="end">
+              <div className="bg-white p-4 font-sans text-left">
+                <div className="flex items-center justify-between mb-4">
                   <h3 className="text-[10px] font-bold text-gray-800 capitalize">{viewDate ? format(viewDate, 'MMMM yyyy', { locale: es }) : ''}</h3>
-                  <div className="flex gap-1">
+                  <div className="flex gap-1 bg-gray-50 p-1 rounded-lg">
                     <Button variant="ghost" size="icon" onClick={() => setViewDate(subMonths(viewDate!, 1))} className="h-6 h-6"><ChevronLeft className="w-3 h-3" /></Button>
                     <Button variant="ghost" size="icon" onClick={() => setViewDate(addMonths(viewDate!, 1))} className="h-6 h-6"><ChevronRight className="w-3 h-3" /></Button>
                   </div>
@@ -362,7 +355,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                     const dStr = format(day, 'yyyy-MM-dd');
                     const sel = selectedDates.has(dStr);
                     return (
-                      <button key={dStr} onClick={() => { const n = new Set(selectedDates); sel ? n.delete(dStr) : n.add(dStr); setSelectedDates(n); }} className={cn("relative h-7 w-7 mx-auto rounded-xl flex items-center justify-center transition-all", sel ? "bg-primary text-white shadow-md" : "hover:bg-gray-100")}>
+                      <button key={dStr} onClick={() => { const n = new Set(selectedDates); sel ? n.delete(dStr) : n.add(dStr); setSelectedDates(n); }} className={cn("relative h-8 w-8 mx-auto rounded-xl flex items-center justify-center transition-all", sel ? "bg-primary text-white shadow-md" : "hover:bg-gray-100")}>
                         <span className={cn("text-[10px] font-bold", !datesWithOrders.has(dStr) && !sel ? "text-gray-200" : "")}>{format(day, 'd')}</span>
                         {datesWithOrders.has(dStr) && !sel && <div className="absolute bottom-1 w-1 h-1 bg-primary/40 rounded-full" />}
                       </button>
@@ -390,50 +383,117 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           ))}
         </TabsList>
 
-        <TabsContent value="capacidad" className="animate-in fade-in duration-300 space-y-8">
+        <TabsContent value="capacidad" className="animate-in fade-in duration-300 space-y-12">
           {[ { id: '1000', label: 'QUITO' }, { id: '2000', label: 'GUAYAQUIL' } ].map(center => {
             const machines = CAPACIDAD_CONFIG_BASE[center.id as '1000' | '2000'];
-            const totalPlan = machines.reduce((sum, m) => sum + [...filterData(ordenes, center.id), ...filterData(ordenesFert, center.id, false)].reduce((s, o) => s + calculateEngineering(o).hours, 0), 0);
+            const provOrders = center.id === '1000' ? provC1000 : provC2000;
+            const fertOrders = center.id === '1000' ? fertC1000 : fertC2000;
+            
+            const totalHoursProv = provOrders.reduce((s, o) => s + calculateEngineering(o).hours, 0);
+            const totalHoursFert = fertOrders.reduce((s, o) => s + calculateEngineering(o).hours, 0);
+            const totalPlanned = totalHoursProv + totalHoursFert;
+
+            // Totales de Capacidad
+            let totalAvailableNet = 0;
+            let totalTheoretical = 0;
+
+            machines.forEach(m => {
+              const hT1 = manualHours[`${center.id}_${m.code}_t1`] ?? (center.id==='1000' ? m.t1 : defaultOpHour);
+              const hT2 = manualHours[`${center.id}_${m.code}_t2`] ?? (center.id==='1000' ? m.t2 : 0);
+              const mtto = getMachineMTTO(m.code);
+              
+              totalTheoretical += (hT1 + hT2);
+              totalAvailableNet += (hT1 + hT2 - PARO_PROG_T1 - PARO_PROG_T2 - mtto) * m.rendimiento;
+            });
+
+            const occupancy = totalAvailableNet > 0 ? (totalPlanned / totalAvailableNet) * 100 : 0;
+
             return (
               <div key={center.id} className="space-y-4">
-                <h3 className="text-sm font-black uppercase tracking-tighter text-slate-800 px-2 flex items-center gap-2">
-                  <div className="w-2.5 h-2.5 rounded-full bg-slate-900" /> CENTRO {center.label}
-                </h3>
-                <Card className="rounded-[2rem] border border-gray-200 shadow-2xl overflow-hidden bg-white">
+                <div className="flex items-center justify-between px-2">
+                  <h3 className="text-sm font-black uppercase tracking-tighter text-slate-800 flex items-center gap-2">
+                    <div className="w-2.5 h-2.5 rounded-full bg-slate-900" /> CENTRO {center.label}
+                  </h3>
+                  <Badge variant="outline" className="text-[10px] font-black border-slate-200 text-slate-400">Eficiencia aplicada: 90% (Q) / 70% (G)</Badge>
+                </div>
+
+                <Card className="rounded-[2.5rem] border border-gray-200 shadow-2xl overflow-hidden bg-white">
                   <table className="w-full border-collapse font-sans text-[10px]">
-                    <thead className="bg-[#4a69bd] text-white uppercase font-black tracking-tighter">
+                    <thead className="bg-[#1e293b] text-white uppercase font-black tracking-tighter border-b-2 border-black/10">
                       <tr>
-                        <th rowSpan={2} className="px-6 py-4 border-r border-white/10 text-left bg-slate-900 w-52">Recurso Operativo</th>
-                        {machines.map(m => <th key={m.code} className="px-4 py-4 border-r border-white/10">{m.code}</th>)}
-                        <th className="px-6 py-4 bg-slate-950 text-indigo-400 border-l-2 border-indigo-500/30">TOTAL PLANTA</th>
+                        <th rowSpan={2} className="px-6 py-5 border-r border-white/10 text-left bg-slate-950 w-56">Recurso Operativo</th>
+                        {machines.map(m => <th key={m.code} className="px-4 py-5 border-r border-white/10">{m.code}</th>)}
+                        <th className="px-8 py-5 bg-indigo-900 text-indigo-100 font-black">CONSOLIDADO</th>
                       </tr>
-                      <tr className="bg-slate-800 text-[8px]">
-                        {machines.map(m => <th key={`${m.code}-n`} className="px-4 py-2 border-r border-white/10">{m.name}</th>)}
-                        <th className="px-4 py-2 bg-slate-900 text-slate-400 border-l-2 border-indigo-500/30">Consolidado</th>
+                      <tr className="bg-slate-800 text-[8px] border-b border-white/5">
+                        {machines.map(m => <th key={`${m.code}-n`} className="px-4 py-2 border-r border-white/10 font-bold opacity-60">{m.name}</th>)}
+                        <th className="px-8 py-2 bg-indigo-950 text-indigo-400">Planta {center.label}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 font-bold">
-                      {['Turno 1 [H]', 'Turno 2 [H]', 'Paro Prog. T1', 'Paro Prog. T2', 'MTTO SAP'].map(rowLabel => (
-                        <tr key={rowLabel} className="hover:bg-slate-50">
-                          <td className="px-6 py-2 border-r border-gray-100 bg-gray-50/50 uppercase">{rowLabel}</td>
+                      {['Turno 1 [H]', 'Turno 2 [H]', 'Paro Prog. Turno 1', 'Paro Prog. Turno 2', 'MTTO Preventivo (SAP)'].map((rowLabel, rIdx) => (
+                        <tr key={rowLabel} className={cn("hover:bg-slate-50 transition-colors", rIdx % 2 === 0 ? "bg-white" : "bg-slate-50/30")}>
+                          <td className="px-6 py-3 border-r border-gray-100 bg-slate-50/50 uppercase font-black text-slate-500">{rowLabel}</td>
                           {machines.map(m => {
                             if (rowLabel.includes('Turno')) {
                               const tKey = rowLabel.includes('1') ? 't1' : 't2';
+                              const currentVal = manualHours[`${center.id}_${m.code}_${tKey}`] ?? (tKey==='t1' ? (center.id==='1000' ? m.t1 : defaultOpHour) : (center.id==='1000' ? m.t2 : 0));
                               return (
-                                <td key={`${m.code}-${tKey}`} className="px-4 py-2 border-r border-gray-100 text-center">
-                                  <select className="bg-transparent border border-indigo-100 rounded text-[10px]" value={manualHours[`${center.id}_${m.code}_${tKey}`] ?? (tKey==='t1' ? defaultOpHour : (center.id==='1000' ? m.t2 : 0))} onChange={e => setManualHours({...manualHours, [`${center.id}_${m.code}_${tKey}`]: Number(e.target.value)})}>
+                                <td key={`${m.code}-${tKey}`} className="px-4 py-3 border-r border-gray-100 text-center">
+                                  <select 
+                                    className="bg-slate-100/50 border border-indigo-100 rounded-lg px-2 py-1 text-[10px] font-black focus:ring-2 focus:ring-primary/20 outline-none appearance-none cursor-pointer hover:bg-white transition-all w-16 text-center"
+                                    value={currentVal} 
+                                    onChange={e => setManualHours({...manualHours, [`${center.id}_${m.code}_${tKey}`]: Number(e.target.value)})}
+                                  >
                                     {Array.from({length: 13}, (_, i) => <option key={i} value={i}>{i}h</option>)}
                                   </select>
                                 </td>
                               );
                             }
-                            if (rowLabel.includes('Paro')) return <td key={`${m.code}-p`} className="px-4 py-2 border-r border-gray-100 text-center font-mono text-red-600/50">{rowLabel.includes('1') ? PARO_PROG_T1 : PARO_PROG_T2}</td>;
-                            return <td key={`${m.code}-m`} className="px-4 py-2 border-r border-gray-100 text-center font-mono text-orange-600">{getMachineMTTO(m.code) > 0 ? `${getMachineMTTO(m.code)}h` : '—'}</td>;
+                            if (rowLabel.includes('Paro')) {
+                              const val = rowLabel.includes('1') ? PARO_PROG_T1 : PARO_PROG_T2;
+                              return <td key={`${m.code}-p`} className="px-4 py-3 border-r border-gray-100 text-center font-mono text-red-400 font-black">{val}</td>;
+                            }
+                            const mttoVal = getMachineMTTO(m.code);
+                            return (
+                              <td key={`${m.code}-m`} className={cn("px-4 py-3 border-r border-gray-100 text-center font-mono font-black", mttoVal > 0 ? "text-orange-600 bg-orange-50/30" : "text-slate-200")}>
+                                {mttoVal > 0 ? `${mttoVal}h` : '—'}
+                              </td>
+                            );
                           })}
-                          <td className="px-4 py-2 text-center font-mono bg-slate-50 border-l-2 border-indigo-500/10">—</td>
+                          <td className="px-8 py-3 text-center font-mono bg-slate-50/50 opacity-40">—</td>
                         </tr>
                       ))}
                     </tbody>
+                    <tfoot className="border-t-2 border-slate-900 font-black uppercase text-[10px] tracking-tighter">
+                      <tr className="bg-[#1e293b] text-white">
+                        <td className="px-6 py-4 text-left border-r border-white/10">DISPONIBILIDAD NETA</td>
+                        {machines.map(m => <td key={`${m.code}-dn`} className="px-4 py-4 border-r border-white/5 text-center font-mono opacity-50">—</td>)}
+                        <td className="px-8 py-4 text-center font-mono text-indigo-400 text-sm">{formatNum(totalTheoretical, 1)}</td>
+                      </tr>
+                      <tr className="bg-[#facc15] text-indigo-950">
+                        <td className="px-6 py-4 text-left border-r border-black/10">T. TOTAL DISPONIBLE [H]</td>
+                        {machines.map(m => <td key={`${m.code}-td`} className="px-4 py-4 border-r border-black/5 text-center font-mono opacity-40">—</td>)}
+                        <td className="px-8 py-4 text-center font-mono text-sm">{formatNum(totalAvailableNet, 1)}</td>
+                      </tr>
+                      <tr className="bg-indigo-50 text-indigo-900">
+                        <td className="px-6 py-4 text-left border-r border-indigo-100 italic">Total Ord_Provisionales</td>
+                        {machines.map(m => <td key={`${m.code}-tp`} className="px-4 py-4 border-r border-indigo-100 text-center font-mono opacity-30">—</td>)}
+                        <td className="px-8 py-4 text-center font-mono text-sm text-indigo-600">{formatNum(totalHoursProv, 1)}</td>
+                      </tr>
+                      <tr className="bg-indigo-100 text-indigo-900">
+                        <td className="px-6 py-4 text-left border-r border-indigo-200 italic">Total Ord_Fert</td>
+                        {machines.map(m => <td key={`${m.code}-tf`} className="px-4 py-4 border-r border-indigo-200 text-center font-mono opacity-30">—</td>)}
+                        <td className="px-8 py-4 text-center font-mono text-sm text-indigo-800">{formatNum(totalHoursFert, 1)}</td>
+                      </tr>
+                      <tr className={cn("transition-colors", occupancy > 100 ? "bg-red-50 text-red-900" : "bg-white text-slate-900")}>
+                        <td className="px-6 py-5 text-left border-r border-gray-100">% OCUPACIÓN</td>
+                        {machines.map(m => <td key={`${m.code}-oc`} className="px-4 py-5 border-r border-gray-100 text-center font-mono opacity-20">—</td>)}
+                        <td className={cn("px-8 py-5 text-center font-mono text-xl", occupancy > 100 ? "text-red-600" : "text-emerald-600")}>
+                          {formatNum(occupancy, 1)}%
+                        </td>
+                      </tr>
+                    </tfoot>
                   </table>
                 </Card>
               </div>
@@ -441,88 +501,183 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           })}
         </TabsContent>
 
-        <TabsContent value="ordenes" className="space-y-6 animate-in fade-in duration-300">
-           {[ {t: 'Planta 1000 - Quito', d: provC1000}, {t: 'Planta 2000 - GYE', d: provC2000} ].map((c, i) => (
-             <Card key={i} className="rounded-3xl border border-gray-100 shadow-xl overflow-hidden bg-white">
-                <div className="bg-[#1e293b] px-6 py-4 border-b border-gray-100"><h3 className="text-xs font-black text-white uppercase tracking-widest">{c.t} (Provisionales)</h3></div>
-                <div className="overflow-x-auto"><table className="w-full text-center font-sans text-[9px]"><thead className="bg-slate-900 text-white uppercase font-black text-[8px] sticky top-0"><tr><th className="px-6 py-5 border-r border-white/5">Orden</th><th className="px-6 py-5 border-r border-white/5">Fecha</th><th className="px-6 py-5 border-r border-white/5">Material</th><th className="px-6 py-5 border-r border-white/10 text-left">Descripción</th><th className="px-6 py-5 border-r border-white/5">Cant.</th><th className="px-6 py-5 border-r border-white/5">Responsable</th><th className="px-6 py-5 border-r border-white/5">Máquina</th><th className="px-6 py-5 border-r border-white/10">T. INDIV.</th><th className="px-6 py-5 border-r border-white/10">T. TOTAL (H)</th><th className="px-6 py-5 border-r border-white/5">CARGAS</th><th className="px-6 py-5">Alm.</th></tr></thead>
-                <tbody className="divide-y divide-gray-50 font-bold">{c.d.map((o, idx) => { const eng = calculateEngineering(o); return (
-                  <tr key={idx} className="hover:bg-slate-50/50"><td className="px-6 py-4 text-slate-800 border-r border-gray-50">{o.ORDENPREVISIONAL || '—'}</td><td className="px-6 py-4 border-r border-gray-50 text-gray-400">{String(o.FECHAINICIO || '').split('T')[0]}</td><td className="px-6 py-4 font-mono font-black text-red-600 border-r border-gray-50">{cleanCode(eng.code)}</td><td className="px-6 py-4 text-left border-r border-gray-100 text-slate-600 uppercase truncate max-w-[200px]">{eng.desc}</td><td className="px-6 py-4 font-black text-slate-900 border-r border-gray-50 font-mono">{eng.qty}</td><td className="px-6 py-4 border-r border-gray-50"><Badge variant="outline" className="text-[9px] bg-blue-50 text-blue-700">{o.RESPCONTROLPROD || '—'}</Badge></td><td className="px-6 py-4 font-bold text-slate-400 border-r border-gray-50 uppercase">{o.MAQUINA || '—'}</td><td className="px-6 py-4 border-r border-white/10 text-blue-700">{eng.indivMin.toFixed(2)}</td><td className="px-6 py-4 border-r border-white/10 text-amber-700">{eng.hours.toFixed(2)}</td><td className="px-6 py-4 border-r border-gray-50 text-red-600 bg-red-50/20">{eng.loads}</td><td className="px-6 py-4 text-slate-200">{o.ALMACEN || '—'}</td></tr>
-                );})}</tbody></table></div>
-             </Card>
-           ))}
-        </TabsContent>
-
-        <TabsContent value="ordenesFert" className="space-y-6 animate-in fade-in duration-300">
-           {[ {t: 'Planta 1000 - Quito (Órdenes FERT)', d: fertC1000}, {t: 'Planta 2000 - GYE (Órdenes FERT)', d: fertC2000} ].map((c, i) => (
-             <Card key={i} className="rounded-3xl border border-gray-100 shadow-xl overflow-hidden bg-white">
-                <div className="bg-[#1e293b] px-6 py-4 border-b border-gray-100"><h3 className="text-xs font-black text-white uppercase tracking-widest">{c.t} - VISUALIZACIÓN COMPLETA SAP</h3></div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-center font-sans text-[9px]">
-                    <thead className="bg-slate-900 text-white uppercase font-black text-[8px] sticky top-0">
-                      <tr>
-                        <th className="px-6 py-5 border-r border-white/5">Orden</th>
-                        <th className="px-6 py-5 border-r border-white/5">Fecha</th>
-                        <th className="px-6 py-5 border-r border-white/5">Material</th>
-                        <th className="px-6 py-5 border-r border-white/10 text-left">Descripción</th>
-                        <th className="px-6 py-5 border-r border-white/5">Categoría</th>
-                        <th className="px-6 py-5 border-r border-white/5">Cant.</th>
-                        <th className="px-6 py-5 border-r border-white/5">UM</th>
-                        <th className="px-6 py-5 border-r border-white/5">Responsable</th>
-                        <th className="px-6 py-5 border-r border-white/5 text-indigo-300">Máquina</th>
-                        <th className="px-6 py-5 border-r border-white/10 bg-blue-500/10 text-blue-200">T. INDIV.</th>
-                        <th className="px-6 py-5 border-r border-white/10 bg-amber-500/10 text-amber-200">T. TOTAL (H)</th>
-                        <th className="px-6 py-5 border-r border-white/5 text-red-400 bg-red-500/10 font-black">CARGAS</th>
-                        <th className="px-6 py-5">Alm.</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50 font-bold">
-                      {c.d.map((o, idx) => {
-                        const eng = calculateEngineering(o);
-                        return (
-                          <tr key={idx} className="hover:bg-slate-50/50">
-                            <td className="px-6 py-4 text-slate-800 border-r border-gray-50">{o.ORDEN || '—'}</td>
-                            <td className="px-6 py-4 border-r border-gray-50 text-gray-400">{String(o.FECHA || '').split('T')[0]}</td>
-                            <td className="px-6 py-4 font-mono font-black text-red-600 border-r border-gray-50">{cleanCode(eng.code)}</td>
-                            <td className="px-6 py-4 text-left border-r border-gray-100 text-slate-600 uppercase truncate max-w-[150px]">{eng.desc}</td>
-                            <td className="px-6 py-4 border-r border-gray-50 text-indigo-400 text-[8px] uppercase">{o.CATEGORIA || '—'}</td>
-                            <td className="px-6 py-4 font-black text-slate-900 border-r border-gray-50 font-mono">{o.CANTIDAD || o.CANTPROGRAMADA || 0}</td>
-                            <td className="px-6 py-4 border-r border-gray-50 text-slate-300">{o.UNIDAD || '—'}</td>
-                            <td className="px-6 py-4 border-r border-gray-50"><Badge variant="outline" className="text-[9px] bg-indigo-50 text-indigo-700 border-indigo-100">{o.RESPCONTROLPROD || '—'}</Badge></td>
-                            <td className="px-6 py-4 font-bold text-indigo-500 border-r border-gray-50 uppercase">{o.MAQUINA || '—'}</td>
-                            <td className="px-6 py-4 border-r border-white/10 text-blue-700 bg-blue-50/10">{eng.indivMin.toFixed(2)}</td>
-                            <td className="px-6 py-4 border-r border-white/10 text-amber-700 bg-amber-50/10">{eng.hours.toFixed(2)}</td>
-                            <td className="px-6 py-4 border-r border-gray-50 text-red-600 bg-red-50/20">{eng.loads}</td>
-                            <td className="px-6 py-4 text-slate-200">{o.ALMACEN || '—'}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-             </Card>
-           ))}
-        </TabsContent>
-
-        {/* OTROS TABS PRESERVADOS SIN MODIFICACIÓN */}
         <TabsContent value="habilidades" className="animate-in fade-in duration-300">
-          <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
+          <Card className="rounded-[2rem] border border-gray-100 shadow-xl overflow-hidden bg-white">
             <div className="overflow-x-auto max-h-[650px] relative text-left">
-              <table className="w-full border-collapse font-sans text-[9px]"><thead className="bg-[#e0e7ff] sticky top-0 z-20 text-indigo-900 uppercase font-black border-b border-indigo-200">
-              <tr>{habilidades.length > 0 && Object.keys(habilidades[0]).map(k => <th key={k} className="px-4 py-3 border-r border-indigo-100 whitespace-nowrap">{k.replace(/_/g, ' ')}</th>)}</tr></thead>
-              <tbody className="divide-y divide-gray-100 font-bold">{habilidades.map((h, i) => (<tr key={i} className="hover:bg-indigo-50/30">{Object.keys(h).map(k => <td key={k} className="px-4 py-2 border-r border-gray-100 text-slate-700">{String(h[k] ?? '—')}</td>)}</tr>))}</tbody></table>
+              <table className="w-full border-collapse font-sans text-[10px]">
+                <thead className="bg-[#e0e7ff] sticky top-0 z-20 text-indigo-900 uppercase font-black border-b border-indigo-200">
+                  <tr>{habilidades.length > 0 && Object.keys(habilidades[0]).map(k => <th key={k} className="px-6 py-4 border-r border-indigo-100 whitespace-nowrap">{k.replace(/_/g, ' ')}</th>)}</tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 font-bold">
+                  {habilidades.map((h, i) => (
+                    <tr key={i} className="hover:bg-indigo-50/30 transition-colors">
+                      {Object.keys(h).map(k => <td key={k} className="px-6 py-3 border-r border-gray-100 text-slate-700">{String(h[k] ?? '—')}</td>)}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </Card>
         </TabsContent>
 
         <TabsContent value="mantenimiento" className="animate-in fade-in duration-300">
-           <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
-            <div className="overflow-x-auto max-h-[600px] relative text-center"><table className="w-full border-collapse font-sans text-[10px]"><thead className="bg-[#fef3c7] sticky top-0 z-10 text-amber-900 uppercase font-black border-b border-amber-200">
-            <tr><th className="px-4 py-4 border-r border-amber-100">ID_PLANTA</th><th className="px-4 py-4 border-r border-amber-100 text-left">PLANTA</th><th className="px-4 py-4 border-r border-amber-100">ID_AREA</th><th className="px-4 py-4 border-r border-amber-100 text-left">AREA</th><th className="px-4 py-4 border-r border-amber-100">ID_MAQUINA</th><th className="px-4 py-4 border-r border-amber-100 text-left">MAQUINA</th><th className="px-4 py-4 border-r border-amber-100 text-left">OT_PRG_ID</th><th className="px-4 py-4 border-r border-amber-100 text-left">FECHA_INI</th><th className="px-4 py-4 border-r border-amber-100 text-left">FECHA_FIN</th><th className="px-4 py-4 text-center bg-amber-500/10">T_MTTO (H)</th></tr></thead>
-            <tbody className="divide-y divide-gray-100 font-bold">{uniqueMantenimientos.map((m, i) => (<tr key={i} className="hover:bg-amber-50/30"><td className="px-4 py-3 border-r border-gray-100">{String(m.ID_PLANTA || '—')}</td><td className="px-4 py-3 border-r border-gray-100 text-left uppercase">{String(m.PLANTA || '—')}</td><td className="px-4 py-3 border-r border-gray-100">{String(m.ID_AREA || '—')}</td><td className="px-4 py-3 border-r border-gray-100 text-left uppercase">{String(m.AREA || '—')}</td><td className="px-4 py-3 border-r border-gray-100 text-indigo-900 font-black">{String(m.ID_MAQUINA || '—')}</td><td className="px-4 py-3 border-r border-gray-100 text-left uppercase">{String(m.MAQUINA || '—')}</td><td className="px-4 py-3 border-r border-gray-100 font-mono text-left">{String(m.OT_PRG_ID || '—')}</td><td className="px-4 py-3 border-r border-gray-100 text-left font-mono">{m.FECHA_OT_PRG_INI || '—'}</td><td className="px-4 py-3 border-r border-gray-100 text-left font-mono">{m.FECHA_OT_PRG_FIN || '—'}</td><td className="px-4 py-3 text-center font-mono font-black text-amber-700">{calculateMTTOCapacity(m.FECHA_OT_PRG_INI || m.FECHA_INI, m.FECHA_OT_PRG_FIN || m.FECHA_FIN)}</td></tr>))}</tbody></table></div>
+          <Card className="rounded-[2rem] border border-gray-100 shadow-xl overflow-hidden bg-white">
+            <div className="overflow-x-auto max-h-[600px] relative text-center">
+              <table className="w-full border-collapse font-sans text-[10px]">
+                <thead className="bg-[#fef3c7] sticky top-0 z-10 text-amber-900 uppercase font-black border-b border-amber-200">
+                  <tr>
+                    <th className="px-6 py-5 border-r border-amber-100">ID_PLANTA</th>
+                    <th className="px-6 py-5 border-r border-amber-100 text-left">PLANTA</th>
+                    <th className="px-6 py-5 border-r border-amber-100">ID_AREA</th>
+                    <th className="px-6 py-5 border-r border-amber-100 text-left">AREA</th>
+                    <th className="px-6 py-5 border-r border-amber-100">ID_MAQUINA</th>
+                    <th className="px-6 py-5 border-r border-amber-100 text-left">MAQUINA</th>
+                    <th className="px-6 py-5 border-r border-amber-100 text-left">OT_PRG_ID</th>
+                    <th className="px-6 py-5 border-r border-amber-100 text-left">FECHA_INI</th>
+                    <th className="px-6 py-5 border-r border-amber-100 text-left">FECHA_FIN</th>
+                    <th className="px-8 py-5 text-center bg-amber-500/10 text-amber-700">T_MTTO_PLANIFICADO (H)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 font-bold">
+                  {mantenimientos.length === 0 ? (
+                    <tr><td colSpan={10} className="py-20 text-slate-300 uppercase tracking-widest italic">Sincronizando Mantenimientos SAP...</td></tr>
+                  ) : (
+                    mantenimientos.map((m, i) => (
+                      <tr key={i} className="hover:bg-amber-50/30 transition-colors">
+                        <td className="px-6 py-4 border-r border-gray-100 text-slate-400">{String(m.ID_PLANTA || '—')}</td>
+                        <td className="px-6 py-4 border-r border-gray-100 text-left uppercase text-slate-600">{String(m.PLANTA || '—')}</td>
+                        <td className="px-6 py-4 border-r border-gray-100 text-slate-400">{String(m.ID_AREA || '—')}</td>
+                        <td className="px-6 py-4 border-r border-gray-100 text-left uppercase text-slate-600">{String(m.AREA || '—')}</td>
+                        <td className="px-6 py-4 border-r border-gray-100 text-indigo-900 font-black">{String(m.ID_MAQUINA || '—')}</td>
+                        <td className="px-6 py-4 border-r border-gray-100 text-left uppercase text-slate-500">{String(m.MAQUINA || '—')}</td>
+                        <td className="px-6 py-4 border-r border-gray-100 font-mono text-left text-slate-400">{String(m.OT_PRG_ID || '—')}</td>
+                        <td className="px-6 py-4 border-r border-gray-100 text-left font-mono text-slate-500">{m.FECHA_OT_PRG_INI || m.FECHA_INI || '—'}</td>
+                        <td className="px-6 py-4 border-r border-gray-100 text-left font-mono text-slate-500">{m.FECHA_OT_PRG_FIN || m.FECHA_FIN || '—'}</td>
+                        <td className="px-8 py-4 text-center font-mono font-black text-amber-700 bg-amber-50/50">
+                          {calculateMTTOCapacity(m.FECHA_OT_PRG_INI || m.FECHA_INI, m.FECHA_OT_PRG_FIN || m.FECHA_FIN)}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </Card>
         </TabsContent>
+
+        <TabsContent value="ordenes" className="space-y-8 animate-in fade-in duration-300">
+           {[ {t: 'Planta 1000 - Quito', d: provC1000}, {t: 'Planta 2000 - Guayaquil', d: provC2000} ].map((c, i) => (
+             <div key={i} className="space-y-4">
+                <h3 className="text-[11px] font-black uppercase text-slate-400 tracking-widest px-2">{c.t} (Corte y Laminado)</h3>
+                <Card className="rounded-[2.5rem] border border-gray-100 shadow-xl overflow-hidden bg-white text-center">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-center font-sans text-[10px]">
+                      <thead className="bg-[#1e293b] text-white uppercase font-black border-b border-white/5">
+                        <tr>
+                          <th className="px-6 py-5 border-r border-white/5">Orden</th>
+                          <th className="px-6 py-5 border-r border-white/5">Fecha</th>
+                          <th className="px-6 py-5 border-r border-white/5">Material</th>
+                          <th className="px-6 py-5 border-r border-white/10 text-left">Descripción</th>
+                          <th className="px-6 py-5 border-r border-white/5">Cant.</th>
+                          <th className="px-6 py-5 border-r border-white/5">Responsable</th>
+                          <th className="px-6 py-5 border-r border-white/5">Máquina</th>
+                          <th className="px-6 py-5 border-r border-white/10 bg-blue-500/10 text-blue-200">T. INDIV. (min)</th>
+                          <th className="px-6 py-5 border-r border-white/10 bg-amber-500/10 text-amber-200">T. TOTAL (H)</th>
+                          <th className="px-6 py-5 border-r border-white/5 text-red-400 bg-red-500/10 font-black">CARGAS</th>
+                          <th className="px-6 py-5">Alm.</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50 font-bold">
+                        {c.d.map((o, idx) => {
+                          const eng = calculateEngineering(o);
+                          return (
+                            <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                              <td className="px-6 py-4 text-slate-800 border-r border-gray-50">{o.ORDENPREVISIONAL || '—'}</td>
+                              <td className="px-6 py-4 border-r border-gray-50 text-gray-400 font-mono text-[9px]">{String(o.FECHAINICIO || '').split('T')[0]}</td>
+                              <td className="px-6 py-4 font-mono font-black text-red-600 border-r border-gray-50">{cleanCode(eng.code)}</td>
+                              <td className="px-6 py-4 text-left border-r border-gray-100 text-slate-600 uppercase truncate max-w-[200px]">{eng.desc}</td>
+                              <td className="px-6 py-4 font-black text-slate-900 border-r border-gray-50 font-mono">{eng.qty}</td>
+                              <td className="px-6 py-4 border-r border-gray-50"><Badge variant="outline" className="text-[9px] bg-blue-50 text-blue-700 border-blue-100 font-black">{o.RESPCONTROLPROD || '—'}</Badge></td>
+                              <td className="px-6 py-4 font-bold text-slate-400 border-r border-gray-50 uppercase">{o.MAQUINA || '—'}</td>
+                              <td className="px-6 py-4 border-r border-white/10 text-blue-700 bg-blue-50/10">{eng.indivMin.toFixed(2)}</td>
+                              <td className="px-6 py-4 border-r border-white/10 text-amber-700 bg-amber-50/10">{eng.hours.toFixed(2)}</td>
+                              <td className="px-6 py-4 border-r border-gray-50 text-red-600 bg-red-50/20">{eng.loads}</td>
+                              <td className="px-6 py-4 text-slate-200">{o.ALMACEN || '—'}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+             </div>
+           ))}
+        </TabsContent>
+
+        <TabsContent value="ordenesFert" className="space-y-8 animate-in fade-in duration-300">
+           {[ {t: 'Planta 1000 - Quito (Órdenes FERT)', d: fertC1000}, {t: 'Planta 2000 - Guayaquil (Órdenes FERT)', d: fertC2000} ].map((c, i) => (
+             <div key={i} className="space-y-4">
+                <h3 className="text-[11px] font-black uppercase text-slate-400 tracking-widest px-2">{c.t} - Auditoría Total SAP</h3>
+                <Card className="rounded-[2.5rem] border border-gray-100 shadow-xl overflow-hidden bg-white text-center">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-center font-sans text-[9px]">
+                      <thead className="bg-[#0f172a] text-white uppercase font-black border-b border-white/5">
+                        <tr>
+                          <th className="px-4 py-5 border-r border-white/5">Orden</th>
+                          <th className="px-4 py-5 border-r border-white/5">Fecha</th>
+                          <th className="px-4 py-5 border-r border-white/5">Material</th>
+                          <th className="px-6 py-5 border-r border-white/10 text-left">Descripción</th>
+                          <th className="px-3 py-5 border-r border-white/5 text-blue-300">Cat SAP</th>
+                          <th className="px-4 py-5 border-r border-white/5">Cant.</th>
+                          <th className="px-2 py-5 border-r border-white/5 text-slate-400">UM</th>
+                          <th className="px-4 py-5 border-r border-white/5 text-indigo-300">Resp.</th>
+                          <th className="px-4 py-5 border-r border-white/5 text-teal-300">Máquina</th>
+                          <th className="px-4 py-5 border-r border-white/10 bg-blue-500/10 text-blue-200">T. INDIV.</th>
+                          <th className="px-4 py-5 border-r border-white/10 bg-amber-500/10 text-amber-200">T. TOTAL (H)</th>
+                          <th className="px-4 py-5 border-r border-white/5 text-red-400 bg-red-500/10 font-black">CARGAS</th>
+                          <th className="px-4 py-5">Alm.</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50 font-bold">
+                        {c.d.map((o, idx) => {
+                          const eng = calculateEngineering(o);
+                          return (
+                            <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                              <td className="px-4 py-4 text-slate-800 border-r border-gray-50">{o.ORDEN || '—'}</td>
+                              <td className="px-4 py-4 border-r border-gray-50 text-gray-400 font-mono text-[8px]">{String(o.FECHA || '').split('T')[0]}</td>
+                              <td className="px-4 py-4 font-mono font-black text-red-600 border-r border-gray-50">{cleanCode(eng.code)}</td>
+                              <td className="px-6 py-4 text-left border-r border-gray-100 text-slate-600 uppercase truncate max-w-[150px]">{eng.desc}</td>
+                              <td className="px-3 py-4 border-r border-gray-50 text-indigo-400 text-[8px] uppercase">{String(o.CATEGORIA || '—')}</td>
+                              <td className="px-4 py-4 font-black text-slate-900 border-r border-gray-50 font-mono">{o.CANTIDAD || 0}</td>
+                              <td className="px-2 py-4 border-r border-gray-50 text-slate-300 text-[8px]">{o.UNIDAD || '—'}</td>
+                              <td className="px-4 py-4 border-r border-gray-50"><Badge variant="outline" className="text-[8px] bg-slate-50 text-slate-500 font-black border-slate-100">{o.RESPCONTROLPROD || '—'}</Badge></td>
+                              <td className="px-4 py-4 font-bold text-indigo-500 border-r border-gray-50 uppercase">{o.MAQUINA || '—'}</td>
+                              <td className="px-4 py-4 border-r border-white/10 text-blue-700 bg-blue-50/10">{eng.indivMin.toFixed(2)}</td>
+                              <td className="px-4 py-4 border-r border-white/10 text-amber-700 bg-amber-50/10">{eng.hours.toFixed(2)}</td>
+                              <td className="px-4 py-4 border-r border-gray-50 text-red-600 bg-red-50/20">{eng.loads}</td>
+                              <td className="px-4 py-4 text-slate-200 text-[8px]">{o.ALMACEN || '—'}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+             </div>
+           ))}
+        </TabsContent>
       </Tabs>
+      
+      <div className="mt-8 p-5 bg-blue-50 border border-blue-100 rounded-[2rem] flex items-start gap-4">
+        <div className="p-3 bg-blue-600 text-white rounded-2xl shadow-lg"><Info className="w-5 h-5" /></div>
+        <div className="text-left">
+          <h4 className="text-xs font-black text-blue-900 uppercase tracking-widest mb-1">Nota de Ingeniería de Planta</h4>
+          <p className="text-[10px] text-blue-700 leading-relaxed font-bold uppercase opacity-80">
+            El modelo de capacidad v2.2 aplica un factor de eficiencia técnica del 90% en Quito y 70% en GYE. 
+            El cálculo de cargas (vueltas) está basado en el diámetro del carrusel de 320cm y un gap efectivo de 31.5cm por bloque.
+          </p>
+        </div>
+      </div>
     </div>
   );
 };
