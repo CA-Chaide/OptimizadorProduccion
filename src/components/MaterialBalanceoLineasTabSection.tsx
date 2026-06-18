@@ -22,35 +22,37 @@ interface MaterialBalanceoRow {
   material: string;
   descripcion: string;
   habilitado: boolean;
+  minimo: number;
+  maximo: number;
 }
 
 const STORAGE_KEY = 'material_balanceo_lineas_data';
 
 const INITIAL_DATA: MaterialBalanceoRow[] = [
-  { id: '1', linea: 'LINEA 1', material: '20007201', descripcion: 'CHN ZAFIRO 135X190X029', habilitado: true },
-  { id: '2', linea: 'LINEA 1', material: '20004463', descripcion: 'CHN ZAFIRO 135X190X024', habilitado: true },
-  { id: '3', linea: 'LINEA 1', material: '20004462', descripcion: 'CHN ZAFIRO 105X190X024', habilitado: true },
-  { id: '4', linea: 'LINEA 1', material: '20007200', descripcion: 'CHN ZAFIRO 105X190X029', habilitado: true },
-  { id: '5', linea: 'LINEA 1', material: '20003642', descripcion: 'CHN IMPERIAL 31 135X190X31', habilitado: true },
-  { id: '6', linea: 'LINEA 1', material: '20006132', descripcion: 'CHN ALTERNATIVA ESPUMA 080X190X011', habilitado: false },
-  { id: '7', linea: 'LINEA 1', material: '20003275', descripcion: 'CHN ALTERNATIVA ESPUMA 080X190X015', habilitado: false },
-  { id: '8', linea: 'LINEA 1', material: '20006133', descripcion: 'CHN ALTERNATIVA ESPUMA 105X190X011', habilitado: false },
-  { id: '9', linea: 'LINEA 1', material: '20003277', descripcion: 'CHN ALTERNATIVA ESPUMA 105X190X015', habilitado: true },
-  { id: '10', linea: 'LINEA 1', material: '20006134', descripcion: 'CHN ALTERNATIVA ESPUMA 135X190X011', habilitado: true },
-  { id: '11', linea: 'LINEA 1', material: '20003278', descripcion: 'CHN ALTERNATIVA ESPUMA 135X190X015', habilitado: true },
-  { id: '12', linea: 'LINEA 3', material: '20006132', descripcion: 'CHN ALTERNATIVA ESPUMA 080X190X011', habilitado: true },
-  { id: '13', linea: 'LINEA 3', material: '20003275', descripcion: 'CHN ALTERNATIVA ESPUMA 080X190X015', habilitado: true },
-  { id: '14', linea: 'LINEA 3', material: '20006133', descripcion: 'CHN ALTERNATIVA ESPUMA 105X190X011', habilitado: true },
-  { id: '15', linea: 'LINEA 3', material: '20003277', descripcion: 'CHN ALTERNATIVA ESPUMA 105X190X015', habilitado: false },
-  { id: '16', linea: 'LINEA 3', material: '20006134', descripcion: 'CHN ALTERNATIVA ESPUMA 135X190X011', habilitado: false },
-  { id: '17', linea: 'LINEA 3', material: '20003278', descripcion: 'CHN ALTERNATIVA ESPUMA 135X190X015', habilitado: false },
-  { id: '18', linea: 'LINEA 2', material: '20000178', descripcion: 'CHN CONTINENTAL PT GR AC 105X190X030', habilitado: false },
-  { id: '19', linea: 'LINEA 2', material: '20000179', descripcion: 'CHN CONTINENTAL PT GR AC 135X190X030', habilitado: true },
-  { id: '20', linea: 'LINEA 2', material: '20000181', descripcion: 'CHN CONTINENTAL PT GR AC 160X200X030', habilitado: true },
-  { id: '21', linea: 'LINEA 2', material: '20000648', descripcion: 'CHN ORTOPÉDICO PT AC 090X190X023', habilitado: false },
-  { id: '22', linea: 'LINEA 2', material: '20000650', descripcion: 'CHN ORTOPÉDICO PT AC 105X190X023', habilitado: true },
-  { id: '23', linea: 'LINEA 2', material: '20000652', descripcion: 'CHN ORTOPÉDICO PT AC 135X190X023', habilitado: true },
-  { id: '24', linea: 'LINEA 2', material: '20000654', descripcion: 'CHN ORTOPÉDICO PT AC 160X200X023', habilitado: false },
+  { id: '1', linea: 'LINEA 1', material: '20007201', descripcion: 'CHN ZAFIRO 135X190X029', habilitado: true, minimo: 0, maximo: 100 },
+  { id: '2', linea: 'LINEA 1', material: '20004463', descripcion: 'CHN ZAFIRO 135X190X024', habilitado: true, minimo: 0, maximo: 100 },
+  { id: '3', linea: 'LINEA 1', material: '20004462', descripcion: 'CHN ZAFIRO 105X190X024', habilitado: true, minimo: 0, maximo: 100 },
+  { id: '4', linea: 'LINEA 1', material: '20007200', descripcion: 'CHN ZAFIRO 105X190X029', habilitado: true, minimo: 0, maximo: 100 },
+  { id: '5', linea: 'LINEA 1', material: '20003642', descripcion: 'CHN IMPERIAL 31 135X190X31', habilitado: true, minimo: 0, maximo: 100 },
+  { id: '6', linea: 'LINEA 1', material: '20006132', descripcion: 'CHN ALTERNATIVA ESPUMA 080X190X011', habilitado: false, minimo: 0, maximo: 100 },
+  { id: '7', linea: 'LINEA 1', material: '20003275', descripcion: 'CHN ALTERNATIVA ESPUMA 080X190X015', habilitado: false, minimo: 0, maximo: 100 },
+  { id: '8', linea: 'LINEA 1', material: '20006133', descripcion: 'CHN ALTERNATIVA ESPUMA 105X190X011', habilitado: false, minimo: 0, maximo: 100 },
+  { id: '9', linea: 'LINEA 1', material: '20003277', descripcion: 'CHN ALTERNATIVA ESPUMA 105X190X015', habilitado: true, minimo: 0, maximo: 100 },
+  { id: '10', linea: 'LINEA 1', material: '20006134', descripcion: 'CHN ALTERNATIVA ESPUMA 135X190X011', habilitado: true, minimo: 0, maximo: 100 },
+  { id: '11', linea: 'LINEA 1', material: '20003278', descripcion: 'CHN ALTERNATIVA ESPUMA 135X190X015', habilitado: true, minimo: 0, maximo: 100 },
+  { id: '12', linea: 'LINEA 3', material: '20006132', descripcion: 'CHN ALTERNATIVA ESPUMA 080X190X011', habilitado: true, minimo: 0, maximo: 100 },
+  { id: '13', linea: 'LINEA 3', material: '20003275', descripcion: 'CHN ALTERNATIVA ESPUMA 080X190X015', habilitado: true, minimo: 0, maximo: 100 },
+  { id: '14', linea: 'LINEA 3', material: '20006133', descripcion: 'CHN ALTERNATIVA ESPUMA 105X190X011', habilitado: true, minimo: 0, maximo: 100 },
+  { id: '15', linea: 'LINEA 3', material: '20003277', descripcion: 'CHN ALTERNATIVA ESPUMA 105X190X015', habilitado: false, minimo: 0, maximo: 100 },
+  { id: '16', linea: 'LINEA 3', material: '20006134', descripcion: 'CHN ALTERNATIVA ESPUMA 135X190X011', habilitado: false, minimo: 0, maximo: 100 },
+  { id: '17', linea: 'LINEA 3', material: '20003278', descripcion: 'CHN ALTERNATIVA ESPUMA 135X190X015', habilitado: false, minimo: 0, maximo: 100 },
+  { id: '18', linea: 'LINEA 2', material: '20000178', descripcion: 'CHN CONTINENTAL PT GR AC 105X190X030', habilitado: false, minimo: 0, maximo: 100 },
+  { id: '19', linea: 'LINEA 2', material: '20000179', descripcion: 'CHN CONTINENTAL PT GR AC 135X190X030', habilitado: true, minimo: 0, maximo: 100 },
+  { id: '20', linea: 'LINEA 2', material: '20000181', descripcion: 'CHN CONTINENTAL PT GR AC 160X200X030', habilitado: true, minimo: 0, maximo: 100 },
+  { id: '21', linea: 'LINEA 2', material: '20000648', descripcion: 'CHN ORTOPÉDICO PT AC 090X190X023', habilitado: false, minimo: 0, maximo: 100 },
+  { id: '22', linea: 'LINEA 2', material: '20000650', descripcion: 'CHN ORTOPÉDICO PT AC 105X190X023', habilitado: true, minimo: 0, maximo: 100 },
+  { id: '23', linea: 'LINEA 2', material: '20000652', descripcion: 'CHN ORTOPÉDICO PT AC 135X190X023', habilitado: true, minimo: 0, maximo: 100 },
+  { id: '24', linea: 'LINEA 2', material: '20000654', descripcion: 'CHN ORTOPÉDICO PT AC 160X200X023', habilitado: false, minimo: 0, maximo: 100 },
 ];
 
 export const MaterialBalanceoLineasTabSection: React.FC = () => {
@@ -63,7 +65,14 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
       try {
-        setRows(JSON.parse(stored));
+        const parsed = JSON.parse(stored);
+        // Migrar datos antiguos si no tienen minimo/maximo
+        const migrated = parsed.map((r: any) => ({
+          ...r,
+          minimo: r.minimo !== undefined ? r.minimo : 0,
+          maximo: r.maximo !== undefined ? r.maximo : 100
+        }));
+        setRows(migrated);
       } catch (e) {
         setRows(INITIAL_DATA);
       }
@@ -86,7 +95,9 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
       linea: '',
       material: '',
       descripcion: '',
-      habilitado: true
+      habilitado: true,
+      minimo: 0,
+      maximo: 100
     };
     setRows([...rows, newRow]);
   };
@@ -104,7 +115,9 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
       'Línea': r.linea,
       'Material': r.material,
       'Descripción': r.descripcion,
-      'Habilitado': r.habilitado ? 'X' : ''
+      'Habilitado': r.habilitado ? 'SI' : 'NO',
+      'Mínimo (%)': r.minimo,
+      'Máximo (%)': r.maximo
     }));
 
     const ws = XLSX.utils.json_to_sheet(dataToExport);
@@ -125,7 +138,7 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
           <LayoutGrid className="w-6 h-6 text-indigo-600" />
           <div>
             <h3 className="text-xl font-semibold text-gray-800">Material Balanceo Líneas</h3>
-            <p className="text-xs text-gray-500">Configuración de materiales habilitados para el balanceo de carga</p>
+            <p className="text-xs text-gray-500">Configuración de materiales y límites porcentuales para el balanceo de carga</p>
           </div>
         </div>
         
@@ -149,7 +162,9 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
                   <th className="px-4 py-3 text-left font-bold text-gray-600 uppercase tracking-wider w-40 border-r">Material</th>
                   <th className="px-4 py-3 text-left font-bold text-gray-600 uppercase tracking-wider border-r">Descripción</th>
                   <th className="px-4 py-3 text-center font-bold text-gray-600 uppercase tracking-wider w-24 border-r">Habilitado</th>
-                  <th className="px-4 py-3 text-center font-bold text-gray-600 uppercase tracking-wider w-16">Acción</th>
+                  <th className="px-4 py-3 text-center font-bold text-gray-600 uppercase tracking-wider w-16 border-r">Acción</th>
+                  <th className="px-4 py-3 text-center font-bold text-indigo-700 uppercase tracking-wider w-24 border-r bg-indigo-50/30">Mínimo (%)</th>
+                  <th className="px-4 py-3 text-center font-bold text-indigo-700 uppercase tracking-wider w-24 bg-indigo-50/30">Máximo (%)</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
@@ -188,7 +203,7 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
                         />
                       </div>
                     </td>
-                    <td className="px-2 py-1.5 text-center">
+                    <td className="px-2 py-1.5 border-r text-center">
                       <Button 
                         variant="ghost" 
                         size="icon" 
@@ -198,11 +213,27 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     </td>
+                    <td className="px-2 py-1.5 border-r text-center bg-indigo-50/5">
+                      <Input 
+                        type="number"
+                        value={row.minimo} 
+                        onChange={(e) => handleUpdateRow(row.id, 'minimo', Number(e.target.value))}
+                        className="h-8 text-xs text-center border-none shadow-none focus-visible:ring-1 focus-visible:ring-indigo-500 font-bold text-indigo-700"
+                      />
+                    </td>
+                    <td className="px-2 py-1.5 text-center bg-indigo-50/5">
+                      <Input 
+                        type="number"
+                        value={row.maximo} 
+                        onChange={(e) => handleUpdateRow(row.id, 'maximo', Number(e.target.value))}
+                        className="h-8 text-xs text-center border-none shadow-none focus-visible:ring-1 focus-visible:ring-indigo-500 font-bold text-indigo-700"
+                      />
+                    </td>
                   </tr>
                 ))}
                 {rows.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-6 py-12 text-center text-gray-400 italic">
+                    <td colSpan={7} className="px-6 py-12 text-center text-gray-400 italic">
                       No hay materiales configurados. Haga clic en "Añadir Línea" para comenzar.
                     </td>
                   </tr>
@@ -216,7 +247,7 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
       <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg text-blue-800">
         <AlertCircle className="w-4 h-4 flex-shrink-0" />
         <p className="text-xs">
-          <b>Nota:</b> Los materiales desmarcados en la columna <b>Habilitado</b> serán ignorados por el motor de optimización en el cálculo del balanceo.
+          <b>Nota:</b> Los porcentajes de <b>Mínimo</b> y <b>Máximo</b> definen los límites permitidos de ajuste para el motor de balanceo sobre las cantidades originales.
         </p>
       </div>
     </div>
