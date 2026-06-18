@@ -168,6 +168,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
   const [isMounted, setIsMounted] = useState(false);
   const [orders, setOrders] = useState<any[]>([]);
   const [tapiceros, setTapiceros] = useState<any[]>([]);
+  const [deliveryDatesMap, setDeliveryDatesMap] = useState<Map<string, string>>(new Map());
   const [pagination, setPagination] = useState<PaginationState>({
     currentPage: 1,
     totalRegistros: 0,
@@ -278,6 +279,41 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
       }
     };
     fetchTapiceros();
+  }, [isMounted]);
+
+  // Cargar fechas de entrega desde PEND TOTALES para el cruce de información
+  useEffect(() => {
+    if (!isMounted) return;
+
+    const fetchDeliveryDatesMapping = async () => {
+      try {
+        // Consultar un bloque grande de pendientes para el mapeo (20,000 registros)
+        const response = await serviciosService.getPendientesTotales(1, 20000);
+        if (response.data) {
+          const data = Array.isArray(response.data) ? response.data : [response.data];
+          const map = new Map<string, string>();
+          data.forEach((item: any) => {
+            const pedido = String(item.PEDIDO || '').trim();
+            if (pedido) {
+              const dia = String(item.DIAENTREGA || '').padStart(2, '0');
+              const mes = String(item.MESENTREGA || '').padStart(2, '0');
+              const anio = String(item.ANIOENTREGA || '');
+              
+              if (dia !== '00' && mes !== '00' && anio) {
+                const formattedDate = `${dia}-${mes}-${anio}`;
+                // Guardamos con y sin ceros a la izquierda para el cruce flexible
+                map.set(pedido, formattedDate);
+                map.set(pedido.replace(/^0+/, ''), formattedDate);
+              }
+            }
+          });
+          setDeliveryDatesMap(map);
+        }
+      } catch (e) {
+        console.error("Error cargando mapeo de fechas de entrega", e);
+      }
+    };
+    fetchDeliveryDatesMapping();
   }, [isMounted]);
 
   useEffect(() => {
@@ -810,6 +846,17 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
                                    {tiempoTotal > 0 ? tiempoTotal.toFixed(2) : '-'}
                                  </td>
                               );
+                          }
+
+                          if (col === 'FECHA ENTREGA') {
+                             const pedidoRaw = String(order.PEDIDO || '').trim();
+                             const pedidoNoZeros = pedidoRaw.replace(/^0+/, '');
+                             const deliveryDate = deliveryDatesMap.get(pedidoRaw) || deliveryDatesMap.get(pedidoNoZeros) || '-';
+                             return (
+                                <td key={col} className={cn("px-2 py-3 text-center text-[13px] font-semibold text-emerald-700", isBorder)}>
+                                  {deliveryDate}
+                                </td>
+                             );
                           }
 
                           let displayValue = String((order as any)[col] ?? '-');
