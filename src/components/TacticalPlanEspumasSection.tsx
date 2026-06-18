@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -240,12 +241,12 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       }, 0);
   };
 
-  const filterData = (data: any[], centro: string, ignoreRestrictions: boolean = false) => {
+  const filterData = (data: any[], centro: string, tabId: string) => {
     const relevantGroups = grupos.filter(g => String(g.centro).trim() === centro);
     const groupIds = relevantGroups.map(g => g.codigo_grupo);
     const groupRest = restriccionesArray.filter(r => groupIds.includes(r.codigo_grupo));
 
-    const respCodes = ignoreRestrictions ? [] : groupRest
+    const respCodes = groupRest
       .filter(r => r.nombre_restriccion === 'RESPCONTROLPROD')
       .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
       .filter(v => v !== '');
@@ -254,18 +255,18 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const itemCentro = String(o.CENTRO || o.Centro || '').trim();
       if (itemCentro !== centro) return false;
       
-      // FILTRO SOLICITADO: Centro 1000 -> Almacen 1006 / Centro 2000 -> Almacen 2006
-      if (!ignoreRestrictions) {
+      // FILTRO ALMACÉN PARA PROVISIONALES
+      if (tabId === 'ordenes') {
         const itemAlm = String(o.ALMACEN || o.Almacen || '').trim();
         if (centro === '1000' && itemAlm !== '1006') return false;
         if (centro === '2000' && itemAlm !== '2006') return false;
+        
+        if (respCodes.length > 0) {
+          const itemResp = String(o.RESPCONTROLPROD || o.RespControlProd || '').trim();
+          if (!respCodes.includes(itemResp)) return false;
+        }
       }
 
-      if (!ignoreRestrictions && respCodes.length > 0) {
-        const itemResp = String(o.RESPCONTROLPROD || o.RespControlProd || '').trim();
-        if (!respCodes.includes(itemResp)) return false;
-      }
-      
       if (selectedDates.size > 0) {
         const dFull = String(o.FECHAINICIO || o.FECHA || '').trim();
         const itemDate = dFull.includes('T') ? dFull.split('T')[0] : dFull;
@@ -275,12 +276,11 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     });
   };
 
-  const provC1000 = useMemo(() => filterData(ordenes, '1000'), [ordenes, grupos, restriccionesArray, selectedDates]);
-  const provC2000 = useMemo(() => filterData(ordenes, '2000'), [ordenes, grupos, restriccionesArray, selectedDates]);
+  const provC1000 = useMemo(() => filterData(ordenes, '1000', 'ordenes'), [ordenes, grupos, restriccionesArray, selectedDates]);
+  const provC2000 = useMemo(() => filterData(ordenes, '2000', 'ordenes'), [ordenes, grupos, restriccionesArray, selectedDates]);
   
-  // Órdenes FERT ignoran restricciones de responsable y almacén por instrucciones previas
-  const fertC1000 = useMemo(() => filterData(ordenesFert, '1000', true), [ordenesFert, selectedDates]);
-  const fertC2000 = useMemo(() => filterData(ordenesFert, '2000', true), [ordenesFert, selectedDates]);
+  const fertC1000 = useMemo(() => filterData(ordenesFert, '1000', 'ordenesFert'), [ordenesFert, selectedDates]);
+  const fertC2000 = useMemo(() => filterData(ordenesFert, '2000', 'ordenesFert'), [ordenesFert, selectedDates]);
 
   const defaultOpHour = useMemo(() => {
     const clGroup = grupos.find(g => g.nombre_grupo.toLowerCase().includes('corte y laminado'));
@@ -539,10 +539,12 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           </Card>
         </TabsContent>
 
-        <TabsContent value="ordenes" className="space-y-10 animate-in fade-in duration-300 text-center">
-           {[ {t: 'UIO 1000 (Alm: 1006)', d: provC1000}, {t: 'GYE 2000 (Alm: 2006)', d: provC2000} ].map((c, i) => (
-             <div key={i} className="space-y-4">
-                <h3 className="text-[11px] font-black uppercase text-slate-400 tracking-widest text-left px-2">{c.t}</h3>
+        <TabsContent value="ordenes" className="space-y-10 animate-in fade-in duration-300">
+           {[ {t: 'UIO 1000 (Alm: 1006)', d: provC1000, id: '1000', c: 'text-green-700', b: 'bg-green-600' }, {t: 'GYE 2000 (Alm: 2006)', d: provC2000, id: '2000', c: 'text-indigo-700', b: 'bg-indigo-600' } ].map((center, idx) => (
+             <div key={idx} className="space-y-4">
+                <h3 className={cn("text-[11px] font-bold uppercase flex items-center gap-2 px-1 text-left", center.c)}>
+                  <div className={cn("w-2.5 h-2.5 rounded-full", center.b)} /> {center.t} ({center.d.length} órdenes)
+                </h3>
                 <Card className="rounded-[2.5rem] border border-gray-100 shadow-xl overflow-hidden bg-white">
                   <div className="overflow-x-auto">
                     <table className="w-full text-center font-sans text-[10px]">
@@ -557,16 +559,16 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                           <th className="px-6 py-5 border-r border-white/5">Máquina</th>
                           <th className="px-6 py-5 border-r border-white/10 text-blue-200 bg-blue-500/10">T. INDIV. (min)</th>
                           <th className="px-6 py-5 border-r border-white/10 text-amber-200 bg-amber-500/10">T. TOTAL (H)</th>
-                          <th className="px-6 py-5 border-r border-white/5 text-red-400 bg-red-500/10">CARGAS</th>
+                          <th className="px-6 py-5 border-r border-gray-50 text-red-400 bg-red-500/10">CARGAS</th>
                           <th className="px-6 py-5">Alm.</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-50 font-bold">
-                        {c.d.map((o, idx) => {
+                        {center.d.map((o, i) => {
                           const eng = calculateEngineering(o);
                           const matCode = cleanCode(eng.code);
                           return (
-                            <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                            <tr key={i} className="hover:bg-slate-50/50 transition-colors">
                               <td className="px-6 py-4 text-slate-800 border-r border-gray-50">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
                               <td className="px-6 py-4 border-r border-gray-50 text-gray-400 font-mono text-[9px]">{String(o.FECHAINICIO || '').split('T')[0]}</td>
                               <td className="px-6 py-4 font-mono font-black text-red-600 border-r border-gray-50">{matCode}</td>
@@ -590,13 +592,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="ordenesFert" className="space-y-10 animate-in fade-in duration-300 text-center">
-           {[ {t: 'UIO 1000 (Visualización Total)', d: fertC1000}, {t: 'GYE 2000 (Visualización Total)', d: fertC2000} ].map((c, i) => (
+           {[ {t: 'UIO 1000 - Órdenes FERT', d: fertC1000}, {t: 'GYE 2000 - Órdenes FERT', d: fertC2000} ].map((center, i) => (
              <div key={i} className="space-y-4">
-                <h3 className="text-[11px] font-black uppercase text-slate-400 tracking-widest text-left px-2">{c.t}</h3>
+                <h3 className="text-[11px] font-black uppercase text-slate-400 tracking-widest text-left px-2">{center.t} ({center.d.length} registros)</h3>
                 <Card className="rounded-[2.5rem] border border-gray-100 shadow-xl overflow-hidden bg-white">
                   <div className="overflow-x-auto">
                     <table className="w-full text-center font-sans text-[10px]">
-                      <thead className="bg-[#1e293b] text-white border-b border-gray-100 uppercase font-black tracking-widest text-[9px] sticky top-0 z-10">
+                      <thead className="bg-[#1e293b] text-white uppercase font-black border-b border-white/5">
                         <tr>
                           <th className="px-4 py-5 border-r border-white/5">Orden</th>
                           <th className="px-4 py-5 border-r border-white/5">Fecha</th>
@@ -605,7 +607,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                           <th className="px-3 py-5 border-r border-white/5">Categoría</th>
                           <th className="px-4 py-5 border-r border-white/5">Cant.</th>
                           <th className="px-3 py-5 border-r border-white/5">UM</th>
-                          <th className="px-4 py-5 border-r border-white/5">Responsable</th>
+                          <th className="px-4 py-5 border-r border-white/5">Resp.</th>
                           <th className="px-4 py-5 border-r border-white/5">Máquina</th>
                           <th className="px-4 py-5 border-r border-white/10 text-blue-200 bg-blue-500/10">T. INDIV. (min)</th>
                           <th className="px-4 py-5 border-r border-white/10 text-amber-200 bg-amber-500/10">T. TOTAL (H)</th>
@@ -614,7 +616,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-50 font-bold">
-                        {c.d.map((o, idx) => {
+                        {center.d.map((o, idx) => {
                           const eng = calculateEngineering(o);
                           const description = String(o.MATERIAL || '').replace(/^\d+\s*/, '') || o.NOMBRE || '—';
                           const matCode = cleanCode(eng.code);
@@ -627,7 +629,11 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                               <td className="px-3 py-4 border-r border-gray-50 text-indigo-400 text-[8px] font-black uppercase">{String(o.CATEGORIA || '—')}</td>
                               <td className="px-4 py-4 font-black text-slate-900 border-r border-gray-50 font-mono">{o.CANTIDAD || 0}</td>
                               <td className="px-3 py-4 border-r border-gray-50 text-slate-300 text-[8px] uppercase">{o.UNIDAD || '—'}</td>
-                              <td className="px-4 py-4 border-r border-gray-50"><Badge variant="outline" className="text-[8px] bg-indigo-50 text-indigo-700">{String(o.RESPCONTROLPROD || '—')}</Badge></td>
+                              <td className="px-4 py-4 border-r border-gray-50">
+                                <Badge variant="outline" className="text-[8px] bg-indigo-50 text-indigo-700 border-indigo-100">
+                                  {String(o.RESPCONTROLPROD || o.RespControlProd || o.Resp_Control_Prod || '—')}
+                                </Badge>
+                              </td>
                               <td className="px-4 py-4 font-bold text-slate-400 border-r border-gray-50 uppercase">{o.MAQUINA || o.RECURSO || '—'}</td>
                               <td className="px-4 py-4 border-r border-white/10 text-blue-700 bg-blue-50/10 font-mono">{eng.indivMin.toFixed(2)}</td>
                               <td className="px-4 py-4 border-r border-white/10 text-amber-700 bg-amber-50/10 font-mono">{eng.hours.toFixed(2)}</td>
