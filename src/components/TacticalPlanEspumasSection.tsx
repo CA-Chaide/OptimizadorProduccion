@@ -33,7 +33,7 @@ import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 import { cn } from '@/lib/utils';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 /**
@@ -74,16 +74,14 @@ const calculateMTTOCapacity = (start: string, end: string): string => {
 };
 
 const getResp = (o: any): string => {
-  return String(o.RESPCONTROLPROD || o.RespControlProd || o.RESP_CONTROL_PROD || o.resp_control_prod || o.RESP_CP || '—').trim();
+  return String(o.RESPCTRLPROD || o.RespControlProd || o.RESP_CONTROL_PROD || o.RESP_CP || '—').trim();
 };
 
 // Constantes de Ingeniería Planta v2.2
-const BLOCK_LENGTH_METERS = 20;
 const CARRUSEL_DIAMETER_CM = 320;
 const CIRCUMFERENCE = Math.PI * CARRUSEL_DIAMETER_CM;
-const BASE_GAP_CM = 30; 
 const MANIPULATION_FACTOR = 1.05; 
-const EFFECTIVE_GAP_CM = BASE_GAP_CM * MANIPULATION_FACTOR; 
+const EFFECTIVE_GAP_CM = 30 * MANIPULATION_FACTOR; 
 const BLOCK_20M_CM = 2000; 
 const MAX_STACK_HEIGHT_CM = 200; 
 const SECONDS_PER_LOAD_VUELTA = 300; 
@@ -120,7 +118,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const [habilidades, setHabilidades] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
-  // Selección múltiple de fechas - Inicializados como estables para SSR
   const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set());
   const [viewDate, setViewDate] = useState<Date | null>(null);
   const [manualHours, setManualHours] = useState<Record<string, number>>({});
@@ -133,8 +130,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   }, []);
 
   const formatNum = useCallback((val: any, decimals: number = 2): string => {
-    const n = safeNum(val);
     if (!mounted) return '';
+    const n = safeNum(val);
     return n.toLocaleString(undefined, { 
       minimumFractionDigits: decimals, 
       maximumFractionDigits: decimals 
@@ -171,18 +168,14 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
     const singleBlockH = (densV < 30) ? 103 : 85;
     const stackedH = singleBlockH * 2;
-    const usefulH = Math.min(MAX_STACK_HEIGHT_CM, stackedH);
-    const sheetsPerStack = esp > 0 ? Math.floor(usefulH / esp) : 1;
+    const sheetsPerStack = esp > 0 ? Math.floor(Math.min(MAX_STACK_HEIGHT_CM, stackedH) / esp) : 1;
     const subblocks = sheetsPerStack > 0 ? Math.ceil(qty / sheetsPerStack) : 0;
-    const piezasPorLargoBloque = largo > 0 ? Math.floor(BLOCK_20M_CM / largo) : 0;
-    const blocks20m = piezasPorLargoBloque > 0 ? (subblocks * 2) / piezasPorLargoBloque : 0;
     const sbPerLoad = ancho > 0 ? Math.floor(CIRCUMFERENCE / (ancho + EFFECTIVE_GAP_CM)) : 1;
     const loads = sbPerLoad > 0 ? Math.ceil(subblocks / sbPerLoad) : 0;
 
     const tCargaSec = loads * SECONDS_PER_LOAD_VUELTA; 
     const sheetsPerRep = (esp > 10) ? 4 : 3;
-    const totalRepsDescarga = sheetsPerRep > 0 ? Math.ceil(qty / sheetsPerRep) : qty;
-    const tDescargaSec = totalRepsDescarga * SECONDS_PER_MANEUVER_DESC;
+    const tDescargaSec = (sheetsPerRep > 0 ? Math.ceil(qty / sheetsPerRep) : qty) * SECONDS_PER_MANEUVER_DESC;
 
     const matchTime = tiemposEnsamblado.find(t => String(t.CodMaterial || t.cod_material).slice(-8) === info.code);
     const sapSecPerUnit = safeNum(matchTime?.Tiempo || matchTime?.tiempo || 0);
@@ -191,7 +184,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const hours = totalTimeSec / 3600;
     const indivMin = qty > 0 ? (totalTimeSec / qty) / 60 : 0;
 
-    return { ...info, subblocks, sbPerLoad, blocks20m, loads, hours, indivMin, qty };
+    return { ...info, subblocks, sbPerLoad, loads, hours, indivMin, qty };
   }, [extractMaterialInfo, tiemposEnsamblado]);
 
   const initData = useCallback(async () => {
@@ -255,24 +248,17 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
       .filter(v => v !== '');
 
-    const almCodes = groupRest
-      .filter(r => r.nombre_restriccion === 'ALMACEN')
-      .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
-      .filter(v => v !== '');
-
     return data.filter(o => {
       const itemCentro = String(o.CENTRO || o.Centro || o.centro || '').trim();
       if (itemCentro !== centro) return false;
       
-      const dFull = String(o.FECHAINICIO || o.FECHA || '').trim();
+      const dFull = String(o.FECHA || o.FECHAINICIO || '').trim();
       const itemDate = dFull.includes('T') ? dFull.split('T')[0] : dFull;
-      const matchDate = selectedDates.size === 0 || selectedDates.has(itemDate);
-      if (!matchDate) return false;
+      if (selectedDates.size > 0 && !selectedDates.has(itemDate)) return false;
 
-      // Órdenes FERT: Visibilidad total por planta sin filtros de grupo (como solicitado)
-      if (isFert) return true;
+      if (isFert) return true; // FERT sin filtros restrictivos de responsable
 
-      // Órdenes Provisionales: Filtro estricto por almacén y responsable del área
+      // Provisionales: Filtro estricto por almacén y responsable
       const itemAlm = String(o.ALMACEN || o.Almacen || '').trim();
       const matchAlm = (centro === '1000' && itemAlm === '1006') || (centro === '2000' && itemAlm === '2006');
       if (!matchAlm) return false;
@@ -297,15 +283,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return safeNum(htRest?.valor_restriccion) || 8;
   }, [grupos, restriccionesArray]);
 
-  const datesWithOrders = useMemo(() => {
-    const dates = new Set<string>();
-    [...ordenes, ...ordenesFert].forEach(o => {
-      const d = String(o.FECHAINICIO || o.FECHA || '').trim();
-      if (d && d !== 'null') dates.add(d.includes('T') ? d.split('T')[0] : d);
-    });
-    return dates;
-  }, [ordenes, ordenesFert]);
-
   const calendarDays = useMemo(() => {
     if (!viewDate) return [];
     const start = startOfMonth(viewDate);
@@ -318,25 +295,16 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
   if (!mounted) return null;
 
-  if (isLoading) return (
-    <div className="flex flex-col items-center justify-center p-20 gap-4">
-      <Loader2 className="w-10 h-10 animate-spin text-primary" />
-      <p className="text-xs font-bold text-gray-400 uppercase tracking-widest animate-pulse">Sincronizando Módulo de Corte...</p>
-    </div>
-  );
-
   return (
     <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
       <div className="flex items-center justify-between pb-4 border-b border-gray-100">
-        <div className="flex items-center space-x-3 text-left">
-          <div className="p-2 bg-primary/10 rounded-xl shadow-inner"><Wind className="w-6 h-6 text-primary" /></div>
-          <div>
-            <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Programación Táctica Corte Espuma</h2>
-          </div>
+        <div className="flex items-center space-x-3">
+          <div className="p-2 bg-primary/10 rounded-xl"><Wind className="w-6 h-6 text-primary" /></div>
+          <h2 className="text-xl font-bold text-gray-800 uppercase tracking-tight">Programación Táctica Corte Espuma</h2>
         </div>
 
         <div className="flex items-center gap-3">
-          <Button onClick={initData} disabled={isLoading} variant="outline" className="h-10 px-4 rounded-xl border-gray-200 gap-2 font-bold text-[10px] uppercase shadow-sm hover:border-primary/50 transition-all">
+          <Button onClick={initData} disabled={isLoading} variant="outline" className="h-10 px-4 rounded-xl border-gray-200 gap-2 font-bold text-[10px] uppercase shadow-sm">
             {isLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />} ACTUALIZAR
           </Button>
 
@@ -394,8 +362,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           ))}
         </TabsList>
 
-        <TabsContent value="capacidad" className="animate-in fade-in duration-300 space-y-12 text-left">
-          {[ { id: '1000', label: 'Quito' }, { id: '2000', label: 'Guayaquil' } ].map(center => {
+        <TabsContent value="capacidad" className="animate-in fade-in duration-300 space-y-12">
+          {[ { id: '1000', label: 'UIO' }, { id: '2000', label: 'GYE' } ].map(center => {
             const machines = CAPACIDAD_CONFIG_BASE[center.id as '1000' | '2000'];
             const provOrders = center.id === '1000' ? provC1000 : provC2000;
             const fertOrders = center.id === '1000' ? fertC1000 : fertC2000;
@@ -408,70 +376,57 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               const hT2 = manualHours[`${center.id}_${m.code}_t2`] ?? (center.id==='1000' ? m.t2 : 0);
               const mtto = getMachineMTTO(m.code);
               const netAvailable = (hT1 + hT2 - PARO_PROG_T1 - PARO_PROG_T2 - mtto) * m.rendimiento;
-              return {
-                disp: acc.disp + netAvailable
-              };
+              return { disp: acc.disp + netAvailable };
             }, { disp: 0 });
 
             return (
               <div key={center.id} className="space-y-4">
-                <div className="flex items-center justify-between px-2">
-                  <h3 className="text-[11px] font-black uppercase tracking-widest text-slate-800 flex items-center gap-2">
-                    <div className="w-2.5 h-2.5 rounded-full bg-slate-900" /> PLANTA {center.label}
-                  </h3>
-                </div>
-
-                <Card className="rounded-3xl border border-gray-100 shadow-2xl overflow-hidden bg-white">
-                  <table className="w-full border-collapse font-sans text-[10px]">
-                    <thead className="bg-[#f8fafc] text-slate-400 uppercase font-black tracking-tighter border-b border-gray-100 text-center">
+                <h3 className="text-[11px] font-black uppercase tracking-widest text-slate-800 flex items-center gap-2">
+                  <MapPin className="w-3 h-3" /> PLANTA {center.label}
+                </h3>
+                <Card className="rounded-[2rem] border border-gray-100 shadow-xl overflow-hidden bg-white">
+                  <table className="w-full border-collapse text-center font-sans text-[10px]">
+                    <thead className="bg-[#f8fafc] text-slate-400 uppercase font-black tracking-tighter border-b border-gray-100">
                       <tr>
-                        <th className="px-6 py-5 text-left w-56">Máquina / Recurso</th>
+                        <th className="px-6 py-5 text-left w-56">Recurso</th>
                         <th className="px-2 py-5 border-r border-gray-50 w-24">T1 (H)</th>
                         <th className="px-2 py-5 border-r border-gray-50 w-24">T2 (H)</th>
                         <th className="px-3 py-5 border-r border-gray-50">Paro T1</th>
                         <th className="px-3 py-5 border-r border-gray-50">Paro T2</th>
                         <th className="px-3 py-5 border-r border-gray-50">MTTO SAP</th>
-                        <th className="px-4 py-5 bg-indigo-50 text-indigo-900 border-r border-gray-100">Disp. Neta (H)</th>
-                        <th className="px-4 py-5 text-blue-600 bg-blue-50/20 border-r border-gray-50">Total Ord_Prov</th>
-                        <th className="px-4 py-5 border-r border-gray-50">% Ocupación Prov</th>
-                        <th className="px-4 py-5 text-teal-600 bg-teal-50/20 border-r border-gray-50">Total Ord_Fert</th>
+                        <th className="px-4 py-5 bg-indigo-50 text-indigo-900 border-r border-gray-100">Disp. Neta</th>
+                        <th className="px-4 py-5 text-blue-600 bg-blue-50/20">Total Ord_Prov</th>
+                        <th className="px-4 py-5">% Ocupación Prov</th>
+                        <th className="px-4 py-5 text-teal-600 bg-teal-50/20">Total Ord_Fert</th>
                         <th className="px-4 py-5">% Ocupación Fert</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-50 font-bold text-center">
+                    <tbody className="divide-y divide-gray-50 font-bold">
                       {machines.map(m => {
                         const hT1 = manualHours[`${center.id}_${m.code}_t1`] ?? (center.id==='1000' ? m.t1 : defaultOpHour);
                         const hT2 = manualHours[`${center.id}_${m.code}_t2`] ?? (center.id==='1000' ? m.t2 : 0);
                         const mtto = getMachineMTTO(m.code);
                         const netAvailable = (hT1 + hT2 - PARO_PROG_T1 - PARO_PROG_T2 - mtto) * m.rendimiento;
                         return (
-                          <tr key={m.code} className="hover:bg-slate-50/80 transition-colors border-b border-gray-50">
+                          <tr key={m.code} className="hover:bg-slate-50 transition-colors">
                             <td className="px-6 py-4 text-left">
-                              <div className="text-indigo-900 font-black text-xs uppercase">{m.name}</div>
-                              <div className="text-[8px] text-gray-400 font-bold">{m.code}</div>
+                              <div className="text-indigo-900 font-black text-[11px] uppercase">{m.name}</div>
+                              <div className="text-[9px] text-gray-400 font-bold">{m.code}</div>
                             </td>
                             <td className="px-2 py-4">
-                                <select 
-                                  className="bg-slate-100 border border-slate-200 rounded-lg px-1 py-0.5 text-[9px] font-black w-14 text-center"
-                                  value={hT1}
-                                  onChange={e => setManualHours({...manualHours, [`${center.id}_${m.code}_t1`]: Number(e.target.value)})}
-                                >
-                                  {Array.from({length: 14}, (_, i) => <option key={i} value={i}>{i}h</option>)}
-                                </select>
+                              <select className="bg-slate-100 border border-slate-200 rounded-lg px-2 py-1 text-[10px] font-black w-16" value={hT1} onChange={e => setManualHours({...manualHours, [`${center.id}_${m.code}_t1`]: Number(e.target.value)})}>
+                                {Array.from({length: 16}, (_, i) => <option key={i} value={i}>{i}h</option>)}
+                              </select>
                             </td>
                             <td className="px-2 py-4">
-                                <select 
-                                  className="bg-slate-100 border border-slate-200 rounded-lg px-1 py-0.5 text-[9px] font-black w-14 text-center"
-                                  value={hT2}
-                                  onChange={e => setManualHours({...manualHours, [`${center.id}_${m.code}_t2`]: Number(e.target.value)})}
-                                >
-                                  {Array.from({length: 14}, (_, i) => <option key={i} value={i}>{i}h</option>)}
-                                </select>
+                              <select className="bg-slate-100 border border-slate-200 rounded-lg px-2 py-1 text-[10px] font-black w-16" value={hT2} onChange={e => setManualHours({...manualHours, [`${center.id}_${m.code}_t2`]: Number(e.target.value)})}>
+                                {Array.from({length: 16}, (_, i) => <option key={i} value={i}>{i}h</option>)}
+                              </select>
                             </td>
                             <td className="px-3 py-4 text-slate-300 font-mono">{PARO_PROG_T1}</td>
                             <td className="px-3 py-4 text-slate-300 font-mono">{PARO_PROG_T2}</td>
-                            <td className={cn("px-3 py-4 font-mono", mtto > 0 ? "text-red-500 bg-red-50/30" : "text-slate-100")}>{mtto > 0 ? `${mtto}h` : '—'}</td>
-                            <td className="px-4 py-4 font-mono font-black text-indigo-700 bg-indigo-50/20">{netAvailable.toFixed(1)}</td>
+                            <td className={cn("px-3 py-4 font-mono", mtto > 0 ? "text-red-500 bg-red-50/50" : "text-slate-100")}>{mtto > 0 ? `${mtto}h` : '—'}</td>
+                            <td className="px-4 py-4 font-mono font-black text-indigo-700 bg-indigo-50/30">{netAvailable.toFixed(1)}</td>
                             <td className="px-4 py-4 text-slate-200 font-mono">—</td>
                             <td className="px-4 py-4 text-slate-200 font-mono">—</td>
                             <td className="px-4 py-4 text-slate-200 font-mono">—</td>
@@ -481,15 +436,15 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                       })}
                     </tbody>
                     <tfoot className="bg-[#1e293b] text-white font-black uppercase text-[10px]">
-                      <tr className="text-center">
+                      <tr>
                         <td colSpan={6} className="px-6 py-4 text-right tracking-widest border-r border-white/5">TOTAL PLANTA {center.label}</td>
                         <td className="px-4 py-4 bg-indigo-900 border-r border-white/5 font-mono">{totals.disp.toFixed(1)}h</td>
-                        <td className="px-4 py-4 bg-blue-900/50 border-r border-white/5 font-mono text-blue-200">{plantLoadProv.toFixed(1)}h</td>
-                        <td className={cn("px-4 py-4 bg-black/40 border-r border-white/5 font-mono", (plantLoadProv / totals.disp * 100) > 100 ? "text-red-400" : "text-emerald-400")}>
+                        <td className="px-4 py-4 bg-blue-900/40 border-r border-white/5 font-mono text-blue-200">{plantLoadProv.toFixed(1)}h</td>
+                        <td className={cn("px-4 py-4 bg-black/30 border-r border-white/5 font-mono", (plantLoadProv / totals.disp * 100) > 100 ? "text-red-400" : "text-emerald-400")}>
                           {totals.disp > 0 ? ((plantLoadProv / totals.disp) * 100).toFixed(0) : 0}%
                         </td>
-                        <td className="px-4 py-4 bg-teal-900/50 border-r border-white/5 font-mono text-teal-200">{plantLoadFert.toFixed(1)}h</td>
-                        <td className={cn("px-4 py-4 bg-black/40 font-mono", (plantLoadFert / totals.disp * 100) > 100 ? "text-red-400" : "text-emerald-400")}>
+                        <td className="px-4 py-4 bg-teal-900/40 border-r border-white/5 font-mono text-teal-200">{plantLoadFert.toFixed(1)}h</td>
+                        <td className={cn("px-4 py-4 bg-black/30 font-mono", (plantLoadFert / totals.disp * 100) > 100 ? "text-red-400" : "text-emerald-400")}>
                           {totals.disp > 0 ? ((plantLoadFert / totals.disp) * 100).toFixed(0) : 0}%
                         </td>
                       </tr>
@@ -502,21 +457,19 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="habilidades" className="animate-in fade-in duration-300">
-          <Card className="rounded-3xl border border-gray-100 shadow-xl overflow-hidden bg-white">
-            <div className="overflow-x-auto max-h-[650px] relative text-left">
+          <Card className="rounded-[2rem] border border-gray-100 shadow-xl overflow-hidden bg-white">
+            <div className="overflow-x-auto max-h-[600px] relative text-left">
               <table className="w-full border-collapse font-sans text-[10px]">
                 <thead className="bg-[#e0e7ff] sticky top-0 z-20 text-indigo-900 uppercase font-black border-b border-indigo-200">
                   <tr>
                     {habilidades.length > 0 && Object.keys(habilidades[0]).map(k => (
-                      <th key={k} className="px-6 py-4 border-r border-indigo-100 whitespace-nowrap">
-                        {k.replace(/_/g, ' ')}
-                      </th>
+                      <th key={k} className="px-6 py-4 border-r border-indigo-100 whitespace-nowrap">{k.replace(/_/g, ' ')}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 font-bold">
                   {habilidades.length === 0 ? (
-                    <tr><td className="py-20 text-center text-slate-300 italic uppercase tracking-widest">Consultando habilidades...</td></tr>
+                    <tr><td className="py-20 text-center text-slate-300 italic uppercase tracking-widest">No hay datos de habilidades cargados</td></tr>
                   ) : (
                     habilidades.map((h, i) => (
                       <tr key={i} className="hover:bg-indigo-50/30 transition-colors">
@@ -531,8 +484,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="mantenimiento" className="animate-in fade-in duration-300">
-          <Card className="rounded-3xl border border-gray-100 shadow-xl overflow-hidden bg-white text-center">
-            <div className="overflow-x-auto max-h-[600px] relative">
+          <Card className="rounded-[2rem] border border-gray-100 shadow-xl overflow-hidden bg-white text-center">
+            <div className="overflow-x-auto max-h-[600px]">
               <table className="w-full border-collapse font-sans text-[10px]">
                 <thead className="bg-[#fef3c7] sticky top-0 z-10 text-amber-900 uppercase font-black border-b border-amber-200">
                   <tr>
@@ -557,9 +510,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <td className="px-6 py-4 border-r border-gray-100 font-mono text-left text-slate-400">{String(m.OT_PRG_ID || '—')}</td>
                         <td className="px-6 py-4 border-r border-gray-100 text-left font-mono text-slate-500">{m.FECHA_OT_PRG_INI || m.FECHA_INI || '—'}</td>
                         <td className="px-6 py-4 border-r border-gray-100 text-left font-mono text-slate-500">{m.FECHA_OT_PRG_FIN || m.FECHA_FIN || '—'}</td>
-                        <td className="px-8 py-4 text-center font-mono font-black text-amber-700 bg-amber-50/50">
-                          {calculateMTTOCapacity(m.FECHA_OT_PRG_INI || m.FECHA_INI, m.FECHA_OT_PRG_FIN || m.FECHA_FIN)}
-                        </td>
+                        <td className="px-8 py-4 text-center font-mono font-black text-amber-700 bg-amber-50/50">{calculateMTTOCapacity(m.FECHA_OT_PRG_INI || m.FECHA_INI, m.FECHA_OT_PRG_FIN || m.FECHA_FIN)}</td>
                       </tr>
                     ))
                   )}
@@ -596,14 +547,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                       <tbody className="divide-y divide-gray-50 font-bold">
                         {center.d.map((o, i) => {
                           const eng = calculateEngineering(o);
-                          const matCode = cleanCode(eng.code);
                           return (
                             <tr key={i} className="hover:bg-slate-50/50 transition-colors">
                               <td className="px-6 py-4 text-slate-800 border-r border-gray-50">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
                               <td className="px-6 py-4 border-r border-gray-50 text-gray-400 font-mono text-[9px]">{String(o.FECHAINICIO || '').split('T')[0]}</td>
-                              <td className="px-6 py-4 font-mono font-black text-red-600 border-r border-gray-50">{matCode}</td>
+                              <td className="px-6 py-4 font-mono font-black text-red-600 border-r border-gray-50">{cleanCode(eng.code)}</td>
                               <td className="px-6 py-4 text-left border-r border-gray-100 text-slate-600 uppercase truncate max-w-[200px]">{eng.desc}</td>
-                              <td className="px-6 py-4 font-black text-slate-900 border-r border-gray-50 font-mono">{eng.qty}</td>
+                              <td className="px-6 py-4 font-black text-slate-900 border-r border-gray-50 font-mono text-sm">{eng.qty}</td>
                               <td className="px-6 py-4 border-r border-gray-50"><Badge variant="outline" className="text-[8px] bg-blue-50 text-blue-700">{getResp(o)}</Badge></td>
                               <td className="px-6 py-4 font-bold text-slate-400 border-r border-gray-50 uppercase">{o.MAQUINA || '—'}</td>
                               <td className="px-6 py-4 border-r border-white/10 text-blue-700 bg-blue-50/10 font-mono">{eng.indivMin.toFixed(2)}</td>
@@ -644,28 +594,34 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                           <th className="px-6 py-5 border-r border-white/10 text-blue-700 bg-blue-50/10 font-mono">T. INDIV. (min)</th>
                           <th className="px-6 py-5 border-r border-white/10 text-amber-700 bg-amber-50/10 font-mono">T. TOTAL (H)</th>
                           <th className="px-6 py-5 border-r border-white/5 text-red-600 bg-red-50/10">CARGAS</th>
-                          <th className="px-6 py-5">Alm.</th>
+                          <th className="px-6 py-5">Centro</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-50 font-bold">
                         {center.d.map((o, i) => {
                           const eng = calculateEngineering(o);
-                          const matCode = cleanCode(eng.code);
+                          // Mapeo específico para /OrdenesFert: o.CANTPROGRAMADA, o.FECHA, o.RESPCTRLPROD, o.ORDEN
+                          const qty = safeNum(o.CANTPROGRAMADA || o.CANTIDAD || 0);
+                          const date = String(o.FECHA || o.FECHAINICIO || '—').split('T')[0];
+                          const matCode = cleanCode(o.MATERIAL || eng.code);
+                          const description = o.NOMBRE || eng.desc;
+                          const resp = String(o.RESPCTRLPROD || '—');
+
                           return (
                             <tr key={i} className="hover:bg-slate-50/50 transition-colors">
-                              <td className="px-6 py-4 text-slate-800 border-r border-gray-50">{o.ORDEN || o.ORDENPREVISIONAL || '—'}</td>
-                              <td className="px-6 py-4 border-r border-gray-50 text-gray-400 font-mono text-[9px]">{String(o.FECHA || '').split('T')[0]}</td>
+                              <td className="px-6 py-4 text-slate-800 border-r border-gray-50">{o.ORDEN || '—'}</td>
+                              <td className="px-6 py-4 border-r border-gray-50 text-gray-400 font-mono text-[9px]">{date}</td>
                               <td className="px-6 py-4 font-mono font-black text-red-600 border-r border-gray-50">{matCode}</td>
-                              <td className="px-6 py-4 text-left border-r border-gray-100 text-slate-600 uppercase truncate max-w-[200px]">{eng.desc}</td>
+                              <td className="px-6 py-4 text-left border-r border-gray-100 text-slate-600 uppercase truncate max-w-[200px]">{description}</td>
                               <td className="px-6 py-4 border-r border-white/5 text-indigo-400 text-[8px] font-black uppercase">{String(o.CATEGORIA || '—')}</td>
-                              <td className="px-6 py-4 font-black text-slate-900 border-r border-gray-50 font-mono">{eng.qty}</td>
+                              <td className="px-6 py-4 font-black text-slate-900 border-r border-gray-50 font-mono text-sm">{qty}</td>
                               <td className="px-4 py-4 border-r border-gray-50 text-slate-300 font-bold">{o.UNIDAD || '—'}</td>
-                              <td className="px-6 py-4 border-r border-gray-50"><Badge variant="outline" className="text-[8px] bg-indigo-50 text-indigo-700">{getResp(o)}</Badge></td>
-                              <td className="px-6 py-4 font-bold text-slate-400 border-r border-gray-50 uppercase">{o.MAQUINA || o.RECURSO || '—'}</td>
+                              <td className="px-6 py-4 border-r border-gray-50"><Badge variant="outline" className="text-[8px] bg-indigo-50 text-indigo-700">{resp}</Badge></td>
+                              <td className="px-6 py-4 font-bold text-slate-400 border-r border-gray-50 uppercase">{o.MAQUINA || '—'}</td>
                               <td className="px-6 py-4 border-r border-white/10 text-blue-700 bg-blue-50/10 font-mono">{eng.indivMin.toFixed(2)}</td>
                               <td className="px-6 py-4 border-r border-white/10 text-amber-700 bg-amber-50/10 font-mono">{eng.hours.toFixed(2)}</td>
                               <td className="px-6 py-4 border-r border-gray-50 text-red-600 bg-red-50/20 font-mono">{Math.ceil(eng.loads)}</td>
-                              <td className="px-6 py-4 text-slate-200">{o.ALMACEN || o.Almacen || '—'}</td>
+                              <td className="px-6 py-4 text-slate-200">{o.CENTRO || '—'}</td>
                             </tr>
                           );
                         })}
