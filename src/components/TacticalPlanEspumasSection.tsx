@@ -125,6 +125,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const [ordenesFert, setOrdersFert] = useState<any[]>([]);
   const [tiemposEnsamblado, setTiemposEnsamblado] = useState<any[]>([]);
   const [mantenimientos, setMantenimientos] = useState<any[]>([]);
+  const [habilidades, setHabilidades] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
   const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set());
@@ -202,12 +203,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       setGrupos(filteredGroups);
       const gIds = filteredGroups.map(g => g.codigo_grupo);
 
-      const [restrs, provs, ferts, times, maint] = await Promise.all([
+      const [restrs, provs, ferts, times, maint, skills] = await Promise.all([
         restriccionService.getAll(),
         serviciosService.OrdenesProvisionalesPaginados(1, 20000),
         serviciosService.getOrdenesFert(1, 20000),
         serviciosService.getTiemposEnsamblado(1, 15000),
-        serviciosService.ListarMantenimientoPreventivosProgramados().catch(() => ({ data: [] }))
+        serviciosService.ListarMantenimientoPreventivosProgramados().catch(() => ({ data: [] })),
+        serviciosService.getHabilidadesOperadorPorEstacion().catch(() => ({ data: [] }))
       ]);
 
       setRestriccionesArray((restrs.data || []).filter((r: any) => gIds.includes(r.codigo_grupo)));
@@ -215,6 +217,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       setOrdersFert(ferts.data?.data || ferts.data || []);
       setTiemposEnsamblado(times.data?.data || times.data || []);
       setMantenimientos(maint.data || []);
+      setHabilidades(skills.data || []);
       
     } catch (e) {
       console.error('Error init TacticalPlanEspumas:', e);
@@ -240,7 +243,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       }, 0);
   };
 
-  const filterData = (data: any[], centro: string, applyDateFilter: boolean = true, ignoreGroupFilters: boolean = false) => {
+  const filterData = (data: any[], centro: string, applyDateFilter: boolean = true, isFert: boolean = false) => {
     const relevantGroups = grupos.filter(g => String(g.centro).trim() === centro);
     const groupIds = relevantGroups.map(g => g.codigo_grupo);
     const groupRest = restriccionesArray.filter(r => groupIds.includes(r.codigo_grupo));
@@ -257,13 +260,12 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const dFull = String(o.FECHAINICIO || o.FECHA || '').trim();
       const itemDate = dFull.includes('T') ? dFull.split('T')[0] : dFull;
       const matchDate = selectedDates.size === 0 || selectedDates.has(itemDate);
+      if (!matchDate) return false;
 
-      // Si es FERT y pedimos ignorar filtros de grupo (auditoría total)
-      if (ignoreGroupFilters) {
-        return matchDate;
-      }
+      // Órdenes FERT no tienen filtros de almacén ni responsables de área
+      if (isFert) return true;
 
-      // FILTRO ALMACÉN Y RESPONSABLE PARA PROVISIONALES
+      // Órdenes Provisionales: Filtro estricto por almacén y responsable
       const itemAlm = String(o.ALMACEN || o.Almacen || '').trim();
       const matchAlm = (centro === '1000' && itemAlm === '1006') || (centro === '2000' && itemAlm === '2006');
       if (!matchAlm) return false;
@@ -273,14 +275,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         if (!respCodes.includes(itemResp)) return false;
       }
 
-      return matchDate;
+      return true;
     });
   };
 
   const provC1000 = useMemo(() => filterData(ordenes, '1000'), [ordenes, grupos, restriccionesArray, selectedDates]);
   const provC2000 = useMemo(() => filterData(ordenes, '2000'), [ordenes, grupos, restriccionesArray, selectedDates]);
   
-  // Órdenes FERT ignoran filtros de grupo para visualización completa
   const fertC1000 = useMemo(() => filterData(ordenesFert, '1000', true, true), [ordenesFert, selectedDates]);
   const fertC2000 = useMemo(() => filterData(ordenesFert, '2000', true, true), [ordenesFert, selectedDates]);
 
@@ -488,14 +489,24 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             <div className="overflow-x-auto max-h-[650px] relative text-left">
               <table className="w-full border-collapse font-sans text-[10px]">
                 <thead className="bg-[#e0e7ff] sticky top-0 z-20 text-indigo-900 uppercase font-black border-b border-indigo-200">
-                  <tr>{habilidades.length > 0 && Object.keys(habilidades[0]).map(k => <th key={k} className="px-6 py-4 border-r border-indigo-100 whitespace-nowrap">{k.replace(/_/g, ' ')}</th>)}</tr>
+                  <tr>
+                    {habilidades.length > 0 && Object.keys(habilidades[0]).map(k => (
+                      <th key={k} className="px-6 py-4 border-r border-indigo-100 whitespace-nowrap">
+                        {k.replace(/_/g, ' ')}
+                      </th>
+                    ))}
+                  </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 font-bold">
-                  {habilidades.map((h, i) => (
-                    <tr key={i} className="hover:bg-indigo-50/30 transition-colors">
-                      {Object.keys(h).map(k => <td key={k} className="px-6 py-3 border-r border-gray-100 text-slate-700">{String(h[k] ?? '—')}</td>)}
-                    </tr>
-                  ))}
+                  {habilidades.length === 0 ? (
+                    <tr><td className="py-20 text-center text-slate-300 italic uppercase tracking-widest">Consultando habilidades...</td></tr>
+                  ) : (
+                    habilidades.map((h, i) => (
+                      <tr key={i} className="hover:bg-indigo-50/30 transition-colors">
+                        {Object.keys(h).map(k => <td key={k} className="px-6 py-3 border-r border-gray-100 text-slate-700">{String(h[k] ?? '—')}</td>)}
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
