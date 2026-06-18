@@ -29,6 +29,7 @@ export * from './CuboInventariosTab';
 export * from './CuboInventariosTelasTab';
 export * from './HabilidadesMueblesTab';
 export * from './TacticalPlanPlanchasMixtasSection';
+export * from './PendientesTotalesTab';
 
 // Widgets y paneles
 export { default as FloatingChatWidget } from './FloatingChatWidget';

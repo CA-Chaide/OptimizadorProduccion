@@ -13,6 +13,7 @@ import { TiemposEnsambladoTab } from './TiemposEnsambladoTab';
 import { CuboInventariosTab } from './CuboInventariosTab';
 import { CuboInventariosTelasTab } from './CuboInventariosTelasTab';
 import { HabilidadesMueblesTab } from './HabilidadesMueblesTab';
+import { PendientesTotalesTab } from './PendientesTotalesTab';
 import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
 import { serviciosService } from '@/services/servicios.service';
@@ -208,7 +209,7 @@ export const TacticalPlanMueblesSection: React.FC = () => {
       </div>
 
       <Tabs defaultValue="plan" className="w-full">
-          <TabsList className="grid w-full grid-cols-4 h-auto p-2 bg-muted border border-dashed border-gray-300 rounded-lg gap-2">
+          <TabsList className="grid w-full grid-cols-5 h-auto p-2 bg-muted border border-dashed border-gray-300 rounded-lg gap-2">
               <TabsTrigger value="grupos" className="text-sm py-2 px-1">Grupos</TabsTrigger>
               <TabsTrigger value="restricciones" className="text-sm py-2 px-1">Restricciones</TabsTrigger>
               <TabsTrigger value="ordenes" className="text-sm py-2 px-1">Ord. Prev.</TabsTrigger>
@@ -217,6 +218,7 @@ export const TacticalPlanMueblesSection: React.FC = () => {
               <TabsTrigger value="habilidades" className="text-sm py-2 px-1">Habilidades</TabsTrigger>
               <TabsTrigger value="cascos" className="text-sm py-2 px-1">Cascos</TabsTrigger>
               <TabsTrigger value="telas" className="text-sm py-2 px-1">Telas</TabsTrigger>
+              <TabsTrigger value="pendientes" className="text-sm py-2 px-1">PEND TOTALES</TabsTrigger>
               <TabsTrigger value="plan" className="text-sm py-2 px-1 font-bold">PLAN</TabsTrigger>
           </TabsList>
           
@@ -294,6 +296,19 @@ export const TacticalPlanMueblesSection: React.FC = () => {
                   </CardHeader>
                   <CardContent>
                       <CuboInventariosTelasTab />
+                  </CardContent>
+              </Card>
+          </TabsContent>
+          <TabsContent value="pendientes" className="mt-4">
+              <Card>
+                  <CardHeader>
+                      <CardTitle>Pendientes Totales</CardTitle>
+                      <CardDescription>
+                          Listado de toda la carga pendiente reportada en el sistema.
+                      </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                      <PendientesTotalesTab />
                   </CardContent>
               </Card>
           </TabsContent>
