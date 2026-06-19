@@ -17,7 +17,6 @@ import {
   Layers,
   MapPin,
   Info,
-  Search,
   RefreshCw
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
@@ -79,17 +78,14 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   const [grupos, setGrupos] = useState<Grupo[]>([]);
   const [restricciones, setRestricciones] = useState<Restriccion[]>([]);
   const [ordenes, setOrders] = useState<any[]>([]);
+  const [curadoRows, setCuradoRows] = useState<any[]>([]);
+  const [inventarioSAP, setInventarioSAP] = useState<any[]>([]);
+  const [tiemposEnsamblado, setTiemposEnsamblado] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
   // Estados de Fecha - Hidratación Segura
   const [selectedDate, setSelectedDate] = useState<string>('all');
   const [viewDate, setViewDate] = useState<Date | null>(null);
-
-  // Estados para Tiempos de Curado e Inventario
-  const [curadoRows, setCuradoRows] = useState<any[]>([]);
-  const [inventarioSAP, setInventarioSAP] = useState<any[]>([]);
-  const [isLoadingCurado, setIsLoadingCurado] = useState(false);
-  const [isLoadingInventario, setIsLoadingInventario] = useState(false);
 
   useEffect(() => { 
     setMounted(true); 
@@ -109,19 +105,21 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       setGrupos(filteredGroups);
       const groupsIds = filteredGroups.map(g => g.codigo_grupo);
 
-      const [restrsRes, provsRes, curadoRes, invRes] = await Promise.all([
+      const [restrsRes, provsRes, curadoRes, invRes, timesRes] = await Promise.all([
         restriccionService.getAll(),
         serviciosService.OrdenesProvisionalesPaginados(1, 20000),
         serviciosService.getTiemposCuradoBloqueFormulado(1, 10000),
-        serviciosService.getInventarioAñoActual()
+        serviciosService.getInventarioAñoActual(),
+        serviciosService.getTiemposEnsamblado(1, 15000)
       ]);
 
       setRestricciones((restrsRes.data || []).filter((r: any) => groupsIds.includes(r.codigo_grupo)));
       setOrders(provsRes.data?.data || provsRes.data || []);
       setCuradoRows(Array.isArray(curadoRes.data) ? curadoRes.data : []);
       setInventarioSAP(Array.isArray(invRes.data) ? invRes.data : []);
+      setTiemposEnsamblado(timesRes.data?.data || timesRes.data || []);
       
-      inspector.captureVariable('inventarioSAP_Raw', invRes.data);
+      inspector.captureVariable('inventarioSAP_Sync', invRes.data);
 
     } catch (error) {
       console.error('Error init TacticalPlanFormulacion:', error);
@@ -159,6 +157,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     const matStr = String(item.MATERIAL || item.Material || item.CodMaterial || '').trim();
     const nameStr = String(item.NOMBRE || item.NombreMaterial || item.Descripcion || '').trim();
     const catStr = String(item.CATEGORIA || item.Categoria || '').trim();
+    
     const match = matStr.match(/^(\d+)/);
     const code = match ? match[1].slice(-8) : matStr.slice(-8);
     const desc = nameStr || matStr.replace(/^\d+\s*/, '') || '—';
@@ -185,7 +184,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   };
 
   const provFiltradas = useMemo(() => {
-    const centro = '1000'; // Formulación centralizada en Quito
+    const centro = '1000';
     const relevantGroups = grupos.filter(g => String(g.centro).trim() === centro);
     if (relevantGroups.length === 0) return [];
     
@@ -194,7 +193,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       if (itemCentro !== centro) return false;
       
       const itemAlmValue = String(o.ALMACEN || o.Almacen || '').trim();
-      if (itemAlmValue !== '1006') return false; // Almacén técnico formulación
+      if (itemAlmValue !== '1006') return false; 
 
       const itemResp = String(o.RESPCONTROLPROD || o.RESP_CONTROL_PROD || '').trim();
       const matchResp = relevantGroups.some(g => {
@@ -279,7 +278,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   }, [curadoRows]);
 
   const inventarioFiltrado = useMemo(() => {
-    // Filtro por responsables de Formulación
     return inventarioSAP.filter(row => {
       const resp = String(row.CODRESPPROD || row.CodRespProd || '').trim();
       return ['003', '004', '006'].includes(resp);
@@ -542,7 +540,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                         <td className="px-4 py-3 border-r border-gray-50 font-mono text-blue-600">{cleanCode(row.MATERIAL)}</td>
                         <td className="px-6 py-3 border-r border-gray-50 text-left uppercase text-slate-600 truncate max-w-[250px]" title={row.NOMBRE}>{row.NOMBRE || '—'}</td>
                         <td className="px-3 py-3 border-r border-gray-50">{row.CENTRO}</td>
-                        <td className="px-3 py-3 border-r border-gray-50 text-indigo-700 font-black bg-indigo-50/20">{row.ALMACEN}</td>
+                        <td className="px-3 py-3 border-r border-gray-100 text-indigo-700 font-black bg-indigo-50/20">{row.ALMACEN}</td>
                         <td className="px-3 py-3 border-r border-gray-50 font-mono text-slate-400">{row.ANIO}/{row.MES}</td>
                         <td className="px-3 py-3 border-r border-gray-50 font-mono text-green-700 bg-green-50/50">{Number(row.LIBREUTILIZACION || 0).toLocaleString()}</td>
                         <td className="px-3 py-3 border-r border-gray-50 font-mono text-blue-700 bg-blue-50/50">{Number(row.ENTRASLADO || 0).toLocaleString()}</td>
@@ -568,7 +566,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           </div>
           <Card className="rounded-[2.5rem] border border-gray-100 shadow-xl overflow-hidden bg-white text-left">
             <div className="overflow-x-auto max-h-[550px]">
-              <table className="w-full border-collapse text-center font-sans">
+              <table className="w-full border-collapse text-center font-sans text-[10px]">
                 <thead className="bg-[#f8fafc] sticky top-0 z-10 text-slate-400 uppercase font-black tracking-tight border-b border-gray-100">
                   <tr>
                     <th className="px-4 py-4 border-r border-gray-100">Orden</th>
@@ -582,7 +580,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                     <th className="px-4 py-4">Resp. CP</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100 font-bold text-[10px]">
+                <tbody className="divide-y divide-gray-100 font-bold">
                   {provFiltradas.length === 0 ? (
                     <tr><td colSpan={9} className="py-24 text-slate-200 font-black uppercase tracking-widest text-center italic">No hay órdenes para los criterios seleccionados</td></tr>
                   ) : (
