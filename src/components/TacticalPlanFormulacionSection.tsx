@@ -102,6 +102,11 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   const [tiemposEnsamblado, setTiemposEnsamblado] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
+  // Estados para Auditoría y Carga
+  const [isProcessingResumen, setIsProcessingResumen] = useState(false);
+  const [resumenProgress, setResumenProgress] = useState({ current: 0, total: 0 });
+  const [unifiedSummaryData, setUnifiedSummaryData] = useState<any[]>([]);
+  
   const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set());
   const [viewDate, setViewDate] = useState<Date | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
@@ -189,8 +194,14 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     });
   }, [ordenes, selectedDates]);
 
-  // DATA UNIFICADA PARA CAPACIDAD Y CARGA (RESUMEN)
-  const unifiedSummaryData = useMemo(() => {
+  // PROCESAMIENTO DINÁMICO DE AUDITORÍA (RESUMEN)
+  const handleProcessResumen = useCallback(async () => {
+    if (provFiltradas.length === 0) {
+      setUnifiedSummaryData([]);
+      return;
+    }
+    
+    setIsProcessingResumen(true);
     const groupsMap = new Map<string, { 
       fecha: string; maquina: string; material: string; descripcion: string;
       dens: string; tipo: string; apertura: string; ancho: number; esp: number;
@@ -198,7 +209,17 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       stockKg: number; pesoBloque: number;
     }>();
 
-    provFiltradas.forEach(o => {
+    const uniqueMatKeys = Array.from(new Set(provFiltradas.map(o => {
+      const info = extractMaterialInfo(o);
+      const dateRaw = String(o.FECHAINICIO || o.FECHA || 'N/A').trim();
+      const fecha = dateRaw.includes('T') ? dateRaw.split('T')[0] : dateRaw;
+      const maquina = String(o.MAQUINA || o.RECURSO || 'SIN MÁQUINA').trim().toUpperCase();
+      return `${fecha}|${maquina}|${info.code}|${info.apertura}`;
+    })));
+
+    setResumenProgress({ current: 0, total: uniqueMatKeys.length });
+
+    provFiltradas.forEach((o, idx) => {
       const dateRaw = String(o.FECHAINICIO || o.FECHA || 'N/A').trim();
       const fecha = dateRaw.includes('T') ? dateRaw.split('T')[0] : dateRaw;
       const maquina = String(o.MAQUINA || o.RECURSO || 'SIN MÁQUINA').trim().toUpperCase();
@@ -229,12 +250,17 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       const entry = groupsMap.get(key)!;
       entry.totalBloques += itemBloques;
       entry.planReposicion = Math.ceil(entry.totalBloques);
+      
+      if (idx % 10 === 0) setResumenProgress(prev => ({ ...prev, current: Math.min(prev.total, idx + 1) }));
     });
 
-    return Array.from(groupsMap.values()).sort((a, b) => a.fecha.localeCompare(b.fecha) || a.maquina.localeCompare(b.maquina));
-  }, [provFiltradas, inventarioSAP]);
+    const finalData = Array.from(groupsMap.values()).sort((a, b) => a.fecha.localeCompare(b.fecha) || a.maquina.localeCompare(b.maquina));
+    setUnifiedSummaryData(finalData);
+    setIsProcessingResumen(false);
+    addNotification('success', 'Auditoría técnica de carga completada.');
+  }, [provFiltradas, inventarioSAP, addNotification]);
 
-  // Reporte de aperturas para el dashboard
+  // Reporte de aperturas para el dashboard de resumen
   const apertureSummaryResumen = useMemo(() => {
     const report = new Map<string, number>();
     unifiedSummaryData.forEach(r => report.set(r.apertura || '—', (report.get(r.apertura || '—') || 0) + r.planReposicion));
@@ -276,11 +302,9 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         estadoTras: estadoTrasVal
       };
 
-      // FILTRO LEADER: CALLE + F_BLOQ + 2026
       if (estadoTrasVal === 'CALLE' && maquinaVal === 'F_BLOQ' && fechaVal.includes('2026')) {
         leaderRows.push(enriched);
       }
-      // FILTRO COFAMA: BCALL + F_BLOQ_M + PESO > 50
       else if (estadoTrasVal === 'BCALL' && maquinaVal === 'F_BLOQ_M' && pesoVal > 50) {
         const p = parseCorridaProceso(enriched.corridaproceso);
         cofamaRows.push({
@@ -338,7 +362,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     setExpandedGroups(next);
   };
 
-  // Root Shell: Identical for SSR and initial hydration to prevent Hydration Errors
   const renderRoot = (content: React.ReactNode) => (
     <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
       {content}
@@ -362,8 +385,8 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
-          <Button onClick={fetchData} disabled={isLoading} className="h-9 px-4 rounded-xl bg-primary text-white gap-2 font-black text-[10px] uppercase shadow-lg active:scale-95 transition-all">
-            {isLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />} ACTUALIZAR DATOS
+          <Button onClick={handleProcessResumen} disabled={isProcessingResumen} className="h-9 px-4 rounded-xl bg-primary text-white gap-2 font-black text-[10px] uppercase shadow-lg active:scale-95 transition-all">
+            {isProcessingResumen ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />} ACTUALIZAR DATOS
           </Button>
 
           <Popover>
@@ -460,11 +483,11 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                     <tr>
                       <td colSpan={13} className="py-20 text-center">
                         <Loader2 className="w-8 h-8 animate-spin mx-auto text-indigo-500 mb-3" />
-                        <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Ejecutando Sincronización...</p>
+                        <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Ejecutando Sincronización: {resumenProgress.current} / {resumenProgress.total}</p>
                       </td>
                     </tr>
                   ) : unifiedSummaryData.length === 0 ? (
-                    <tr><td colSpan={13} className="py-16 text-center text-slate-200 uppercase tracking-widest italic font-black">Sin datos para la selección actual</td></tr>
+                    <tr><td colSpan={13} className="py-16 text-center text-slate-200 uppercase tracking-widest italic font-black">Presione "ACTUALIZAR DATOS" para iniciar la auditoría de carga</td></tr>
                   ) : (
                     unifiedSummaryData.map((row, i) => (
                       <tr key={i} className="hover:bg-slate-50 transition-colors border-b">
