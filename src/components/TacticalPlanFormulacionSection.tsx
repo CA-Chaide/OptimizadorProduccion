@@ -19,13 +19,10 @@ import {
   Plus,
   MapPin,
   Box,
-  Search,
   Info,
-  Trash2,
-  Edit2,
   AlertCircle
 } from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from '@/components/ui/button';
 import {
@@ -74,7 +71,6 @@ const getProp = (obj: any, keys: string[]): string => {
   return '';
 };
 
-// Parsea la corrida para COFAMA: Extracción de 1er/2da Combinación y Cantidad
 const parseCorridaProceso = (corrida: string) => {
   if (!corrida || corrida === '—' || corrida === 'null') return { c1: '—', m1: '—', c2: '—', m2: '—' };
   const parts = String(corrida).split('/');
@@ -102,7 +98,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   const [tiemposEnsamblado, setTiemposEnsamblado] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
-  // Estados para Auditoría y Carga
   const [isProcessingResumen, setIsProcessingResumen] = useState(false);
   const [resumenProgress, setResumenProgress] = useState({ current: 0, total: 0 });
   const [unifiedSummaryData, setUnifiedSummaryData] = useState<any[]>([]);
@@ -194,7 +189,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     });
   }, [ordenes, selectedDates]);
 
-  // PROCESAMIENTO DINÁMICO DE AUDITORÍA (RESUMEN)
   const handleProcessResumen = useCallback(async () => {
     if (provFiltradas.length === 0) {
       setUnifiedSummaryData([]);
@@ -236,7 +230,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       const itemBloques = (qty * espVal * anchoVal) / (usefulHeight * BLOCK_LENGTH_METERS * 100);
 
       if (!groupsMap.has(key)) {
-        // Ejecutar explosión técnica para encontrar el código del bloque
         let blockCode = '—';
         let blockDesc = '—';
         try {
@@ -280,14 +273,12 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     addNotification('success', 'Auditoría técnica de carga completada.');
   }, [provFiltradas, inventarioSAP, addNotification]);
 
-  // Reporte de aperturas para el dashboard de resumen
   const apertureSummaryResumen = useMemo(() => {
     const report = new Map<string, number>();
     unifiedSummaryData.forEach(r => report.set(r.apertura || '—', (report.get(r.apertura || '—') || 0) + r.planReposicion));
     return Array.from(report.entries()).sort((a, b) => b[1] - a[1]);
   }, [unifiedSummaryData]);
 
-  // SEGMENTACIÓN STOCK CURADO (LEADER / COFAMA)
   const curadoSegments = useMemo(() => {
     const leaderRows: any[] = [];
     const cofamaRows: any[] = [];
@@ -322,11 +313,9 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         estadoTras: estadoTrasVal
       };
 
-      // LEADER: Calle / F_BLOQ / 2026
       if (estadoTrasVal === 'CALLE' && maquinaVal === 'F_BLOQ' && fechaVal.includes('2026')) {
         leaderRows.push(enriched);
       }
-      // COFAMA: BCALL / F_BLOQ_M / > 50 KG
       else if (estadoTrasVal === 'BCALL' && maquinaVal === 'F_BLOQ_M' && pesoVal > 50) {
         const p = parseCorridaProceso(enriched.corridaproceso);
         cofamaRows.push({
@@ -388,6 +377,14 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       {content}
     </div>
   );
+
+  if (!mounted) {
+    return renderRoot(
+      <div className="flex justify-center items-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return renderRoot(
     <>
