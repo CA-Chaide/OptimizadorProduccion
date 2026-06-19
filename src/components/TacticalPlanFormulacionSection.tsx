@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -22,7 +21,8 @@ import {
   Box,
   Info,
   Minus,
-  Plus
+  Plus,
+  AlertCircle
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -102,7 +102,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   
   const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set());
-  const [viewDate, setViewDate] = useState<Date | null>(null);
+  const [viewDate, setViewDate] = useState<Date>(new Date());
 
   useEffect(() => { 
     setMounted(true); 
@@ -297,6 +297,25 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     return s;
   }, [ordenes]);
 
+  const calendarDays = useMemo(() => {
+    const start = startOfMonth(viewDate);
+    const end = endOfMonth(viewDate);
+    const days = eachDayOfInterval({ start, end });
+    const startDay = getDay(start);
+    const padding = startDay === 0 ? 6 : startDay - 1;
+    return [...Array(padding).fill(null), ...days];
+  }, [viewDate]);
+
+  if (!mounted) {
+    return (
+      <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
+        <div className="flex justify-center items-center h-64">
+           <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
       <div className="flex items-center justify-between pb-4 border-b border-gray-100">
@@ -318,32 +337,28 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
             </PopoverTrigger>
             <PopoverContent className="w-64 p-0 border-none shadow-2xl rounded-2xl overflow-hidden mt-2" align="end">
               <div className="bg-white p-5 font-sans text-left text-[11px]">
-                {viewDate && (
-                  <>
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="font-black text-slate-800 capitalize">{format(viewDate, 'MMMM yyyy', { locale: es })}</h3>
-                      <div className="flex gap-1 bg-slate-50 p-1 rounded-xl">
-                        <Button variant="ghost" size="icon" onClick={() => setViewDate(subMonths(viewDate!, 1))} className="h-7 w-7 hover:bg-white"><ChevronLeft className="w-3 h-3" /></Button>
-                        <Button variant="ghost" size="icon" onClick={() => setViewDate(addMonths(viewDate!, 1))} className="h-7 w-7 hover:bg-white"><ChevronRight className="w-3 h-3" /></Button>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-7 gap-y-1 text-center mb-4">
-                      {['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO'].map(d => <div key={d} className="text-[8px] font-black text-slate-300 uppercase py-1">{d}</div>)}
-                      {calendarDays.map((day, idx) => {
-                        if (!day) return <div key={idx} />;
-                        const dStr = format(day, 'yyyy-MM-dd');
-                        const isSel = selectedDates.has(dStr);
-                        return (
-                          <button key={dStr} onClick={() => { const n = new Set(selectedDates); isSel ? n.delete(dStr) : n.add(dStr); setSelectedDates(n); }} className={cn("relative h-7 w-7 mx-auto rounded-xl flex items-center justify-center transition-all", isSel ? "bg-primary text-white shadow-md shadow-primary/20" : "hover:bg-slate-50")}>
-                            <span className={cn("text-[10px] font-black", !datesWithOrdersSet.has(dStr) && !isSel ? "text-slate-200" : "text-slate-700")}>{format(day, 'd')}</span>
-                            {datesWithOrdersSet.has(dStr) && !isSel && <div className="absolute bottom-1 w-1 h-1 bg-primary/40 rounded-full" />}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <Button variant="ghost" size="sm" className="w-full text-[9px] font-black uppercase text-primary h-8 rounded-xl hover:bg-primary/5 tracking-widest" onClick={() => setSelectedDates(new Set())}>Ver Todo el Plan</Button>
-                  </>
-                )}
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-black text-slate-800 capitalize">{format(viewDate, 'MMMM yyyy', { locale: es })}</h3>
+                  <div className="flex gap-1 bg-slate-50 p-1 rounded-xl">
+                    <Button variant="ghost" size="icon" onClick={() => setViewDate(subMonths(viewDate, 1))} className="h-7 w-7 hover:bg-white"><ChevronLeft className="w-3 h-3" /></Button>
+                    <Button variant="ghost" size="icon" onClick={() => setViewDate(addMonths(viewDate, 1))} className="h-7 w-7 hover:bg-white"><ChevronRight className="w-3 h-3" /></Button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-7 gap-y-1 text-center mb-4">
+                  {['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO'].map(d => <div key={d} className="text-[8px] font-black text-slate-300 uppercase py-1">{d}</div>)}
+                  {calendarDays.map((day, idx) => {
+                    if (!day) return <div key={idx} />;
+                    const dStr = format(day, 'yyyy-MM-dd');
+                    const isSel = selectedDates.has(dStr);
+                    return (
+                      <button key={dStr} onClick={() => { const n = new Set(selectedDates); isSel ? n.delete(dStr) : n.add(dStr); setSelectedDates(n); }} className={cn("relative h-7 w-7 mx-auto rounded-xl flex items-center justify-center transition-all", isSel ? "bg-primary text-white shadow-md shadow-primary/20" : "hover:bg-slate-50")}>
+                        <span className={cn("text-[10px] font-black", !datesWithOrdersSet.has(dStr) && !isSel ? "text-slate-200" : "text-slate-700")}>{format(day, 'd')}</span>
+                        {datesWithOrdersSet.has(dStr) && !isSel && <div className="absolute bottom-1 w-1 h-1 bg-primary/40 rounded-full" />}
+                      </button>
+                    );
+                  })}
+                </div>
+                <Button variant="ghost" size="sm" className="w-full text-[9px] font-black uppercase text-primary h-8 rounded-xl hover:bg-primary/5 tracking-widest" onClick={() => setSelectedDates(new Set())}>Ver Todo el Plan</Button>
               </div>
             </PopoverContent>
           </Popover>
