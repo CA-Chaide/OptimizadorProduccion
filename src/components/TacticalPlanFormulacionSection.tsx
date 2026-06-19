@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -14,15 +15,12 @@ import {
   Activity,
   Database,
   History,
-  Layers,
-  MapPin,
   RefreshCw,
-  TrendingUp,
-  Box,
   Info,
   Minus,
   Plus,
-  AlertCircle
+  MapPin,
+  Box
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -73,7 +71,7 @@ const getProp = (obj: any, keys: string[]): string => {
   return '';
 };
 
-// Extracción de Cantidades y Combinaciones desde corridaproceso
+// Motor de extracción de combinaciones desde corridaproceso
 const parseCorridaProceso = (corrida: string) => {
   if (!corrida || corrida === '—') return { c1: '—', m1: '—', c2: '—', m2: '—' };
   const parts = corrida.split('/');
@@ -102,8 +100,10 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   
   const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set());
-  const [viewDate, setViewDate] = useState<Date>(new Date());
+  const [viewDate, setViewDate] = useState<Date | null>(null);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
+  // Hidratación estable
   useEffect(() => { 
     setMounted(true); 
     const now = new Date();
@@ -136,9 +136,9 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       setInventarioSAP(Array.isArray(invRes.data) ? invRes.data : []);
       setTiemposEnsamblado(timesRes.data?.data || timesRes.data || []);
       
-      addNotification('success', 'Sincronización de datos Formulación completada.');
+      addNotification('success', 'Sincronización técnica completada.');
     } catch (error) {
-      addNotification('error', 'Error al sincronizar datos de formulación');
+      addNotification('error', 'Error al sincronizar datos operativos');
     } finally {
       setIsLoading(false);
     }
@@ -252,11 +252,9 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         estadoTras: estadoTrasVal
       };
 
-      // LÓGICA LEADER: [estadoTras] = "CALLE" AND [Maquina] = "F_BLOQ" AND [fecha] contiene 2026
       if (estadoTrasVal === 'CALLE' && maquinaVal === 'F_BLOQ' && fechaVal.includes('2026')) {
         leaderRows.push(enriched);
       }
-      // LÓGICA COFAMA: [estadoTras] = "BCALL" AND [Maquina] = "F_BLOQ_M" AND [Peso] > 50
       else if (estadoTrasVal === 'BCALL' && maquinaVal === 'F_BLOQ_M' && pesoVal > 50) {
         const p = parseCorridaProceso(enriched.corridaproceso);
         cofamaRows.push({
@@ -297,7 +295,8 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     return s;
   }, [ordenes]);
 
-  const calendarDays = useMemo(() => {
+  const calendarDaysList = useMemo(() => {
+    if (!viewDate) return [];
     const start = startOfMonth(viewDate);
     const end = endOfMonth(viewDate);
     const days = eachDayOfInterval({ start, end });
@@ -337,28 +336,32 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
             </PopoverTrigger>
             <PopoverContent className="w-64 p-0 border-none shadow-2xl rounded-2xl overflow-hidden mt-2" align="end">
               <div className="bg-white p-5 font-sans text-left text-[11px]">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="font-black text-slate-800 capitalize">{format(viewDate, 'MMMM yyyy', { locale: es })}</h3>
-                  <div className="flex gap-1 bg-slate-50 p-1 rounded-xl">
-                    <Button variant="ghost" size="icon" onClick={() => setViewDate(subMonths(viewDate, 1))} className="h-7 w-7 hover:bg-white"><ChevronLeft className="w-3 h-3" /></Button>
-                    <Button variant="ghost" size="icon" onClick={() => setViewDate(addMonths(viewDate, 1))} className="h-7 w-7 hover:bg-white"><ChevronRight className="w-3 h-3" /></Button>
-                  </div>
-                </div>
-                <div className="grid grid-cols-7 gap-y-1 text-center mb-4">
-                  {['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO'].map(d => <div key={d} className="text-[8px] font-black text-slate-300 uppercase py-1">{d}</div>)}
-                  {calendarDays.map((day, idx) => {
-                    if (!day) return <div key={idx} />;
-                    const dStr = format(day, 'yyyy-MM-dd');
-                    const isSel = selectedDates.has(dStr);
-                    return (
-                      <button key={dStr} onClick={() => { const n = new Set(selectedDates); isSel ? n.delete(dStr) : n.add(dStr); setSelectedDates(n); }} className={cn("relative h-7 w-7 mx-auto rounded-xl flex items-center justify-center transition-all", isSel ? "bg-primary text-white shadow-md shadow-primary/20" : "hover:bg-slate-50")}>
-                        <span className={cn("text-[10px] font-black", !datesWithOrdersSet.has(dStr) && !isSel ? "text-slate-200" : "text-slate-700")}>{format(day, 'd')}</span>
-                        {datesWithOrdersSet.has(dStr) && !isSel && <div className="absolute bottom-1 w-1 h-1 bg-primary/40 rounded-full" />}
-                      </button>
-                    );
-                  })}
-                </div>
-                <Button variant="ghost" size="sm" className="w-full text-[9px] font-black uppercase text-primary h-8 rounded-xl hover:bg-primary/5 tracking-widest" onClick={() => setSelectedDates(new Set())}>Ver Todo el Plan</Button>
+                {viewDate && (
+                  <>
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="font-black text-slate-800 capitalize">{format(viewDate, 'MMMM yyyy', { locale: es })}</h3>
+                      <div className="flex gap-1 bg-gray-50 p-1 rounded-xl">
+                        <Button variant="ghost" size="icon" onClick={() => setViewDate(subMonths(viewDate, 1))} className="h-7 w-7 hover:bg-white"><ChevronLeft className="w-3 h-3" /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => setViewDate(addMonths(viewDate, 1))} className="h-7 w-7 hover:bg-white"><ChevronRight className="w-3 h-3" /></Button>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-7 gap-y-1 text-center mb-4">
+                      {['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO'].map(d => <div key={d} className="text-[8px] font-black text-slate-300 uppercase py-1">{d}</div>)}
+                      {calendarDaysList.map((day, idx) => {
+                        if (!day) return <div key={idx} />;
+                        const dStr = format(day, 'yyyy-MM-dd');
+                        const isSel = selectedDates.has(dStr);
+                        return (
+                          <button key={dStr} onClick={() => { const n = new Set(selectedDates); isSel ? n.delete(dStr) : n.add(dStr); setSelectedDates(n); }} className={cn("relative h-7 w-7 mx-auto rounded-xl flex items-center justify-center transition-all", isSel ? "bg-primary text-white shadow-md shadow-primary/20" : "hover:bg-slate-50")}>
+                            <span className={cn("text-[10px] font-black", !datesWithOrdersSet.has(dStr) && !isSel ? "text-slate-200" : "text-slate-700")}>{format(day, 'd')}</span>
+                            {datesWithOrdersSet.has(dStr) && !isSel && <div className="absolute bottom-1 w-1 h-1 bg-primary/40 rounded-full" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <Button variant="ghost" size="sm" className="w-full text-[9px] font-black uppercase text-primary h-8 rounded-xl hover:bg-primary/5 tracking-widest" onClick={() => setSelectedDates(new Set())}>Ver Todo el Plan</Button>
+                  </>
+                )}
               </div>
             </PopoverContent>
           </Popover>
