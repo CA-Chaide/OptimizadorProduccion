@@ -74,7 +74,7 @@ const getProp = (obj: any, keys: string[]): string => {
   return '';
 };
 
-// Parsea la corrida para COFAMA
+// Parsea la corrida para COFAMA: Extracción de 1er/2da Combinación y Cantidad
 const parseCorridaProceso = (corrida: string) => {
   if (!corrida || corrida === '—' || corrida === 'null') return { c1: '—', m1: '—', c2: '—', m2: '—' };
   const parts = String(corrida).split('/');
@@ -108,7 +108,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   const [unifiedSummaryData, setUnifiedSummaryData] = useState<any[]>([]);
   
   const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set());
-  const [viewDate, setViewDate] = useState<Date | null>(null);
+  const [viewDate, setViewDate] = useState(new Date());
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   useEffect(() => { 
@@ -206,6 +206,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       fecha: string; maquina: string; material: string; descripcion: string;
       dens: string; tipo: string; apertura: string; ancho: number; esp: number;
       totalBloques: number; planReposicion: number; 
+      blockCode: string; blockDesc: string;
       stockKg: number; pesoBloque: number;
     }>();
 
@@ -219,11 +220,12 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
 
     setResumenProgress({ current: 0, total: uniqueMatKeys.length });
 
-    provFiltradas.forEach((o, idx) => {
+    for (let i = 0; i < provFiltradas.length; i++) {
+      const o = provFiltradas[i];
+      const info = extractMaterialInfo(o);
       const dateRaw = String(o.FECHAINICIO || o.FECHA || 'N/A').trim();
       const fecha = dateRaw.includes('T') ? dateRaw.split('T')[0] : dateRaw;
       const maquina = String(o.MAQUINA || o.RECURSO || 'SIN MÁQUINA').trim().toUpperCase();
-      const info = extractMaterialInfo(o);
       const key = `${fecha}|${maquina}|${info.code}|${info.apertura}`;
       
       const qty = safeNum(o.CANTPROGRAMADA || o.CANTIDAD || 0);
@@ -233,26 +235,44 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       const usefulHeight = (densVal < 30) ? 103 : 85;
       const itemBloques = (qty * espVal * anchoVal) / (usefulHeight * BLOCK_LENGTH_METERS * 100);
 
-      const stockKg = inventarioSAP
-        .filter(inv => cleanCode(inv.MATERIAL) === info.code)
-        .reduce((sum, item) => sum + safeNum(item.LIBREUTILIZACION), 0);
-
-      const pesoBloque = (100 * usefulHeight * BLOCK_LENGTH_METERS * densVal) / 10000;
-
       if (!groupsMap.has(key)) {
+        // Ejecutar explosión técnica para encontrar el código del bloque
+        let blockCode = '—';
+        let blockDesc = '—';
+        try {
+          const bomResponse = await serviciosService.getMaestroMaterialesExplosion("1000", info.code.padStart(18, '0'), 1, 100);
+          const bomData = bomResponse?.data?.data || bomResponse?.data || [];
+          if (Array.isArray(bomData)) {
+            const blockComp = bomData.find(row => (row.DESCRIPCION_COMPONENTE || '').toUpperCase().includes('BLOQUE FORMULADO'));
+            if (blockComp) {
+              blockCode = cleanCode(blockComp.COMPONENTE);
+              blockDesc = String(blockComp.DESCRIPCION_COMPONENTE).toUpperCase();
+            }
+          }
+        } catch (e) { console.warn(`Error BOM para ${info.code}`); }
+
+        const finalBlockSearchCode = blockCode !== '—' ? blockCode : info.code;
+
+        const stockKg = inventarioSAP
+          .filter(inv => cleanCode(inv.MATERIAL) === finalBlockSearchCode)
+          .reduce((sum, item) => sum + safeNum(item.LIBREUTILIZACION), 0);
+
+        const pesoBloque = (100 * usefulHeight * BLOCK_LENGTH_METERS * densVal) / 10000;
+
         groupsMap.set(key, { 
           fecha, maquina, material: info.code, descripcion: info.desc, 
           dens: info.dens, tipo: info.tipo, apertura: info.apertura, 
           ancho: anchoVal, esp: espVal, totalBloques: 0, planReposicion: 0,
-          stockKg, pesoBloque
+          blockCode, blockDesc, stockKg, pesoBloque
         });
       }
+      
       const entry = groupsMap.get(key)!;
       entry.totalBloques += itemBloques;
       entry.planReposicion = Math.ceil(entry.totalBloques);
       
-      if (idx % 10 === 0) setResumenProgress(prev => ({ ...prev, current: Math.min(prev.total, idx + 1) }));
-    });
+      if (i % 10 === 0) setResumenProgress({ current: i + 1, total: provFiltradas.length });
+    }
 
     const finalData = Array.from(groupsMap.values()).sort((a, b) => a.fecha.localeCompare(b.fecha) || a.maquina.localeCompare(b.maquina));
     setUnifiedSummaryData(finalData);
@@ -302,9 +322,11 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         estadoTras: estadoTrasVal
       };
 
+      // LEADER: Calle / F_BLOQ / 2026
       if (estadoTrasVal === 'CALLE' && maquinaVal === 'F_BLOQ' && fechaVal.includes('2026')) {
         leaderRows.push(enriched);
       }
+      // COFAMA: BCALL / F_BLOQ_M / > 50 KG
       else if (estadoTrasVal === 'BCALL' && maquinaVal === 'F_BLOQ_M' && pesoVal > 50) {
         const p = parseCorridaProceso(enriched.corridaproceso);
         cofamaRows.push({
@@ -346,7 +368,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   }, [ordenes]);
 
   const calendarDaysList = useMemo(() => {
-    if (!viewDate) return [];
     const start = startOfMonth(viewDate);
     const end = endOfMonth(viewDate);
     const days = eachDayOfInterval({ start, end });
@@ -368,14 +389,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     </div>
   );
 
-  if (!mounted) {
-    return renderRoot(
-      <div className="flex justify-center items-center h-64">
-         <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
   return renderRoot(
     <>
       <div className="flex items-center justify-between pb-4 border-b border-gray-100">
@@ -385,23 +398,23 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
-          <Button onClick={handleProcessResumen} disabled={isProcessingResumen} className="h-9 px-4 rounded-xl bg-primary text-white gap-2 font-black text-[10px] uppercase shadow-lg active:scale-95 transition-all">
+          <Button onClick={handleProcessResumen} disabled={isProcessingResumen} className="h-8 px-4 rounded-xl bg-primary text-white gap-2 font-black text-[9px] uppercase shadow-lg active:scale-95 transition-all">
             {isProcessingResumen ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />} ACTUALIZAR DATOS
           </Button>
 
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="outline" className="h-9 px-4 rounded-xl border-gray-200 gap-2 font-black text-[10px] uppercase shadow-sm transition-all hover:border-primary/50">
-                <CalendarIcon className="w-3.5 h-3.5 text-primary" /> {selectedDates.size === 0 ? 'Plan Maestro' : `${selectedDates.size} Días`}
+              <Button variant="outline" className="h-8 px-4 rounded-xl border-gray-200 gap-2 font-black text-[9px] uppercase shadow-sm transition-all hover:border-primary/50">
+                <CalendarIcon className="w-3 h-3 text-primary" /> {selectedDates.size === 0 ? 'Plan Maestro' : `${selectedDates.size} Días`}
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-64 p-0 border-none shadow-2xl rounded-2xl overflow-hidden mt-2" align="end">
               <div className="bg-white p-5 font-sans text-left text-[11px]">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="font-black text-slate-800 capitalize">{viewDate ? format(viewDate, 'MMMM yyyy', { locale: es }) : '—'}</h3>
+                  <h3 className="font-black text-slate-800 capitalize">{format(viewDate, 'MMMM yyyy', { locale: es })}</h3>
                   <div className="flex gap-1 bg-gray-50 p-1 rounded-xl">
-                    <Button variant="ghost" size="icon" onClick={() => setViewDate(prev => prev ? subMonths(prev, 1) : null)} className="h-7 w-7 hover:bg-white"><ChevronLeft className="w-3 h-3" /></Button>
-                    <Button variant="ghost" size="icon" onClick={() => setViewDate(prev => prev ? addMonths(prev, 1) : null)} className="h-7 w-7 hover:bg-white"><ChevronRight className="w-3 h-3" /></Button>
+                    <Button variant="ghost" size="icon" onClick={() => setViewDate(prev => subMonths(prev, 1))} className="h-7 w-7 hover:bg-white"><ChevronLeft className="w-3 h-3" /></Button>
+                    <Button variant="ghost" size="icon" onClick={() => setViewDate(prev => addMonths(prev, 1))} className="h-7 w-7 hover:bg-white"><ChevronRight className="w-3 h-3" /></Button>
                   </div>
                 </div>
                 <div className="grid grid-cols-7 gap-y-1 text-center mb-4">
@@ -459,7 +472,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                 <thead className="sticky top-0 z-20">
                   <tr className="bg-[#1e40af] text-white uppercase font-black tracking-tighter text-[10px]">
                     <th colSpan={7} className="px-4 py-3 border-r border-white/5 bg-black/10">Producción Programada</th>
-                    <th colSpan={6} className="px-4 py-3 bg-[#1d4ed8]">Stock e Ingeniería</th>
+                    <th colSpan={7} className="px-4 py-3 bg-[#1d4ed8]">Stock e Ingeniería (Bloque Formulado)</th>
                   </tr>
                   <tr className="bg-[#1e40af] text-white uppercase font-black tracking-tighter text-[9px] border-b border-white/10">
                     <th className="px-4 py-3 border-r border-white/5 text-left">Fecha SAP</th>
@@ -470,24 +483,25 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                     <th className="px-4 py-3 border-r border-white/5 text-yellow-300">Bl. Teor.</th>
                     <th className="px-4 py-3 border-r border-white/10 bg-yellow-400 text-black">Reposición</th>
                     
-                    <th className="px-4 py-3 border-r border-white/5 text-left">MATERIAL</th>
-                    <th className="px-6 py-3 border-r border-white/5 text-left">Descripción</th>
+                    <th className="px-4 py-3 border-r border-white/5 text-left text-teal-300">Cód. Bloque</th>
+                    <th className="px-6 py-3 border-r border-white/5 text-left">Descripción Bloque</th>
                     <th className="px-2 py-3 border-r border-white/5">[Un]</th>
-                    <th className="px-3 py-3 border-r border-white/5">Peso Bloque</th>
-                    <th className="px-4 py-3 border-r border-white/5">StockActual (Kg)</th>
-                    <th className="px-4 py-3">Stock Actual [Un]</th>
+                    <th className="px-3 py-3 border-r border-white/5">Peso BL (Kg)</th>
+                    <th className="px-4 py-3 border-r border-white/5 text-green-300 bg-green-500/10">StockActual (Kg)</th>
+                    <th className="px-4 py-3 font-black text-white bg-green-600/30">Stock [Un]</th>
+                    <th className="px-3 py-3 text-left">MATERIAL_FERT</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 font-bold">
                   {isProcessingResumen ? (
                     <tr>
-                      <td colSpan={13} className="py-20 text-center">
+                      <td colSpan={14} className="py-20 text-center">
                         <Loader2 className="w-8 h-8 animate-spin mx-auto text-indigo-500 mb-3" />
-                        <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Ejecutando Sincronización: {resumenProgress.current} / {resumenProgress.total}</p>
+                        <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Ejecutando Explosión Técnica BOM: {resumenProgress.current} / {resumenProgress.total}</p>
                       </td>
                     </tr>
                   ) : unifiedSummaryData.length === 0 ? (
-                    <tr><td colSpan={13} className="py-16 text-center text-slate-200 uppercase tracking-widest italic font-black">Presione "ACTUALIZAR DATOS" para iniciar la auditoría de carga</td></tr>
+                    <tr><td colSpan={14} className="py-16 text-center text-slate-200 uppercase tracking-widest italic font-black">Presione "ACTUALIZAR DATOS" para iniciar la auditoría de carga</td></tr>
                   ) : (
                     unifiedSummaryData.map((row, i) => (
                       <tr key={i} className="hover:bg-slate-50 transition-colors border-b">
@@ -499,14 +513,15 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                         <td className="px-4 py-2 font-mono text-orange-600 border-r border-gray-100 bg-orange-50/10">{formatNum(row.totalBloques, 1)}</td>
                         <td className="px-4 py-2 font-mono font-black text-indigo-700 border-r-2 border-gray-200 bg-indigo-50/20">{row.planReposicion}</td>
                         
-                        <td className="px-4 py-2 text-left font-mono text-blue-600 border-r border-gray-100">{row.material}</td>
-                        <td className="px-6 py-2 text-left text-gray-400 uppercase leading-tight italic text-[9px] truncate max-w-[200px] border-r border-gray-100">{row.descripcion}</td>
+                        <td className="px-4 py-2 text-left font-mono text-teal-600 border-r border-gray-100 bg-teal-50/5">{row.blockCode}</td>
+                        <td className="px-6 py-2 text-left text-gray-400 uppercase leading-tight italic text-[9px] truncate max-w-[150px] border-r border-gray-100">{row.blockDesc}</td>
                         <td className="px-2 py-2 border-r border-gray-100 text-slate-300">BL</td>
                         <td className="px-3 py-2 border-r border-gray-100 font-mono text-slate-500">{formatNum(row.pesoBloque, 1)}</td>
                         <td className="px-4 py-2 border-r border-gray-100 font-mono font-black text-green-600 bg-green-50/10">{formatNum(row.stockKg)}</td>
-                        <td className="px-4 py-2 font-mono font-black text-indigo-600 bg-indigo-50/10">
+                        <td className="px-4 py-2 font-mono font-black text-indigo-600 bg-indigo-50/10 border-r border-gray-100">
                           {formatNum(row.pesoBloque > 0 ? row.stockKg / row.pesoBloque : 0, 1)}
                         </td>
+                        <td className="px-3 py-2 text-left font-mono text-slate-400">{row.material}</td>
                       </tr>
                     ))
                   )}
