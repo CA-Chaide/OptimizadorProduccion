@@ -19,7 +19,9 @@ import {
   RefreshCw,
   TrendingUp,
   Box,
-  Info
+  Info,
+  Minus,
+  Plus
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -244,7 +246,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       const maquinaVal = String(getProp(row, ['Maquina', 'MAQUINA'])).toUpperCase();
       const estadoTrasVal = String(getProp(row, ['estadoTras', 'Estado_Tras'])).toUpperCase();
       const fechaVal = String(getProp(row, ['fecha', 'FECHA']));
-      const stockVal = safeNum(getProp(row, ['CantidadStock', 'CANTIDAD', 'peso', 'PESO']));
       
       const info = extractMaterialInfo({ MATERIAL: row.NomMaterial || row.CodMaterial || '' });
       let densityVal = getProp(row, ['Densidad', 'DENSIDAD', 'Dens']);
@@ -255,8 +256,8 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       // LÓGICA LEADER: [estadoTras] = "CALLE" AND [Maquina] = "F_BLOQ" AND [fecha] contiene 2026
       const isLeader = estadoTrasVal === 'CALLE' && maquinaVal === 'F_BLOQ' && fechaVal.includes('2026');
 
-      // LÓGICA COFAMA: ([estadoTras] = "BCALL" OR [Maquina] = "F_BLOQ_M") AND [CantidadStock] > 50
-      const isCofama = (estadoTrasVal === 'BCALL' || maquinaVal === 'F_BLOQ_M') && stockVal > 50;
+      // LÓGICA COFAMA: [estadoTras] = "BCALL" OR [Maquina] = "F_BLOQ_M" (Se visualizan todos sin restricción de stock)
+      const isCofama = estadoTrasVal === 'BCALL' || maquinaVal === 'F_BLOQ_M';
 
       if (isLeader) leaderRows.push(enriched);
       else if (isCofama) cofamaRows.push(enriched);
@@ -277,7 +278,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         label: 'BLOQUE FORMULADO LEADER', 
         rows: leaderRows, 
         apertures: getApertureSummary(leaderRows),
-        color: 'border-l-indigo-600', 
         badge: 'bg-indigo-600' 
       },
       { 
@@ -285,7 +285,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         label: 'BLOQUE FORMULADO COFAMA', 
         rows: cofamaRows, 
         apertures: getApertureSummary(cofamaRows),
-        color: 'border-l-slate-800', 
         badge: 'bg-slate-800' 
       }
     ];
@@ -299,13 +298,10 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
 
   return (
     <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
-      {/* HEADER UNIFICADO */}
       <div className="flex items-center justify-between pb-4 border-b border-gray-100">
         <div className="flex items-center space-x-3">
           <div className="p-2 bg-primary/10 rounded-xl shadow-inner"><FlaskConical className="w-6 h-6 text-primary" /></div>
-          <div>
-            <h2 className="text-xl font-black text-gray-800 uppercase tracking-tighter">Programación Táctica Formulación</h2>
-          </div>
+          <h2 className="text-xl font-black text-gray-800 uppercase tracking-tighter">Programación Táctica Formulación</h2>
         </div>
 
         <div className="flex items-center gap-3">
@@ -377,7 +373,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         <TabsContent value="resumen" className="space-y-6 animate-in fade-in duration-300">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             {apertureReport.map((ap) => (
-              <Card key={ap.apertura} className="p-4 border-none shadow-sm bg-slate-900 text-white rounded-[2rem] flex flex-col justify-between">
+              <Card key={ap.apertura} className="p-4 border-none shadow-sm bg-slate-900 text-white rounded-2xl flex flex-col justify-between">
                 <div>
                   <p className="text-[9px] font-black uppercase text-slate-500 tracking-wider">Apertura Bloque SAP</p>
                   <p className="text-xl font-black font-mono tracking-tighter text-[#facc15]">{ap.apertura}</p>
@@ -390,11 +386,11 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
             ))}
           </div>
 
-          <Card className="border-2 border-gray-50 rounded-[2.5rem] shadow-2xl overflow-hidden bg-white mt-4">
+          <Card className="border border-gray-100 rounded-3xl shadow-xl overflow-hidden bg-white mt-4">
             <div className="overflow-x-auto max-h-[550px] relative">
               <table className="w-full border-collapse text-center font-sans text-[11px]">
                 <thead className="sticky top-0 z-20">
-                  <tr className="bg-gray-50 text-slate-400 uppercase font-black tracking-tighter border-b border-gray-100">
+                  <tr className="bg-gray-50 text-slate-400 uppercase font-black tracking-tighter border-b border-gray-100 text-[9px]">
                     <th className="px-5 py-4 border-r border-gray-50 text-left">Fecha SAP</th>
                     <th className="px-5 py-4 border-r border-gray-50 text-indigo-600">Máquina Producción</th>
                     <th className="px-5 py-4 border-r border-gray-50">Densidad</th>
@@ -422,7 +418,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           </Card>
         </TabsContent>
 
-        <TabsContent value="curado" className="space-y-10 animate-in fade-in duration-300">
+        <TabsContent value="curado" className="space-y-10 animate-in fade-in duration-300 text-left">
           {curadoGroupsSummary.map((group) => (
             <div key={group.id} className="space-y-4">
               <div className="flex justify-between items-end px-2">
@@ -444,7 +440,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                 </div>
               </div>
 
-              <Card className="border-2 border-gray-50 rounded-[2.5rem] shadow-xl overflow-hidden bg-white">
+              <Card className="border border-gray-100 rounded-2xl shadow-lg overflow-hidden bg-white">
                 <div className="overflow-x-auto max-h-[450px]">
                   <table className="w-full border-collapse text-center font-sans text-[10px]">
                     <thead className="bg-[#f8fafc] sticky top-0 z-10 text-slate-400 uppercase font-black border-b border-gray-100">
@@ -475,16 +471,16 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           ))}
         </TabsContent>
 
-        <TabsContent value="inventario" className="animate-in fade-in duration-300 space-y-4">
+        <TabsContent value="inventario" className="animate-in fade-in duration-300 space-y-4 text-left">
           <div className="flex items-center gap-2 px-1">
             <div className="p-1.5 bg-blue-600 rounded-lg text-white"><Database className="w-4 h-4" /></div>
             <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Responsable SAP: 005 (Auditado)</h3>
           </div>
 
-          <Card className="rounded-[2.5rem] border-2 border-gray-50 shadow-2xl overflow-hidden bg-white">
+          <Card className="rounded-2xl border border-gray-100 shadow-xl overflow-hidden bg-white">
             <div className="overflow-x-auto max-h-[550px] relative">
               <table className="w-full border-collapse text-center font-sans text-[10px]">
-                <thead className="bg-[#1e293b] text-white border-b border-white/5 uppercase font-black tracking-tighter text-[9px] sticky top-0 z-10">
+                <thead className="bg-[#1e293b] text-white border-b border-white/5 uppercase font-black tracking-widest text-[9px] sticky top-0 z-10">
                   <tr>
                     <th className="px-5 py-5 border-r border-white/5">Material</th>
                     <th className="px-6 py-5 border-r border-white/5 text-left">Descripción del Producto</th>
@@ -501,7 +497,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-50 font-bold text-[11px]">
                   {inventarioFiltrado.length === 0 ? (
-                    <tr><td colSpan={11} className="py-24 text-slate-200 font-black uppercase tracking-widest italic">No se detectó inventario para el responsable 005</td></tr>
+                    <tr><td colSpan={11} className="py-24 text-slate-200 font-black uppercase tracking-widest italic text-center">No se detectó inventario para el responsable 005</td></tr>
                   ) : (
                     inventarioFiltrado.map((row, i) => (
                       <tr key={i} className="hover:bg-blue-50/10 transition-colors">
@@ -527,8 +523,8 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           </Card>
         </TabsContent>
 
-        <TabsContent value="ordenes" className="animate-in fade-in duration-300">
-          <Card className="rounded-[2.5rem] border-2 border-gray-50 shadow-2xl overflow-hidden bg-white">
+        <TabsContent value="ordenes" className="animate-in fade-in duration-300 text-left">
+          <Card className="rounded-2xl border border-gray-100 shadow-lg overflow-hidden bg-white">
             <div className="overflow-x-auto max-h-[550px]">
               <table className="w-full border-collapse text-center font-sans text-[11px]">
                 <thead className="bg-gray-50 sticky top-0 z-10 text-[10px] font-black uppercase text-slate-400 border-b border-gray-100">
@@ -563,11 +559,11 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           </Card>
         </TabsContent>
 
-        <TabsContent value="tiempos" className="animate-in fade-in duration-300">
-          <Card className="rounded-[2.5rem] border-2 border-gray-50 shadow-2xl overflow-hidden bg-white">
+        <TabsContent value="tiempos" className="animate-in fade-in duration-300 text-left">
+          <Card className="rounded-2xl border border-gray-100 shadow-lg overflow-hidden bg-white">
             <div className="overflow-x-auto max-h-[550px]">
               <table className="w-full border-collapse text-center font-sans text-[11px]">
-                <thead className="bg-[#0f172a] text-white uppercase font-black tracking-widest text-[9px]">
+                <thead className="bg-[#0f172a] text-white uppercase font-black tracking-widest text-[9px] sticky top-0 z-10">
                   <tr>
                     <th className="px-6 py-5 border-r border-white/5 text-left">Material</th>
                     <th className="px-6 py-5 border-r border-white/5 text-left">Descripción Técnica SAP</th>
@@ -594,6 +590,13 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <div className="bg-blue-50 border border-blue-100 p-3 rounded-2xl flex items-center gap-3">
+        <Info className="w-4 h-4 text-blue-600" />
+        <p className="text-[9px] font-black text-blue-700 uppercase tracking-widest">
+          Nota: Auditoría técnica sincronizada con SAP S/4HANA. Segmento COFAMA visualiza todos los bloques BCALL y F_BLOQ_M.
+        </p>
+      </div>
     </div>
   );
 };
