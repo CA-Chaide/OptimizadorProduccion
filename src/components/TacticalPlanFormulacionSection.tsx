@@ -16,7 +16,6 @@ import {
   History,
   Layers,
   MapPin,
-  Info,
   RefreshCw
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
@@ -272,15 +271,16 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     };
 
     return [
-      { id: 'f_bloq', label: 'F_BLOQ (SISTEMA STIRLING - CALLE)', rows: fBloqRows, stats: getStats(fBloqRows), color: 'bg-indigo-900' },
-      { id: 'f_bloq_m', label: 'F_BLOQ_M (PROCESO MANUAL - BCALL)', rows: fBloqMRows, stats: getStats(fBloqMRows), color: 'bg-slate-800' }
+      { id: 'f_bloq', label: 'Sistema Stirling (F_BLOQ - CALLE)', rows: fBloqRows, stats: getStats(fBloqRows), color: 'bg-indigo-900' },
+      { id: 'f_bloq_m', label: 'Proceso Manual (F_BLOQ_M - BCALL)', rows: fBloqMRows, stats: getStats(fBloqMRows), color: 'bg-slate-800' }
     ];
   }, [curadoRows]);
 
+  // FILTRO: Solo responsable "005" para Inventarios SAP
   const inventarioFiltrado = useMemo(() => {
     return inventarioSAP.filter(row => {
       const resp = String(row.CODRESPPROD || row.CodRespProd || '').trim();
-      return ['003', '004', '006'].includes(resp);
+      return resp === '005';
     });
   }, [inventarioSAP]);
 
@@ -288,18 +288,26 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
 
   return (
     <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
+      {/* Header con Botón de Actualizar */}
       <div className="flex items-center justify-between pb-4 border-b border-gray-100">
         <div className="flex items-center space-x-3 text-left">
           <div className="p-2 bg-primary/10 rounded-xl shadow-inner"><FlaskConical className="w-6 h-6 text-primary" /></div>
           <div>
             <h2 className="text-xl font-black text-gray-800 uppercase tracking-tighter">Programación Táctica Formulación</h2>
-            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Plan de Reposición Bloques | Auditoría Curado SAP</p>
+            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Plan de Reposición y Auditoría de Stock SAP</p>
           </div>
         </div>
 
-        <Button onClick={fetchData} disabled={isLoading} variant="outline" className="h-10 px-5 rounded-xl border-gray-200 gap-2 font-black text-[10px] uppercase shadow-sm hover:border-primary/50">
-          {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />} SINCRONIZAR SAP
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button 
+            onClick={fetchData} 
+            disabled={isLoading} 
+            className="h-10 px-6 rounded-xl bg-primary hover:bg-primary/90 text-white gap-2 font-black text-[10px] uppercase shadow-lg transition-all active:scale-95"
+          >
+            {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+            ACTUALIZAR DATOS
+          </Button>
+        </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
@@ -317,21 +325,20 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           ))}
         </TabsList>
 
-        <TabsContent value="resumen" className="space-y-8 animate-in fade-in duration-300">
-          <div className="flex justify-between items-center bg-slate-50/50 p-4 rounded-[2rem] border border-gray-100">
+        <TabsContent value="resumen" className="space-y-6 animate-in fade-in duration-300">
+          <div className="flex justify-between items-center bg-white p-3 rounded-2xl border border-gray-100 shadow-sm">
             <div className="flex items-center gap-4 text-left">
-              <div className="p-2 bg-primary/10 rounded-xl"><CalendarIcon className="w-5 h-5 text-primary" /></div>
+              <div className="p-2 bg-primary/5 rounded-xl"><CalendarIcon className="w-5 h-5 text-primary" /></div>
               <div>
-                <p className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Horizonte de Reposición</p>
-                <h3 className="text-sm font-black text-gray-700 uppercase">
+                <h3 className="text-xs font-black text-gray-700 uppercase">
                   {selectedDate === 'all' ? 'PLAN MAESTRO CONSOLIDADO' : format(parseISO(selectedDate), 'EEEE, d MMMM yyyy', { locale: es })}
                 </h3>
               </div>
             </div>
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className="h-10 px-6 rounded-2xl border-gray-200 hover:bg-white hover:border-primary/50 gap-2 font-black text-xs uppercase transition-all shadow-sm">
-                  <Filter className="w-4 h-4" /> FILTRAR FECHA
+                <Button variant="outline" size="sm" className="h-9 px-4 rounded-xl border-gray-200 hover:bg-white hover:border-primary/50 gap-2 font-black text-[10px] uppercase transition-all shadow-sm">
+                  <Filter className="w-3.5 h-3.5" /> FILTRAR FECHA
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-64 p-0 border-none shadow-2xl rounded-2xl overflow-hidden mt-3" align="end">
@@ -367,26 +374,32 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
             </Popover>
           </div>
 
-          <div className="space-y-4">
-            <h3 className="text-[11px] font-black uppercase flex items-center gap-2 px-1 tracking-widest text-left text-primary">
-              <div className="w-2.5 h-2.5 rounded-full bg-primary" /> Auditoría de Reposición por Máquina de Formulación
-            </h3>
-            <Card className="rounded-[2.5rem] border border-gray-100 shadow-2xl overflow-hidden bg-white">
-              <div className="overflow-x-auto max-h-[550px]">
-                <table className="w-full border-collapse text-center font-sans">
-                  <thead className="bg-[#1e293b] sticky top-0 z-10 text-[10px] font-black uppercase text-white border-b border-white/5">
+          <div className="border border-gray-100 rounded-3xl shadow-lg overflow-hidden bg-white">
+            <div className="overflow-x-auto max-h-[550px]">
+              <table className="w-full border-collapse text-center font-sans">
+                <thead className="bg-[#1e293b] sticky top-0 z-10 text-[10px] font-black uppercase text-white border-b border-white/5">
+                  <tr>
+                    <th className="px-6 py-4 border-r border-white/5">Fecha Plan</th>
+                    <th className="px-6 py-4 border-r border-white/5 text-indigo-300">MÁQUINA SAP</th>
+                    <th className="px-6 py-4 border-r border-white/5">Densidad</th>
+                    <th className="px-6 py-4 border-r border-white/5">Tipo</th>
+                    <th className="px-6 py-4 border-r border-white/5 text-blue-200">Apertura</th>
+                    <th className="px-6 py-4 border-r border-white/5 text-orange-300 font-black">Bloques Teor.</th>
+                    <th className="px-6 py-5 bg-emerald-500/20 text-emerald-300 font-black">Plan Reposición</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50 text-[11px] font-bold">
+                  {isLoading ? (
                     <tr>
-                      <th className="px-6 py-5 border-r border-white/5">Fecha Plan</th>
-                      <th className="px-6 py-5 border-r border-white/5 text-indigo-300">MÁQUINA SAP</th>
-                      <th className="px-6 py-5 border-r border-white/5">Densidad</th>
-                      <th className="px-6 py-5 border-r border-white/5">Tipo</th>
-                      <th className="px-6 py-5 border-r border-white/5 text-blue-200">Apertura</th>
-                      <th className="px-6 py-5 border-r border-white/5 text-orange-300 font-black">Total Bloques Teor.</th>
-                      <th className="px-6 py-5 bg-emerald-500/20 text-emerald-300 font-black">Plan Reposición (Enteros)</th>
+                      <td colSpan={7} className="py-20 text-center">
+                        <Loader2 className="w-6 h-6 animate-spin mx-auto text-primary mb-2" />
+                        <p className="text-[10px] font-black uppercase text-slate-300 tracking-widest">Sincronizando Capacidades...</p>
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50 text-[11px] font-bold">
-                    {unifiedSummaryData.map((row, i) => (
+                  ) : unifiedSummaryData.length === 0 ? (
+                    <tr><td colSpan={7} className="py-20 text-slate-200 font-black uppercase tracking-widest text-center italic">No hay órdenes para los criterios seleccionados</td></tr>
+                  ) : (
+                    unifiedSummaryData.map((row, i) => (
                       <tr key={i} className="hover:bg-gray-50/80 transition-colors">
                         <td className="px-6 py-4 font-medium text-slate-400 border-r border-gray-50">{row.fecha}</td>
                         <td className="px-6 py-4 font-black text-indigo-700 border-r border-gray-50 uppercase tracking-tighter">{row.maquina}</td>
@@ -396,58 +409,42 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                         <td className="px-6 py-4 font-mono font-black text-orange-800 border-r border-gray-50 bg-orange-50/20">{formatNum(row.totalBloques, 2)}</td>
                         <td className="px-6 py-4 font-mono font-black text-emerald-700 bg-emerald-50/30 text-lg">{row.planReposicion}</td>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </TabsContent>
 
-        <TabsContent value="curado" className="space-y-12 animate-in fade-in duration-300">
-          <div className="flex items-center justify-between bg-[#0f172a] p-6 rounded-[2.5rem] border border-white/10 shadow-2xl">
-            <div className="flex items-center gap-5 text-left">
-              <div className="p-4 bg-indigo-500/20 rounded-2xl text-indigo-400"><History className="w-8 h-8" /></div>
-              <div>
-                <h3 className="text-lg font-black text-white uppercase tracking-tight">Monitor Maestro de Bloques Curados</h3>
-                <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">Auditado vía SAP ERP | Trazabilidad por Ubicación Logística</p>
-              </div>
-            </div>
-            <div className="text-right">
-              <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Total Inventario Planta</p>
-              <p className="text-3xl font-black text-indigo-400 font-mono tracking-tighter">{curadoRows.length}</p>
-            </div>
-          </div>
-
-          <div className="space-y-16">
+        <TabsContent value="curado" className="space-y-8 animate-in fade-in duration-300">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {curadoGroupsSummary.map((group) => (
               <div key={group.id} className="space-y-4">
-                <div className={cn("p-6 rounded-[2.5rem] border flex flex-col gap-6 text-white shadow-2xl", group.color)}>
-                   <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-4 text-left">
-                         <div className="p-3 bg-white/10 rounded-xl"><Layers className="w-6 h-6" /></div>
-                         <div>
-                            <h4 className="text-md font-black uppercase tracking-widest">{group.label}</h4>
-                            <p className="text-[10px] font-bold opacity-60 uppercase">Estatus de Maduración de Espuma</p>
-                         </div>
+                <div className={cn("p-5 rounded-3xl border flex flex-col gap-4 text-white shadow-xl", group.color)}>
+                   <div className="flex items-center gap-3">
+                      <div className="p-2 bg-white/10 rounded-xl"><Layers className="w-5 h-5" /></div>
+                      <div>
+                        <h4 className="text-sm font-black uppercase tracking-widest">{group.label}</h4>
+                        <p className="text-[9px] font-bold opacity-60 uppercase tracking-wider">Trazabilidad Stock Curado</p>
                       </div>
                    </div>
                    
-                   <div className="flex gap-10 items-center bg-black/15 p-4 rounded-2xl border border-white/5">
-                      <div className="text-center min-w-[120px]">
-                         <p className="text-[10px] font-black uppercase opacity-60 tracking-wider">Unidades</p>
-                         <p className="text-2xl font-black font-mono">{group.stats.count}</p>
+                   <div className="flex gap-6 items-center bg-black/15 p-3 rounded-2xl border border-white/5">
+                      <div className="text-center">
+                         <p className="text-[9px] font-black uppercase opacity-60 tracking-wider">Unidades</p>
+                         <p className="text-xl font-black font-mono">{group.stats.count}</p>
                       </div>
-                      <div className="text-center min-w-[140px] border-l border-white/10">
-                         <p className="text-[10px] font-black uppercase opacity-60 tracking-wider">Peso Bruto (Kg)</p>
-                         <p className="text-2xl font-black font-mono tracking-tighter">{group.stats.weight.toLocaleString()}</p>
+                      <div className="text-center border-l border-white/10 pl-6">
+                         <p className="text-[9px] font-black uppercase opacity-60 tracking-wider">Peso Bruto (Kg)</p>
+                         <p className="text-xl font-black font-mono tracking-tighter">{group.stats.weight.toLocaleString()}</p>
                       </div>
-                      <div className="text-left px-6 border-l border-white/10 flex-1">
-                         <p className="text-[10px] font-black uppercase opacity-60 mb-2 tracking-widest">Aperturas en Stock</p>
-                         <div className="flex flex-wrap gap-2">
-                            {Array.from(group.stats.apertureMap.entries()).map(([ap, count]) => (
-                              <Badge key={ap} variant="outline" className="bg-white/10 border-white/20 text-white text-[10px] font-black px-4 py-1.5 rounded-xl">
-                                 {ap}: {count} un.
+                      <div className="text-left border-l border-white/10 pl-6 flex-1">
+                         <p className="text-[9px] font-black uppercase opacity-60 mb-1.5 tracking-widest">Aperturas</p>
+                         <div className="flex flex-wrap gap-1.5">
+                            {Array.from(group.stats.apertureMap.entries()).slice(0, 3).map(([ap, count]) => (
+                              <Badge key={ap} variant="outline" className="bg-white/10 border-white/20 text-white text-[9px] font-black px-2 py-0.5 rounded-lg">
+                                 {ap}: {count}
                               </Badge>
                             ))}
                          </div>
@@ -455,101 +452,85 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                    </div>
                 </div>
 
-                <Card className="rounded-[2.5rem] border border-gray-100 shadow-xl overflow-hidden bg-white">
-                  <div className="overflow-x-auto max-h-[450px]">
+                <div className="border border-gray-100 rounded-3xl shadow-md overflow-hidden bg-white">
+                  <div className="overflow-x-auto max-h-[400px]">
                     <table className="w-full border-collapse text-center font-sans text-[10px]">
-                      <thead className="bg-[#f8fafc] sticky top-0 z-10 text-slate-400 uppercase font-black tracking-tight border-b border-gray-100">
+                      <thead className="bg-[#f8fafc] sticky top-0 z-10 text-slate-400 uppercase font-black border-b border-gray-100">
                         <tr>
-                          <th className="px-4 py-4 border-r border-gray-100">ID bloque</th>
-                          <th className="px-4 py-4 border-r border-gray-100">Fecha</th>
-                          <th className="px-4 py-4 border-r border-gray-100">ESTADO</th>
-                          <th className="px-4 py-4 border-r border-gray-100">Orden</th>
-                          <th className="px-4 py-4 border-r border-gray-100">CodMaterial</th>
-                          <th className="px-5 py-4 border-r border-gray-100 text-left">Descripción Material</th>
-                          <th className="px-3 py-4 border-r border-gray-100 text-orange-800">Peso (Kg)</th>
-                          <th className="px-4 py-4 border-r border-gray-100 text-indigo-700">Máquina</th>
-                          <th className="px-4 py-4 border-r border-gray-100 text-indigo-700 bg-indigo-50/30">Ubicación</th>
-                          <th className="px-4 py-4 border-r border-gray-100 text-blue-700">Densidad</th>
-                          <th className="px-4 py-4 bg-blue-50 text-blue-900">Apertura</th>
+                          <th className="px-3 py-3 border-r border-gray-50">ID bloque</th>
+                          <th className="px-3 py-3 border-r border-gray-50">Orden</th>
+                          <th className="px-3 py-3 border-r border-gray-50 text-indigo-700">Peso (Kg)</th>
+                          <th className="px-3 py-3 border-r border-gray-50 text-indigo-700 bg-indigo-50/30">Calle</th>
+                          <th className="px-3 py-3 text-blue-900 bg-blue-50">Apertura</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-gray-100 font-bold">
+                      <tbody className="divide-y divide-gray-50 font-bold">
                         {group.rows.map((row, i) => (
                           <tr key={i} className="hover:bg-gray-50/50 transition-colors">
-                            <td className="px-4 py-3 border-r border-gray-100 text-gray-400 font-mono">{String(row.Idbloque || row.ID_BLOQUE)}</td>
-                            <td className="px-4 py-3 border-r border-gray-100 text-gray-500 font-mono">{String(row.fecha || row.FECHA).split('T')[0]}</td>
-                            <td className="px-4 py-3 border-r border-gray-100 uppercase text-[9px]">{String(row.ESTADO || '—')}</td>
-                            <td className="px-4 py-3 border-r border-gray-100 text-indigo-600 font-mono tracking-tighter">{String(row.orden || row.ORDEN)}</td>
-                            <td className="px-4 py-3 border-r border-gray-100 font-mono text-slate-800">{String(row.CodMaterial || row.COD_MATERIAL)}</td>
-                            <td className="px-5 py-3 border-r border-gray-100 text-left uppercase text-slate-500 truncate max-w-[180px]">{String(row.NomMaterial || row.NOM_MATERIAL)}</td>
-                            <td className="px-3 py-3 border-r border-gray-100 font-mono text-orange-700 font-black">{formatNum(row.peso || row.PESO, 1)}</td>
-                            <td className="px-4 py-3 border-r border-gray-100 font-black text-indigo-700 uppercase tracking-tighter">{String(row.Maquina || row.MAQUINA || '—')}</td>
-                            <td className="px-4 py-3 border-r border-gray-100 text-center uppercase tracking-widest text-[9px]">{String(row.estadoTras || row.Estado_Tras || '—')}</td>
-                            <td className="px-4 py-3 border-r border-gray-100 text-blue-700 font-black">{String(row.densityFixed || '—')}</td>
-                            <td className="px-4 py-3 text-indigo-900 font-black bg-blue-50/50">{String(row.apertura || '—')}</td>
+                            <td className="px-3 py-2 border-r border-gray-50 text-gray-400 font-mono">{String(row.Idbloque || row.ID_BLOQUE)}</td>
+                            <td className="px-3 py-2 border-r border-gray-50 text-indigo-600 font-mono tracking-tighter">{String(row.orden || row.ORDEN)}</td>
+                            <td className="px-3 py-2 border-r border-gray-50 font-mono text-indigo-900">{formatNum(row.peso || row.PESO, 1)}</td>
+                            <td className="px-3 py-2 border-r border-gray-50 uppercase text-[9px] text-slate-500">{String(row.estadoTras || row.Estado_Tras || '—')}</td>
+                            <td className="px-3 py-2 text-indigo-900 font-black bg-blue-50/50">{String(row.apertura || '—')}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
-                </Card>
+                </div>
               </div>
             ))}
           </div>
         </TabsContent>
 
-        <TabsContent value="inventario" className="animate-in fade-in duration-300 space-y-4 text-left">
-          <div className="flex items-center justify-between bg-[#1e293b] p-5 rounded-[2rem] border border-white/10 shadow-2xl text-white">
-            <div className="flex items-center gap-4 text-left">
-              <div className="p-3 bg-blue-600 rounded-2xl text-white shadow-lg"><Database className="w-6 h-6" /></div>
+        <TabsContent value="inventario" className="space-y-4 animate-in fade-in duration-300 text-left">
+          <div className="flex items-center justify-between bg-white p-4 rounded-3xl border border-gray-100 shadow-sm">
+            <div className="flex items-center gap-4">
+              <div className="p-2.5 bg-blue-600 rounded-2xl text-white shadow-lg"><Database className="w-5 h-5" /></div>
               <div>
-                <h3 className="text-md font-black uppercase tracking-tight">Inventarios SAP Año Actual (Auditado)</h3>
-                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Filtro: Responsables Formulación (003, 004, 006)</p>
+                <h3 className="text-sm font-black uppercase tracking-tight text-gray-800">Inventarios SAP Año Actual</h3>
+                <p className="text-[9px] text-blue-600 font-black uppercase tracking-widest mt-0.5">Filtrado: Responsable 005</p>
               </div>
             </div>
-            <div className="text-right">
-              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Registros Totales</p>
-              <p className="text-2xl font-black text-blue-400 font-mono tracking-tighter">{inventarioFiltrado.length}</p>
+            <div className="text-right pr-2">
+              <p className="text-[9px] font-black text-slate-300 uppercase tracking-widest">Items Encontrados</p>
+              <p className="text-xl font-black text-blue-600 font-mono tracking-tighter">{inventarioFiltrado.length}</p>
             </div>
           </div>
 
           <Card className="rounded-[2.5rem] border border-gray-100 shadow-xl overflow-hidden bg-white">
             <div className="overflow-x-auto max-h-[600px] relative">
               <table className="w-full border-collapse text-center font-sans text-[10px]">
-                <thead className="bg-[#f8fafc] text-slate-400 uppercase font-black tracking-tight border-b border-gray-100 sticky top-0 z-10">
+                <thead className="bg-[#1e293b] text-slate-400 uppercase font-black tracking-tight border-b border-white/5 sticky top-0 z-10">
                   <tr>
-                    <th className="px-4 py-5 border-r border-gray-50">Material</th>
-                    <th className="px-6 py-5 border-r border-gray-50 text-left">Descripción del Material</th>
-                    <th className="px-3 py-5 border-r border-gray-50">Centro</th>
-                    <th className="px-3 py-5 border-r border-gray-50 text-indigo-600">ALM.</th>
-                    <th className="px-3 py-5 border-r border-gray-50">Año/Mes</th>
-                    <th className="px-3 py-5 border-r border-gray-50 bg-green-50 text-green-700">Libre Utiliz.</th>
-                    <th className="px-3 py-5 border-r border-gray-50 bg-blue-50 text-blue-700">En Traslado</th>
-                    <th className="px-3 py-5 border-r border-gray-50">Insp. Calidad</th>
-                    <th className="px-3 py-5 border-r border-gray-50 text-red-600 bg-red-50">Bloqueado</th>
-                    <th className="px-3 py-5 border-r border-gray-50">Punto Pedido</th>
+                    <th className="px-4 py-5 border-r border-white/5 text-white">Material</th>
+                    <th className="px-6 py-5 border-r border-white/5 text-left text-white">Descripción</th>
+                    <th className="px-3 py-5 border-r border-white/5">Centro</th>
+                    <th className="px-3 py-5 border-r border-white/5 text-blue-300">ALM.</th>
+                    <th className="px-3 py-5 border-r border-white/5">Año/Mes</th>
+                    <th className="px-3 py-5 border-r border-white/5 bg-green-500/20 text-green-300">Libre Utiliz.</th>
+                    <th className="px-3 py-5 border-r border-white/5 bg-blue-500/20 text-blue-200">En Traslado</th>
+                    <th className="px-3 py-5 border-r border-white/5 text-red-300">Bloqueado</th>
                     <th className="px-3 py-5">Tipo</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 font-bold">
-                  {inventarioFiltrado.length === 0 ? (
-                    <tr><td colSpan={11} className="py-24 text-slate-200 font-black uppercase tracking-widest text-center italic">No hay inventario registrado para los criterios seleccionados</td></tr>
+                  {isLoading ? (
+                    <tr><td colSpan={9} className="py-20 text-center text-slate-200 uppercase animate-pulse font-black tracking-widest">Consultando Inventarios SAP...</td></tr>
+                  ) : inventarioFiltrado.length === 0 ? (
+                    <tr><td colSpan={9} className="py-24 text-slate-200 font-black uppercase tracking-widest text-center italic">No hay inventario registrado para el responsable 005</td></tr>
                   ) : (
                     inventarioFiltrado.map((row, i) => (
-                      <tr key={i} className="hover:bg-blue-50/30 transition-colors">
-                        <td className="px-4 py-3 border-r border-gray-50 font-mono text-blue-600">{cleanCode(row.MATERIAL)}</td>
-                        <td className="px-6 py-3 border-r border-gray-50 text-left uppercase text-slate-600 truncate max-w-[250px]" title={row.NOMBRE}>{row.NOMBRE || '—'}</td>
-                        <td className="px-3 py-3 border-r border-gray-50">{row.CENTRO}</td>
+                      <tr key={i} className="hover:bg-blue-50/20 transition-colors">
+                        <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-blue-600">{cleanCode(row.MATERIAL)}</td>
+                        <td className="px-6 py-3 border-r border-dashed border-gray-100 text-left uppercase text-slate-600 truncate max-w-[250px]" title={row.NOMBRE}>{row.NOMBRE || '—'}</td>
+                        <td className="px-3 py-3 border-r border-dashed border-gray-100">{row.CENTRO}</td>
                         <td className="px-3 py-3 border-r border-gray-100 text-indigo-700 font-black bg-indigo-50/20">{row.ALMACEN}</td>
-                        <td className="px-3 py-3 border-r border-gray-50 font-mono text-slate-400">{row.ANIO}/{row.MES}</td>
-                        <td className="px-3 py-3 border-r border-gray-50 font-mono text-green-700 bg-green-50/50">{Number(row.LIBREUTILIZACION || 0).toLocaleString()}</td>
-                        <td className="px-3 py-3 border-r border-gray-50 font-mono text-blue-700 bg-blue-50/50">{Number(row.ENTRASLADO || 0).toLocaleString()}</td>
-                        <td className="px-3 py-3 border-r border-gray-50 font-mono text-slate-500">{Number(row.INSPECCCALIDAD || 0).toLocaleString()}</td>
-                        <td className="px-3 py-3 border-r border-gray-50 font-mono text-red-600 bg-red-50/50">{Number(row.BLOQUEADO || 0).toLocaleString()}</td>
-                        <td className="px-3 py-3 border-r border-gray-50 font-mono text-indigo-400">{Number(row.PUNTOPEDIDO || 0).toLocaleString()}</td>
-                        <td className="px-3 py-3 text-[10px] text-slate-300">
-                          {row.TIPO_MATERIAL} {row.PETICIONBORRADO === 'X' && <Badge variant="destructive" className="ml-1 h-4 text-[8px] px-1 font-black">DEL</Badge>}
-                        </td>
+                        <td className="px-3 py-3 border-r border-dashed border-gray-100 font-mono text-slate-400">{row.ANIO}/{row.MES}</td>
+                        <td className="px-3 py-3 border-r border-dashed border-gray-100 font-mono text-green-700 bg-green-50/30">{Number(row.LIBREUTILIZACION || 0).toLocaleString()}</td>
+                        <td className="px-3 py-3 border-r border-dashed border-gray-100 font-mono text-blue-700 bg-blue-50/30">{Number(row.ENTRASLADO || 0).toLocaleString()}</td>
+                        <td className="px-3 py-3 border-r border-dashed border-gray-100 font-mono text-red-600 bg-red-50/30">{Number(row.BLOQUEADO || 0).toLocaleString()}</td>
+                        <td className="px-3 py-3 text-[10px] text-slate-300">{row.TIPO_MATERIAL} {row.PETICIONBORRADO === 'X' && <span className="text-red-500 font-black">[B]</span>}</td>
                       </tr>
                     ))
                   )}
@@ -641,10 +622,10 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         </TabsContent>
       </Tabs>
 
-      <div className="bg-blue-50 border border-blue-100 p-4 rounded-3xl flex items-center gap-3">
-        <Info className="w-5 h-5 text-blue-600" />
-        <p className="text-[10px] font-black text-blue-700 uppercase tracking-widest">
-          Nota: Datos auditados contra el entorno SAP S/4HANA en tiempo real para el proceso de Formulación.
+      <div className="bg-blue-50 border border-blue-100 p-3 rounded-2xl flex items-center gap-3">
+        <Info className="w-4 h-4 text-blue-600" />
+        <p className="text-[9px] font-black text-blue-700 uppercase tracking-widest">
+          Nota: Auditoría técnica sincronizada con SAP S/4HANA. Módulo de Formulación optimizado para alta visibilidad de datos.
         </p>
       </div>
     </div>
