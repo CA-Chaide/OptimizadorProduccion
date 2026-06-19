@@ -20,9 +20,12 @@ import {
   MapPin,
   Box,
   Search,
-  Info
+  Info,
+  Trash2,
+  Edit2,
+  AlertCircle
 } from 'lucide-react';
-import { Card } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from '@/components/ui/button';
 import {
@@ -71,6 +74,7 @@ const getProp = (obj: any, keys: string[]): string => {
   return '';
 };
 
+// Parsea la corrida para COFAMA
 const parseCorridaProceso = (corrida: string) => {
   if (!corrida || corrida === '—' || corrida === 'null') return { c1: '—', m1: '—', c2: '—', m2: '—' };
   const parts = String(corrida).split('/');
@@ -102,7 +106,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   const [viewDate, setViewDate] = useState<Date | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
-  // Inicialización segura en el cliente
   useEffect(() => { 
     setMounted(true); 
     const today = new Date();
@@ -186,10 +189,13 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     });
   }, [ordenes, selectedDates]);
 
+  // DATA UNIFICADA PARA CAPACIDAD Y CARGA (RESUMEN)
   const unifiedSummaryData = useMemo(() => {
     const groupsMap = new Map<string, { 
-      fecha: string; maquina: string; dens: string; tipo: string; apertura: string;
-      totalBloques: number; planReposicion: number;
+      fecha: string; maquina: string; material: string; descripcion: string;
+      dens: string; tipo: string; apertura: string; ancho: number; esp: number;
+      totalBloques: number; planReposicion: number; 
+      stockKg: number; pesoBloque: number;
     }>();
 
     provFiltradas.forEach(o => {
@@ -197,17 +203,28 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       const fecha = dateRaw.includes('T') ? dateRaw.split('T')[0] : dateRaw;
       const maquina = String(o.MAQUINA || o.RECURSO || 'SIN MÁQUINA').trim().toUpperCase();
       const info = extractMaterialInfo(o);
-      const key = `${fecha}|${maquina}|${info.dens}|${info.tipo}|${info.apertura}`;
+      const key = `${fecha}|${maquina}|${info.code}|${info.apertura}`;
       
       const qty = safeNum(o.CANTPROGRAMADA || o.CANTIDAD || 0);
-      const ancho = parseFloat(info.ancho) || 0;
-      const esp = parseFloat(info.esp) || 0;
-      const densValue = parseFloat(String(info.dens)) || 0;
-      const usefulHeight = (densValue < 30) ? 103 : 85;
-      const itemBloques = (qty * esp * ancho) / (usefulHeight * BLOCK_LENGTH_METERS * 100);
+      const anchoVal = parseFloat(info.ancho) || 0;
+      const espVal = parseFloat(info.esp) || 0;
+      const densVal = parseFloat(String(info.dens)) || 0;
+      const usefulHeight = (densVal < 30) ? 103 : 85;
+      const itemBloques = (qty * espVal * anchoVal) / (usefulHeight * BLOCK_LENGTH_METERS * 100);
+
+      const stockKg = inventarioSAP
+        .filter(inv => cleanCode(inv.MATERIAL) === info.code)
+        .reduce((sum, item) => sum + safeNum(item.LIBREUTILIZACION), 0);
+
+      const pesoBloque = (100 * usefulHeight * BLOCK_LENGTH_METERS * densVal) / 10000;
 
       if (!groupsMap.has(key)) {
-        groupsMap.set(key, { fecha, maquina, dens: info.dens, tipo: info.tipo, apertura: info.apertura, totalBloques: 0, planReposicion: 0 });
+        groupsMap.set(key, { 
+          fecha, maquina, material: info.code, descripcion: info.desc, 
+          dens: info.dens, tipo: info.tipo, apertura: info.apertura, 
+          ancho: anchoVal, esp: espVal, totalBloques: 0, planReposicion: 0,
+          stockKg, pesoBloque
+        });
       }
       const entry = groupsMap.get(key)!;
       entry.totalBloques += itemBloques;
@@ -215,15 +232,16 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     });
 
     return Array.from(groupsMap.values()).sort((a, b) => a.fecha.localeCompare(b.fecha) || a.maquina.localeCompare(b.maquina));
-  }, [provFiltradas]);
+  }, [provFiltradas, inventarioSAP]);
 
-  // CORRECCIÓN: useMemo para el reporte de aperturas (Antes estaba inline)
+  // Reporte de aperturas para el dashboard
   const apertureSummaryResumen = useMemo(() => {
     const report = new Map<string, number>();
     unifiedSummaryData.forEach(r => report.set(r.apertura || '—', (report.get(r.apertura || '—') || 0) + r.planReposicion));
     return Array.from(report.entries()).sort((a, b) => b[1] - a[1]);
   }, [unifiedSummaryData]);
 
+  // SEGMENTACIÓN STOCK CURADO (LEADER / COFAMA)
   const curadoSegments = useMemo(() => {
     const leaderRows: any[] = [];
     const cofamaRows: any[] = [];
@@ -258,11 +276,11 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         estadoTras: estadoTrasVal
       };
 
-      // Filtro LEADER: CALLE + F_BLOQ + Año 2026
+      // FILTRO LEADER: CALLE + F_BLOQ + 2026
       if (estadoTrasVal === 'CALLE' && maquinaVal === 'F_BLOQ' && fechaVal.includes('2026')) {
         leaderRows.push(enriched);
       }
-      // Filtro COFAMA: BCALL + F_BLOQ_M + Peso > 50
+      // FILTRO COFAMA: BCALL + F_BLOQ_M + PESO > 50
       else if (estadoTrasVal === 'BCALL' && maquinaVal === 'F_BLOQ_M' && pesoVal > 50) {
         const p = parseCorridaProceso(enriched.corridaproceso);
         cofamaRows.push({
@@ -320,6 +338,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     setExpandedGroups(next);
   };
 
+  // Root Shell: Identical for SSR and initial hydration to prevent Hydration Errors
   const renderRoot = (content: React.ReactNode) => (
     <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
       {content}
@@ -411,33 +430,60 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
             ))}
           </div>
 
-          <Card className="border border-gray-100 rounded-xl shadow-lg overflow-hidden bg-white">
-            <div className="overflow-x-auto max-h-[500px] relative">
-              <table className="w-full border-collapse text-center font-sans text-[10px]">
+          <Card className="border-2 border-gray-100 rounded-[2rem] shadow-2xl overflow-hidden bg-white">
+            <div className="overflow-x-auto max-h-[600px] relative">
+              <table className="w-full border-collapse text-center font-sans text-[10px] text-gray-700">
                 <thead className="sticky top-0 z-20">
-                  <tr className="bg-gray-50 text-slate-400 uppercase font-black tracking-tighter border-b border-gray-100 text-[8px]">
-                    <th className="px-4 py-3 border-r border-gray-50 text-left">Fecha SAP</th>
-                    <th className="px-4 py-3 border-r border-gray-50 text-indigo-600">Máquina Producción</th>
-                    <th className="px-4 py-3 border-r border-gray-50">Densidad</th>
-                    <th className="px-4 py-3 border-r border-gray-50">Tipo</th>
-                    <th className="px-4 py-3 border-r border-gray-50 bg-indigo-50/30 text-indigo-900">Apertura</th>
-                    <th className="px-4 py-3 border-r border-gray-50 text-orange-600">Bloques Teor.</th>
-                    <th className="px-4 py-3 bg-indigo-600 text-white font-black">Plan Reposición</th>
+                  <tr className="bg-[#1e40af] text-white uppercase font-black tracking-tighter text-[10px]">
+                    <th colSpan={7} className="px-4 py-3 border-r border-white/5 bg-black/10">Producción Programada</th>
+                    <th colSpan={6} className="px-4 py-3 bg-[#1d4ed8]">Stock e Ingeniería</th>
+                  </tr>
+                  <tr className="bg-[#1e40af] text-white uppercase font-black tracking-tighter text-[9px] border-b border-white/10">
+                    <th className="px-4 py-3 border-r border-white/5 text-left">Fecha SAP</th>
+                    <th className="px-4 py-3 border-r border-white/5 text-left">Máquina</th>
+                    <th className="px-4 py-3 border-r border-white/5">Dens.</th>
+                    <th className="px-4 py-3 border-r border-white/5">Tipo</th>
+                    <th className="px-4 py-3 border-r border-white/5 bg-black/20">Apertura</th>
+                    <th className="px-4 py-3 border-r border-white/5 text-yellow-300">Bl. Teor.</th>
+                    <th className="px-4 py-3 border-r border-white/10 bg-yellow-400 text-black">Reposición</th>
+                    
+                    <th className="px-4 py-3 border-r border-white/5 text-left">MATERIAL</th>
+                    <th className="px-6 py-3 border-r border-white/5 text-left">Descripción</th>
+                    <th className="px-2 py-3 border-r border-white/5">[Un]</th>
+                    <th className="px-3 py-3 border-r border-white/5">Peso Bloque</th>
+                    <th className="px-4 py-3 border-r border-white/5">StockActual (Kg)</th>
+                    <th className="px-4 py-3">Stock Actual [Un]</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-50 font-bold">
-                  {unifiedSummaryData.length === 0 ? (
-                    <tr><td colSpan={7} className="py-16 text-center text-slate-200 uppercase tracking-widest italic font-black">Sin datos para la selección actual</td></tr>
+                <tbody className="divide-y divide-gray-100 font-bold">
+                  {isProcessingResumen ? (
+                    <tr>
+                      <td colSpan={13} className="py-20 text-center">
+                        <Loader2 className="w-8 h-8 animate-spin mx-auto text-indigo-500 mb-3" />
+                        <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Ejecutando Sincronización...</p>
+                      </td>
+                    </tr>
+                  ) : unifiedSummaryData.length === 0 ? (
+                    <tr><td colSpan={13} className="py-16 text-center text-slate-200 uppercase tracking-widest italic font-black">Sin datos para la selección actual</td></tr>
                   ) : (
                     unifiedSummaryData.map((row, i) => (
-                      <tr key={i} className="hover:bg-slate-50/50 transition-colors">
-                        <td className="px-4 py-2 text-slate-400 border-r border-gray-50">{row.fecha}</td>
-                        <td className="px-4 py-2 font-black text-slate-800 border-r border-gray-50 uppercase">{row.maquina}</td>
-                        <td className="px-4 py-2 border-r border-gray-50">{row.dens}</td>
-                        <td className="px-4 py-2 text-primary border-r border-gray-50 uppercase">{row.tipo}</td>
-                        <td className="px-4 py-2 text-blue-700 border-r border-gray-50 bg-blue-50/5 font-black">{row.apertura}</td>
-                        <td className="px-4 py-2 font-mono font-black text-orange-800 border-r border-gray-50 bg-orange-50/5">{formatNum(row.totalBloques, 1)}</td>
-                        <td className="px-4 py-2 font-mono font-black text-indigo-700 bg-indigo-50/20 text-xs">{row.planReposicion}</td>
+                      <tr key={i} className="hover:bg-slate-50 transition-colors border-b">
+                        <td className="px-4 py-2 text-slate-400 border-r border-gray-100 text-left">{row.fecha}</td>
+                        <td className="px-4 py-2 font-black text-slate-800 border-r border-gray-100 uppercase text-left">{row.maquina}</td>
+                        <td className="px-4 py-2 border-r border-gray-100">{row.dens}</td>
+                        <td className="px-4 py-2 text-primary border-r border-gray-100 uppercase">{row.tipo}</td>
+                        <td className="px-4 py-2 text-blue-700 border-r border-gray-100 bg-blue-50/10 font-black">{row.apertura}</td>
+                        <td className="px-4 py-2 font-mono text-orange-600 border-r border-gray-100 bg-orange-50/10">{formatNum(row.totalBloques, 1)}</td>
+                        <td className="px-4 py-2 font-mono font-black text-indigo-700 border-r-2 border-gray-200 bg-indigo-50/20">{row.planReposicion}</td>
+                        
+                        <td className="px-4 py-2 text-left font-mono text-blue-600 border-r border-gray-100">{row.material}</td>
+                        <td className="px-6 py-2 text-left text-gray-400 uppercase leading-tight italic text-[9px] truncate max-w-[200px] border-r border-gray-100">{row.descripcion}</td>
+                        <td className="px-2 py-2 border-r border-gray-100 text-slate-300">BL</td>
+                        <td className="px-3 py-2 border-r border-gray-100 font-mono text-slate-500">{formatNum(row.pesoBloque, 1)}</td>
+                        <td className="px-4 py-2 border-r border-gray-100 font-mono font-black text-green-600 bg-green-50/10">{formatNum(row.stockKg)}</td>
+                        <td className="px-4 py-2 font-mono font-black text-indigo-600 bg-indigo-50/10">
+                          {formatNum(row.pesoBloque > 0 ? row.stockKg / row.pesoBloque : 0, 1)}
+                        </td>
                       </tr>
                     ))
                   )}
