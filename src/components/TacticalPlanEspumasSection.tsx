@@ -17,11 +17,7 @@ import {
   RefreshCw,
   ShoppingCart,
   Box,
-  TrendingUp,
-  Info,
-  MapPin,
-  Plus,
-  Minus
+  MapPin
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -50,6 +46,14 @@ const cleanCode = (code: any): string => {
   return String(code || '').replace(/^0+/, '').trim();
 };
 
+const formatNum = (val: any, decimals: number = 2): string => {
+  const n = safeNum(val);
+  return n.toLocaleString(undefined, { 
+    minimumFractionDigits: decimals, 
+    maximumFractionDigits: decimals 
+  });
+};
+
 const parseSAPDate = (dateStr: string): Date | null => {
   if (!dateStr) return null;
   const str = String(dateStr).trim();
@@ -73,10 +77,6 @@ const calculateMTTOCapacity = (start: string, end: string): string => {
   if (!s || !e) return '0.0';
   const diffHrs = (e.getTime() - s.getTime()) / (1000 * 60 * 60);
   return Math.max(0, diffHrs).toFixed(1);
-};
-
-const getResp = (o: any): string => {
-  return String(o.RESPCONTROLPROD || o.RespControlProd || o.RESP_CONTROL_PROD || o.RESP_CP || '—').trim();
 };
 
 // Constantes de Ingeniería Planta v2.2
@@ -253,45 +253,52 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       }, 0);
   };
 
-  const filterData = (data: any[], centro: string, isFert: boolean = false) => {
-    const relevantGroups = grupos.filter(g => String(g.centro).trim() === centro);
-    const groupIds = relevantGroups.map(g => g.codigo_grupo);
-    const groupRest = restriccionesArray.filter(r => groupIds.includes(r.codigo_grupo));
-
-    const respCodes = groupRest
-      .filter(r => r.nombre_restriccion === 'RESPCONTROLPROD')
-      .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
-      .filter(v => v !== '');
-
-    return data.filter(o => {
-      const itemCentro = String(o.CENTRO || o.Centro || o.centro || '').trim();
-      if (itemCentro !== centro) return false;
-      
+  const provC1000 = useMemo(() => {
+    return ordenes.filter(o => {
+      const centro = String(o.CENTRO || o.Centro || '').trim();
+      const almac = String(o.ALMACEN || o.Almacen || '').trim();
+      if (centro !== '1000' || almac !== '1006') return false;
       const dFull = String(o.FECHA || o.FECHAINICIO || '').trim();
       const itemDate = dFull.includes('T') ? dFull.split('T')[0] : dFull;
-      if (selectedDates.size > 0 && !selectedDates.has(itemDate)) return false;
-
-      // Filtro de Responsable (Aplicado a ambos según instrucción)
-      if (respCodes.length > 0) {
-        const itemResp = getResp(o);
-        if (!respCodes.includes(itemResp)) return false;
-      }
-
-      if (isFert) return true; 
-
-      // Provisionales: Filtro adicional de almacén
-      const itemAlm = String(o.ALMACEN || o.Almacen || '').trim();
-      const matchAlm = (centro === '1000' && itemAlm === '1006') || (centro === '2000' && itemAlm === '2006');
-      if (!matchAlm) return false;
-
-      return true;
+      return selectedDates.size === 0 || selectedDates.has(itemDate);
     });
-  };
+  }, [ordenes, selectedDates]);
 
-  const provC1000 = useMemo(() => filterData(ordenes, '1000'), [ordenes, grupos, restriccionesArray, selectedDates]);
-  const provC2000 = useMemo(() => filterData(ordenes, '2000'), [ordenes, grupos, restriccionesArray, selectedDates]);
-  const fertC1000 = useMemo(() => filterData(ordenesFert, '1000', true), [ordenesFert, grupos, restriccionesArray, selectedDates]);
-  const fertC2000 = useMemo(() => filterData(ordenesFert, '2000', true), [ordenesFert, grupos, restriccionesArray, selectedDates]);
+  const provC2000 = useMemo(() => {
+    return ordenes.filter(o => {
+      const centro = String(o.CENTRO || o.Centro || '').trim();
+      const almac = String(o.ALMACEN || o.Almacen || '').trim();
+      if (centro !== '2000' || almac !== '2006') return false;
+      const dFull = String(o.FECHA || o.FECHAINICIO || '').trim();
+      const itemDate = dFull.includes('T') ? dFull.split('T')[0] : dFull;
+      return selectedDates.size === 0 || selectedDates.has(itemDate);
+    });
+  }, [ordenes, selectedDates]);
+
+  // Tab FERT: Filtro específico de responsables solicitado: 013, 038, 039, 044, 036
+  const fertC1000 = useMemo(() => {
+    const allowed = ['013', '038', '039', '044', '036'];
+    return ordenesFert.filter(o => {
+      if (String(o.CENTRO || '').trim() !== '1000') return false;
+      const resp = String(o.RESPCTRLPROD || o.RespControlProd || '').trim();
+      if (!allowed.includes(resp)) return false;
+      const dFull = String(o.FECHA || o.FECHAINICIO || '').trim();
+      const itemDate = dFull.includes('T') ? dFull.split('T')[0] : dFull;
+      return selectedDates.size === 0 || selectedDates.has(itemDate);
+    });
+  }, [ordenesFert, selectedDates]);
+
+  const fertC2000 = useMemo(() => {
+    const allowed = ['013', '038', '039', '044', '036'];
+    return ordenesFert.filter(o => {
+      if (String(o.CENTRO || '').trim() !== '2000') return false;
+      const resp = String(o.RESPCTRLPROD || o.RespControlProd || '').trim();
+      if (!allowed.includes(resp)) return false;
+      const dFull = String(o.FECHA || o.FECHAINICIO || '').trim();
+      const itemDate = dFull.includes('T') ? dFull.split('T')[0] : dFull;
+      return selectedDates.size === 0 || selectedDates.has(itemDate);
+    });
+  }, [ordenesFert, selectedDates]);
 
   const defaultOpHour = useMemo(() => {
     const clGroup = grupos.find(g => g.nombre_grupo.toLowerCase().includes('corte y laminado'));
@@ -338,7 +345,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         const dStr = format(day, 'yyyy-MM-dd');
                         const sel = selectedDates.has(dStr);
                         return (
-                          <button key={dStr} onClick={() => { const n = new Set(selectedDates); sel ? n.delete(dStr) : n.add(dStr); setSelectedDates(n); }} className={cn("relative h-8 w-8 mx-auto rounded-xl flex items-center justify-center transition-all", sel ? "bg-primary text-white shadow-md shadow-primary/20" : "hover:bg-gray-100")}>
+                          <button key={dStr} onClick={() => { const n = new Set(selectedDates); sel ? n.delete(dStr) : n.add(dStr); setSelectedDates(n); }} className={cn("relative h-8 w-8 mx-auto rounded-xl flex items-center justify-center transition-all", sel ? "bg-primary text-white shadow-md" : "hover:bg-gray-100")}>
                             <span className={cn("text-[10px] font-bold", !datesWithOrders.has(dStr) && !sel ? "text-gray-200" : "")}>{format(day, 'd')}</span>
                             {datesWithOrders.has(dStr) && !sel && <div className="absolute bottom-1 w-1 h-1 bg-primary/40 rounded-full" />}
                           </button>
@@ -464,8 +471,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="habilidades" className="animate-in fade-in duration-300">
-          <Card className="rounded-[2rem] border border-gray-100 shadow-xl overflow-hidden bg-white">
-            <div className="overflow-x-auto max-h-[600px] relative text-left">
+          <Card className="rounded-[2rem] border border-gray-100 shadow-xl overflow-hidden bg-white text-left">
+            <div className="overflow-x-auto max-h-[600px] relative">
               <table className="w-full border-collapse font-sans text-[10px]">
                 <thead className="bg-[#e0e7ff] sticky top-0 z-20 text-indigo-900 uppercase font-black border-b border-indigo-200">
                   <tr>
@@ -497,7 +504,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                 <thead className="bg-[#fef3c7] sticky top-0 z-10 text-amber-900 uppercase font-black border-b border-amber-200">
                   <tr>
                     <th className="px-6 py-5 border-r border-amber-100">PLANTA</th>
-                    <th className="px-6 py-5 border-r border-amber-100">AREA</th>
                     <th className="px-6 py-5 border-r border-amber-100">MAQUINA</th>
                     <th className="px-6 py-5 border-r border-amber-100 text-left">OT_ID</th>
                     <th className="px-6 py-5 border-r border-amber-100 text-left">INICIO</th>
@@ -507,12 +513,11 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-100 font-bold">
                   {mantenimientos.length === 0 ? (
-                    <tr><td colSpan={7} className="py-20 text-slate-300 uppercase tracking-widest italic">Sincronizando Calendario MTTO...</td></tr>
+                    <tr><td colSpan={6} className="py-20 text-slate-300 uppercase tracking-widest italic">Sincronizando Calendario MTTO...</td></tr>
                   ) : (
                     mantenimientos.map((m, i) => (
                       <tr key={i} className="hover:bg-amber-50/30 transition-colors">
                         <td className="px-6 py-4 border-r border-gray-100 text-slate-400">{String(m.PLANTA || '—')}</td>
-                        <td className="px-6 py-4 border-r border-gray-100 text-slate-400">{String(m.AREA || '—')}</td>
                         <td className="px-6 py-4 border-r border-gray-100 text-indigo-900 font-black">{String(m.ID_MAQUINA || '—')}</td>
                         <td className="px-6 py-4 border-r border-gray-100 font-mono text-left text-slate-400">{String(m.OT_PRG_ID || '—')}</td>
                         <td className="px-6 py-4 border-r border-gray-100 text-left font-mono text-slate-500">{m.FECHA_OT_PRG_INI || m.FECHA_INI || '—'}</td>
@@ -528,7 +533,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="ordenes" className="space-y-10 animate-in fade-in duration-300">
-           {[ {t: 'Quito 1000 (Alm: 1006)', d: provC1000, id: '1000', b: 'bg-green-600', h: 'bg-[#1e293b]' }, {t: 'Guayaquil 2000 (Alm: 2006)', d: provC2000, id: '2000', b: 'bg-indigo-600', h: 'bg-[#1e293b]' } ].map((center, idx) => (
+           {[ {t: 'Quito 1000 (Alm: 1006)', d: provC1000, b: 'bg-green-600' }, {t: 'Guayaquil 2000 (Alm: 2006)', d: provC2000, b: 'bg-indigo-600' } ].map((center, idx) => (
              <div key={idx} className="space-y-4">
                 <h3 className="text-[11px] font-black uppercase text-slate-400 flex items-center gap-2 px-1 text-left tracking-widest">
                   <div className={cn("w-2 h-2 rounded-full", center.b)} /> {center.t} ({center.d.length} órdenes)
@@ -536,7 +541,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                 <Card className="rounded-[2.5rem] border border-gray-100 shadow-xl overflow-hidden bg-white">
                   <div className="overflow-x-auto">
                     <table className="w-full text-center font-sans text-[10px]">
-                      <thead className={cn("text-white uppercase font-black border-b border-white/5", center.h)}>
+                      <thead className="bg-[#1e293b] text-white border-b border-white/5 uppercase font-black tracking-widest text-[9px]">
                         <tr>
                           <th className="px-6 py-5 border-r border-white/5">Orden</th>
                           <th className="px-6 py-5 border-r border-white/5">Fecha</th>
@@ -564,12 +569,16 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                                 <td className="px-6 py-4 font-mono font-black text-red-600 border-r border-gray-50 tracking-tighter text-sm">{cleanCode(eng.code)}</td>
                                 <td className="px-6 py-4 text-left border-r border-gray-100 text-slate-600 uppercase truncate max-w-[200px]">{eng.desc}</td>
                                 <td className="px-6 py-4 font-black text-slate-900 border-r border-gray-50 font-mono text-sm">{eng.qty}</td>
-                                <td className="px-6 py-4 border-r border-gray-50"><Badge variant="outline" className="text-[9px] font-black bg-blue-50 text-blue-700 border-blue-100">{getResp(o)}</Badge></td>
+                                <td className="px-6 py-4 border-r border-gray-50">
+                                  <Badge variant="outline" className="text-[9px] font-black bg-blue-50 text-blue-700 border-blue-100">
+                                    {String(o.RESPCONTROLPROD || o.RespControlProd || '—')}
+                                  </Badge>
+                                </td>
                                 <td className="px-6 py-4 font-bold text-slate-400 border-r border-gray-50 uppercase text-[10px]">{o.MAQUINA || '—'}</td>
                                 <td className="px-6 py-4 border-r border-white/10 text-blue-700 bg-blue-50/10 font-mono">{eng.indivMin.toFixed(2)}</td>
                                 <td className="px-6 py-4 border-r border-white/10 text-amber-700 bg-amber-50/10 font-mono">{eng.hours.toFixed(2)}</td>
                                 <td className="px-6 py-4 border-r border-gray-50 text-red-600 bg-red-50/20 font-mono">{Math.ceil(eng.loads)}</td>
-                                <td className="px-6 py-4 text-slate-200">{o.ALMACEN || o.Almacen || '—'}</td>
+                                <td className="px-6 py-4 text-slate-200 font-mono text-[9px]">{o.ALMACEN || o.Almacen || '—'}</td>
                               </tr>
                             );
                           })
@@ -583,7 +592,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="ordenesFert" className="space-y-10 animate-in fade-in duration-300">
-           {[ {t: 'Quito 1000 - Auditoría FERT', d: fertC1000, b: 'bg-green-600' }, {t: 'Guayaquil 2000 - Auditoría FERT', d: fertC2000, b: 'bg-indigo-600' } ].map((center, idx) => (
+           {[ {t: 'Quito 1000 - FERT (Resp: 013, 038, 039, 044, 036)', d: fertC1000, b: 'bg-green-600' }, {t: 'Guayaquil 2000 - FERT (Resp: 013, 038, 039, 044, 036)', d: fertC2000, b: 'bg-indigo-600' } ].map((center, idx) => (
              <div key={idx} className="space-y-4">
                 <h3 className="text-[11px] font-black uppercase text-slate-400 flex items-center gap-2 px-1 text-left tracking-widest">
                   <div className={cn("w-2.5 h-2.5 rounded-full", center.b)} /> {center.t} ({center.d.length} órdenes)
@@ -591,7 +600,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                 <Card className="rounded-[2.5rem] border border-gray-100 shadow-xl overflow-hidden bg-white">
                   <div className="overflow-x-auto">
                     <table className="w-full text-center font-sans text-[10px]">
-                      <thead className="bg-[#1e293b] text-white uppercase font-black border-b border-white/5">
+                      <thead className="bg-[#1e293b] text-white border-b border-white/5 uppercase font-black tracking-widest text-[9px]">
                         <tr>
                           <th className="px-6 py-5 border-r border-white/5">Orden</th>
                           <th className="px-6 py-5 border-r border-white/5">Fecha</th>
@@ -600,37 +609,35 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                           <th className="px-6 py-5 border-r border-white/5">Cant.</th>
                           <th className="px-6 py-5 border-r border-white/5">Resp.</th>
                           <th className="px-6 py-5 border-r border-white/5">Máquina</th>
-                          <th className="px-6 py-5 border-r border-white/10 text-blue-700 bg-blue-500/10 font-mono">T. INDIV. (min)</th>
-                          <th className="px-6 py-5 border-r border-white/10 text-amber-700 bg-amber-500/10 font-mono">T. TOTAL (H)</th>
-                          <th className="px-6 py-5 border-r border-white/5 text-red-600 bg-red-500/10">CARGAS</th>
+                          <th className="px-6 py-5 border-r border-white/10 text-blue-200 bg-blue-500/10">T. INDIV. (min)</th>
+                          <th className="px-6 py-5 border-r border-white/10 text-amber-200 bg-amber-500/10">T. TOTAL (H)</th>
+                          <th className="px-6 py-5 border-r border-gray-50 text-red-400 bg-red-500/10">CARGAS</th>
                           <th className="px-6 py-5">Centro</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-50 font-bold">
                         {center.d.length === 0 ? (
-                          <tr><td colSpan={11} className="py-20 text-center text-slate-200 font-black uppercase tracking-widest italic">Sincronizando Auditoría FERT...</td></tr>
+                          <tr><td colSpan={11} className="py-16 text-center text-slate-200 font-black uppercase tracking-widest italic">No se detectaron órdenes FERT filtradas</td></tr>
                         ) : (
                           center.d.map((o, i) => {
                             const eng = calculateEngineering(o);
-                            const qty = safeNum(o.CANTPROGRAMADA || o.CANTIDAD || 0);
-                            const date = String(o.FECHA || o.FECHAINICIO || '—').split('T')[0];
-                            const matCode = cleanCode(o.MATERIAL || eng.code);
-                            const description = o.NOMBRE || eng.desc;
-                            const resp = getResp(o);
-
                             return (
                               <tr key={i} className="hover:bg-slate-50/50 transition-colors">
-                                <td className="px-6 py-4 text-slate-800 border-r border-gray-50 font-black">{o.ORDEN || '—'}</td>
-                                <td className="px-6 py-4 border-r border-gray-50 text-gray-400 font-mono text-[9px]">{date}</td>
-                                <td className="px-6 py-4 font-mono font-black text-red-600 border-r border-gray-50 tracking-tighter text-sm">{matCode}</td>
-                                <td className="px-6 py-4 text-left border-r border-gray-100 text-slate-600 uppercase truncate max-w-[200px]">{description}</td>
-                                <td className="px-6 py-4 font-black text-slate-900 border-r border-gray-50 font-mono text-sm">{qty}</td>
-                                <td className="px-6 py-4 border-r border-gray-50"><Badge variant="outline" className="text-[9px] font-black bg-indigo-50 text-indigo-700 border-indigo-100">{resp}</Badge></td>
+                                <td className="px-6 py-4 text-slate-800 border-r border-gray-50">{o.ORDEN || '—'}</td>
+                                <td className="px-6 py-4 border-r border-gray-50 text-gray-400 font-mono text-[9px]">{String(o.FECHA || '').split('T')[0]}</td>
+                                <td className="px-6 py-4 font-mono font-black text-red-600 border-r border-gray-50 tracking-tighter text-sm">{cleanCode(eng.code)}</td>
+                                <td className="px-6 py-4 text-left border-r border-gray-100 text-slate-600 uppercase truncate max-w-[200px]">{eng.desc}</td>
+                                <td className="px-6 py-4 font-black text-slate-900 border-r border-gray-50 font-mono text-sm">{safeNum(o.CANTPROGRAMADA)}</td>
+                                <td className="px-6 py-4 border-r border-gray-50">
+                                  <Badge variant="outline" className="text-[9px] font-black bg-blue-50 text-blue-700 border-blue-100">
+                                    {String(o.RESPCTRLPROD || o.RespControlProd || '—')}
+                                  </Badge>
+                                </td>
                                 <td className="px-6 py-4 font-bold text-slate-400 border-r border-gray-50 uppercase text-[10px]">{o.MAQUINA || '—'}</td>
                                 <td className="px-6 py-4 border-r border-white/10 text-blue-700 bg-blue-50/10 font-mono">{eng.indivMin.toFixed(2)}</td>
                                 <td className="px-6 py-4 border-r border-white/10 text-amber-700 bg-amber-50/10 font-mono">{eng.hours.toFixed(2)}</td>
                                 <td className="px-6 py-4 border-r border-gray-50 text-red-600 bg-red-50/20 font-mono">{Math.ceil(eng.loads)}</td>
-                                <td className="px-6 py-4 text-slate-200">{o.CENTRO || '—'}</td>
+                                <td className="px-6 py-4 text-slate-200 font-mono text-[9px]">{o.CENTRO || '—'}</td>
                               </tr>
                             );
                           })
