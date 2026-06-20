@@ -106,51 +106,9 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   const [viewDate, setViewDate] = useState(new Date());
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
-  useEffect(() => { 
-    setMounted(true); 
-    const today = new Date();
-    setViewDate(today);
-    setSelectedDates(new Set([format(today, 'yyyy-MM-dd')]));
-  }, []);
+  // --- LOGICA DE EXTRACCION Y FILTRADO ---
 
-  const fetchData = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const groupsRes = await grupoService.getAll();
-      const filteredGroups = (groupsRes.data || []).filter(g => {
-        const name = (g.nombre_grupo || '').toLowerCase();
-        return name.includes('formulación') || name.includes('espuma');
-      });
-      setGrupos(filteredGroups);
-      const groupsIds = filteredGroups.map(g => g.codigo_grupo);
-
-      const [restrsRes, provsRes, curadoRes, invRes, timesRes] = await Promise.all([
-        restriccionService.getAll(),
-        serviciosService.OrdenesProvisionalesPaginados(1, 20000),
-        serviciosService.getTiemposCuradoBloqueFormulado(1, 10000),
-        serviciosService.getInventarioAñoActual(),
-        serviciosService.getTiemposEnsamblado(1, 15000)
-      ]);
-
-      setRestricciones((restrsRes.data || []).filter((r: any) => groupsIds.includes(r.codigo_grupo)));
-      setOrders(provsRes.data?.data || provsRes.data || []);
-      setCuradoRows(Array.isArray(curadoRes.data) ? curadoRes.data : []);
-      setInventarioSAP(Array.isArray(invRes.data) ? invRes.data : []);
-      setTiemposEnsamblado(timesRes.data?.data || timesRes.data || []);
-      
-      addNotification('success', 'Sincronización técnica completada.');
-    } catch (error) {
-      addNotification('error', 'Error al sincronizar datos operativos');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [addNotification]);
-
-  useEffect(() => {
-    if (mounted) fetchData();
-  }, [mounted, fetchData]);
-
-  const extractMaterialInfo = (item: any) => {
+  const extractMaterialInfo = useCallback((item: any) => {
     const matStr = String(item.MATERIAL || item.Material || item.CodMaterial || '').trim();
     const nameStr = String(item.NOMBRE || item.NombreMaterial || item.Descripcion || item.NomMaterial || '').trim();
     const catStr = String(item.CATEGORIA || item.Categoria || '').trim();
@@ -176,7 +134,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     if (apertureMatch) dimensions.apertura = apertureMatch[0];
     
     return { code, desc, categoria: catStr, ...dimensions };
-  };
+  }, []);
 
   const provFiltradas = useMemo(() => {
     return ordenes.filter(o => {
@@ -271,7 +229,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     setUnifiedSummaryData(finalData);
     setIsProcessingResumen(false);
     addNotification('success', 'Auditoría técnica de carga completada.');
-  }, [provFiltradas, inventarioSAP, addNotification]);
+  }, [provFiltradas, inventarioSAP, addNotification, extractMaterialInfo]);
 
   const apertureSummaryResumen = useMemo(() => {
     const report = new Map<string, number>();
@@ -341,7 +299,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       { id: 'leader', label: 'BLOQUE FORMULADO LEADER', rows: leaderRows, apertures: getApertureSummary(leaderRows), badge: 'bg-indigo-600' },
       { id: 'cofama', label: 'BLOQUE FORMULADO COFAMA', rows: cofamaRows, apertures: getApertureSummary(cofamaRows), badge: 'bg-slate-800' }
     ];
-  }, [curadoRows]);
+  }, [curadoRows, extractMaterialInfo]);
 
   const inventarioFiltrado = useMemo(() => {
     return inventarioSAP.filter(row => String(row.CODRESPPROD || row.CodRespProd || '').trim() === '005');
@@ -365,12 +323,60 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     return [...Array(padding).fill(null), ...days];
   }, [viewDate]);
 
+  // --- INITIALIZATION ---
+
+  useEffect(() => {
+    setMounted(true);
+    const today = new Date();
+    setViewDate(today);
+    setSelectedDates(new Set([format(today, 'yyyy-MM-dd')]));
+  }, []);
+
+  const fetchDataAsync = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const groupsRes = await grupoService.getAll();
+      const filteredGroups = (groupsRes.data || []).filter(g => {
+        const name = (g.nombre_grupo || '').toLowerCase();
+        return name.includes('formulación') || name.includes('espuma');
+      });
+      setGrupos(filteredGroups);
+      const groupsIds = filteredGroups.map(g => g.codigo_grupo);
+
+      const [restrsRes, provsRes, curadoRes, invRes, timesRes] = await Promise.all([
+        restriccionService.getAll(),
+        serviciosService.OrdenesProvisionalesPaginados(1, 20000),
+        serviciosService.getTiemposCuradoBloqueFormulado(1, 10000),
+        serviciosService.getInventarioAñoActual(),
+        serviciosService.getTiemposEnsamblado(1, 15000)
+      ]);
+
+      setRestricciones((restrsRes.data || []).filter((r: any) => groupsIds.includes(r.codigo_grupo)));
+      setOrders(provsRes.data?.data || provsRes.data || []);
+      setCuradoRows(Array.isArray(curadoRes.data) ? curadoRes.data : []);
+      setInventarioSAP(Array.isArray(invRes.data) ? invRes.data : []);
+      setTiemposEnsamblado(timesRes.data?.data || timesRes.data || []);
+      
+      addNotification('success', 'Sincronización técnica completada.');
+    } catch (error) {
+      addNotification('error', 'Error al sincronizar datos operativos');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [addNotification]);
+
+  useEffect(() => {
+    if (mounted) fetchDataAsync();
+  }, [mounted, fetchDataAsync]);
+
   const toggleGroup = (key: string) => {
     const next = new Set(expandedGroups);
     if (next.has(key)) next.delete(key);
     else next.add(key);
     setExpandedGroups(next);
   };
+
+  // --- RENDER HELPERS ---
 
   const renderRoot = (content: React.ReactNode) => (
     <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
@@ -382,6 +388,15 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     return renderRoot(
       <div className="flex justify-center items-center h-64">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return renderRoot(
+      <div className="flex flex-col items-center justify-center p-20 gap-4">
+        <Loader2 className="w-10 h-10 animate-spin text-primary" />
+        <p className="text-xs font-bold text-gray-400 uppercase tracking-widest animate-pulse">Sincronizando SAP...</p>
       </div>
     );
   }
@@ -423,7 +438,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                     return (
                       <button key={dStr} onClick={() => { const n = new Set(selectedDates); isSel ? n.delete(dStr) : n.add(dStr); setSelectedDates(n); }} className={cn("relative h-7 w-7 mx-auto rounded-xl flex items-center justify-center transition-all", isSel ? "bg-primary text-white shadow-md shadow-primary/20" : "hover:bg-slate-50")}>
                         <span className={cn("text-[10px] font-black", !datesWithOrdersSet.has(dStr) && !isSel ? "text-slate-200" : "text-slate-700")}>{format(day, 'd')}</span>
-                        {datesWithOrdersSet.has(dStr) && !isSel && <div className="absolute bottom-1 w-1 h-1 bg-primary/40 rounded-full" />}
+                        {datesWithOrdersSet.has(dStr) && !isSel && <div className="absolute bottom-1.5 w-1 h-1 bg-primary/40 rounded-full" />}
                       </button>
                     );
                   })}
@@ -764,6 +779,14 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           </Card>
         </TabsContent>
       </Tabs>
+      
+      {/* NOTA TECNICA FINAL */}
+      <div className="flex items-center gap-3 p-4 bg-blue-50 border border-blue-100 rounded-2xl">
+        <Info className="w-5 h-5 text-blue-600 flex-shrink-0" />
+        <p className="text-[10px] font-bold text-blue-700 uppercase tracking-widest leading-relaxed">
+          Nota de Ingeniería: Los bloques teóricos y el plan de reposición se calculan en base a la densidad real y altura útil del bloque formulado (103cm para D&lt;30, 85cm para D&ge;30).
+        </p>
+      </div>
     </>
   );
 };
