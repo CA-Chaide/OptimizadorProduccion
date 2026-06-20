@@ -22,6 +22,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { serviciosService } from '@/services/servicios.service';
+import { logger } from '@/services/LogService';
 import { cn } from '@/lib/utils';
 
 // --- CONSTANTES TÉCNICAS ---
@@ -32,6 +33,19 @@ const MANIPULATION_GAP = 5;
 // --- FILTROS DE NEGOCIO ---
 const UIO_RESPONSABLES = ['013', '038', '039', '044', '036'];
 const GYE_RESPONSABLES = ['002', '039'];
+
+/**
+ * Busca una propiedad en un objeto ignorando mayúsculas/minúsculas y guiones bajos
+ */
+const getProp = (obj: any, keys: string[]): string => {
+  if (!obj) return '';
+  const rowKeys = Object.keys(obj);
+  for (const k of keys) {
+    const found = rowKeys.find(rk => rk.toLowerCase().replace(/_/g, '') === k.toLowerCase().replace(/_/g, ''));
+    if (found) return String(obj[found]).trim();
+  }
+  return '';
+};
 
 const cleanCode = (code: any): string => {
   return String(code || '').replace(/^0+/, '').trim();
@@ -63,10 +77,11 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const [ordenesFert, setOrdenesFert] = useState<any[]>([]);
   const [mantenimientos, setMantenimientos] = useState<any[]>([]);
   const [tiemposCatalogo, setTiemposCatalogo] = useState<any[]>([]);
-  const [expandedCats, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [expandedCats, setExpandedCats] = useState<Set<string>>(new Set());
 
   const fetchData = useCallback(async () => {
     setIsLoading(true);
+    logger.log('[Corte Espuma] Iniciando sincronización integral con SAP...');
     try {
       const [provs, ferts, maint, times] = await Promise.all([
         serviciosService.OrdenesProvisionalesPaginados(1, 25000),
@@ -75,12 +90,17 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         serviciosService.getTiemposEnsamblado(1, 25000)
       ]);
 
-      setOrdenesProvisionales(provs.data?.data || provs.data || []);
-      setOrdenesFert(ferts.data?.data || ferts.data || []);
+      const pData = provs.data?.data || provs.data || [];
+      const fData = ferts.data?.data || ferts.data || [];
+      
+      setOrdenesProvisionales(pData);
+      setOrdenesFert(fData);
       setMantenimientos(maint.data || []);
       setTiemposCatalogo(times.data?.data || times.data || []);
+
+      logger.log(`[Corte Espuma] Sincronización exitosa. Provisionales: ${pData.length}, Proceso (FERT): ${fData.length}`);
     } catch (error) {
-      console.error('Error al cargar datos de Corte Espuma', error);
+      logger.error('[Corte Espuma] Error al cargar datos operativos', error);
     } finally {
       setIsLoading(false);
     }
@@ -97,27 +117,36 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return match ? safeNum(match.Tiempo || match.Tiempo_Min) : 0;
   };
 
-  // --- FILTROS SOLICITADOS ---
+  // --- LÓGICA DE FILTRADO TÉCNICO ---
+  
+  // Órdenes Provisionales: Filtro por Almacén de Producción (1006 UIO / 2006 GYE)
   const provUIO = useMemo(() => 
-    ordenesProvisionales.filter(o => String(o.Centro || o.CENTRO).trim() === '1000' && String(o.Almacen || o.ALMACEN).trim() === '1006'), 
+    ordenesProvisionales.filter(o => 
+      String(o.Centro || o.CENTRO || '').trim() === '1000' && 
+      String(o.Almacen || o.ALMACEN || '').trim() === '1006'
+    ), 
   [ordenesProvisionales]);
 
   const provGYE = useMemo(() => 
-    ordenesProvisionales.filter(o => String(o.Centro || o.CENTRO).trim() === '2000' && String(o.Almacen || o.ALMACEN).trim() === '2006'), 
+    ordenesProvisionales.filter(o => 
+      String(o.Centro || o.CENTRO || '').trim() === '2000' && 
+      String(o.Almacen || o.ALMACEN || '').trim() === '2006'
+    ), 
   [ordenesProvisionales]);
 
+  // Órdenes Proceso: Filtro por Responsable de Control de Producción
   const procesoUIO = useMemo(() => 
     ordenesFert.filter(o => {
-      const centro = String(o.Centro || o.CENTRO || '').trim();
-      const resp = String(o.RESPCONTROLPROD || o.RespControlProd || '').trim();
+      const centro = String(getProp(o, ['Centro', 'CENTRO'])).trim();
+      const resp = String(getProp(o, ['RESPCONTROLPROD', 'RespControlProd', 'RESP_CONTROL_PROD'])).trim();
       return centro === '1000' && UIO_RESPONSABLES.includes(resp);
     }), 
   [ordenesFert]);
 
   const procesoGYE = useMemo(() => 
     ordenesFert.filter(o => {
-      const centro = String(o.Centro || o.CENTRO || '').trim();
-      const resp = String(o.RESPCONTROLPROD || o.RespControlProd || '').trim();
+      const centro = String(getProp(o, ['Centro', 'CENTRO'])).trim();
+      const resp = String(getProp(o, ['RESPCONTROLPROD', 'RespControlProd', 'RESP_CONTROL_PROD'])).trim();
       return centro === '2000' && GYE_RESPONSABLES.includes(resp);
     }), 
   [ordenesFert]);
@@ -128,19 +157,20 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const groups = new Map<string, any[]>();
 
     all.forEach(o => {
-      const cat = String(o.CATEGORIA || 'SIN CATEGORÍA').toUpperCase();
+      const cat = String(getProp(o, ['CATEGORIA', 'Categoria']) || 'SIN CATEGORÍA').toUpperCase();
       if (!groups.has(cat)) groups.set(cat, []);
       
-      const desc = o.NOMBRE || o.Material || o.DESCRIPCION || '—';
+      const desc = getProp(o, ['NOMBRE', 'Material', 'DESCRIPCION', 'Material_Desc']) || '—';
       const dims = parseDimensions(desc);
-      const qty = safeNum(o.CANTIDAD || o.CANTPROGRAMADA || 0);
-      const tIndiv = getTiempoMaterial(o.MATERIAL || o.CodMaterial, String(o.Centro || o.CENTRO));
+      const qty = safeNum(getProp(o, ['CANTIDAD', 'CANTPROGRAMADA', 'Cant']));
+      const centro = String(getProp(o, ['Centro', 'CENTRO']));
+      const tIndiv = getTiempoMaterial(getProp(o, ['MATERIAL', 'CodMaterial']), centro);
       const peso = (dims.ancho * dims.largo * dims.esp * safeNum(dims.dens)) / 10000;
 
       groups.get(cat)!.push({
-        orden: o.ORDENPREVISIONAL || o.ORDEN || '—',
-        fecha: o.FECHAINICIO || o.FECHA || '—',
-        material: cleanCode(o.MATERIAL || o.CodMaterial),
+        orden: getProp(o, ['ORDENPREVISIONAL', 'ORDEN', 'Numero_Orden']) || '—',
+        fecha: getProp(o, ['FECHAINICIO', 'FECHA', 'Fecha_Ini']) || '—',
+        material: cleanCode(getProp(o, ['MATERIAL', 'CodMaterial'])),
         descripcion: desc,
         ancho: dims.ancho,
         largo: dims.largo,
@@ -153,8 +183,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         tTotal: (tIndiv * qty) / 60,
         cargas: dims.ancho > 0 ? Math.floor(CAROUSEL_CIRCUMFERENCE / (dims.ancho + MANIPULATION_GAP)) : 0,
         subBloques: dims.esp > 0 ? Math.floor(MAX_STACK_HEIGHT / dims.esp) : 0,
-        almacen: o.Almacen || o.ALMACEN || '—',
-        centro: o.Centro || o.CENTRO || '—'
+        almacen: getProp(o, ['Almacen', 'ALMACEN']),
+        centro: centro
       });
     });
 
@@ -164,7 +194,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const toggleCat = (cat: string) => {
     const next = new Set(expandedCats);
     if (next.has(cat)) next.delete(cat); else next.add(cat);
-    setExpandedGroups(next);
+    setExpandedCats(next);
   };
 
   const renderTable = (data: any[], title: string, centerColor: string) => (
@@ -175,7 +205,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         <Badge variant="outline" className="text-[9px] font-bold border-slate-100 text-slate-400 ml-auto">{data.length} REGISTROS</Badge>
       </div>
       <div className="border border-slate-100 rounded-2xl overflow-hidden bg-white shadow-sm">
-        <div className="overflow-x-auto max-h-[350px]">
+        <div className="overflow-x-auto max-h-[400px]">
           <table className="min-w-full divide-y divide-slate-100 text-[11px] text-center">
             <thead className="bg-slate-50 text-slate-400 uppercase font-black tracking-tighter border-b border-slate-100 sticky top-0 z-10">
               <tr>
@@ -192,21 +222,40 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               {data.length === 0 ? (
                 <tr><td colSpan={7} className="py-16 text-slate-200 uppercase tracking-widest italic font-bold">Sin actividad reportada en SAP</td></tr>
               ) : (
-                data.map((o, idx) => (
-                  <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
-                    <td className="px-6 py-2.5 text-left text-slate-900 font-mono border-r border-slate-50">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
-                    <td className="px-6 py-2.5 text-left font-mono font-bold text-indigo-600 border-r border-slate-50">{cleanCode(o.MATERIAL || o.CodMaterial)}</td>
-                    <td className="px-6 py-2.5 text-left uppercase truncate max-w-[400px] border-r border-slate-100 text-slate-500">{o.NOMBRE || o.Material || o.DESCRIPCION || '—'}</td>
-                    <td className="px-4 py-2.5 font-mono font-black text-slate-900 bg-slate-50/20 border-r border-slate-50">{o.CANTIDAD || o.CANTPROGRAMADA || 0}</td>
-                    <td className="px-4 py-2.5 font-mono text-slate-400 border-r border-slate-50">{o.FECHAINICIO || o.FECHA || '—'}</td>
-                    <td className="px-4 py-2.5 border-r border-slate-50">
-                      <span className="text-[9px] font-black text-slate-400 border border-slate-100 px-1.5 py-0.5 rounded uppercase">
-                        {o.RESPCONTROLPROD || o.RespControlProd || '—'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2.5 font-bold text-slate-300 uppercase text-[9px]">{o.MAQUINA || o.RECURSO || '—'}</td>
-                  </tr>
-                ))
+                data.map((o, idx) => {
+                  const material = getProp(o, ['MATERIAL', 'CodMaterial']);
+                  const desc = getProp(o, ['NOMBRE', 'Material', 'DESCRIPCION', 'Material_Desc']) || '—';
+                  const qty = getProp(o, ['CANTIDAD', 'CANTPROGRAMADA', 'Cant']);
+                  const fecha = getProp(o, ['FECHAINICIO', 'FECHA', 'Fecha_Ini']);
+                  const resp = getProp(o, ['RESPCONTROLPROD', 'RespControlProd', 'RESP_CONTROL_PROD']);
+                  const maquina = getProp(o, ['MAQUINA', 'RECURSO', 'Maquina']);
+
+                  return (
+                    <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="px-6 py-2.5 text-left text-slate-900 font-mono border-r border-slate-50">
+                        {getProp(o, ['ORDENPREVISIONAL', 'ORDEN', 'Numero_Orden']) || '—'}
+                      </td>
+                      <td className="px-6 py-2.5 text-left font-mono font-bold text-indigo-600 border-r border-slate-50">
+                        {cleanCode(material)}
+                      </td>
+                      <td className="px-6 py-2.5 text-left uppercase truncate max-w-[400px] border-r border-slate-100 text-slate-500">
+                        {desc}
+                      </td>
+                      <td className="px-4 py-2.5 font-mono font-black text-slate-900 bg-slate-50/20 border-r border-slate-50">
+                        {qty}
+                      </td>
+                      <td className="px-4 py-2.5 font-mono text-slate-400 border-r border-slate-50">
+                        {fecha}
+                      </td>
+                      <td className="px-4 py-2.5 border-r border-slate-50">
+                        <span className="text-[9px] font-black text-slate-400 border border-slate-100 px-1.5 py-0.5 rounded uppercase">
+                          {resp || '—'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 font-bold text-slate-300 uppercase text-[9px]">{maquina || '—'}</td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -254,13 +303,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         ) : (
           <>
             <TabsContent value="provisionales" className="animate-in fade-in duration-300 space-y-12">
-              {renderTable(provUIO, "CORTE ESPUMA UIO (Alm. 1006)", "bg-emerald-500")}
-              {renderTable(provGYE, "CORTE ESPUMA GYE (Alm. 2006)", "bg-indigo-500")}
+              {renderTable(provUIO, "CORTE ESPUMA UIO (Alm. 1006)", "bg-indigo-600")}
+              {renderTable(provGYE, "CORTE ESPUMA GYE (Alm. 2006)", "bg-slate-400")}
             </TabsContent>
 
             <TabsContent value="ordenesProceso" className="animate-in fade-in duration-300 space-y-12">
-              {renderTable(procesoUIO, "ORDENES PROCESO UIO (Resp. Corte/Laminado)", "bg-emerald-500")}
-              {renderTable(procesoGYE, "ORDENES PROCESO GYE (Resp. Corte/Laminado)", "bg-indigo-500")}
+              {renderTable(procesoUIO, "ORDENES PROCESO UIO (Resp. 013, 038, 039, 044, 036)", "bg-indigo-600")}
+              {renderTable(procesoGYE, "ORDENES PROCESO GYE (Resp. 002, 039)", "bg-slate-400")}
             </TabsContent>
 
             <TabsContent value="resumen" className="animate-in fade-in duration-300 space-y-6">
@@ -278,7 +327,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                       >
                         {expandedCats.has(cat) ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                         <span className="text-[10px] font-black uppercase tracking-widest">{cat}</span>
-                        <Badge className="ml-auto bg-white/20 text-white border-none">{items.length} UNIDADES</Badge>
+                        <Badge className="ml-auto bg-white/20 text-white border-none font-black">{items.length} ORDENES</Badge>
                       </button>
 
                       {expandedCats.has(cat) && (
