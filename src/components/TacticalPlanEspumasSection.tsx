@@ -18,8 +18,10 @@ import {
   ShoppingCart,
   Box,
   MapPin,
-  Scissors,
-  Layers,
+  FileSpreadsheet,
+  Download,
+  PlayCircle,
+  Database,
   Info
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
@@ -27,6 +29,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Badge } from '@/components/ui/badge';
+import { Progress } from "@/components/ui/progress";
 import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
 import { serviciosService } from '@/services/servicios.service';
@@ -38,7 +41,7 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths,
 import { es } from 'date-fns/locale';
 
 /**
- * --- CONSTANTES DE INGENIERÍA PLANTA ESPUMAS v3.0 ---
+ * --- CONSTANTES DE INGENIERÍA PLANTA ESPUMAS v3.1 ---
  */
 const CARRUSEL_DIAMETER_CM = 320;
 const CIRCUMFERENCE = Math.PI * CARRUSEL_DIAMETER_CM;
@@ -117,6 +120,11 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const [viewDate, setViewDate] = useState(new Date());
   const [manualHours, setManualHours] = useState<Record<string, number>>({});
 
+  // Estado para el Reporte de Salida
+  const [isProcessingSalida, setIsProcessingSalida] = useState(false);
+  const [salidaProgress, setSalidaProgress] = useState({ current: 0, total: 0 });
+  const [salidaRows, setSalidaRows] = useState<any[]>([]);
+
   useEffect(() => { 
     setMounted(true); 
     const today = new Date();
@@ -124,9 +132,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     setSelectedDates(new Set([format(today, 'yyyy-MM-dd')]));
   }, []);
 
-  /**
-   * --- MOTOR DE EXTRACCIÓN DE INFORMACIÓN DE MATERIAL ---
-   */
   const extractMaterialInfo = useCallback((item: any) => {
     const matStr = String(item.MATERIAL || item.Material || item.CodMaterial || '').trim();
     const nameStr = String(item.NOMBRE || item.NombreMaterial || item.Descripcion || '').trim();
@@ -135,49 +140,48 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const code = match ? match[1].slice(-8) : matStr.slice(-8);
     const desc = nameStr || matStr.replace(/^\d+\s*/, '') || '—';
 
-    const dims: any = { dens: '—', ancho: 0, largo: 0, esp: 0 };
-    // Regex mejorada para dimensiones (ej: 140x190x1.2 o 200*200*3)
+    const dims: any = { dens: '—', ancho: 0, largo: 0, esp: 0, apertura: '—' };
+    
+    // Regex para dimensiones
     const dimFullMatch = desc.match(/(\d+(?:\.\d+)?)\s*[xX*]\s*(\d+(?:\.\d+)?)(?:\s*[xX*]\s*(\d+(?:\.\d+)?))?/);
     if (dimFullMatch) {
       dims.ancho = parseFloat(dimFullMatch[1]);
       dims.largo = parseFloat(dimFullMatch[2]);
       if (dimFullMatch[3]) dims.esp = parseFloat(dimFullMatch[3]);
     }
+    
+    // Densidad
     const densM = catStr.match(/D(\d+)/i) || desc.match(/D-?(\d+)/i);
     if (densM) dims.dens = densM[1];
+
+    // Apertura técnica
+    const apMatch = catStr.match(/194\.5|206|219|228/) || desc.match(/194\.5|206|219|228/);
+    if (apMatch) dims.apertura = apMatch[0];
+
     return { code, desc, catStr, ...dims };
   }, []);
 
-  /**
-   * --- MOTOR DE CÁLCULO DE INGENIERÍA DE PLANTA ---
-   */
   const calculateEngineering = useCallback((o: any) => {
     const info = extractMaterialInfo(o);
     const qty = safeNum(o.CANTIDAD || o.CANTPROGRAMADA || 0);
     const ancho = info.ancho;
+    const largo = info.largo;
     const esp = info.esp;
     const densV = parseFloat(info.dens) || 0;
 
-    // Altura del bloque según densidad
     const singleBlockH = (densV < 30) ? 103 : 85;
     const stackedH = singleBlockH * 2;
     
-    // Nro de Bloques: cuántas láminas caben por bloque apilado (máx 200cm)
     const sheetsPerStack = esp > 0 ? Math.floor(Math.min(MAX_STACK_HEIGHT_CM, stackedH) / esp) : 1;
     const subblocks = sheetsPerStack > 0 ? Math.ceil(qty / sheetsPerStack) : 0;
     
-    // Cargas: cuántos bloques caben en la circunferencia del carrusel
     const sbPerLoad = ancho > 0 ? Math.floor(CIRCUMFERENCE / (ancho + EFFECTIVE_GAP_CM)) : 1;
     const loads = sbPerLoad > 0 ? Math.ceil(subblocks / sbPerLoad) : 0;
 
-    // Tiempo de Carga
     const tCargaSec = loads * SECONDS_PER_LOAD_VUELTA; 
-    
-    // Tiempo de Descarga
     const sheetsPerRep = (esp > 10) ? 4 : 3;
     const tDescargaSec = (sheetsPerRep > 0 ? Math.ceil(qty / sheetsPerRep) : qty) * SECONDS_PER_MANEUVER_DESC;
 
-    // Tiempo de Proceso (SAP)
     const matchTime = tiemposEnsamblado.find(t => String(t.CodMaterial || t.cod_material).slice(-8) === info.code);
     const sapSecPerUnit = safeNum(matchTime?.Tiempo || matchTime?.tiempo || 0);
     
@@ -185,7 +189,12 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const hours = totalTimeSec / 3600;
     const indivMin = qty > 0 ? (totalTimeSec / qty) / 60 : 0;
 
-    return { ...info, subblocks, sbPerLoad, loads, hours, indivMin, qty };
+    const volumen = (ancho * largo * esp * qty) / 1000000; // m3
+    const peso = volumen * densV;
+
+    return { 
+      ...info, subblocks, sbPerLoad, loads, hours, indivMin, qty, volumen, peso 
+    };
   }, [extractMaterialInfo, tiemposEnsamblado]);
 
   const datesWithOrders = useMemo(() => {
@@ -248,26 +257,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
   useEffect(() => { if (mounted) initData(); }, [mounted, initData]);
 
-  const getMachineMTTO = (maquinaCode: string) => {
-    if (selectedDates.size === 0) return 0;
-    return mantenimientos
-      .filter(m => {
-        const mMachine = String(m.ID_MAQUINA || m.MAQUINA || '').toUpperCase();
-        if (!mMachine.includes(maquinaCode.toUpperCase()) && !maquinaCode.toUpperCase().includes(mMachine)) return false;
-        const dStr = String(m.FECHA_OT_PRG_INI || m.FECHA_INI || '').split('T')[0];
-        return selectedDates.has(dStr);
-      })
-      .reduce((sum, m) => {
-        const durStr = calculateMTTOCapacity(m.FECHA_OT_PRG_INI || m.FECHA_INI, m.FECHA_OT_PRG_FIN || m.FECHA_FIN);
-        return sum + safeNum(durStr);
-      }, 0);
-  };
-
   const provFiltradas = useMemo(() => {
     return ordenes.filter(o => {
-      const itemCentro = String(o.CENTRO || o.Centro || '').trim();
       const itemAlmValue = String(o.ALMACEN || o.Almacen || '').trim();
-      // Filtro específico para Espuma: Almacén 1006 (UIO) o 2006 (GYE)
       if (itemAlmValue !== '1006' && itemAlmValue !== '2006') return false; 
       const itemDateFull = String(o.FECHA || o.FECHAINICIO || '').trim();
       const itemDate = itemDateFull.includes('T') ? itemDateFull.split('T')[0] : itemDateFull;
@@ -275,19 +267,82 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     });
   }, [ordenes, selectedDates]);
 
-  const fertFiltradas = useMemo(() => {
-    return ordenesFert.filter(o => {
-      const dFull = String(o.FECHA || o.FECHAINICIO || '').trim();
-      const itemDate = dFull.includes('T') ? dFull.split('T')[0] : dFull;
-      return selectedDates.size === 0 || selectedDates.has(itemDate);
-    });
-  }, [ordenesFert, selectedDates]);
+  const handleGenerateSalida = async () => {
+    if (provFiltradas.length === 0) {
+      addNotification('warning', 'No hay órdenes filtradas para generar el reporte.');
+      return;
+    }
 
-  const defaultOpHour = useMemo(() => {
-    const clGroup = grupos.find(g => g.nombre_grupo.toLowerCase().includes('corte y laminado'));
-    const htRest = clGroup ? restriccionesArray.find(r => r.codigo_grupo === clGroup.codigo_grupo && r.nombre_restriccion === 'HORAS_TRABAJO') : null;
-    return safeNum(htRest?.valor_restriccion) || 8;
-  }, [grupos, restriccionesArray]);
+    setIsProcessingSalida(true);
+    setSalidaRows([]);
+    setSalidaProgress({ current: 0, total: provFiltradas.length });
+
+    const rows: any[] = [];
+
+    try {
+      for (let i = 0; i < provFiltradas.length; i++) {
+        const order = provFiltradas[i];
+        const eng = calculateEngineering(order);
+        const centro = String(order.CENTRO || order.Centro || '1000').trim();
+        const fertCode = eng.code.padStart(18, '0');
+
+        let bomN1 = { code: '—', name: '—' };
+        let bomN2 = { code: '—', name: '—', consumo: 0 };
+        let bomN3 = { code: '—', name: '—' };
+
+        try {
+          // Explosión técnica para obtener niveles HALB
+          const response = await serviciosService.getMaestroMaterialesExplosion(centro, fertCode, 1, 100);
+          const bomData = response?.data?.data || response?.data || [];
+          
+          if (Array.isArray(bomData)) {
+            const n1 = bomData.find(b => String(b.NIVEL) === '1');
+            const n2 = bomData.find(b => String(b.NIVEL) === '2');
+            const n3 = bomData.find(b => String(b.NIVEL) === '3');
+
+            if (n1) bomN1 = { code: cleanCode(n1.COMPONENTE), name: n1.DESCRIPCION_COMPONENTE };
+            if (n2) bomN2 = { code: cleanCode(n2.COMPONENTE), name: n2.DESCRIPCION_COMPONENTE, consumo: safeNum(n2.CANTIDAD_ACUMULADA) };
+            if (n3) bomN3 = { code: cleanCode(n3.COMPONENTE), name: n3.DESCRIPCION_COMPONENTE };
+          }
+        } catch (e) {
+          console.warn(`Error BOM para material ${eng.code}`);
+        }
+
+        rows.push({
+          Orden: order.ORDENPREVISIONAL || order.ORDEN || '—',
+          Fecha: String(order.FECHAINICIO || order.FECHA || '').split('T')[0],
+          categoria: eng.catStr,
+          HALB_N1: bomN1.code,
+          HALB_N1N: bomN1.name,
+          Ancho: eng.ancho,
+          Largo: eng.largo,
+          'Esp.': eng.esp,
+          'Dens.': eng.dens,
+          'Cant.': eng.qty,
+          Peso: eng.peso.toFixed(2),
+          Volumen: eng.volumen.toFixed(3),
+          HALB_N2: bomN2.code,
+          HALB_N2N: bomN2.name,
+          Consumo_N2: (bomN2.consumo * eng.qty).toFixed(2),
+          HALB_N3: bomN3.code,
+          HALB_N3N: bomN3.name,
+          APERTURA: eng.apertura,
+          'T. Indiv (m)': eng.indivMin.toFixed(2),
+          'T. Total (H)': eng.hours.toFixed(2),
+          'Cargas SUB_BLOQUE': eng.loads,
+          '# SUB_Bloque': eng.subblocks
+        });
+
+        setSalidaProgress(prev => ({ ...prev, current: i + 1 }));
+      }
+      setSalidaRows(rows);
+      addNotification('success', `Reporte generado con ${rows.length} registros.`);
+    } catch (error) {
+      addNotification('error', 'Error al procesar la salida de datos.');
+    } finally {
+      setIsProcessingSalida(false);
+    }
+  };
 
   const renderRoot = (content: React.ReactNode) => (
     <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
@@ -304,7 +359,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <div className="p-2 bg-primary/10 rounded-xl shadow-inner"><Wind className="w-6 h-6 text-primary" /></div>
           <div>
             <h2 className="text-xl font-black text-gray-800 uppercase tracking-tighter">Programación Táctica Corte Espuma</h2>
-            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Cálculo de Cargas y Bloques | Ingeniería de Planta v3.0</p>
+            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Cálculo de Cargas y Bloques | Ingeniería de Planta v3.1</p>
           </div>
         </div>
 
@@ -320,7 +375,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-64 p-0 border-none shadow-2xl rounded-2xl overflow-hidden mt-2" align="end">
-              <div className="bg-white p-4 font-sans text-left">
+              <div className="bg-white p-4 font-sans text-left text-[11px]">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-[10px] font-bold text-gray-800 capitalize">{format(viewDate, 'MMMM yyyy', { locale: es })}</h3>
                   <div className="flex gap-1 bg-gray-50 p-1 rounded-lg">
@@ -350,28 +405,129 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-5 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
+        <TabsList className="grid grid-cols-6 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
           {[ 
-            { v: 'capacidad', l: 'Capacidad Unificada', i: LayoutDashboard }, 
+            { v: 'capacidad', l: 'Capacidad', i: LayoutDashboard }, 
             { v: 'ordenes', l: 'Provisionales', i: Package },
             { v: 'ordenesFert', l: 'Órdenes FERT', i: ShoppingCart },
-            { v: 'habilidades', l: 'Habilidades SAP', i: GraduationCap },
+            { v: 'salida', l: 'Salida de Datos', i: FileSpreadsheet },
+            { v: 'habilidades', l: 'Habilidades', i: GraduationCap },
             { v: 'mantenimiento', l: 'MTTO Preventivo', i: Wrench }
           ].map(tab => (
-            <TabsTrigger key={tab.v} value={tab.v} className="gap-2 text-[9px] font-bold uppercase transition-all data-[state=active]:bg-white data-[state=active]:shadow-sm">
+            <TabsTrigger key={tab.v} value={tab.v} className="gap-2 text-[8px] font-bold uppercase transition-all data-[state=active]:bg-white data-[state=active]:shadow-sm">
               <tab.i className="w-3.5 h-3.5" /> {tab.l}
             </TabsTrigger>
           ))}
         </TabsList>
 
+        <TabsContent value="salida" className="animate-in fade-in duration-300 space-y-6">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-5 bg-slate-900 rounded-3xl text-white shadow-2xl">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-white/10 rounded-2xl"><FileSpreadsheet className="w-6 h-6 text-[#facc15]" /></div>
+              <div className="text-left">
+                <h3 className="text-sm font-black uppercase tracking-tighter">Generador de Reporte Plano</h3>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Explosión Jerárquica BOM SAP | Ingeniería v3.1</p>
+              </div>
+            </div>
+            
+            <div className="flex gap-2">
+              <Button 
+                onClick={handleGenerateSalida} 
+                disabled={isProcessingSalida || provFiltradas.length === 0}
+                className="bg-[#facc15] hover:bg-[#eab308] text-slate-900 rounded-xl h-11 px-8 text-[10px] font-black uppercase tracking-widest shadow-lg active:scale-95 transition-all flex items-center gap-2"
+              >
+                {isProcessingSalida ? <Loader2 className="w-4 h-4 animate-spin" /> : <PlayCircle className="w-4 h-4" />}
+                {isProcessingSalida ? 'PROCESANDO SAP...' : 'GENERAR REPORTE'}
+              </Button>
+            </div>
+          </div>
+
+          {isProcessingSalida && (
+            <div className="space-y-3 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+              <div className="flex justify-between items-center text-[10px] font-black text-slate-600 uppercase tracking-widest">
+                <span className="flex items-center gap-2"><Activity className="w-3 h-3 text-primary" /> Ejecutando Explosión Técnica BOM</span>
+                <span>{salidaProgress.current} / {salidaProgress.total} Órdenes</span>
+              </div>
+              <Progress value={(salidaProgress.current / salidaProgress.total) * 100} className="h-2 bg-slate-200" />
+            </div>
+          )}
+
+          {!isProcessingSalida && salidaRows.length > 0 && (
+            <div className="border border-gray-100 rounded-[2.5rem] shadow-2xl overflow-hidden bg-white">
+              <div className="overflow-x-auto max-h-[600px]">
+                <table className="w-full border-collapse text-[9px] font-sans text-center">
+                  <thead className="sticky top-0 z-20">
+                    <tr className="bg-[#0f172a] text-white uppercase font-black tracking-tighter border-b border-white/10">
+                      <th className="px-3 py-4 border-r border-white/5">Orden</th>
+                      <th className="px-3 py-4 border-r border-white/5">Fecha</th>
+                      <th className="px-3 py-4 border-r border-white/5">Categoría</th>
+                      <th className="px-3 py-4 border-r border-white/5 bg-indigo-500/10 text-indigo-300">HALB_N1</th>
+                      <th className="px-4 py-4 border-r border-white/5 bg-indigo-500/10 text-indigo-300">N1_Nombre</th>
+                      <th className="px-2 py-4 border-r border-white/5">ANC</th>
+                      <th className="px-2 py-4 border-r border-white/5">LRG</th>
+                      <th className="px-2 py-4 border-r border-white/5">ESP</th>
+                      <th className="px-2 py-4 border-r border-white/5">DNS</th>
+                      <th className="px-2 py-4 border-r border-white/5 font-black text-[#facc15]">Cant</th>
+                      <th className="px-3 py-4 border-r border-white/5">Peso(Kg)</th>
+                      <th className="px-3 py-4 border-r border-white/5">Vol(m3)</th>
+                      <th className="px-3 py-4 border-r border-white/5 bg-teal-500/10 text-teal-300">HALB_N2</th>
+                      <th className="px-4 py-4 border-r border-white/5 bg-teal-500/10 text-teal-300">N2_Nombre</th>
+                      <th className="px-3 py-4 border-r border-white/5 bg-teal-500/10 text-teal-300">Cons_N2</th>
+                      <th className="px-3 py-4 border-r border-white/5 bg-emerald-500/10 text-emerald-300">HALB_N3</th>
+                      <th className="px-4 py-4 border-r border-white/5 bg-emerald-500/10 text-emerald-300">N3_Nombre</th>
+                      <th className="px-2 py-4 border-r border-white/5 font-black text-red-400">APERTURA</th>
+                      <th className="px-2 py-4 border-r border-white/5">T.Ind(m)</th>
+                      <th className="px-2 py-4 border-r border-white/5">T.Tot(H)</th>
+                      <th className="px-2 py-4 border-r border-white/5">Cargas</th>
+                      <th className="px-2 py-4"># Blq</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 font-bold">
+                    {salidaRows.map((row, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-3 py-2 border-r border-gray-50 text-slate-400">{row.Orden}</td>
+                        <td className="px-3 py-2 border-r border-gray-50 text-slate-400 font-mono">{row.Fecha}</td>
+                        <td className="px-3 py-2 border-r border-gray-50 text-slate-400">{row.categoria}</td>
+                        <td className="px-3 py-2 border-r border-gray-50 font-mono text-indigo-600 bg-indigo-50/10">{row.HALB_N1}</td>
+                        <td className="px-4 py-2 border-r border-gray-50 text-left uppercase text-slate-400 truncate max-w-[120px] bg-indigo-50/10" title={row.HALB_N1N}>{row.HALB_N1N}</td>
+                        <td className="px-2 py-2 border-r border-gray-50">{row.Ancho}</td>
+                        <td className="px-2 py-2 border-r border-gray-50">{row.Largo}</td>
+                        <td className="px-2 py-2 border-r border-gray-50 font-black">{row['Esp.']}</td>
+                        <td className="px-2 py-2 border-r border-gray-50 text-indigo-700">{row['Dens.']}</td>
+                        <td className="px-2 py-2 border-r border-gray-50 font-black text-slate-900">{row['Cant.']}</td>
+                        <td className="px-3 py-2 border-r border-gray-50 font-mono">{row.Peso}</td>
+                        <td className="px-3 py-2 border-r border-gray-50 font-mono">{row.Volumen}</td>
+                        <td className="px-3 py-2 border-r border-gray-50 font-mono text-teal-600 bg-teal-50/10">{row.HALB_N2}</td>
+                        <td className="px-4 py-2 border-r border-gray-50 text-left uppercase text-slate-400 truncate max-w-[120px] bg-teal-50/10" title={row.HALB_N2N}>{row.HALB_N2N}</td>
+                        <td className="px-3 py-2 border-r border-gray-50 font-mono text-teal-700 bg-teal-50/10 font-black">{row.Consumo_N2}</td>
+                        <td className="px-3 py-2 border-r border-gray-50 font-mono text-emerald-600 bg-emerald-50/10">{row.HALB_N3}</td>
+                        <td className="px-4 py-2 border-r border-gray-50 text-left uppercase text-slate-400 truncate max-w-[120px] bg-emerald-50/10" title={row.HALB_N3N}>{row.HALB_N3N}</td>
+                        <td className="px-2 py-2 border-r border-gray-50 font-black text-red-500 bg-red-50/10">{row.APERTURA}</td>
+                        <td className="px-2 py-2 border-r border-gray-50 text-blue-600 font-mono">{row['T. Indiv (m)']}</td>
+                        <td className="px-2 py-2 border-r border-gray-50 text-amber-600 font-mono font-black">{row['T. Total (H)']}</td>
+                        <td className="px-2 py-2 border-r border-gray-50 text-red-600">{row['Cargas SUB_BLOQUE']}</td>
+                        <td className="px-2 py-2 text-emerald-600">{row['# SUB_Bloque']}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {!isProcessingSalida && salidaRows.length === 0 && (
+            <div className="py-24 text-center bg-slate-50/30 rounded-[3rem] border-2 border-dashed border-slate-100">
+              <Box className="w-16 h-16 text-slate-200 mx-auto" />
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-4">Inicie la auditoría multinivel para generar la salida de datos</p>
+            </div>
+          )}
+        </TabsContent>
+
         <TabsContent value="capacidad" className="animate-in fade-in duration-300 space-y-10">
           {[ { id: '1000', label: 'UIO' }, { id: '2000', label: 'GYE' } ].map(center => {
             const machines = CAPACIDAD_CONFIG_BASE[center.id as '1000' | '2000'];
             const provs = provFiltradas.filter(o => String(o.CENTRO || o.Centro || '').trim() === center.id);
-            const ferts = fertFiltradas.filter(o => String(o.CENTRO || o.Centro || '').trim() === center.id);
-
             const loadProv = provs.reduce((sum, o) => sum + calculateEngineering(o).hours, 0);
-            const loadFert = ferts.reduce((sum, o) => sum + calculateEngineering(o).hours, 0);
 
             const totalCap = machines.reduce((acc, m) => {
               const hT1 = manualHours[`${center.id}_${m.code}_t1`] ?? (center.id==='1000' ? m.t1 : defaultOpHour);
@@ -396,8 +552,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <th className="px-3 py-5 border-r border-gray-50">Paro T2</th>
                         <th className="px-3 py-5 border-r border-gray-50">MTTO SAP</th>
                         <th className="px-4 py-5 bg-indigo-50 text-indigo-900 border-r border-gray-100 font-black">Disp. Neta</th>
-                        <th className="px-4 py-5 text-blue-600 font-black">Carga Prov (H)</th>
-                        <th className="px-4 py-5 text-teal-600 font-black">Carga Fert (H)</th>
+                        <th className="px-4 py-5 text-blue-600 font-black">Carga (H)</th>
                         <th className="px-4 py-5">Ocupación %</th>
                       </tr>
                     </thead>
@@ -427,8 +582,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                             <td className="px-3 py-4 text-slate-300 font-mono">{PARO_PROG_T2}</td>
                             <td className={cn("px-3 py-4 font-mono", mtto > 0 ? "text-red-500 bg-red-50/50" : "text-slate-100")}>{mtto > 0 ? `${mtto}h` : '—'}</td>
                             <td className="px-4 py-4 font-mono font-black text-indigo-700 bg-indigo-50/20">{netAvailable.toFixed(1)}</td>
-                            <td className="px-4 py-4 text-slate-100">—</td>
-                            <td className="px-4 py-4 text-slate-100">—</td>
+                            <td className="px-4 py-4 text-blue-400">—</td>
                             <td className="px-4 py-4 text-slate-100">—</td>
                           </tr>
                         );
@@ -439,9 +593,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <td colSpan={6} className="px-6 py-5 text-right border-r border-white/5">TOTAL PLANTA {center.label}</td>
                         <td className="px-4 py-5 bg-indigo-900 border-r border-white/5 font-mono text-xs">{totalCap.toFixed(1)}h</td>
                         <td className="px-4 py-5 bg-blue-900/40 border-r border-white/5 font-mono text-xs text-blue-200">{loadProv.toFixed(1)}h</td>
-                        <td className="px-4 py-5 bg-teal-900/40 border-r border-white/5 font-mono text-xs text-teal-200">{loadFert.toFixed(1)}h</td>
-                        <td className={cn("px-4 py-5 bg-black/20 font-mono text-xs", ((loadProv + loadFert) / totalCap * 100) > 100 ? "text-red-400" : "text-emerald-400")}>
-                          {totalCap > 0 ? (((loadProv + loadFert) / totalCap) * 100).toFixed(0) : 0}%
+                        <td className={cn("px-4 py-5 bg-black/20 font-mono text-xs", (loadProv / totalCap * 100) > 100 ? "text-red-400" : "text-emerald-400")}>
+                          {totalCap > 0 ? ((loadProv / totalCap) * 100).toFixed(0) : 0}%
                         </td>
                       </tr>
                     </tfoot>
@@ -532,10 +685,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50 font-bold text-[10px]">
-                  {fertFiltradas.length === 0 ? (
+                  {fertsFiltradasPorFecha.length === 0 ? (
                     <tr><td colSpan={14} className="py-24 text-center text-slate-200 font-black uppercase tracking-widest italic">No se detectaron órdenes FERT para los criterios aplicados</td></tr>
                   ) : (
-                    fertFiltradas.map((o, idx) => {
+                    fertsFiltradasPorFecha.map((o, idx) => {
                       const eng = calculateEngineering(o);
                       return (
                         <tr key={idx} className="hover:bg-indigo-50/20 transition-colors">
@@ -630,4 +783,30 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       </Tabs>
     </>
   );
+
+  function getMachineMTTO(maquinaCode: string) {
+    if (selectedDates.size === 0) return 0;
+    return mantenimientos
+      .filter(m => {
+        const mMachine = String(m.ID_MAQUINA || m.MAQUINA || '').toUpperCase();
+        if (!mMachine.includes(maquinaCode.toUpperCase()) && !maquinaCode.toUpperCase().includes(mMachine)) return false;
+        const dStr = String(m.FECHA_OT_PRG_INI || m.FECHA_INI || '').split('T')[0];
+        return selectedDates.has(dStr);
+      })
+      .reduce((sum, m) => sum + safeNum(calculateMTTOCapacity(m.FECHA_OT_PRG_INI || m.FECHA_INI, m.FECHA_OT_PRG_FIN || m.FECHA_FIN)), 0);
+  }
+
+  const defaultOpHour = useMemo(() => {
+    const clGroup = grupos.find(g => g.nombre_grupo.toLowerCase().includes('corte y laminado'));
+    const htRest = clGroup ? restriccionesArray.find(r => r.codigo_grupo === clGroup.codigo_grupo && r.nombre_restriccion === 'HORAS_TRABAJO') : null;
+    return safeNum(htRest?.valor_restriccion) || 8;
+  }, [grupos, restriccionesArray]);
+
+  const fertsFiltradasPorFecha = useMemo(() => {
+    return ordenesFert.filter(o => {
+      const dFull = String(o.FECHA || o.FECHAINICIO || '').trim();
+      const itemDate = dFull.includes('T') ? dFull.split('T')[0] : dFull;
+      return selectedDates.size === 0 || selectedDates.has(itemDate);
+    });
+  }, [ordenesFert, selectedDates]);
 };
