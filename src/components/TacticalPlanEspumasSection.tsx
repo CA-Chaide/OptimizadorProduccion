@@ -51,8 +51,7 @@ const cleanCode = (code: any): string => {
 };
 
 const formatNum = (val: any, decimals: number = 0): string => {
-  const n = Number(val);
-  if (isNaN(n)) return '0';
+  const n = safeNum(val);
   return n.toLocaleString(undefined, { 
     minimumFractionDigits: decimals, 
     maximumFractionDigits: decimals 
@@ -156,10 +155,12 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   // --- FILTROS DE PLANTA ---
   const provUIO = useMemo(() => ordenesProvisionales.filter(o => getProp(o, ['Centro', 'CENTRO']) === '1000' && getProp(o, ['Almacen', 'ALMACEN']) === UIO_ALMACEN_PROV), [ordenesProvisionales]);
   const provGYE = useMemo(() => ordenesProvisionales.filter(o => getProp(o, ['Centro', 'CENTRO']) === '2000' && getProp(o, ['Almacen', 'ALMACEN']) === GYE_ALMACEN_PROV), [ordenesProvisionales]);
+  
+  // Ordenes Proceso: Sin filtros de responsables, data íntegra por centro
   const procesoUIO = useMemo(() => ordenesProceso.filter(o => String(getProp(o, ['Centro', 'CENTRO'])).trim() === '1000'), [ordenesProceso]);
   const procesoGYE = useMemo(() => ordenesProceso.filter(o => String(getProp(o, ['Centro', 'CENTRO'])).trim() === '2000'), [ordenesProceso]);
 
-  // --- AUDITORÍA TÉCNICA ---
+  // --- AUDITORÍA TÉCNICA (SALIDA DE DATOS) ---
   const auditHierarchy = useMemo(() => {
     const all = [...provUIO, ...provGYE];
     const hierarchy = new Map<string, Map<string, UnifiedRow[]>>();
@@ -182,6 +183,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const tMatch = tiemposCatalogo.find(t => cleanCode(t.CodMaterial) === matCode && String(t.Centro).trim() === centroRaw);
       const tIndiv = tMatch ? safeNum(tMatch.Tiempo || tMatch.Tiempo_Min) : 0;
 
+      // Ingeniería: Altura Total y Sub-bloque
       const alturaTotal = dims.esp * qty;
       const alturaBloquePatron = densVal < 28 ? 103 : 85;
       const subBloquesCalculado = alturaBloquePatron > 0 ? (alturaTotal / alturaBloquePatron) : 0;
@@ -404,12 +406,22 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     </div>
   );
 
+  const renderRoot = (content: React.ReactNode) => (
+    <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-slate-100 font-sans text-left">
+      {content}
+    </div>
+  );
+
   if (!mounted) {
-    return <div className="p-4 md:p-6 bg-white min-h-screen" />;
+    return renderRoot(
+      <div className="flex justify-center items-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
   }
 
-  return (
-    <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-slate-100 font-sans">
+  return renderRoot(
+    <>
       <div className="flex items-center justify-between pb-4 border-b border-slate-100">
         <div className="flex items-center space-x-3 text-left">
           <div className="p-2 bg-slate-900 rounded-xl text-white shadow-lg"><Wind className="w-6 h-6" /></div>
@@ -489,6 +501,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           </div>
         </TabsContent>
       </Tabs>
-    </div>
+    </>
   );
 };
