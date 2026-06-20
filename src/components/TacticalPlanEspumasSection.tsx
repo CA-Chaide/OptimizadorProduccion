@@ -35,8 +35,9 @@ import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 import { cn } from '@/lib/utils';
 
-// --- CONSTANTES TÉCNICAS ---
-const CAROUSEL_CIRCUMFERENCE = 2000; 
+// --- CONSTANTES TÉCNICAS CARRUSEL ---
+const CAROUSEL_RADIO_CM = 320; 
+const CAROUSEL_CIRCUMFERENCE = 2 * Math.PI * CAROUSEL_RADIO_CM; // ~2010.6 cm
 const UIO_ALMACEN_PROV = '1006';
 const GYE_ALMACEN_PROV = '2006';
 
@@ -72,7 +73,7 @@ const parseDimensions = (desc: string) => {
   const d = String(desc || '').toUpperCase();
   const densMatch = d.match(/D(\d+)/);
   const dens = densMatch ? densMatch[1] : '—';
-  const dimMatch = d.match(/(\d+(?:\.\d+)?)\s*[xX*]\s*(\d+(?:\.\d+)?)(?:\s*[xX*]\s*(\d+(?:\.\d+)?))?/);
+  const dimMatch = d.match(/(\d+(?:\.\d+)?)\s*[xX*]\s!(\d+(?:\.\d+)?)(?:\s*[xX*]\s*(\d+(?:\.\d+)?))?/);
   const ancho = dimMatch ? parseFloat(dimMatch[1]) : 0;
   const largo = dimMatch ? parseFloat(dimMatch[2]) : 0;
   const esp = dimMatch && dimMatch[3] ? parseFloat(dimMatch[3]) : 0;
@@ -93,8 +94,9 @@ interface UnifiedRow {
   alturaTotal: number; 
   tIndiv: number;
   tTotal: number;
-  cargas: number;
   subBloques: number; 
+  capacidadCarga: number;
+  nroCargas: number;
   participacion: number;
 }
 
@@ -152,15 +154,12 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     if (mounted) fetchData();
   }, [mounted, fetchData]);
 
-  // --- FILTROS DE PLANTA ---
   const provUIO = useMemo(() => ordenesProvisionales.filter(o => getProp(o, ['Centro', 'CENTRO']) === '1000' && getProp(o, ['Almacen', 'ALMACEN']) === UIO_ALMACEN_PROV), [ordenesProvisionales]);
   const provGYE = useMemo(() => ordenesProvisionales.filter(o => getProp(o, ['Centro', 'CENTRO']) === '2000' && getProp(o, ['Almacen', 'ALMACEN']) === GYE_ALMACEN_PROV), [ordenesProvisionales]);
   
-  // Ordenes Proceso: Data íntegra sin filtros restrictivos
   const procesoUIO = useMemo(() => ordenesProceso.filter(o => String(getProp(o, ['Centro', 'CENTRO'])).trim() === '1000'), [ordenesProceso]);
   const procesoGYE = useMemo(() => ordenesProceso.filter(o => String(getProp(o, ['Centro', 'CENTRO'])).trim() === '2000'), [ordenesProceso]);
 
-  // --- AUDITORÍA TÉCNICA (SALIDA DE DATOS) ---
   const auditHierarchy = useMemo(() => {
     const all = [...provUIO, ...provGYE];
     const hierarchy = new Map<string, Map<string, UnifiedRow[]>>();
@@ -188,6 +187,11 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const alturaBloquePatron = densVal < 28 ? 103 : 85;
       const subBloquesCalculado = alturaBloquePatron > 0 ? (alturaTotal / alturaBloquePatron) : 0;
 
+      // Cálculo de Cargas Carrusel (Radio 3.2m -> Circ 2010.6cm)
+      const gapSeguridad = 5;
+      const capacidadCargaPorGiro = (dims.ancho > 0) ? Math.floor(CAROUSEL_CIRCUMFERENCE / (dims.ancho + gapSeguridad)) : 0;
+      const nroCargasCalculado = capacidadCargaPorGiro > 0 ? Math.ceil(subBloquesCalculado / capacidadCargaPorGiro) : 0;
+
       centerMap.get(cat)!.push({
         fecha: getProp(o, ['FECHAINICIO', 'FECHA']),
         orden: getProp(o, ['ORDENPREVISIONAL', 'ORDEN']) || '—',
@@ -202,8 +206,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         alturaTotal: alturaTotal,
         tIndiv: tIndiv,
         tTotal: (tIndiv * qty) / 60,
-        cargas: (dims.ancho + 5) > 0 ? Math.floor(CAROUSEL_CIRCUMFERENCE / (dims.ancho + 5)) : 0,
         subBloques: subBloquesCalculado,
+        capacidadCarga: capacidadCargaPorGiro,
+        nroCargas: nroCargasCalculado,
         participacion: 0
       });
     });
@@ -211,7 +216,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     hierarchy.forEach(center => {
       center.forEach(items => {
         const totalKg = items.reduce((s, r) => s + r.peso, 0);
-        items.forEach(r => r.participacion = totalKg > 0 ? (r.peso / totalKg) * 100 : 0);
+        items.forEach(r => r.participacion = totalKg > 0 ? (r.peso / totalKg) : 0);
       });
     });
 
@@ -264,7 +269,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                     <td className="px-6 py-3 text-left uppercase truncate max-w-[350px] border-r border-slate-50 leading-tight">{description}</td>
                     <td className="px-3 py-3 font-mono font-black text-slate-900 bg-slate-50/30 border-r border-slate-50 text-sm">{formatNum(getProp(o, ['CANTIDAD', 'CANTPROGRAMADA', 'CANT_PROG']), 0)}</td>
                     <td className="px-3 py-3 border-r border-slate-50">
-                       <Badge variant="outline" className="text-[9px] font-black bg-slate-50 text-slate-700 border-slate-100">{resp || '—'}</Badge>
+                       <Badge variant="outline" className="text-[9px] font-black bg-blue-50 text-blue-700 border-blue-100">{resp || '—'}</Badge>
                     </td>
                     <td className="px-3 py-3 font-bold text-slate-400 border-r border-slate-50">{getProp(o, ['CENTRO', 'Centro'])}</td>
                     <td className="px-3 py-3 font-bold text-slate-400 border-r border-slate-50">{getProp(o, ['ALMACEN', 'Almacen'])}</td>
@@ -292,8 +297,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <p className="text-xl font-black font-mono text-slate-100">{auditHierarchy.reduce((acc, [_, cats]) => acc + Array.from(cats.values()).reduce((s, items) => s + items.reduce((ss, r) => ss + r.cant, 0), 0), 0).toLocaleString()}</p>
         </div>
         <div className="flex flex-col gap-1 text-center">
-          <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">T. Horas (H)</p>
-          <p className="text-xl font-black font-mono text-emerald-400">{auditHierarchy.reduce((acc, [_, cats]) => acc + Array.from(cats.values()).reduce((s, items) => s + items.reduce((ss, r) => ss + r.tTotal, 0), 0), 0).toFixed(1)}</p>
+          <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">T. Cargas (Giros)</p>
+          <p className="text-xl font-black font-mono text-emerald-400">{Math.ceil(auditHierarchy.reduce((acc, [_, cats]) => acc + Array.from(cats.values()).reduce((s, items) => s + items.reduce((ss, r) => ss + r.nroCargas, 0), 0), 0)).toLocaleString()}</p>
         </div>
         <div className="flex flex-col gap-1 text-center">
           <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">T. Peso (Kg)</p>
@@ -314,15 +319,14 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               const isExp = expandedGroups.has(key);
               const tCant = items.reduce((s, r) => s + r.cant, 0);
               const tH = items.reduce((s, r) => s + r.tTotal, 0);
-              const tCargas = items.reduce((s, r) => s + r.cargas, 0);
+              const tCargas = items.reduce((s, r) => s + r.nroCargas, 0);
               const tSub = items.reduce((s, r) => s + r.subBloques, 0);
 
               return (
                 <div key={key} className="border border-slate-200 rounded-2xl overflow-hidden shadow-md bg-white">
-                  {/* BARRA NEGRA DE RESUMEN POR CATEGORÍA */}
-                  <div className="flex items-center justify-between bg-[#0f172a] text-white px-6 py-3">
-                    <div className="flex items-center gap-4 flex-1 text-left">
-                      <button onClick={() => toggleGroup(key)} className="hover:scale-110 transition-transform">
+                  <div className="flex items-center justify-between bg-[#0f172a] text-white px-6 py-3" onClick={() => toggleGroup(key)}>
+                    <div className="flex items-center gap-4 flex-1 text-left cursor-pointer">
+                      <button className="hover:scale-110 transition-transform">
                         {isExp ? <Minus className="w-4 h-4 text-slate-400" /> : <Plus className="w-4 h-4 text-emerald-500" />}
                       </button>
                       <span className="text-[11px] font-black uppercase tracking-widest">{cat}</span>
@@ -339,7 +343,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                       </div>
                       <div className="flex flex-col items-center border-l border-white/10 pl-4">
                         <span className="text-[7px] font-bold opacity-40 uppercase">Cargas</span>
-                        <span className="text-xs font-black">{tCargas}</span>
+                        <span className="text-xs font-black">{Math.ceil(tCargas)}</span>
                       </div>
                       <div className="flex flex-col items-center border-l border-white/10 pl-4 pr-2">
                         <span className="text-[7px] font-bold opacity-40 uppercase">Sub_B.</span>
@@ -365,7 +369,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                             <th className="px-3 py-3 border-r border-white/5 bg-slate-700 text-white">Altura Total</th>
                             <th className="px-3 py-3 border-r border-white/5">T. Indiv (m)</th>
                             <th className="px-4 py-3 border-r border-white/10 bg-indigo-500/30">T. Total (H)</th>
-                            <th className="px-3 py-3 border-r border-white/5">Cargas</th>
+                            <th className="px-3 py-3 border-r border-white/5"># Cargas</th>
                             <th className="px-4 py-3 border-r border-white/5 bg-slate-100 text-slate-900"># SUB_Bloque</th>
                             <th className="px-4 py-3">% participacion</th>
                           </tr>
@@ -388,9 +392,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                               <td className="px-3 py-2 border-r border-slate-50 text-slate-900 bg-slate-50">{row.alturaTotal.toFixed(1)}</td>
                               <td className="px-3 py-2 border-r border-slate-50 text-indigo-400">{row.tIndiv.toFixed(2)}</td>
                               <td className="px-4 py-2 border-r border-slate-100 text-indigo-700 bg-indigo-50/30">{row.tTotal.toFixed(2)}</td>
-                              <td className="px-3 py-2 border-r border-slate-50 text-slate-900">{row.cargas}</td>
+                              <td className="px-3 py-2 border-r border-slate-50 text-slate-900">{Math.ceil(row.nroCargas)}</td>
                               <td className="px-4 py-2 border-r border-slate-100 text-slate-900 bg-slate-50">{row.subBloques.toFixed(2)}</td>
-                              <td className="px-4 py-2 text-slate-400">{row.participacion.toFixed(1)}%</td>
+                              <td className="px-4 py-2 text-slate-400">{(row.participacion * 100).toFixed(1)}%</td>
                             </tr>
                           ))}
                         </tbody>
@@ -465,13 +469,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   };
 
   if (!mounted) {
-    return (
-      <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-slate-100 font-sans text-left">
-        <div className="flex justify-center items-center h-64">
-          <Loader2 className="w-8 h-8 animate-spin text-slate-200" />
-        </div>
-      </div>
-    );
+    return <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-slate-100 font-sans text-left" />;
   }
 
   return (
@@ -510,9 +508,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       
       <div className="flex items-center gap-3 p-4 bg-slate-50 border border-slate-100 rounded-2xl">
         <Info className="w-5 h-5 text-slate-400 flex-shrink-0" />
-        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest leading-relaxed">
-          Nota Técnica: Altura de bloque patrón según densidad (D&lt;28: 103cm | D&ge;28: 85cm). Cargas calculadas sobre circunferencia de 2000cm.
-        </p>
+        <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest leading-relaxed">
+          <p>Especificaciones Técnicas: Radio Carrusel 3.2m | Circunferencia Útil: 2010.6 cm.</p>
+          <p className="mt-1">Apilamiento: D&lt;28 (103cm) | D&ge;28 (85cm). Capacidad Carga = Circunferencia / (Ancho + 5cm).</p>
+        </div>
       </div>
     </div>
   );
