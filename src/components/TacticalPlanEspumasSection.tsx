@@ -15,7 +15,9 @@ import {
   MapPin,
   TrendingUp,
   Box,
-  Wind
+  Wind,
+  Layers,
+  Database
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -195,7 +197,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       });
     });
 
-    // Calcular participación
     hierarchy.forEach(center => {
       center.forEach(items => {
         const totalKg = items.reduce((s, r) => s + r.peso, 0);
@@ -215,36 +216,51 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
   const renderDataTable = (data: any[], title: string) => (
     <div className="space-y-3">
-      <div className="flex items-center gap-2 px-1">
-        <div className="w-1.5 h-4 bg-slate-400 rounded-full" />
-        <h3 className="text-[10px] font-black text-slate-800 uppercase tracking-widest">{title}</h3>
+      <div className="flex items-center justify-between px-1">
+        <h3 className="text-[11px] font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
+           <div className="w-2.5 h-2.5 rounded-full bg-slate-400" /> {title}
+        </h3>
+        <Badge variant="outline" className="text-[9px] font-bold border-slate-200 text-slate-400">{data.length} Registros</Badge>
       </div>
       <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-sm">
         <table className="w-full text-[10px] text-center border-collapse">
-          <thead className="bg-slate-50 text-slate-500 uppercase font-black border-b border-slate-200 sticky top-0">
+          <thead className="bg-[#0f172a] text-white uppercase font-black tracking-widest text-[9px] border-b border-slate-200 sticky top-0 z-10">
             <tr>
-              <th className="px-4 py-3 text-left border-r border-slate-100">Orden</th>
-              <th className="px-4 py-3 text-left border-r border-slate-100">Material</th>
-              <th className="px-6 py-3 text-left border-r border-slate-100">Descripción</th>
-              <th className="px-4 py-3 border-r border-slate-100">Cant.</th>
-              <th className="px-4 py-3 border-r border-slate-100">Fecha</th>
-              <th className="px-4 py-3">Máquina</th>
+              <th className="px-4 py-4 text-left border-r border-white/5">Orden</th>
+              <th className="px-4 py-4 text-left border-r border-white/5">Fecha</th>
+              <th className="px-4 py-4 text-left border-r border-white/5">Material</th>
+              <th className="px-6 py-4 text-left border-r border-white/5">Descripción</th>
+              <th className="px-3 py-4 border-r border-white/5">Cant.</th>
+              <th className="px-3 py-4 border-r border-white/5">Resp.</th>
+              <th className="px-3 py-4 border-r border-white/5">Centro</th>
+              <th className="px-3 py-4 border-r border-white/5">Alm.</th>
+              <th className="px-4 py-4">Máquina</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 font-bold text-slate-600">
             {data.length === 0 ? (
-              <tr><td colSpan={6} className="py-16 text-slate-200 uppercase tracking-widest italic font-bold">Sin datos reportados</td></tr>
+              <tr><td colSpan={9} className="py-20 text-slate-200 uppercase tracking-widest italic font-black opacity-30">Sin órdenes detectadas para esta planta</td></tr>
             ) : (
-              data.map((o, idx) => (
-                <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-4 py-2 text-left font-mono text-indigo-600 border-r border-slate-50">{getProp(o, ['ORDENPREVISIONAL', 'ORDEN']) || '—'}</td>
-                  <td className="px-4 py-2 text-left font-mono text-slate-900 border-r border-slate-50">{cleanCode(getProp(o, ['MATERIAL', 'CodMaterial']))}</td>
-                  <td className="px-6 py-2 text-left uppercase truncate max-w-[300px] border-r border-slate-50">{getProp(o, ['NOMBRE', 'Material', 'DESCRIPCION'])}</td>
-                  <td className="px-4 py-2 font-mono text-slate-900 bg-slate-50/30 border-r border-slate-50">{getProp(o, ['CANTIDAD', 'CANTPROGRAMADA'])}</td>
-                  <td className="px-4 py-2 font-mono text-slate-400 border-r border-slate-50">{getProp(o, ['FECHAINICIO', 'FECHA'])}</td>
-                  <td className="px-4 py-2 font-bold text-slate-300 uppercase">{getProp(o, ['MAQUINA', 'RECURSO'])}</td>
-                </tr>
-              ))
+              data.map((o, idx) => {
+                const matCode = cleanCode(getProp(o, ['MATERIAL', 'CodMaterial', 'COD_MATERIAL']));
+                const description = getProp(o, ['NOMBRE', 'Material', 'DESCRIPCION', 'DESC_MATERIAL']) || '—';
+                const resp = getProp(o, ['RESPCONTROLPROD', 'RespControlProd', 'RESP_CONTROL_PROD', 'RESPONSABLE']);
+                return (
+                  <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-4 py-3 text-left font-mono font-black text-indigo-600 border-r border-slate-50">{getProp(o, ['ORDENPREVISIONAL', 'ORDEN', 'ORDEN_PROCESO']) || '—'}</td>
+                    <td className="px-4 py-3 text-left font-mono text-[9px] text-slate-400 border-r border-slate-50">{getProp(o, ['FECHAINICIO', 'FECHA', 'FECHA_INICIO'])}</td>
+                    <td className="px-4 py-3 text-left font-mono font-black text-slate-900 border-r border-slate-50">{matCode}</td>
+                    <td className="px-6 py-3 text-left uppercase truncate max-w-[350px] border-r border-slate-50 leading-tight">{description}</td>
+                    <td className="px-3 py-3 font-mono font-black text-slate-900 bg-slate-50/30 border-r border-slate-50 text-sm">{formatNum(getProp(o, ['CANTIDAD', 'CANTPROGRAMADA', 'CANT_PROG']), 0)}</td>
+                    <td className="px-3 py-3 border-r border-slate-50">
+                       <Badge variant="outline" className="text-[9px] font-black bg-blue-50 text-blue-700 border-blue-100">{resp || '—'}</Badge>
+                    </td>
+                    <td className="px-3 py-3 font-bold text-slate-400 border-r border-slate-50">{getProp(o, ['CENTRO', 'Centro'])}</td>
+                    <td className="px-3 py-3 font-bold text-slate-400 border-r border-slate-50">{getProp(o, ['ALMACEN', 'Almacen'])}</td>
+                    <td className="px-4 py-3 font-black text-indigo-700/50 uppercase text-[9px]">{getProp(o, ['MAQUINA', 'RECURSO', 'ID_MAQUINA'])}</td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
@@ -254,7 +270,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
   const renderSalidaHierarchy = () => (
     <div className="space-y-12">
-      {/* ESPACIO GLOBAL DE CONSOLIDACIÓN (DASHBOARD SUPERIOR) */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-slate-900 p-6 rounded-[2rem] border border-white/5 shadow-2xl text-white">
         <div className="md:col-span-1 border-r border-white/10 pr-4">
           <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Auditoría Planta</p>
@@ -292,7 +307,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
               return (
                 <div key={key} className="border border-slate-200 rounded-xl overflow-hidden shadow-sm bg-white">
-                  {/* CATEGORY HEADER (ESTILO IMAGEN) */}
                   <div className="flex items-center justify-between bg-black text-white px-6 py-3">
                     <div className="flex items-center gap-4 flex-1">
                       <button onClick={() => toggleGroup(key)} className="hover:scale-110 transition-transform">
@@ -325,7 +339,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* CATEGORY DETAILS */}
                   {isExp && (
                     <div className="overflow-x-auto">
                       <table className="w-full text-[10px] text-center border-collapse">
@@ -432,8 +445,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="proceso" className="space-y-12 animate-in fade-in duration-300">
-          {renderDataTable(procesoUIO, 'ORDENES PROCESO UIO')}
-          {renderDataTable(procesoGYE, 'ORDENES PROCESO GYE')}
+          {renderDataTable(procesoUIO, 'ORDENES PROCESO UIO (Resp: 013, 038, 039, 044, 036)')}
+          {renderDataTable(procesoGYE, 'ORDENES PROCESO GYE (Resp: 002, 039)')}
         </TabsContent>
 
         <TabsContent value="mmto" className="animate-in fade-in duration-300">
