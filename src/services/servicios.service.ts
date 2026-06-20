@@ -311,7 +311,7 @@ export const serviciosService = {
       });
       if (!response.ok) {
         const errorBody = await response.json().catch(() => ({ message: "Error de red al consultar el Maestro de Materiales." }));
-        throw new Error(errorBody.message || "Error al consultar el Maestro de Materiales.");
+        throw new Error(errorBody.message || `Error API (${response.status}) al consultar el Maestro de Materiales.`);
       }
       return response.json();
     } catch (e) {
