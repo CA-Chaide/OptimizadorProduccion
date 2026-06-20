@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -15,10 +14,12 @@ import {
   ChevronDown,
   ChevronRight,
   MapPin,
-  Box
+  Box,
+  Wind
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { serviciosService } from '@/services/servicios.service';
 import { cn } from '@/lib/utils';
@@ -230,7 +231,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-4 h-11 bg-slate-50/80 p-1 rounded-2xl border border-slate-100 mb-8">
+        <TabsList className="grid grid-cols-4 h-10 bg-slate-50/80 p-1 rounded-2xl border border-slate-100 mb-8">
           <TabsTrigger value="provisionales" className="gap-2 text-[10px] font-black uppercase transition-all data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-slate-900 rounded-xl">
             <Package className="w-4 h-4" /> PROVISIONALES
           </TabsTrigger>
