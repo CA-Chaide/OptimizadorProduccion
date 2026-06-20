@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -22,7 +23,9 @@ import {
   Download,
   PlayCircle,
   Database,
-  Info
+  Info,
+  Minus,
+  Plus
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -41,7 +44,7 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths,
 import { es } from 'date-fns/locale';
 
 /**
- * --- CONSTANTES DE INGENIERÍA PLANTA ESPUMAS v3.2 ---
+ * --- CONSTANTES DE INGENIERÍA PLANTA ESPUMAS v3.5 ---
  */
 const CARRUSEL_DIAMETER_CM = 320;
 const CIRCUMFERENCE = Math.PI * CARRUSEL_DIAMETER_CM;
@@ -96,6 +99,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanEspumas');
   const { addNotification } = useAppContext();
 
+  // 1. ESTADOS
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState('capacidad');
   const [grupos, setGrupos] = useState<Grupo[]>([]);
@@ -106,17 +110,14 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const [mantenimientos, setMantenimientos] = useState<any[]>([]);
   const [habilidades, setHabilidades] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  
   const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set());
   const [viewDate, setViewDate] = useState(new Date());
   const [manualHours, setManualHours] = useState<Record<string, number>>({});
-
-  // Reporte de Salida
   const [isProcessingSalida, setIsProcessingSalida] = useState(false);
   const [salidaProgress, setSalidaProgress] = useState({ current: 0, total: 0 });
   const [salidaRows, setSalidaRows] = useState<any[]>([]);
 
-  // Helpers definidos al inicio para evitar Temporal Dead Zone
+  // 2. HELPERS TÉCNICOS (Definidos antes de los useMemo)
   const extractMaterialInfo = useCallback((item: any) => {
     const matStr = String(item.MATERIAL || item.Material || item.CodMaterial || '').trim();
     const nameStr = String(item.NOMBRE || item.NombreMaterial || item.Descripcion || '').trim();
@@ -149,16 +150,15 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const densV = parseFloat(info.dens) || 0;
 
     const singleBlockH = (densV < 30) ? 103 : 85;
-    const stackedH = singleBlockH * 2;
-    const sheetsPerStack = esp > 0 ? Math.floor(Math.min(MAX_STACK_HEIGHT_CM, stackedH) / esp) : 1;
+    const sheetsPerStack = esp > 0 ? Math.floor(Math.min(MAX_STACK_HEIGHT_CM, singleBlockH * 2) / esp) : 1;
     const subblocks = sheetsPerStack > 0 ? Math.ceil(qty / sheetsPerStack) : 0;
     const sbPerLoad = ancho > 0 ? Math.floor(CIRCUMFERENCE / (ancho + EFFECTIVE_GAP_CM)) : 1;
     const loads = sbPerLoad > 0 ? Math.ceil(subblocks / sbPerLoad) : 0;
+    
     const tCargaSec = loads * SECONDS_PER_LOAD_VUELTA; 
-    const sheetsPerRep = (esp > 10) ? 4 : 3;
-    const tDescargaSec = (sheetsPerRep > 0 ? Math.ceil(qty / sheetsPerRep) : qty) * SECONDS_PER_MANEUVER_DESC;
+    const tDescargaSec = (qty / ((esp > 10) ? 4 : 3)) * SECONDS_PER_MANEUVER_DESC;
 
-    const matchTime = tiemposEnsamblado.find(t => String(t.CodMaterial || t.cod_material).slice(-8) === info.code);
+    const matchTime = tiemposEnsamblado.find(t => cleanCode(t.CodMaterial || t.cod_material).slice(-8) === info.code);
     const sapSecPerUnit = safeNum(matchTime?.Tiempo || matchTime?.tiempo || 0);
     
     const totalTimeSec = tCargaSec + tDescargaSec + (qty * sapSecPerUnit);
@@ -170,6 +170,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return { ...info, subblocks, sbPerLoad, loads, hours, indivMin, qty, volumen, peso };
   }, [extractMaterialInfo, tiemposEnsamblado]);
 
+  // 3. MEMOS CRÍTICOS (Agrupados para evitar errores de inicialización)
   const defaultOpHour = useMemo(() => {
     const clGroup = grupos.find(g => g.nombre_grupo.toLowerCase().includes('corte y laminado'));
     const htRest = clGroup ? restriccionesArray.find(r => r.codigo_grupo === clGroup.codigo_grupo && r.nombre_restriccion === 'HORAS_TRABAJO') : null;
@@ -198,14 +199,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     });
   }, [ordenes, selectedDates]);
 
-  const fertsFiltradasPorFecha = useMemo(() => {
-    return ordenesFert.filter(o => {
-      const dFull = String(o.FECHA || o.FECHAINICIO || '').trim();
-      const itemDate = dFull.includes('T') ? dFull.split('T')[0] : dFull;
-      return selectedDates.size === 0 || selectedDates.has(itemDate);
-    });
-  }, [ordenesFert, selectedDates]);
-
   const datesWithOrders = useMemo(() => {
     if (!mounted) return new Set<string>();
     const dates = new Set<string>();
@@ -230,6 +223,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return [...Array(padding).fill(null), ...days];
   }, [viewDate, mounted]);
 
+  // 4. FUNCIONES OPERATIVAS
   const initData = useCallback(async () => {
     setIsLoading(true);
     try {
@@ -264,83 +258,67 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     }
   }, []);
 
-  useEffect(() => { if (mounted) initData(); }, [mounted, initData]);
-
   const handleGenerateSalida = async () => {
     if (provFiltradas.length === 0) {
-      addNotification('warning', 'No hay órdenes filtradas para generar el reporte.');
+      addNotification('warning', 'No hay órdenes para procesar.');
       return;
     }
-
     setIsProcessingSalida(true);
     setSalidaRows([]);
     setSalidaProgress({ current: 0, total: provFiltradas.length });
-
     const rows: any[] = [];
 
-    try {
-      for (let i = 0; i < provFiltradas.length; i++) {
-        const order = provFiltradas[i];
-        const engOrder = calculateEngineering(order);
-        const centro = String(order.CENTRO || order.Centro || '1000').trim();
-        const fertCode = engOrder.code.padStart(18, '0');
+    for (let i = 0; i < provFiltradas.length; i++) {
+      const order = provFiltradas[i];
+      const engOrder = calculateEngineering(order);
+      const centro = String(order.CENTRO || order.Centro || '1000').trim();
+      const fertCode = engOrder.code.padStart(18, '0');
 
-        try {
-          const response = await serviciosService.getMaestroMaterialesExplosion(centro, fertCode, 1, 100);
-          const bomData = response?.data?.data || response?.data || [];
-          
-          if (Array.isArray(bomData)) {
-            const bloques = bomData.filter(b => (b.DESCRIPCION_COMPONENTE || '').toUpperCase().includes('BLOQUE FORMULADO'));
-            const laminas = bomData.filter(b => (b.DESCRIPCION_COMPONENTE || '').toUpperCase().includes('LAMINA CILINDRICA'));
+      try {
+        const response = await serviciosService.getMaestroMaterialesExplosion(centro, fertCode, 1, 100);
+        const bomData = response?.data?.data || response?.data || [];
+        if (Array.isArray(bomData)) {
+          const bloques = bomData.filter(b => (b.DESCRIPCION_COMPONENTE || '').toUpperCase().includes('BLOQUE FORMULADO'));
+          const laminas = bomData.filter(b => (b.DESCRIPCION_COMPONENTE || '').toUpperCase().includes('LAMINA CILINDRICA'));
 
-            laminas.forEach(lamina => {
-              const engLamina = calculateEngineering({ 
-                CodMaterial: cleanCode(lamina.COMPONENTE), 
-                NOMBRE: lamina.DESCRIPCION_COMPONENTE,
-                CANTIDAD: safeNum(lamina.CANTIDAD_ACUMULADA) * engOrder.qty
-              });
+          laminas.forEach(lamina => {
+            const engL = calculateEngineering({ CodMaterial: cleanCode(lamina.COMPONENTE), NOMBRE: lamina.DESCRIPCION_COMPONENTE, CANTIDAD: safeNum(lamina.CANTIDAD_ACUMULADA) * engOrder.qty });
+            const parent = bomData.find(b => cleanCode(b.COMPONENTE) === cleanCode(lamina.MATERIAL_PADRE)) || bloques[0] || { COMPONENTE: '—', DESCRIPCION_COMPONENTE: '—' };
 
-              const parentBlock = bomData.find(b => 
-                cleanCode(b.COMPONENTE) === cleanCode(lamina.MATERIAL_PADRE)
-              ) || bloques[0] || { COMPONENTE: '—', DESCRIPCION_COMPONENTE: '—' };
-
-              rows.push({
-                Orden: order.ORDENPREVISIONAL || order.ORDEN || '—',
-                Fecha: String(order.FECHAINICIO || order.FECHA || '').split('T')[0],
-                categoria: engOrder.catStr,
-                HALB_N3: cleanCode(parentBlock.COMPONENTE),
-                HALB_N3N: String(parentBlock.DESCRIPCION_COMPONENTE).toUpperCase(),
-                HALB_N1: cleanCode(lamina.COMPONENTE),
-                HALB_N1N: String(lamina.DESCRIPCION_COMPONENTE).toUpperCase(),
-                Ancho: engLamina.ancho,
-                Largo: engLamina.largo,
-                'Esp.': engLamina.esp,
-                'Dens.': engLamina.dens,
-                'Cant.': Math.round(engLamina.qty),
-                Peso: engLamina.peso.toFixed(2),
-                Volumen: engLamina.volumen.toFixed(3),
-                APERTURA: engLamina.apertura,
-                'T. Indiv (m)': engLamina.indivMin.toFixed(2),
-                'T. Total (H)': engLamina.hours.toFixed(2),
-                'Cargas SUB_BLOQUE': engLamina.loads,
-                '# SUB_Bloque': engLamina.subblocks
-              });
+            rows.push({
+              Orden: order.ORDENPREVISIONAL || '—',
+              Fecha: String(order.FECHAINICIO || '').split('T')[0],
+              categoria: engOrder.catStr,
+              HALB_N1: cleanCode(lamina.COMPONENTE),
+              HALB_N1N: String(lamina.DESCRIPCION_COMPONENTE).toUpperCase(),
+              Ancho: engL.ancho,
+              Largo: engL.largo,
+              'Esp.': engL.esp,
+              'Dens.': engL.dens,
+              'Cant.': Math.round(engL.qty),
+              Peso: engL.peso.toFixed(2),
+              Volumen: engL.volumen.toFixed(3),
+              HALB_N3: cleanCode(parent.COMPONENTE),
+              HALB_N3N: String(parent.DESCRIPCION_COMPONENTE).toUpperCase(),
+              APERTURA: engL.apertura,
+              'T. Indiv': engL.indivMin.toFixed(2),
+              'T. Total': engL.hours.toFixed(2),
+              'Cargas': engL.loads,
+              '# SUB_Bloque': engL.subblocks
             });
-          }
-        } catch (e) {
-          console.warn(`Error BOM para material ${engOrder.code}`);
+          });
         }
-        setSalidaProgress(prev => ({ ...prev, current: i + 1 }));
-      }
-      setSalidaRows(rows);
-      addNotification('success', `Reporte generado con ${rows.length} registros.`);
-    } catch (error) {
-      addNotification('error', 'Error al procesar la salida de datos.');
-    } finally {
-      setIsProcessingSalida(false);
+      } catch (e) { console.warn(`Error BOM material ${engOrder.code}`); }
+      setSalidaProgress(prev => ({ ...prev, current: i + 1 }));
     }
+    setSalidaRows(rows);
+    setIsProcessingSalida(false);
+    addNotification('success', `Reporte de salida completado con ${rows.length} registros.`);
   };
 
+  useEffect(() => { if (mounted) initData(); }, [mounted, initData]);
+
+  // 5. RENDER ROOT (Shell Unificado para Hidratación)
   const renderRoot = (content: React.ReactNode) => (
     <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
       {content}
@@ -356,7 +334,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <div className="p-2 bg-primary/10 rounded-xl shadow-inner"><Wind className="w-6 h-6 text-primary" /></div>
           <div>
             <h2 className="text-xl font-black text-gray-800 uppercase tracking-tighter">Programación Táctica Corte Espuma</h2>
-            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Generación de Reporte Plano | Ingeniería v3.2</p>
+            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Generación de Reporte Plano | Ingeniería v3.5</p>
           </div>
         </div>
 
@@ -394,7 +372,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                     );
                   })}
                 </div>
-                <Button variant="ghost" size="sm" className="w-full text-[9px] font-bold uppercase text-primary h-8 mt-3 rounded-lg hover:bg-primary/5 tracking-widest" onClick={() => setSelectedDates(new Set())}>Ver Todo el Plan</Button>
+                <Button variant="ghost" size="sm" className="w-full text-[9px] font-bold uppercase text-primary h-8 mt-3 rounded-lg hover:bg-primary/5 tracking-widest" onClick={() => setSelectedDates(new Set())}>Ver Todo</Button>
               </div>
             </PopoverContent>
           </Popover>
@@ -419,24 +397,16 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
         <TabsContent value="salida" className="animate-in fade-in duration-300 space-y-6">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-5 bg-slate-900 rounded-3xl text-white shadow-2xl">
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 text-left">
               <div className="p-3 bg-white/10 rounded-2xl"><FileSpreadsheet className="w-6 h-6 text-[#facc15]" /></div>
-              <div className="text-left">
+              <div>
                 <h3 className="text-sm font-black uppercase tracking-tighter">Generador de Reporte Estructurado</h3>
-                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Auditoría Jerárquica BOM SAP | Columnas Planas</p>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Auditoría Jerárquica BOM SAP | Formato Plano de Columnas</p>
               </div>
             </div>
-            
-            <div className="flex gap-2">
-              <Button 
-                onClick={handleGenerateSalida} 
-                disabled={isProcessingSalida || provFiltradas.length === 0}
-                className="bg-[#facc15] hover:bg-[#eab308] text-slate-900 rounded-xl h-11 px-8 text-[10px] font-black uppercase tracking-widest shadow-lg active:scale-95 transition-all flex items-center gap-2"
-              >
-                {isProcessingSalida ? <Loader2 className="w-4 h-4 animate-spin" /> : <PlayCircle className="w-4 h-4" />}
-                {isProcessingSalida ? 'PROCESANDO BOM...' : 'GENERAR SALIDA'}
-              </Button>
-            </div>
+            <Button onClick={handleGenerateSalida} disabled={isProcessingSalida || provFiltradas.length === 0} className="bg-[#facc15] hover:bg-[#eab308] text-slate-900 rounded-xl h-11 px-8 text-[10px] font-black uppercase tracking-widest shadow-lg active:scale-95 transition-all flex items-center gap-2">
+              {isProcessingSalida ? <Loader2 className="w-4 h-4 animate-spin" /> : <PlayCircle className="w-4 h-4" />} {isProcessingSalida ? 'PROCESANDO BOM...' : 'GENERAR SALIDA'}
+            </Button>
           </div>
 
           {isProcessingSalida && (
@@ -454,25 +424,26 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               <div className="overflow-x-auto max-h-[600px] relative">
                 <table className="w-full border-collapse text-[10px] font-sans text-center">
                   <thead className="sticky top-0 z-20">
-                    <tr className="bg-[#5c8a32] text-white uppercase font-black tracking-tighter border-b border-black/10">
+                    <tr className="bg-[#1e293b] text-white uppercase font-black tracking-tighter border-b border-black/10">
                       <th className="px-3 py-4 border-r border-white/5">Orden</th>
                       <th className="px-3 py-4 border-r border-white/5">Fecha</th>
-                      <th className="px-3 py-4 border-r border-white/5">Categoría</th>
-                      <th className="px-3 py-4 border-r border-white/5 bg-black/10">HALB_N3</th>
-                      <th className="px-4 py-4 border-r border-white/5 bg-black/10 text-left">HALB_N3N</th>
-                      <th className="px-3 py-4 border-r border-white/5 bg-white/10">HALB_N1</th>
-                      <th className="px-4 py-4 border-r border-white/5 bg-white/10 text-left">HALB_N1N</th>
+                      <th className="px-3 py-4 border-r border-white/5">Cat.</th>
+                      <th className="px-3 py-4 border-r border-white/5 bg-indigo-500/20 text-indigo-100">HALB_N1</th>
+                      <th className="px-5 py-4 border-r border-white/5 bg-indigo-500/20 text-indigo-100 text-left">HALB_N1N</th>
                       <th className="px-2 py-4 border-r border-white/5 bg-[#d9ead3] text-black">Ancho</th>
                       <th className="px-2 py-4 border-r border-white/5 bg-[#d9ead3] text-black">Largo</th>
                       <th className="px-2 py-4 border-r border-white/5 bg-[#d9ead3] text-black">Esp.</th>
                       <th className="px-2 py-4 border-r border-white/5 bg-[#d9ead3] text-black">Dens.</th>
                       <th className="px-2 py-4 border-r border-white/5 bg-[#d9ead3] text-black">Cant.</th>
                       <th className="px-3 py-4 border-r border-white/5">Peso</th>
-                      <th className="px-3 py-4 border-r border-white/5">Volumen</th>
-                      <th className="px-3 py-4 border-r border-white/5 text-yellow-300">APERTURA</th>
+                      <th className="px-3 py-4 border-r border-white/5">Vol.</th>
+                      <th className="px-3 py-4 border-r border-white/5 bg-slate-800 text-slate-100">HALB_N3</th>
+                      <th className="px-5 py-4 border-r border-white/5 bg-slate-800 text-slate-100 text-left">HALB_N3N</th>
+                      <th className="px-2 py-4 border-r border-white/5 text-yellow-300">APERTURA</th>
                       <th className="px-2 py-4 border-r border-white/5">T. Indiv</th>
-                      <th className="px-2 py-4 border-r border-white/5">T. Total</th>
+                      <th className="px-2 py-4 border-r border-white/5 font-black text-amber-300">T. Total (H)</th>
                       <th className="px-2 py-4">Cargas</th>
+                      <th className="px-2 py-4"># BLQ</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 font-bold">
@@ -481,10 +452,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <td className="px-3 py-2 border-r border-gray-50 text-slate-800">{row.Orden}</td>
                         <td className="px-3 py-2 border-r border-gray-50 text-slate-400 font-mono">{row.Fecha}</td>
                         <td className="px-3 py-2 border-r border-gray-50 text-slate-400">{row.categoria}</td>
-                        <td className="px-3 py-2 border-r border-gray-50 font-mono text-indigo-600 bg-indigo-50/10">{row.HALB_N3}</td>
-                        <td className="px-4 py-2 border-r border-gray-50 text-left uppercase text-slate-400 truncate max-w-[150px] bg-indigo-50/10" title={row.HALB_N3N}>{row.HALB_N3N}</td>
-                        <td className="px-3 py-2 border-r border-gray-50 font-mono text-teal-600 bg-teal-50/10">{row.HALB_N1}</td>
-                        <td className="px-4 py-2 border-r border-gray-50 text-left uppercase text-slate-400 truncate max-w-[150px] bg-teal-50/10" title={row.HALB_N1N}>{row.HALB_N1N}</td>
+                        <td className="px-3 py-2 border-r border-gray-50 font-mono text-indigo-600 bg-indigo-50/10">{row.HALB_N1}</td>
+                        <td className="px-5 py-2 border-r border-gray-50 text-left uppercase text-slate-400 truncate max-w-[200px] bg-indigo-50/10" title={row.HALB_N1N}>{row.HALB_N1N}</td>
                         <td className="px-2 py-2 border-r border-gray-50 bg-[#d9ead3]/30 text-black">{row.Ancho}</td>
                         <td className="px-2 py-2 border-r border-gray-50 bg-[#d9ead3]/30 text-black">{row.Largo}</td>
                         <td className="px-2 py-2 border-r border-gray-50 bg-[#d9ead3]/30 text-black font-black">{row['Esp.']}</td>
@@ -492,10 +461,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <td className="px-2 py-2 border-r border-gray-50 bg-[#d9ead3]/30 font-black text-slate-900">{row['Cant.']}</td>
                         <td className="px-3 py-2 border-r border-gray-50 font-mono">{row.Peso}</td>
                         <td className="px-3 py-2 border-r border-gray-50 font-mono">{row.Volumen}</td>
-                        <td className="px-3 py-2 border-r border-gray-50 font-black text-red-500 bg-red-50/10">{row.APERTURA}</td>
-                        <td className="px-2 py-2 border-r border-gray-50 text-blue-600 font-mono">{row['T. Indiv (m)']}</td>
-                        <td className="px-2 py-2 border-r border-gray-50 text-amber-600 font-mono font-black">{row['T. Total (H)']}</td>
-                        <td className="px-2 py-2 text-red-600">{row['Cargas SUB_BLOQUE']}</td>
+                        <td className="px-3 py-2 border-r border-gray-50 font-mono text-slate-500 bg-slate-50">{row.HALB_N3}</td>
+                        <td className="px-5 py-2 border-r border-gray-50 text-left uppercase text-slate-300 truncate max-w-[150px] italic bg-slate-50" title={row.HALB_N3N}>{row.HALB_N3N}</td>
+                        <td className="px-2 py-2 border-r border-gray-50 font-black text-red-500 bg-red-50/10">{row.APERTURA}</td>
+                        <td className="px-2 py-2 border-r border-gray-50 text-blue-600 font-mono">{row['T. Indiv']}</td>
+                        <td className="px-2 py-2 border-r border-gray-50 text-amber-600 font-mono font-black">{row['T. Total']}</td>
+                        <td className="px-2 py-2 text-red-600">{row['Cargas']}</td>
+                        <td className="px-2 py-2 text-emerald-600">{row['# SUB_Bloque']}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -527,7 +499,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
             return (
               <div key={center.id} className="space-y-4">
-                <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-2 px-1">
+                <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-2 px-1 text-left">
                   <MapPin className="w-3 h-3" /> PLANTA {center.label}
                 </h3>
                 <Card className="rounded-[2rem] border border-gray-100 shadow-xl overflow-hidden bg-white">
@@ -551,6 +523,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         const hT2 = manualHours[`${center.id}_${m.code}_t2`] ?? (center.id==='1000' ? m.t2 : 0);
                         const mtto = getMachineMTTO(m.code);
                         const netAvailable = (hT1 + hT2 - PARO_PROG_T1 - PARO_PROG_T2 - mtto) * m.rendimiento;
+                        const mLoad = provs.filter(o => String(o.MAQUINA || o.RECURSO || '').toUpperCase().includes(m.code)).reduce((s, o) => s + calculateEngineering(o).hours, 0);
                         return (
                           <tr key={m.code} className="hover:bg-slate-50 transition-colors">
                             <td className="px-6 py-4 text-left">
@@ -571,8 +544,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                             <td className="px-3 py-4 text-slate-300 font-mono">{PARO_PROG_T2}</td>
                             <td className={cn("px-3 py-4 font-mono", mtto > 0 ? "text-red-500 bg-red-50/50" : "text-slate-100")}>{mtto > 0 ? `${mtto}h` : '—'}</td>
                             <td className="px-4 py-4 font-mono font-black text-indigo-700 bg-indigo-50/20">{netAvailable.toFixed(1)}</td>
-                            <td className="px-4 py-4 text-blue-400">—</td>
-                            <td className="px-4 py-4 text-slate-100">—</td>
+                            <td className="px-4 py-4 text-blue-400 font-mono">{mLoad > 0 ? mLoad.toFixed(1) : '—'}</td>
+                            <td className={cn("px-4 py-4 font-mono text-xs", netAvailable > 0 && (mLoad/netAvailable) > 1 ? "text-red-500" : "text-slate-200")}>
+                              {netAvailable > 0 && mLoad > 0 ? `${((mLoad/netAvailable)*100).toFixed(0)}%` : '—'}
+                            </td>
                           </tr>
                         );
                       })}
@@ -751,7 +726,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-100 font-bold">
                   {mantenimientos.length === 0 ? (
-                    <tr><td colSpan={6} className="py-20 text-slate-300 uppercase tracking-widest italic">Sincronizando Calendario MTTO...</td></tr>
+                    <tr><td colSpan={6} className="py-20 text-slate-300 uppercase tracking-widest italic text-center">Sincronizando Calendario MTTO...</td></tr>
                   ) : (
                     mantenimientos.map((m, i) => (
                       <tr key={i} className="hover:bg-amber-50/30 transition-colors">
