@@ -40,8 +40,6 @@ const CAROUSEL_CIRCUMFERENCE = 2000;
 const MAX_STACK_HEIGHT = 200; 
 const UIO_ALMACEN_PROV = '1006';
 const GYE_ALMACEN_PROV = '2006';
-const UIO_RESPONSABLES = ['013', '038', '039', '044', '036'];
-const GYE_RESPONSABLES = ['002', '039'];
 
 // --- FUNCIONES UTILITARIAS GLOBALES ---
 const safeNum = (val: any): number => {
@@ -154,20 +152,19 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     if (mounted) fetchData();
   }, [mounted, fetchData]);
 
-  // --- FILTROS DE PLANTA ---
+  // --- FILTROS DE PLANTA (PROVISIONALES) ---
   const provUIO = useMemo(() => ordenesProvisionales.filter(o => getProp(o, ['Centro', 'CENTRO']) === '1000' && getProp(o, ['Almacen', 'ALMACEN']) === UIO_ALMACEN_PROV), [ordenesProvisionales]);
   const provGYE = useMemo(() => ordenesProvisionales.filter(o => getProp(o, ['Centro', 'CENTRO']) === '2000' && getProp(o, ['Almacen', 'ALMACEN']) === GYE_ALMACEN_PROV), [ordenesProvisionales]);
 
+  // --- FILTROS DE PLANTA (PROCESO) - SE ELIMINAN FILTROS DE RESPONSABLE PARA MOSTRAR DATA ÍNTEGRA ---
   const procesoUIO = useMemo(() => ordenesProceso.filter(o => {
     const centro = String(getProp(o, ['Centro', 'CENTRO'])).trim();
-    const resp = String(getProp(o, ['RESPCONTROLPROD', 'RespControlProd', 'RESP_CONTROL_PROD'])).trim();
-    return centro === '1000' && UIO_RESPONSABLES.includes(resp);
+    return centro === '1000';
   }), [ordenesProceso]);
 
   const procesoGYE = useMemo(() => ordenesProceso.filter(o => {
     const centro = String(getProp(o, ['Centro', 'CENTRO'])).trim();
-    const resp = String(getProp(o, ['RESPCONTROLPROD', 'RespControlProd', 'RESP_CONTROL_PROD'])).trim();
-    return centro === '2000' && GYE_RESPONSABLES.includes(resp);
+    return centro === '2000';
   }), [ordenesProceso]);
 
   // --- JERARQUÍA DE SALIDA DE DATOS ---
@@ -176,7 +173,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const hierarchy = new Map<string, Map<string, UnifiedRow[]>>();
 
     all.forEach(o => {
-      const centro = String(getProp(o, ['Centro', 'CENTRO'])).trim() === '1000' ? 'QUITO (UIO)' : 'GUAYAQUIL (GYE)';
+      const centroRaw = String(getProp(o, ['Centro', 'CENTRO'])).trim();
+      const centro = centroRaw === '1000' ? 'QUITO (UIO)' : 'GUAYAQUIL (GYE)';
       const cat = String(getProp(o, ['CATEGORIA', 'Categoria']) || 'SIN CATEGORÍA').toUpperCase();
 
       if (!hierarchy.has(centro)) hierarchy.set(centro, new Map());
@@ -188,7 +186,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const qty = safeNum(getProp(o, ['CANTIDAD', 'CANTPROGRAMADA']));
       
       const matCode = cleanCode(getProp(o, ['MATERIAL', 'CodMaterial']));
-      const tMatch = tiemposCatalogo.find(t => cleanCode(t.CodMaterial) === matCode && String(t.Centro).trim() === getProp(o, ['Centro', 'CENTRO']));
+      const tMatch = tiemposCatalogo.find(t => cleanCode(t.CodMaterial) === matCode && String(t.Centro).trim() === centroRaw);
       const tIndiv = tMatch ? safeNum(tMatch.Tiempo || tMatch.Tiempo_Min) : 0;
 
       centerMap.get(cat)!.push({
@@ -284,7 +282,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
   const renderSalidaHierarchy = () => (
     <div className="space-y-12">
-      {/* ESPACIO GLOBAL DE CONSOLIDACIÓN */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-slate-900 p-6 rounded-[2rem] border border-white/5 shadow-2xl text-white">
         <div className="md:col-span-1 border-r border-white/10 pr-4 text-left">
           <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Auditoría Planta</p>
@@ -322,7 +319,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
               return (
                 <div key={key} className="border border-slate-200 rounded-xl overflow-hidden shadow-sm bg-white">
-                  {/* CABECERA DE CATEGORÍA (BARRA NEGRA) */}
                   <div className="flex items-center justify-between bg-black text-white px-6 py-3">
                     <div className="flex items-center gap-4 flex-1 text-left">
                       <button onClick={() => toggleGroup(key)} className="hover:scale-110 transition-transform">
@@ -456,13 +452,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="provisionales" className="space-y-12 animate-in fade-in duration-300">
-          {renderDataTable(provUIO, 'CORTE ESPUMA UIO (Almacén 1006)')}
-          {renderDataTable(provGYE, 'CORTE ESPUMA GYE (Almacén 2006)')}
+          {renderDataTable(provUIO, `CORTE ESPUMA UIO (Almacén ${UIO_ALMACEN_PROV})`)}
+          {renderDataTable(provGYE, `CORTE ESPUMA GYE (Almacén ${GYE_ALMACEN_PROV})`)}
         </TabsContent>
 
         <TabsContent value="proceso" className="space-y-12 animate-in fade-in duration-300">
-          {renderDataTable(procesoUIO, 'ORDENES PROCESO UIO (Responsables: 013, 038, 039, 044, 036)')}
-          {renderDataTable(procesoGYE, 'ORDENES PROCESO GYE (Responsables: 002, 039)')}
+          {renderDataTable(procesoUIO, 'ORDENES PROCESO QUITO (UIO)')}
+          {renderDataTable(procesoGYE, 'ORDENES PROCESO GUAYAQUIL (GYE)')}
         </TabsContent>
 
         <TabsContent value="mmto" className="animate-in fade-in duration-300">
