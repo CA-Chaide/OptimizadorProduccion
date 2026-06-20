@@ -16,10 +16,6 @@ import {
   TrendingUp,
   Box,
   Wind,
-  Layers,
-  Database,
-  ChevronLeft,
-  ChevronRight,
   Info
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
@@ -35,7 +31,7 @@ import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 import { cn } from '@/lib/utils';
 
-// --- CONSTANTES TÉCNICAS CARRUSEL ---
+// --- CONSTANTES TÉCNICAS CARRUSEL (INGENIERÍA) ---
 const CAROUSEL_RADIO_CM = 320; 
 const CAROUSEL_CIRCUMFERENCE = 2 * Math.PI * CAROUSEL_RADIO_CM; // ~2010.6 cm
 const UIO_ALMACEN_PROV = '1006';
@@ -73,7 +69,7 @@ const parseDimensions = (desc: string) => {
   const d = String(desc || '').toUpperCase();
   const densMatch = d.match(/D(\d+)/);
   const dens = densMatch ? densMatch[1] : '—';
-  const dimMatch = d.match(/(\d+(?:\.\d+)?)\s*[xX*]\s!(\d+(?:\.\d+)?)(?:\s*[xX*]\s*(\d+(?:\.\d+)?))?/);
+  const dimMatch = d.match(/(\d+(?:\.\d+)?)\s*[xX*]\s*(\d+(?:\.\d+)?)(?:\s*[xX*]\s*(\d+(?:\.\d+)?))?/);
   const ancho = dimMatch ? parseFloat(dimMatch[1]) : 0;
   const largo = dimMatch ? parseFloat(dimMatch[2]) : 0;
   const esp = dimMatch && dimMatch[3] ? parseFloat(dimMatch[3]) : 0;
@@ -286,7 +282,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
   const renderAuditHierarchy = () => (
     <div className="space-y-12">
-      {/* Dashboard Global superior */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-[#0f172a] p-6 rounded-[2rem] border border-white/5 shadow-2xl text-white">
         <div className="md:col-span-1 border-r border-white/10 pr-4 text-left">
           <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Planta Consolidada</p>
@@ -469,11 +464,11 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   };
 
   if (!mounted) {
-    return <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-slate-100 font-sans text-left" />;
+    return <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 font-sans text-left" />;
   }
 
   return (
-    <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-slate-100 font-sans text-left">
+    <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 font-sans text-left">
       <div className="flex items-center justify-between pb-4 border-b border-slate-100">
         <div className="flex items-center space-x-3 text-left">
           <div className="p-2 bg-slate-900 rounded-xl text-white shadow-lg"><Wind className="w-6 h-6" /></div>
@@ -505,14 +500,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           {renderContent()}
         </div>
       </Tabs>
-      
-      <div className="flex items-center gap-3 p-4 bg-slate-50 border border-slate-100 rounded-2xl">
-        <Info className="w-5 h-5 text-slate-400 flex-shrink-0" />
-        <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest leading-relaxed">
-          <p>Especificaciones Técnicas: Radio Carrusel 3.2m | Circunferencia Útil: 2010.6 cm.</p>
-          <p className="mt-1">Apilamiento: D&lt;28 (103cm) | D&ge;28 (85cm). Capacidad Carga = Circunferencia / (Ancho + 5cm).</p>
-        </div>
-      </div>
     </div>
   );
 };
