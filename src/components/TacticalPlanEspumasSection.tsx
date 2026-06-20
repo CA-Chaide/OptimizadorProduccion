@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -92,11 +91,11 @@ interface UnifiedRow {
   dens: string;
   cant: number;
   peso: number;
-  alturaTotal: number; // Nueva: esp * cant
+  alturaTotal: number; 
   tIndiv: number;
   tTotal: number;
   cargas: number;
-  subBloques: number; // Nueva: alturaTotal / (D<28?103:85)
+  subBloques: number; 
   participacion: number;
 }
 
@@ -115,7 +114,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const [tiemposCatalogo, setTiemposCatalogo] = useState<any[]>([]);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
-  useEffect(() => { setMounted(true); }, []);
+  useEffect(() => { 
+    setMounted(true); 
+  }, []);
 
   const fetchData = useCallback(async () => {
     setIsLoading(true);
@@ -181,7 +182,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const tMatch = tiemposCatalogo.find(t => cleanCode(t.CodMaterial) === matCode && String(t.Centro).trim() === centroRaw);
       const tIndiv = tMatch ? safeNum(tMatch.Tiempo || tMatch.Tiempo_Min) : 0;
 
-      // Logica de Altura Total y Sub_Bloque
       const alturaTotal = dims.esp * qty;
       const alturaBloquePatron = densVal < 28 ? 103 : 85;
       const subBloquesCalculado = alturaBloquePatron > 0 ? (alturaTotal / alturaBloquePatron) : 0;
@@ -227,13 +227,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     <div className="space-y-3 text-left">
       <div className="flex items-center justify-between px-1">
         <h3 className="text-[11px] font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
-           <div className="w-2.5 h-2.5 rounded-full bg-slate-400" /> {title}
+           <div className="w-2.5 h-2.5 rounded-full bg-indigo-500" /> {title}
         </h3>
         <Badge variant="outline" className="text-[9px] font-bold border-slate-200 text-slate-400">{data.length} Registros</Badge>
       </div>
       <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-sm">
         <table className="w-full text-[10px] text-center border-collapse">
-          <thead className="bg-[#0f172a] text-white uppercase font-black tracking-widest text-[9px] border-b border-slate-200 sticky top-0 z-10">
+          <thead className="bg-[#1e293b] text-white uppercase font-black tracking-widest text-[9px] border-b border-slate-200 sticky top-0 z-10">
             <tr>
               <th className="px-4 py-4 text-left border-r border-white/5">Orden</th>
               <th className="px-4 py-4 text-left border-r border-white/5">Fecha</th>
@@ -279,7 +279,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
   const renderAuditHierarchy = () => (
     <div className="space-y-12">
-      {/* Dashboard Global */}
+      {/* Dashboard Global superior */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-[#0f172a] p-6 rounded-[2rem] border border-white/5 shadow-2xl text-white">
         <div className="md:col-span-1 border-r border-white/10 pr-4 text-left">
           <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Planta Consolidada</p>
@@ -318,7 +318,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               return (
                 <div key={key} className="border border-slate-200 rounded-2xl overflow-hidden shadow-md bg-white">
                   {/* BARRA NEGRA DE RESUMEN POR CATEGORÍA */}
-                  <div className="flex items-center justify-between bg-black text-white px-6 py-3">
+                  <div className="flex items-center justify-between bg-[#0f172a] text-white px-6 py-3">
                     <div className="flex items-center gap-4 flex-1 text-left">
                       <button onClick={() => toggleGroup(key)} className="hover:scale-110 transition-transform">
                         {isExp ? <Minus className="w-4 h-4 text-red-500" /> : <Plus className="w-4 h-4 text-emerald-500" />}
@@ -404,7 +404,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     </div>
   );
 
-  if (!mounted) return null;
+  if (!mounted) {
+    return <div className="p-4 md:p-6 bg-white min-h-screen" />;
+  }
 
   return (
     <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-slate-100 font-sans">
@@ -413,7 +415,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <div className="p-2 bg-slate-900 rounded-xl text-white shadow-lg"><Wind className="w-6 h-6" /></div>
           <div>
             <h2 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Programación Táctica Corte Espuma</h2>
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Auditores Técnicos SAP | Auditoría Integral de Planta</p>
+            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Auditores Técnicos SAP | Auditoría Integral de Planta</p>
           </div>
         </div>
         <Button onClick={fetchData} variant="ghost" size="icon" disabled={isLoading} className="rounded-full hover:bg-slate-100 text-slate-400">
