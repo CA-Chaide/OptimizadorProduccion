@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -37,7 +38,6 @@ import { cn } from '@/lib/utils';
 
 // --- CONSTANTES TÉCNICAS ---
 const CAROUSEL_CIRCUMFERENCE = 2000; 
-const MAX_STACK_HEIGHT = 200; 
 const UIO_ALMACEN_PROV = '1006';
 const GYE_ALMACEN_PROV = '2006';
 
@@ -92,11 +92,11 @@ interface UnifiedRow {
   dens: string;
   cant: number;
   peso: number;
-  volumen: number;
+  alturaTotal: number; // Nueva: esp * cant
   tIndiv: number;
   tTotal: number;
   cargas: number;
-  subBloques: number;
+  subBloques: number; // Nueva: alturaTotal / (D<28?103:85)
   participacion: number;
 }
 
@@ -152,22 +152,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     if (mounted) fetchData();
   }, [mounted, fetchData]);
 
-  // --- FILTROS DE PLANTA (PROVISIONALES) ---
+  // --- FILTROS DE PLANTA ---
   const provUIO = useMemo(() => ordenesProvisionales.filter(o => getProp(o, ['Centro', 'CENTRO']) === '1000' && getProp(o, ['Almacen', 'ALMACEN']) === UIO_ALMACEN_PROV), [ordenesProvisionales]);
   const provGYE = useMemo(() => ordenesProvisionales.filter(o => getProp(o, ['Centro', 'CENTRO']) === '2000' && getProp(o, ['Almacen', 'ALMACEN']) === GYE_ALMACEN_PROV), [ordenesProvisionales]);
+  const procesoUIO = useMemo(() => ordenesProceso.filter(o => String(getProp(o, ['Centro', 'CENTRO'])).trim() === '1000'), [ordenesProceso]);
+  const procesoGYE = useMemo(() => ordenesProceso.filter(o => String(getProp(o, ['Centro', 'CENTRO'])).trim() === '2000'), [ordenesProceso]);
 
-  // --- FILTROS DE PLANTA (PROCESO) - SE ELIMINAN FILTROS DE RESPONSABLE PARA MOSTRAR DATA ÍNTEGRA ---
-  const procesoUIO = useMemo(() => ordenesProceso.filter(o => {
-    const centro = String(getProp(o, ['Centro', 'CENTRO'])).trim();
-    return centro === '1000';
-  }), [ordenesProceso]);
-
-  const procesoGYE = useMemo(() => ordenesProceso.filter(o => {
-    const centro = String(getProp(o, ['Centro', 'CENTRO'])).trim();
-    return centro === '2000';
-  }), [ordenesProceso]);
-
-  // --- JERARQUÍA DE SALIDA DE DATOS ---
+  // --- AUDITORÍA TÉCNICA ---
   const auditHierarchy = useMemo(() => {
     const all = [...provUIO, ...provGYE];
     const hierarchy = new Map<string, Map<string, UnifiedRow[]>>();
@@ -184,10 +175,16 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const desc = getProp(o, ['NOMBRE', 'Material', 'DESCRIPCION']) || '—';
       const dims = parseDimensions(desc);
       const qty = safeNum(getProp(o, ['CANTIDAD', 'CANTPROGRAMADA']));
+      const densVal = safeNum(dims.dens);
       
       const matCode = cleanCode(getProp(o, ['MATERIAL', 'CodMaterial']));
       const tMatch = tiemposCatalogo.find(t => cleanCode(t.CodMaterial) === matCode && String(t.Centro).trim() === centroRaw);
       const tIndiv = tMatch ? safeNum(tMatch.Tiempo || tMatch.Tiempo_Min) : 0;
+
+      // Logica de Altura Total y Sub_Bloque
+      const alturaTotal = dims.esp * qty;
+      const alturaBloquePatron = densVal < 28 ? 103 : 85;
+      const subBloquesCalculado = alturaBloquePatron > 0 ? (alturaTotal / alturaBloquePatron) : 0;
 
       centerMap.get(cat)!.push({
         fecha: getProp(o, ['FECHAINICIO', 'FECHA']),
@@ -199,12 +196,12 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         esp: dims.esp,
         dens: dims.dens,
         cant: qty,
-        peso: (dims.ancho * dims.largo * dims.esp * safeNum(dims.dens)) / 10000,
-        volumen: (dims.ancho * dims.largo * dims.esp) / 1000000,
+        peso: (dims.ancho * dims.largo * dims.esp * densVal) / 10000,
+        alturaTotal: alturaTotal,
         tIndiv: tIndiv,
         tTotal: (tIndiv * qty) / 60,
         cargas: dims.ancho > 0 ? Math.floor(CAROUSEL_CIRCUMFERENCE / (dims.ancho + 5)) : 0,
-        subBloques: dims.esp > 0 ? Math.floor(MAX_STACK_HEIGHT / dims.esp) : 0,
+        subBloques: subBloquesCalculado,
         participacion: 0
       });
     });
@@ -251,7 +248,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           </thead>
           <tbody className="divide-y divide-slate-100 font-bold text-slate-600">
             {data.length === 0 ? (
-              <tr><td colSpan={9} className="py-20 text-slate-200 uppercase tracking-widest italic font-black opacity-30">Sin registros detectados para esta planta</td></tr>
+              <tr><td colSpan={9} className="py-20 text-slate-200 uppercase tracking-widest italic font-black opacity-30">Sin registros detectados</td></tr>
             ) : (
               data.map((o, idx) => {
                 const matCode = cleanCode(getProp(o, ['MATERIAL', 'CodMaterial', 'COD_MATERIAL']));
@@ -280,23 +277,24 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     </div>
   );
 
-  const renderSalidaHierarchy = () => (
+  const renderAuditHierarchy = () => (
     <div className="space-y-12">
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-slate-900 p-6 rounded-[2rem] border border-white/5 shadow-2xl text-white">
+      {/* Dashboard Global */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-[#0f172a] p-6 rounded-[2rem] border border-white/5 shadow-2xl text-white">
         <div className="md:col-span-1 border-r border-white/10 pr-4 text-left">
-          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Auditoría Planta</p>
-          <h3 className="text-xl font-black uppercase text-indigo-400 mt-1">Plan Maestro</h3>
+          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Planta Consolidada</p>
+          <h3 className="text-xl font-black uppercase text-indigo-400 mt-1 tracking-tighter">Resumen Global</h3>
         </div>
         <div className="flex flex-col gap-1 text-center">
-          <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Total Unidades</p>
+          <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">T. Unidades</p>
           <p className="text-xl font-black font-mono text-[#facc15]">{auditHierarchy.reduce((acc, [_, cats]) => acc + Array.from(cats.values()).reduce((s, items) => s + items.reduce((ss, r) => ss + r.cant, 0), 0), 0).toLocaleString()}</p>
         </div>
         <div className="flex flex-col gap-1 text-center">
-          <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Total Horas (H)</p>
+          <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">T. Horas (H)</p>
           <p className="text-xl font-black font-mono text-emerald-400">{auditHierarchy.reduce((acc, [_, cats]) => acc + Array.from(cats.values()).reduce((s, items) => s + items.reduce((ss, r) => ss + r.tTotal, 0), 0), 0).toFixed(1)}</p>
         </div>
         <div className="flex flex-col gap-1 text-center">
-          <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Total Peso (Kg)</p>
+          <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">T. Peso (Kg)</p>
           <p className="text-xl font-black font-mono text-indigo-400">{auditHierarchy.reduce((acc, [_, cats]) => acc + Array.from(cats.values()).reduce((s, items) => s + items.reduce((ss, r) => ss + r.peso, 0), 0), 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
         </div>
       </div>
@@ -318,35 +316,32 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               const tSub = items.reduce((s, r) => s + r.subBloques, 0);
 
               return (
-                <div key={key} className="border border-slate-200 rounded-xl overflow-hidden shadow-sm bg-white">
+                <div key={key} className="border border-slate-200 rounded-2xl overflow-hidden shadow-md bg-white">
+                  {/* BARRA NEGRA DE RESUMEN POR CATEGORÍA */}
                   <div className="flex items-center justify-between bg-black text-white px-6 py-3">
                     <div className="flex items-center gap-4 flex-1 text-left">
                       <button onClick={() => toggleGroup(key)} className="hover:scale-110 transition-transform">
                         {isExp ? <Minus className="w-4 h-4 text-red-500" /> : <Plus className="w-4 h-4 text-emerald-500" />}
                       </button>
-                      <span className="text-[11px] font-black uppercase tracking-widest w-48">{cat}</span>
+                      <span className="text-[11px] font-black uppercase tracking-widest">{cat}</span>
                     </div>
                     
-                    <div className="flex gap-4 items-center">
-                      <div className="flex flex-col items-center border-l border-white/20 pl-4 min-w-[70px]">
-                        <span className="text-[7px] font-bold opacity-50 uppercase">T. Cant.</span>
-                        <span className="text-xs font-mono font-black">{tCant.toLocaleString()}</span>
+                    <div className="flex gap-4 items-center font-mono">
+                      <div className="flex flex-col items-center border-l border-white/10 pl-4">
+                        <span className="text-[7px] font-bold opacity-40 uppercase">Cant.</span>
+                        <span className="text-xs font-black">{tCant.toLocaleString()}</span>
                       </div>
-                      <div className="flex flex-col items-center border-l border-white/20 pl-4 min-w-[80px]">
-                        <span className="text-[7px] font-bold opacity-50 uppercase">T. Total (H)</span>
-                        <span className="text-xs font-mono font-black">{tH.toFixed(2)}</span>
+                      <div className="flex flex-col items-center border-l border-white/10 pl-4">
+                        <span className="text-[7px] font-bold opacity-40 uppercase">Horas (H)</span>
+                        <span className="text-xs font-black">{tH.toFixed(2)}</span>
                       </div>
-                      <div className="flex flex-col items-center border-l border-white/20 pl-4 min-w-[70px]">
-                        <span className="text-[7px] font-bold opacity-50 uppercase">T. Cargas</span>
-                        <span className="text-xs font-mono font-black">{tCargas}</span>
+                      <div className="flex flex-col items-center border-l border-white/10 pl-4">
+                        <span className="text-[7px] font-bold opacity-40 uppercase">Cargas</span>
+                        <span className="text-xs font-black">{tCargas}</span>
                       </div>
-                      <div className="flex flex-col items-center border-l border-white/20 pl-4 min-w-[80px]">
-                        <span className="text-[7px] font-bold opacity-50 uppercase">T. # SUB_B.</span>
-                        <span className="text-xs font-mono font-black">{tSub}</span>
-                      </div>
-                      <div className="flex flex-col items-center border-l border-white/20 pl-4 min-w-[90px]">
-                        <span className="text-[7px] font-bold opacity-50 uppercase">T. % PART.</span>
-                        <span className="text-xs font-mono font-black">100%</span>
+                      <div className="flex flex-col items-center border-l border-white/10 pl-4 pr-2">
+                        <span className="text-[7px] font-bold opacity-40 uppercase">Sub_B.</span>
+                        <span className="text-xs font-black">{Math.ceil(tSub)}</span>
                       </div>
                     </div>
                   </div>
@@ -354,7 +349,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                   {isExp && (
                     <div className="overflow-x-auto">
                       <table className="w-full text-[10px] text-center border-collapse">
-                        <thead className="bg-black text-white border-t border-white/10 uppercase font-black tracking-tighter text-[9px]">
+                        <thead className="bg-[#1e293b] text-white uppercase font-black tracking-tighter text-[9px]">
                           <tr>
                             <th className="px-4 py-3 text-left border-r border-white/5">fecha</th>
                             <th className="px-4 py-3 text-left border-r border-white/5">Orden</th>
@@ -365,35 +360,35 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                             <th className="px-2 py-3 border-r border-white/5">Dens.</th>
                             <th className="px-3 py-3 border-r border-white/5">Cant.</th>
                             <th className="px-3 py-3 border-r border-white/5">Peso (Kg)</th>
-                            <th className="px-3 py-3 border-r border-white/5">Volumen</th>
+                            <th className="px-3 py-3 border-r border-white/5 bg-emerald-500/20 text-emerald-100">Altura Total</th>
                             <th className="px-3 py-3 border-r border-white/5">T. Indiv (m)</th>
-                            <th className="px-4 py-3 border-r border-white/10 bg-white/10">T. Total (H)</th>
+                            <th className="px-4 py-3 border-r border-white/10 bg-indigo-500/30">T. Total (H)</th>
                             <th className="px-3 py-3 border-r border-white/5">Cargas</th>
-                            <th className="px-4 py-3 border-r border-white/5"># SUB_Bloque</th>
+                            <th className="px-4 py-3 border-r border-white/5 bg-[#cfe2f3] text-indigo-900"># SUB_Bloque</th>
                             <th className="px-4 py-3">% participacion</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-100 font-bold text-slate-600">
+                        <tbody className="divide-y divide-slate-100 font-bold text-slate-600 font-mono">
                           {items.map((row, idx) => (
                             <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                              <td className="px-4 py-2 border-r border-slate-50 font-mono text-[9px] text-slate-400 text-left">{row.fecha}</td>
-                              <td className="px-4 py-2 border-r border-slate-50 font-mono text-indigo-600 text-left">{row.orden}</td>
-                              <td className="px-6 py-2 border-r border-slate-100 text-left font-sans truncate max-w-[220px]">
-                                <span className="text-slate-900 block font-mono text-[11px]">{row.material}</span>
+                              <td className="px-4 py-2 border-r border-slate-50 text-[9px] text-slate-400 text-left">{row.fecha}</td>
+                              <td className="px-4 py-2 border-r border-slate-50 text-indigo-600 text-left">{row.orden}</td>
+                              <td className="px-6 py-2 border-r border-slate-100 text-left truncate max-w-[220px]">
+                                <span className="text-slate-900 block font-black text-[11px]">{row.material}</span>
                                 <span className="text-slate-400 text-[8px] uppercase italic truncate block">{row.descripcion}</span>
                               </td>
-                              <td className="px-2 py-2 border-r border-slate-50 font-mono">{row.ancho.toFixed(1)}</td>
-                              <td className="px-2 py-2 border-r border-slate-50 font-mono">{row.largo.toFixed(1)}</td>
-                              <td className="px-2 py-2 border-r border-slate-50 font-mono text-indigo-600">{row.esp.toFixed(1)}</td>
-                              <td className="px-2 py-2 border-r border-slate-50 font-mono text-slate-900">{row.dens}</td>
-                              <td className="px-3 py-2 border-r border-slate-50 font-mono text-slate-900">{row.cant}</td>
-                              <td className="px-3 py-2 border-r border-slate-50 font-mono text-slate-400">{row.peso.toFixed(2)}</td>
-                              <td className="px-3 py-2 border-r border-slate-50 font-mono text-slate-400">{row.volumen.toFixed(3)}</td>
-                              <td className="px-3 py-2 border-r border-slate-50 font-mono text-indigo-400">{row.tIndiv.toFixed(2)}</td>
-                              <td className="px-4 py-2 border-r border-slate-100 font-mono text-indigo-700 bg-indigo-50/30">{row.tTotal.toFixed(2)}</td>
-                              <td className="px-3 py-2 border-r border-slate-50 font-mono text-emerald-600">{row.cargas}</td>
-                              <td className="px-4 py-2 border-r border-slate-100 font-mono text-emerald-600 bg-emerald-50/20">{row.subBloques}</td>
-                              <td className="px-4 py-2 font-mono text-slate-400">{row.participacion.toFixed(1)}%</td>
+                              <td className="px-2 py-2 border-r border-slate-50">{row.ancho.toFixed(1)}</td>
+                              <td className="px-2 py-2 border-r border-slate-50">{row.largo.toFixed(1)}</td>
+                              <td className="px-2 py-2 border-r border-slate-50 text-indigo-600">{row.esp.toFixed(1)}</td>
+                              <td className="px-2 py-2 border-r border-slate-50 text-slate-900">{row.dens}</td>
+                              <td className="px-3 py-2 border-r border-slate-50 text-slate-900">{row.cant}</td>
+                              <td className="px-3 py-2 border-r border-slate-50 text-slate-400">{row.peso.toFixed(2)}</td>
+                              <td className="px-3 py-2 border-r border-slate-50 text-emerald-700 bg-emerald-50/20">{row.alturaTotal.toFixed(1)}</td>
+                              <td className="px-3 py-2 border-r border-slate-50 text-indigo-400">{row.tIndiv.toFixed(2)}</td>
+                              <td className="px-4 py-2 border-r border-slate-100 text-indigo-700 bg-indigo-50/30">{row.tTotal.toFixed(2)}</td>
+                              <td className="px-3 py-2 border-r border-slate-50 text-emerald-600">{row.cargas}</td>
+                              <td className="px-4 py-2 border-r border-slate-100 text-indigo-700 bg-[#cfe2f3]/50">{row.subBloques.toFixed(2)}</td>
+                              <td className="px-4 py-2 text-slate-400">{row.participacion.toFixed(1)}%</td>
                             </tr>
                           ))}
                         </tbody>
@@ -409,7 +404,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     </div>
   );
 
-  if (!mounted) return <div className="p-6 bg-white min-h-screen" />;
+  if (!mounted) return null;
 
   return (
     <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-slate-100 font-sans">
@@ -448,7 +443,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               <Loader2 className="w-10 h-10 animate-spin text-slate-200" />
               <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Sincronizando Auditoría...</p>
             </div>
-          ) : renderSalidaHierarchy()}
+          ) : renderAuditHierarchy()}
         </TabsContent>
 
         <TabsContent value="provisionales" className="space-y-12 animate-in fade-in duration-300">
