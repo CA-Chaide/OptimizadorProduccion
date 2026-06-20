@@ -17,7 +17,10 @@ import {
   Box,
   Wind,
   Layers,
-  Database
+  Database,
+  ChevronLeft,
+  ChevronRight,
+  Info
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -40,6 +43,7 @@ const GYE_ALMACEN_PROV = '2006';
 const UIO_RESPONSABLES = ['013', '038', '039', '044', '036'];
 const GYE_RESPONSABLES = ['002', '039'];
 
+// --- HELPERS TÉCNICOS GLOBALES ---
 const safeNum = (val: any): number => {
   const n = Number(val);
   return isNaN(n) ? 0 : n;
@@ -47,6 +51,15 @@ const safeNum = (val: any): number => {
 
 const cleanCode = (code: any): string => {
   return String(code || '').replace(/^0+/, '').trim();
+};
+
+const formatNum = (val: any, decimals: number = 0): string => {
+  const n = Number(val);
+  if (isNaN(n)) return '0';
+  return n.toLocaleString(undefined, { 
+    minimumFractionDigits: decimals, 
+    maximumFractionDigits: decimals 
+  });
 };
 
 const getProp = (obj: any, keys: string[]): string => {
@@ -308,7 +321,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               return (
                 <div key={key} className="border border-slate-200 rounded-xl overflow-hidden shadow-sm bg-white">
                   <div className="flex items-center justify-between bg-black text-white px-6 py-3">
-                    <div className="flex items-center gap-4 flex-1">
+                    <div className="flex items-center gap-4 flex-1 text-left">
                       <button onClick={() => toggleGroup(key)} className="hover:scale-110 transition-transform">
                         {isExp ? <Minus className="w-4 h-4 text-red-500" /> : <Plus className="w-4 h-4 text-emerald-500" />}
                       </button>
@@ -439,12 +452,12 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           ) : renderSalidaHierarchy()}
         </TabsContent>
 
-        <TabsContent value="provisionales" className="space-y-12 animate-in fade-in duration-300">
+        <TabsContent value="provisionales" className="space-y-12 animate-in fade-in duration-300 text-left">
           {renderDataTable(provUIO, 'CORTE ESPUMA UIO (Almacén 1006)')}
           {renderDataTable(provGYE, 'CORTE ESPUMA GYE (Almacén 2006)')}
         </TabsContent>
 
-        <TabsContent value="proceso" className="space-y-12 animate-in fade-in duration-300">
+        <TabsContent value="proceso" className="space-y-12 animate-in fade-in duration-300 text-left">
           {renderDataTable(procesoUIO, 'ORDENES PROCESO UIO (Resp: 013, 038, 039, 044, 036)')}
           {renderDataTable(procesoGYE, 'ORDENES PROCESO GYE (Resp: 002, 039)')}
         </TabsContent>
