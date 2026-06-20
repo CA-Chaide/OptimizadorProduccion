@@ -43,7 +43,7 @@ const GYE_ALMACEN_PROV = '2006';
 const UIO_RESPONSABLES = ['013', '038', '039', '044', '036'];
 const GYE_RESPONSABLES = ['002', '039'];
 
-// --- HELPERS TÉCNICOS GLOBALES ---
+// --- FUNCIONES UTILITARIAS GLOBALES ---
 const safeNum = (val: any): number => {
   const n = Number(val);
   return isNaN(n) ? 0 : n;
@@ -117,6 +117,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const [tiemposCatalogo, setTiemposCatalogo] = useState<any[]>([]);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
+  useEffect(() => { setMounted(true); }, []);
+
   const fetchData = useCallback(async () => {
     setIsLoading(true);
     try {
@@ -149,9 +151,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    setMounted(true);
-    fetchData();
-  }, [fetchData]);
+    if (mounted) fetchData();
+  }, [mounted, fetchData]);
 
   // --- FILTROS DE PLANTA ---
   const provUIO = useMemo(() => ordenesProvisionales.filter(o => getProp(o, ['Centro', 'CENTRO']) === '1000' && getProp(o, ['Almacen', 'ALMACEN']) === UIO_ALMACEN_PROV), [ordenesProvisionales]);
@@ -228,7 +229,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   };
 
   const renderDataTable = (data: any[], title: string) => (
-    <div className="space-y-3">
+    <div className="space-y-3 text-left">
       <div className="flex items-center justify-between px-1">
         <h3 className="text-[11px] font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
            <div className="w-2.5 h-2.5 rounded-full bg-slate-400" /> {title}
@@ -252,7 +253,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           </thead>
           <tbody className="divide-y divide-slate-100 font-bold text-slate-600">
             {data.length === 0 ? (
-              <tr><td colSpan={9} className="py-20 text-slate-200 uppercase tracking-widest italic font-black opacity-30">Sin órdenes detectadas para esta planta</td></tr>
+              <tr><td colSpan={9} className="py-20 text-slate-200 uppercase tracking-widest italic font-black opacity-30">Sin registros detectados para esta planta</td></tr>
             ) : (
               data.map((o, idx) => {
                 const matCode = cleanCode(getProp(o, ['MATERIAL', 'CodMaterial', 'COD_MATERIAL']));
@@ -283,20 +284,21 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
   const renderSalidaHierarchy = () => (
     <div className="space-y-12">
+      {/* ESPACIO GLOBAL DE CONSOLIDACIÓN */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-slate-900 p-6 rounded-[2rem] border border-white/5 shadow-2xl text-white">
-        <div className="md:col-span-1 border-r border-white/10 pr-4">
+        <div className="md:col-span-1 border-r border-white/10 pr-4 text-left">
           <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Auditoría Planta</p>
           <h3 className="text-xl font-black uppercase text-indigo-400 mt-1">Plan Maestro</h3>
         </div>
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-1 text-center">
           <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Total Unidades</p>
           <p className="text-xl font-black font-mono text-[#facc15]">{auditHierarchy.reduce((acc, [_, cats]) => acc + Array.from(cats.values()).reduce((s, items) => s + items.reduce((ss, r) => ss + r.cant, 0), 0), 0).toLocaleString()}</p>
         </div>
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-1 text-center">
           <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Total Horas (H)</p>
           <p className="text-xl font-black font-mono text-emerald-400">{auditHierarchy.reduce((acc, [_, cats]) => acc + Array.from(cats.values()).reduce((s, items) => s + items.reduce((ss, r) => ss + r.tTotal, 0), 0), 0).toFixed(1)}</p>
         </div>
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-1 text-center">
           <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Total Peso (Kg)</p>
           <p className="text-xl font-black font-mono text-indigo-400">{auditHierarchy.reduce((acc, [_, cats]) => acc + Array.from(cats.values()).reduce((s, items) => s + items.reduce((ss, r) => ss + r.peso, 0), 0), 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
         </div>
@@ -304,7 +306,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
       {auditHierarchy.map(([centro, categories]) => (
         <div key={centro} className="space-y-8">
-          <div className="flex items-center gap-3 border-b-2 border-slate-100 pb-2">
+          <div className="flex items-center gap-3 border-b-2 border-slate-100 pb-2 text-left">
             <MapPin className="w-5 h-5 text-indigo-600" />
             <h3 className="text-lg font-black text-slate-800 uppercase tracking-tighter">{centro}</h3>
           </div>
@@ -320,6 +322,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
               return (
                 <div key={key} className="border border-slate-200 rounded-xl overflow-hidden shadow-sm bg-white">
+                  {/* CABECERA DE CATEGORÍA (BARRA NEGRA) */}
                   <div className="flex items-center justify-between bg-black text-white px-6 py-3">
                     <div className="flex items-center gap-4 flex-1 text-left">
                       <button onClick={() => toggleGroup(key)} className="hover:scale-110 transition-transform">
@@ -413,7 +416,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   if (!mounted) return <div className="p-6 bg-white min-h-screen" />;
 
   return (
-    <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-slate-100 font-sans text-left">
+    <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-slate-100 font-sans">
       <div className="flex items-center justify-between pb-4 border-b border-slate-100">
         <div className="flex items-center space-x-3 text-left">
           <div className="p-2 bg-slate-900 rounded-xl text-white shadow-lg"><Wind className="w-6 h-6" /></div>
@@ -452,14 +455,14 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           ) : renderSalidaHierarchy()}
         </TabsContent>
 
-        <TabsContent value="provisionales" className="space-y-12 animate-in fade-in duration-300 text-left">
+        <TabsContent value="provisionales" className="space-y-12 animate-in fade-in duration-300">
           {renderDataTable(provUIO, 'CORTE ESPUMA UIO (Almacén 1006)')}
           {renderDataTable(provGYE, 'CORTE ESPUMA GYE (Almacén 2006)')}
         </TabsContent>
 
-        <TabsContent value="proceso" className="space-y-12 animate-in fade-in duration-300 text-left">
-          {renderDataTable(procesoUIO, 'ORDENES PROCESO UIO (Resp: 013, 038, 039, 044, 036)')}
-          {renderDataTable(procesoGYE, 'ORDENES PROCESO GYE (Resp: 002, 039)')}
+        <TabsContent value="proceso" className="space-y-12 animate-in fade-in duration-300">
+          {renderDataTable(procesoUIO, 'ORDENES PROCESO UIO (Responsables: 013, 038, 039, 044, 036)')}
+          {renderDataTable(procesoGYE, 'ORDENES PROCESO GYE (Responsables: 002, 039)')}
         </TabsContent>
 
         <TabsContent value="mmto" className="animate-in fade-in duration-300">
