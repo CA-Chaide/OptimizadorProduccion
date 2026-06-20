@@ -156,7 +156,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const provUIO = useMemo(() => ordenesProvisionales.filter(o => getProp(o, ['Centro', 'CENTRO']) === '1000' && getProp(o, ['Almacen', 'ALMACEN']) === UIO_ALMACEN_PROV), [ordenesProvisionales]);
   const provGYE = useMemo(() => ordenesProvisionales.filter(o => getProp(o, ['Centro', 'CENTRO']) === '2000' && getProp(o, ['Almacen', 'ALMACEN']) === GYE_ALMACEN_PROV), [ordenesProvisionales]);
   
-  // Ordenes Proceso: Sin filtros de responsables, data íntegra por centro
+  // Ordenes Proceso: Data íntegra sin filtros restrictivos
   const procesoUIO = useMemo(() => ordenesProceso.filter(o => String(getProp(o, ['Centro', 'CENTRO'])).trim() === '1000'), [ordenesProceso]);
   const procesoGYE = useMemo(() => ordenesProceso.filter(o => String(getProp(o, ['Centro', 'CENTRO'])).trim() === '2000'), [ordenesProceso]);
 
@@ -183,7 +183,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const tMatch = tiemposCatalogo.find(t => cleanCode(t.CodMaterial) === matCode && String(t.Centro).trim() === centroRaw);
       const tIndiv = tMatch ? safeNum(tMatch.Tiempo || tMatch.Tiempo_Min) : 0;
 
-      // Ingeniería: Altura Total y Sub-bloque
+      // Ingeniería Solicitada: Altura Total y Sub-bloque
       const alturaTotal = dims.esp * qty;
       const alturaBloquePatron = densVal < 28 ? 103 : 85;
       const subBloquesCalculado = alturaBloquePatron > 0 ? (alturaTotal / alturaBloquePatron) : 0;
@@ -202,7 +202,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         alturaTotal: alturaTotal,
         tIndiv: tIndiv,
         tTotal: (tIndiv * qty) / 60,
-        cargas: dims.ancho > 0 ? Math.floor(CAROUSEL_CIRCUMFERENCE / (dims.ancho + 5)) : 0,
+        cargas: (dims.ancho + 5) > 0 ? Math.floor(CAROUSEL_CIRCUMFERENCE / (dims.ancho + 5)) : 0,
         subBloques: subBloquesCalculado,
         participacion: 0
       });
@@ -229,7 +229,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     <div className="space-y-3 text-left">
       <div className="flex items-center justify-between px-1">
         <h3 className="text-[11px] font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
-           <div className="w-2.5 h-2.5 rounded-full bg-indigo-500" /> {title}
+           <div className="w-2.5 h-2.5 rounded-full bg-slate-500" /> {title}
         </h3>
         <Badge variant="outline" className="text-[9px] font-bold border-slate-200 text-slate-400">{data.length} Registros</Badge>
       </div>
@@ -258,17 +258,17 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                 const resp = getProp(o, ['RESPCONTROLPROD', 'RespControlProd', 'RESP_CONTROL_PROD', 'RESPONSABLE']);
                 return (
                   <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-4 py-3 text-left font-mono font-black text-indigo-600 border-r border-slate-50">{getProp(o, ['ORDENPREVISIONAL', 'ORDEN', 'ORDEN_PROCESO']) || '—'}</td>
+                    <td className="px-4 py-3 text-left font-mono font-black text-slate-900 border-r border-slate-50">{getProp(o, ['ORDENPREVISIONAL', 'ORDEN', 'ORDEN_PROCESO']) || '—'}</td>
                     <td className="px-4 py-3 text-left font-mono text-[9px] text-slate-400 border-r border-slate-50">{getProp(o, ['FECHAINICIO', 'FECHA', 'FECHA_INICIO'])}</td>
                     <td className="px-4 py-3 text-left font-mono font-black text-slate-900 border-r border-slate-50">{matCode}</td>
                     <td className="px-6 py-3 text-left uppercase truncate max-w-[350px] border-r border-slate-50 leading-tight">{description}</td>
                     <td className="px-3 py-3 font-mono font-black text-slate-900 bg-slate-50/30 border-r border-slate-50 text-sm">{formatNum(getProp(o, ['CANTIDAD', 'CANTPROGRAMADA', 'CANT_PROG']), 0)}</td>
                     <td className="px-3 py-3 border-r border-slate-50">
-                       <Badge variant="outline" className="text-[9px] font-black bg-blue-50 text-blue-700 border-blue-100">{resp || '—'}</Badge>
+                       <Badge variant="outline" className="text-[9px] font-black bg-slate-50 text-slate-700 border-slate-100">{resp || '—'}</Badge>
                     </td>
                     <td className="px-3 py-3 font-bold text-slate-400 border-r border-slate-50">{getProp(o, ['CENTRO', 'Centro'])}</td>
                     <td className="px-3 py-3 font-bold text-slate-400 border-r border-slate-50">{getProp(o, ['ALMACEN', 'Almacen'])}</td>
-                    <td className="px-4 py-3 font-black text-indigo-700/50 uppercase text-[9px]">{getProp(o, ['MAQUINA', 'RECURSO', 'ID_MAQUINA'])}</td>
+                    <td className="px-4 py-3 font-black text-slate-500 uppercase text-[9px]">{getProp(o, ['MAQUINA', 'RECURSO', 'ID_MAQUINA'])}</td>
                   </tr>
                 );
               })
@@ -289,7 +289,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         </div>
         <div className="flex flex-col gap-1 text-center">
           <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">T. Unidades</p>
-          <p className="text-xl font-black font-mono text-[#facc15]">{auditHierarchy.reduce((acc, [_, cats]) => acc + Array.from(cats.values()).reduce((s, items) => s + items.reduce((ss, r) => ss + r.cant, 0), 0), 0).toLocaleString()}</p>
+          <p className="text-xl font-black font-mono text-slate-100">{auditHierarchy.reduce((acc, [_, cats]) => acc + Array.from(cats.values()).reduce((s, items) => s + items.reduce((ss, r) => ss + r.cant, 0), 0), 0).toLocaleString()}</p>
         </div>
         <div className="flex flex-col gap-1 text-center">
           <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">T. Horas (H)</p>
@@ -323,7 +323,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                   <div className="flex items-center justify-between bg-[#0f172a] text-white px-6 py-3">
                     <div className="flex items-center gap-4 flex-1 text-left">
                       <button onClick={() => toggleGroup(key)} className="hover:scale-110 transition-transform">
-                        {isExp ? <Minus className="w-4 h-4 text-red-500" /> : <Plus className="w-4 h-4 text-emerald-500" />}
+                        {isExp ? <Minus className="w-4 h-4 text-slate-400" /> : <Plus className="w-4 h-4 text-emerald-500" />}
                       </button>
                       <span className="text-[11px] font-black uppercase tracking-widest">{cat}</span>
                     </div>
@@ -362,11 +362,11 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                             <th className="px-2 py-3 border-r border-white/5">Dens.</th>
                             <th className="px-3 py-3 border-r border-white/5">Cant.</th>
                             <th className="px-3 py-3 border-r border-white/5">Peso (Kg)</th>
-                            <th className="px-3 py-3 border-r border-white/5 bg-emerald-500/20 text-emerald-100">Altura Total</th>
+                            <th className="px-3 py-3 border-r border-white/5 bg-slate-700 text-white">Altura Total</th>
                             <th className="px-3 py-3 border-r border-white/5">T. Indiv (m)</th>
                             <th className="px-4 py-3 border-r border-white/10 bg-indigo-500/30">T. Total (H)</th>
                             <th className="px-3 py-3 border-r border-white/5">Cargas</th>
-                            <th className="px-4 py-3 border-r border-white/5 bg-[#cfe2f3] text-indigo-900"># SUB_Bloque</th>
+                            <th className="px-4 py-3 border-r border-white/5 bg-slate-100 text-slate-900"># SUB_Bloque</th>
                             <th className="px-4 py-3">% participacion</th>
                           </tr>
                         </thead>
@@ -385,11 +385,11 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                               <td className="px-2 py-2 border-r border-slate-50 text-slate-900">{row.dens}</td>
                               <td className="px-3 py-2 border-r border-slate-50 text-slate-900">{row.cant}</td>
                               <td className="px-3 py-2 border-r border-slate-50 text-slate-400">{row.peso.toFixed(2)}</td>
-                              <td className="px-3 py-2 border-r border-slate-50 text-emerald-700 bg-emerald-50/20">{row.alturaTotal.toFixed(1)}</td>
+                              <td className="px-3 py-2 border-r border-slate-50 text-slate-900 bg-slate-50">{row.alturaTotal.toFixed(1)}</td>
                               <td className="px-3 py-2 border-r border-slate-50 text-indigo-400">{row.tIndiv.toFixed(2)}</td>
                               <td className="px-4 py-2 border-r border-slate-100 text-indigo-700 bg-indigo-50/30">{row.tTotal.toFixed(2)}</td>
-                              <td className="px-3 py-2 border-r border-slate-50 text-emerald-600">{row.cargas}</td>
-                              <td className="px-4 py-2 border-r border-slate-100 text-indigo-700 bg-[#cfe2f3]/50">{row.subBloques.toFixed(2)}</td>
+                              <td className="px-3 py-2 border-r border-slate-50 text-slate-900">{row.cargas}</td>
+                              <td className="px-4 py-2 border-r border-slate-100 text-slate-900 bg-slate-50">{row.subBloques.toFixed(2)}</td>
                               <td className="px-4 py-2 text-slate-400">{row.participacion.toFixed(1)}%</td>
                             </tr>
                           ))}
@@ -406,22 +406,76 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     </div>
   );
 
-  const renderRoot = (content: React.ReactNode) => (
-    <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-slate-100 font-sans text-left">
-      {content}
-    </div>
-  );
+  const renderContent = () => {
+    if (isLoading) {
+      return (
+        <div className="flex flex-col items-center justify-center p-20 gap-4">
+          <Loader2 className="w-10 h-10 animate-spin text-slate-300" />
+          <p className="text-xs font-bold text-gray-400 uppercase tracking-widest animate-pulse">Sincronizando SAP...</p>
+        </div>
+      );
+    }
+
+    switch (activeTab) {
+      case 'resumen': return renderAuditHierarchy();
+      case 'provisionales': return (
+        <div className="space-y-12">
+          {renderDataTable(provUIO, `CORTE ESPUMA UIO (Almacén ${UIO_ALMACEN_PROV})`)}
+          {renderDataTable(provGYE, `CORTE ESPUMA GYE (Almacén ${GYE_ALMACEN_PROV})`)}
+        </div>
+      );
+      case 'proceso': return (
+        <div className="space-y-12">
+          {renderDataTable(procesoUIO, 'ORDENES PROCESO QUITO (UIO)')}
+          {renderDataTable(procesoGYE, 'ORDENES PROCESO GUAYAQUIL (GYE)')}
+        </div>
+      );
+      case 'mmto': return (
+        <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-sm">
+          <table className="w-full text-[11px] text-center border-collapse">
+            <thead className="bg-slate-50 text-slate-400 font-black uppercase border-b border-slate-200">
+              <tr>
+                <th className="px-6 py-4 text-left border-r border-slate-100">Centro</th>
+                <th className="px-6 py-4 text-left border-r border-slate-100">Máquina</th>
+                <th className="px-6 py-4 text-left border-r border-slate-100">Inicio</th>
+                <th className="px-6 py-4 text-left border-r border-slate-100">Fin</th>
+                <th className="px-6 py-4">Estado</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50 font-bold text-slate-600">
+              {mantenimientos.length === 0 ? (
+                <tr><td colSpan={5} className="py-20 text-slate-200 uppercase tracking-widest italic font-bold">Sin mantenimientos vigentes</td></tr>
+              ) : (
+                mantenimientos.map((m, i) => (
+                  <tr key={i} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-6 py-3 text-slate-400 text-left border-r border-slate-50">{m.PLANTA || '—'}</td>
+                    <td className="px-6 py-3 text-slate-900 font-black text-left uppercase border-r border-slate-50">{m.ID_MAQUINA || '—'}</td>
+                    <td className="px-6 py-3 text-left font-mono border-r border-slate-50">{m.FECHA_OT_PRG_INI || '—'}</td>
+                    <td className="px-6 py-3 text-left font-mono border-r border-slate-50">{m.FECHA_OT_PRG_FIN || '—'}</td>
+                    <td className="px-6 py-3 text-[9px] uppercase">{m.ESTADO || 'ACTIVO'}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      );
+      default: return null;
+    }
+  };
 
   if (!mounted) {
-    return renderRoot(
-      <div className="flex justify-center items-center h-64">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+    return (
+      <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-slate-100 font-sans text-left">
+        <div className="flex justify-center items-center h-64">
+          <Loader2 className="w-8 h-8 animate-spin text-slate-200" />
+        </div>
       </div>
     );
   }
 
-  return renderRoot(
-    <>
+  return (
+    <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-slate-100 font-sans text-left">
       <div className="flex items-center justify-between pb-4 border-b border-slate-100">
         <div className="flex items-center space-x-3 text-left">
           <div className="p-2 bg-slate-900 rounded-xl text-white shadow-lg"><Wind className="w-6 h-6" /></div>
@@ -437,70 +491,29 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid grid-cols-4 h-11 bg-slate-50/80 p-1.5 rounded-2xl border border-slate-100 mb-8">
-          <TabsTrigger value="resumen" className="gap-2 text-[10px] font-black uppercase transition-all data-[state=active]:bg-white data-[state=active]:shadow-lg data-[state=active]:text-indigo-600 rounded-xl">
-            <LayoutDashboard className="w-4 h-4" /> SALIDA DE DATOS
-          </TabsTrigger>
-          <TabsTrigger value="provisionales" className="gap-2 text-[10px] font-black uppercase transition-all data-[state=active]:bg-white data-[state=active]:shadow-lg data-[state=active]:text-slate-900 rounded-xl">
-            <Package className="w-4 h-4" /> PROVISIONALES
-          </TabsTrigger>
-          <TabsTrigger value="proceso" className="gap-2 text-[10px] font-black uppercase transition-all data-[state=active]:bg-white data-[state=active]:shadow-lg data-[state=active]:text-slate-900 rounded-xl">
-            <ShoppingCart className="w-4 h-4" /> ORDENES PROCESO
-          </TabsTrigger>
-          <TabsTrigger value="mmto" className="gap-2 text-[10px] font-black uppercase transition-all data-[state=active]:bg-white data-[state=active]:shadow-lg data-[state=active]:text-slate-900 rounded-xl">
-            <Wrench className="w-4 h-4" /> MMTO
-          </TabsTrigger>
+          {[ 
+            { v: 'resumen', l: 'SALIDA DE DATOS', i: LayoutDashboard },
+            { v: 'provisionales', l: 'PROVISIONALES', i: Package },
+            { v: 'proceso', l: 'ORDENES PROCESO', i: ShoppingCart },
+            { v: 'mmto', l: 'MMTO', i: Wrench }
+          ].map(tab => (
+            <TabsTrigger key={tab.v} value={tab.v} className="gap-2 text-[10px] font-black uppercase transition-all data-[state=active]:bg-white data-[state=active]:shadow-lg data-[state=active]:text-slate-900 rounded-xl">
+              <tab.i className="w-4 h-4" /> {tab.l}
+            </TabsTrigger>
+          ))}
         </TabsList>
 
-        <TabsContent value="resumen" className="animate-in fade-in duration-300">
-          {isLoading ? (
-            <div className="py-24 flex flex-col items-center justify-center gap-4">
-              <Loader2 className="w-10 h-10 animate-spin text-slate-200" />
-              <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Sincronizando Auditoría...</p>
-            </div>
-          ) : renderAuditHierarchy()}
-        </TabsContent>
-
-        <TabsContent value="provisionales" className="space-y-12 animate-in fade-in duration-300">
-          {renderDataTable(provUIO, `CORTE ESPUMA UIO (Almacén ${UIO_ALMACEN_PROV})`)}
-          {renderDataTable(provGYE, `CORTE ESPUMA GYE (Almacén ${GYE_ALMACEN_PROV})`)}
-        </TabsContent>
-
-        <TabsContent value="proceso" className="space-y-12 animate-in fade-in duration-300">
-          {renderDataTable(procesoUIO, 'ORDENES PROCESO QUITO (UIO)')}
-          {renderDataTable(procesoGYE, 'ORDENES PROCESO GUAYAQUIL (GYE)')}
-        </TabsContent>
-
-        <TabsContent value="mmto" className="animate-in fade-in duration-300">
-          <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-sm">
-            <table className="w-full text-[11px] text-center border-collapse">
-              <thead className="bg-slate-50 text-slate-400 font-black uppercase border-b border-slate-200">
-                <tr>
-                  <th className="px-6 py-4 text-left border-r border-slate-100">Centro</th>
-                  <th className="px-6 py-4 text-left border-r border-slate-100">Máquina</th>
-                  <th className="px-6 py-4 text-left border-r border-slate-100">Inicio</th>
-                  <th className="px-6 py-4 text-left border-r border-slate-100">Fin</th>
-                  <th className="px-6 py-4">Estado</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50 font-bold text-slate-600">
-                {mantenimientos.length === 0 ? (
-                  <tr><td colSpan={5} className="py-20 text-slate-200 uppercase tracking-widest italic font-bold">Sin mantenimientos vigentes</td></tr>
-                ) : (
-                  mantenimientos.map((m, i) => (
-                    <tr key={i} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-6 py-3 text-slate-400 text-left border-r border-slate-50">{m.PLANTA || '—'}</td>
-                      <td className="px-6 py-3 text-slate-900 font-black text-left uppercase border-r border-slate-50">{m.ID_MAQUINA || '—'}</td>
-                      <td className="px-6 py-3 text-left font-mono border-r border-slate-50">{m.FECHA_OT_PRG_INI || '—'}</td>
-                      <td className="px-6 py-3 text-left font-mono border-r border-slate-50">{m.FECHA_OT_PRG_FIN || '—'}</td>
-                      <td className="px-6 py-3 text-[9px] uppercase">{m.ESTADO || 'ACTIVO'}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </TabsContent>
+        <div className="mt-6">
+          {renderContent()}
+        </div>
       </Tabs>
-    </>
+      
+      <div className="flex items-center gap-3 p-4 bg-slate-50 border border-slate-100 rounded-2xl">
+        <Info className="w-5 h-5 text-slate-400 flex-shrink-0" />
+        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest leading-relaxed">
+          Nota Técnica: Altura de bloque patrón según densidad (D&lt;28: 103cm | D&ge;28: 85cm). Cargas calculadas sobre circunferencia de 2000cm.
+        </p>
+      </div>
+    </div>
   );
 };
