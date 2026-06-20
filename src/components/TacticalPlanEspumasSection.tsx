@@ -44,9 +44,6 @@ const GYE_RESPONSABLES = ['002', '039'];
 const UIO_ALMACEN_PROV = '1006';
 const GYE_ALMACEN_PROV = '2006';
 
-/**
- * Busca una propiedad en un objeto ignorando mayúsculas/minúsculas y guiones bajos
- */
 const getProp = (obj: any, keys: string[]): string => {
   if (!obj) return '';
   const rowKeys = Object.keys(obj);
@@ -71,7 +68,7 @@ const parseDimensions = (desc: string) => {
   const densMatch = d.match(/D(\d+)/);
   const dens = densMatch ? densMatch[1] : '—';
   
-  const dimMatch = d.match(/(\d+(?:\.\d+)?)\s*[xX*]\s racer*]\s*(\d+(?:\.\d+)?)(?:\s*[xX*]\s*(\d+(?:\.\d+)?))?/);
+  const dimMatch = d.match(/(\d+(?:\.\d+)?)\s*[xX*]\s*(\d+(?:\.\d+)?)(?:\s*[xX*]\s*(\d+(?:\.\d+)?))?/);
   const ancho = dimMatch ? parseFloat(dimMatch[1]) : 0;
   const largo = dimMatch ? parseFloat(dimMatch[2]) : 0;
   const esp = dimMatch && dimMatch[3] ? parseFloat(dimMatch[3]) : 0;
@@ -87,6 +84,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const [ordenesProceso, setOrdenesProceso] = useState<any[]>([]);
   const [mantenimientos, setMantenimientos] = useState<any[]>([]);
   const [tiemposCatalogo, setTiemposCatalogo] = useState<any[]>([]);
+  const [expandedCategories, setExpandedGroups] = useState<Set<string>>(new Set());
 
   const fetchData = useCallback(async () => {
     setIsLoading(true);
@@ -177,6 +175,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return Array.from(hierarchy.entries()).sort();
   }, [provUIO, provGYE, tiemposCatalogo]);
 
+  const toggleGroup = (key: string) => {
+    const next = new Set(expandedCategories);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    setExpandedGroups(next);
+  };
+
   const renderDataTable = (data: any[]) => (
     <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm">
       <div className="overflow-x-auto">
@@ -214,53 +219,91 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     </div>
   );
 
-  const renderSalidaGrid = (items: any[]) => (
-    <div className="rounded-xl border border-slate-200 overflow-hidden shadow-inner bg-slate-50/30">
-      <div className="overflow-x-auto max-h-[400px]">
-        <table className="w-full border-collapse text-center font-sans text-[10px]">
-          <thead className="bg-slate-800 text-white uppercase font-black tracking-tighter text-[9px] sticky top-0 z-10">
-            <tr>
-              <th className="px-4 py-3 text-left border-r border-white/5">Orden</th>
-              <th className="px-4 py-3 text-left border-r border-white/5">Material / Descripción</th>
-              <th className="px-2 py-3 border-r border-white/5 bg-slate-700">Ancho</th>
-              <th className="px-2 py-3 border-r border-white/5 bg-slate-700">Largo</th>
-              <th className="px-2 py-3 border-r border-white/5 bg-slate-700">Esp.</th>
-              <th className="px-2 py-3 border-r border-white/5">Dens.</th>
-              <th className="px-3 py-3 border-r border-white/5">Cant.</th>
-              <th className="px-3 py-3 border-r border-white/5">Peso (Kg)</th>
-              <th className="px-3 py-3 border-r border-white/5">Volumen</th>
-              <th className="px-3 py-3 border-r border-white/5 text-indigo-300">T. Indiv (m)</th>
-              <th className="px-3 py-3 border-r border-white/5 text-indigo-300">T. Total (H)</th>
-              <th className="px-3 py-3 border-r border-white/5 text-emerald-400">Cargas</th>
-              <th className="px-3 py-3 text-emerald-400"># SUB_Bloque</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100 font-mono font-bold text-slate-600">
-            {items.map((row, idx) => (
-              <tr key={idx} className="hover:bg-white transition-colors bg-white/50">
-                <td className="px-4 py-2 border-r border-slate-100 text-indigo-600">{row.orden}</td>
-                <td className="px-4 py-2 border-r border-slate-100 text-left font-sans truncate max-w-[200px]">
-                  <span className="text-slate-900 block font-mono">{row.material}</span>
-                  <span className="text-slate-400 text-[8px] uppercase italic leading-none">{row.descripcion}</span>
-                </td>
-                <td className="px-2 py-2 border-r border-slate-100">{row.ancho.toFixed(1)}</td>
-                <td className="px-2 py-2 border-r border-slate-100">{row.largo.toFixed(1)}</td>
-                <td className="px-2 py-2 border-r border-slate-100 text-indigo-600">{row.esp.toFixed(1)}</td>
-                <td className="px-2 py-2 border-r border-slate-100 text-slate-900 font-black">{row.dens}</td>
-                <td className="px-3 py-2 border-r border-slate-100 text-slate-900">{row.cant}</td>
-                <td className="px-3 py-2 border-r border-slate-100 text-slate-400">{row.peso.toFixed(2)}</td>
-                <td className="px-3 py-2 border-r border-slate-100 text-slate-400">{row.volumen.toFixed(3)}</td>
-                <td className="px-3 py-2 border-r border-slate-100 text-indigo-400">{row.tIndiv.toFixed(2)}</td>
-                <td className="px-3 py-2 border-r border-slate-100 text-indigo-600">{row.tTotal.toFixed(2)}</td>
-                <td className="px-3 py-2 border-r border-slate-100 text-emerald-600 font-black bg-emerald-50/10">{row.cargas}</td>
-                <td className="px-3 py-2 text-emerald-600 font-black bg-emerald-50/10">{row.subBloques}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+  const renderSalidaGrid = (items: any[], catId: string) => {
+    const isExp = expandedCategories.has(catId);
+    
+    // Totales del Resumen de la Categoría
+    const tTotalH = items.reduce((s, r) => s + r.tTotal, 0);
+    const tCargas = items.reduce((s, r) => s + r.cargas, 0);
+    const tSubBloques = items.reduce((s, r) => s + r.subBloques, 0);
+
+    return (
+      <div className="mb-6 space-y-0.5">
+        {/* BARRA DE RESUMEN DE CATEGORÍA (ESTILO IMAGEN) */}
+        <div className="flex items-center justify-between bg-black text-white px-6 py-3 rounded-t-lg">
+          <div className="flex items-center gap-3">
+             <button onClick={() => toggleGroup(catId)} className="hover:scale-110 transition-transform">
+               {isExp ? <Minus className="w-4 h-4 text-red-500" /> : <Plus className="w-4 h-4 text-emerald-500" />}
+             </button>
+             <span className="text-[11px] font-black uppercase tracking-widest">{catId}</span>
+          </div>
+          <div className="flex gap-4">
+             <div className="flex flex-col items-center border-l border-white/20 pl-4 min-w-[80px]">
+               <span className="text-[7px] font-bold opacity-50 uppercase">T. Total (H)</span>
+               <span className="text-xs font-mono font-black">{tTotalH.toFixed(2)}</span>
+             </div>
+             <div className="flex flex-col items-center border-l border-white/20 pl-4 min-w-[80px]">
+               <span className="text-[7px] font-bold opacity-50 uppercase">T. Cargas</span>
+               <span className="text-xs font-mono font-black">{tCargas}</span>
+             </div>
+             <div className="flex flex-col items-center border-l border-white/20 pl-4 min-w-[100px]">
+               <span className="text-[7px] font-bold opacity-50 uppercase">T. # SUB_Bloque</span>
+               <span className="text-xs font-mono font-black">{tSubBloques}</span>
+             </div>
+          </div>
+        </div>
+
+        {/* TABLA DE DETALLE (SÓLO SI ESTÁ EXPANDIDO) */}
+        {isExp && (
+          <div className="border border-slate-200 overflow-hidden shadow-xl bg-white rounded-b-lg">
+            <div className="overflow-x-auto max-h-[500px]">
+              <table className="w-full border-collapse text-center font-sans text-[10px]">
+                <thead className="bg-black text-white uppercase font-black tracking-tighter text-[9px] sticky top-0 z-10">
+                  <tr>
+                    <th className="px-4 py-4 text-left border-r border-white/10">Orden</th>
+                    <th className="px-4 py-4 text-left border-r border-white/10">Material / Descripción</th>
+                    <th className="px-2 py-4 border-r border-white/10">Ancho</th>
+                    <th className="px-2 py-4 border-r border-white/10">Largo</th>
+                    <th className="px-2 py-4 border-r border-white/10">Esp.</th>
+                    <th className="px-2 py-4 border-r border-white/10">Dens.</th>
+                    <th className="px-3 py-4 border-r border-white/10">Cant.</th>
+                    <th className="px-3 py-4 border-r border-white/10">Peso (Kg)</th>
+                    <th className="px-3 py-4 border-r border-white/10">Volumen</th>
+                    <th className="px-3 py-4 border-r border-white/10">T. Indiv (m)</th>
+                    <th className="px-4 py-4 border-r border-white/10 bg-white/10">T. Total (H)</th>
+                    <th className="px-3 py-4 border-r border-white/10">Cargas</th>
+                    <th className="px-4 py-4"># SUB_Bloque</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-mono font-bold text-slate-600">
+                  {items.map((row, idx) => (
+                    <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-4 py-3 border-r border-slate-50 text-indigo-600">{row.orden}</td>
+                      <td className="px-4 py-3 border-r border-slate-50 text-left font-sans truncate max-w-[220px]">
+                        <span className="text-slate-900 block font-mono text-[11px]">{row.material}</span>
+                        <span className="text-slate-400 text-[8px] uppercase italic truncate block">{row.descripcion}</span>
+                      </td>
+                      <td className="px-2 py-3 border-r border-slate-50">{row.ancho.toFixed(1)}</td>
+                      <td className="px-2 py-3 border-r border-slate-50">{row.largo.toFixed(1)}</td>
+                      <td className="px-2 py-3 border-r border-slate-50 text-indigo-600">{row.esp.toFixed(1)}</td>
+                      <td className="px-2 py-3 border-r border-slate-50 text-slate-900">{row.dens}</td>
+                      <td className="px-3 py-3 border-r border-slate-50 text-slate-900">{row.cant}</td>
+                      <td className="px-3 py-3 border-r border-slate-50 text-slate-400">{row.peso.toFixed(2)}</td>
+                      <td className="px-3 py-3 border-r border-slate-50 text-slate-400">{row.volumen.toFixed(3)}</td>
+                      <td className="px-3 py-3 border-r border-slate-50 text-indigo-400">{row.tIndiv.toFixed(2)}</td>
+                      <td className="px-4 py-3 border-r border-slate-100 text-indigo-700 bg-indigo-50/30">{row.tTotal.toFixed(2)}</td>
+                      <td className="px-3 py-3 border-r border-slate-50 text-emerald-600 font-black">{row.cargas}</td>
+                      <td className="px-4 py-3 text-emerald-600 font-black bg-emerald-50/20">{row.subBloques}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
-    </div>
-  );
+    );
+  };
 
   if (!mounted) return null;
 
@@ -270,8 +313,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         <div className="flex items-center space-x-3 text-left">
           <div className="p-2 bg-slate-900 rounded-xl text-white shadow-lg"><Wind className="w-6 h-6" /></div>
           <div>
-            <h2 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Corte Espuma</h2>
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Auditores Técnicos SAP | Auditoría Integral de Planta</p>
+            <h2 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Programación Táctica Corte Espuma</h2>
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Auditores Técnicos SAP | Ingeniería de Planta</p>
           </div>
         </div>
         <Button onClick={fetchData} variant="ghost" size="icon" disabled={isLoading} className="rounded-full hover:bg-slate-100 text-slate-400">
@@ -285,7 +328,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             <FileSpreadsheet className="w-4 h-4" /> SALIDA DE DATOS
           </TabsTrigger>
           <TabsTrigger value="provisionales" className="gap-2 text-[10px] font-black uppercase transition-all data-[state=active]:bg-white data-[state=active]:shadow-lg data-[state=active]:text-slate-900 rounded-xl">
-            <Package className="w-4 h-4" /> PROVISIONALES
+            <Package className="w-4 h-4" /> PPROVISIONALES
           </TabsTrigger>
           <TabsTrigger value="proceso" className="gap-2 text-[10px] font-black uppercase transition-all data-[state=active]:bg-white data-[state=active]:shadow-lg data-[state=active]:text-slate-900 rounded-xl">
             <ShoppingCart className="w-4 h-4" /> ORDENES PROCESO
@@ -299,7 +342,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           {isLoading ? (
             <div className="py-32 flex flex-col items-center justify-center gap-4">
               <Loader2 className="w-10 h-10 animate-spin text-slate-200" />
-              <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Compilando Reporte de Auditoría...</p>
+              <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Auditando Carga SAP...</p>
             </div>
           ) : auditHierarchy.length === 0 ? (
             <div className="py-24 text-center border-2 border-dashed border-slate-100 rounded-[2.5rem]">
@@ -313,26 +356,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                   <h3 className="text-lg font-black text-slate-800 uppercase tracking-tighter">{centro}</h3>
                 </div>
                 
-                <Accordion type="multiple" className="space-y-4">
+                <div className="space-y-4">
                   {Array.from(categories.entries()).map(([cat, items]) => (
-                    <AccordionItem key={`${centro}-${cat}`} value={`${centro}-${cat}`} className="border-none">
-                      <AccordionTrigger className="hover:no-underline bg-slate-50 px-6 py-4 rounded-2xl border border-slate-100 shadow-sm transition-all group data-[state=open]:rounded-b-none data-[state=open]:border-b-0">
-                        <div className="flex items-center gap-4">
-                          <div className="p-2 bg-slate-800 rounded-lg text-white group-hover:scale-110 transition-transform">
-                            <Box className="w-3.5 h-3.5" />
-                          </div>
-                          <div className="text-left">
-                            <span className="text-[11px] font-black uppercase tracking-widest text-slate-700 block">{cat}</span>
-                            <span className="text-[9px] font-bold text-slate-400 uppercase">{items.length} Materiales auditados</span>
-                          </div>
-                        </div>
-                      </AccordionTrigger>
-                      <AccordionContent className="bg-white p-4 rounded-b-2xl border border-slate-100 border-t-0 shadow-sm">
-                         {renderSalidaGrid(items)}
-                      </AccordionContent>
-                    </AccordionItem>
+                    <div key={`${centro}-${cat}`}>
+                       {renderSalidaGrid(items, `${centro}-${cat}`)}
+                    </div>
                   ))}
-                </Accordion>
+                </div>
               </div>
             ))
           )}
@@ -342,14 +372,14 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <div className="space-y-4">
             <div className="flex items-center gap-3 px-1">
               <div className="w-2.5 h-5 rounded-sm bg-indigo-600" />
-              <h3 className="text-[11px] font-black text-slate-800 uppercase tracking-widest">QUITO (UIO) — Almacén {UIO_ALMACEN_PROV}</h3>
+              <h3 className="text-[11px] font-black text-slate-800 uppercase tracking-widest">CORTE ESPUMA UIO (Almacén 1006)</h3>
             </div>
             {renderDataTable(provUIO)}
           </div>
           <div className="space-y-4">
             <div className="flex items-center gap-3 px-1">
               <div className="w-2.5 h-5 rounded-sm bg-slate-400" />
-              <h3 className="text-[11px] font-black text-slate-800 uppercase tracking-widest">GUAYAQUIL (GYE) — Almacén {GYE_ALMACEN_PROV}</h3>
+              <h3 className="text-[11px] font-black text-slate-800 uppercase tracking-widest">CORTE ESPUMA GYE (Almacén 2006)</h3>
             </div>
             {renderDataTable(provGYE)}
           </div>
@@ -359,14 +389,14 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <div className="space-y-4">
             <div className="flex items-center gap-3 px-1">
               <div className="w-2.5 h-5 rounded-sm bg-indigo-600" />
-              <h3 className="text-[11px] font-black text-slate-800 uppercase tracking-widest">ORDENES PROCESO QUITO</h3>
+              <h3 className="text-[11px] font-black text-slate-800 uppercase tracking-widest">ORDENES PROCESO UIO</h3>
             </div>
             {renderDataTable(procesoUIO)}
           </div>
           <div className="space-y-4">
             <div className="flex items-center gap-3 px-1">
               <div className="w-2.5 h-5 rounded-sm bg-slate-400" />
-              <h3 className="text-[11px] font-black text-slate-800 uppercase tracking-widest">ORDENES PROCESO GUAYAQUIL</h3>
+              <h3 className="text-[11px] font-black text-slate-800 uppercase tracking-widest">ORDENES PROCESO GYE</h3>
             </div>
             {renderDataTable(procesoGYE)}
           </div>
