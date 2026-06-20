@@ -197,6 +197,44 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     };
   }, [extractMaterialInfo, tiemposEnsamblado]);
 
+  // --- DEFINICIÓN DE HELPERS Y MEMOS ANTES DEL RENDER ---
+
+  const defaultOpHour = useMemo(() => {
+    const clGroup = grupos.find(g => g.nombre_grupo.toLowerCase().includes('corte y laminado'));
+    const htRest = clGroup ? restriccionesArray.find(r => r.codigo_grupo === clGroup.codigo_grupo && r.nombre_restriccion === 'HORAS_TRABAJO') : null;
+    return safeNum(htRest?.valor_restriccion) || 8;
+  }, [grupos, restriccionesArray]);
+
+  const getMachineMTTO = useCallback((maquinaCode: string) => {
+    if (selectedDates.size === 0) return 0;
+    return mantenimientos
+      .filter(m => {
+        const mMachine = String(m.ID_MAQUINA || m.MAQUINA || '').toUpperCase();
+        if (!mMachine.includes(maquinaCode.toUpperCase()) && !maquinaCode.toUpperCase().includes(mMachine)) return false;
+        const dStr = String(m.FECHA_OT_PRG_INI || m.FECHA_INI || '').split('T')[0];
+        return selectedDates.has(dStr);
+      })
+      .reduce((sum, m) => sum + safeNum(calculateMTTOCapacity(m.FECHA_OT_PRG_INI || m.FECHA_INI, m.FECHA_OT_PRG_FIN || m.FECHA_FIN)), 0);
+  }, [mantenimientos, selectedDates]);
+
+  const provFiltradas = useMemo(() => {
+    return ordenes.filter(o => {
+      const itemAlmValue = String(o.ALMACEN || o.Almacen || '').trim();
+      if (itemAlmValue !== '1006' && itemAlmValue !== '2006') return false; 
+      const itemDateFull = String(o.FECHA || o.FECHAINICIO || '').trim();
+      const itemDate = itemDateFull.includes('T') ? itemDateFull.split('T')[0] : itemDateFull;
+      return selectedDates.size === 0 || selectedDates.has(itemDate);
+    });
+  }, [ordenes, selectedDates]);
+
+  const fertsFiltradasPorFecha = useMemo(() => {
+    return ordenesFert.filter(o => {
+      const dFull = String(o.FECHA || o.FECHAINICIO || '').trim();
+      const itemDate = dFull.includes('T') ? dFull.split('T')[0] : dFull;
+      return selectedDates.size === 0 || selectedDates.has(itemDate);
+    });
+  }, [ordenesFert, selectedDates]);
+
   const datesWithOrders = useMemo(() => {
     if (!mounted) return new Set<string>();
     const dates = new Set<string>();
@@ -257,16 +295,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
   useEffect(() => { if (mounted) initData(); }, [mounted, initData]);
 
-  const provFiltradas = useMemo(() => {
-    return ordenes.filter(o => {
-      const itemAlmValue = String(o.ALMACEN || o.Almacen || '').trim();
-      if (itemAlmValue !== '1006' && itemAlmValue !== '2006') return false; 
-      const itemDateFull = String(o.FECHA || o.FECHAINICIO || '').trim();
-      const itemDate = itemDateFull.includes('T') ? itemDateFull.split('T')[0] : itemDateFull;
-      return selectedDates.size === 0 || selectedDates.has(itemDate);
-    });
-  }, [ordenes, selectedDates]);
-
   const handleGenerateSalida = async () => {
     if (provFiltradas.length === 0) {
       addNotification('warning', 'No hay órdenes filtradas para generar el reporte.');
@@ -291,7 +319,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         let bomN3 = { code: '—', name: '—' };
 
         try {
-          // Explosión técnica para obtener niveles HALB
           const response = await serviciosService.getMaestroMaterialesExplosion(centro, fertCode, 1, 100);
           const bomData = response?.data?.data || response?.data || [];
           
@@ -783,30 +810,4 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       </Tabs>
     </>
   );
-
-  function getMachineMTTO(maquinaCode: string) {
-    if (selectedDates.size === 0) return 0;
-    return mantenimientos
-      .filter(m => {
-        const mMachine = String(m.ID_MAQUINA || m.MAQUINA || '').toUpperCase();
-        if (!mMachine.includes(maquinaCode.toUpperCase()) && !maquinaCode.toUpperCase().includes(mMachine)) return false;
-        const dStr = String(m.FECHA_OT_PRG_INI || m.FECHA_INI || '').split('T')[0];
-        return selectedDates.has(dStr);
-      })
-      .reduce((sum, m) => sum + safeNum(calculateMTTOCapacity(m.FECHA_OT_PRG_INI || m.FECHA_INI, m.FECHA_OT_PRG_FIN || m.FECHA_FIN)), 0);
-  }
-
-  const defaultOpHour = useMemo(() => {
-    const clGroup = grupos.find(g => g.nombre_grupo.toLowerCase().includes('corte y laminado'));
-    const htRest = clGroup ? restriccionesArray.find(r => r.codigo_grupo === clGroup.codigo_grupo && r.nombre_restriccion === 'HORAS_TRABAJO') : null;
-    return safeNum(htRest?.valor_restriccion) || 8;
-  }, [grupos, restriccionesArray]);
-
-  const fertsFiltradasPorFecha = useMemo(() => {
-    return ordenesFert.filter(o => {
-      const dFull = String(o.FECHA || o.FECHAINICIO || '').trim();
-      const itemDate = dFull.includes('T') ? dFull.split('T')[0] : dFull;
-      return selectedDates.size === 0 || selectedDates.has(itemDate);
-    });
-  }, [ordenesFert, selectedDates]);
 };
