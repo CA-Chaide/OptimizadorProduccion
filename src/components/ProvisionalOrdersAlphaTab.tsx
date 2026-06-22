@@ -58,9 +58,7 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
                 if (dataArray.length > 0) {
                     const keys = Object.keys(dataArray[0]);
                     setColumns(keys);
-                    logger.log(`[PlanTáctico] Datos recibidos: ${dataArray.length} registros. Campos detectados: ${keys.join(', ')}`, 'success');
-                } else {
-                    logger.log(`[PlanTáctico] El API respondió exitosamente pero no devolvió registros para esta página.`, 'warning');
+                    logger.log(`[PlanTáctico] Datos recibidos: ${dataArray.length} registros.`, 'success');
                 }
             } else {
                 setData([]);
@@ -93,33 +91,24 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
             .filter(Boolean);
     }, [restricciones]);
 
-    // Lógica de filtrado robusta
+    // Lógica de filtrado corregida aplicando restricciones
     const filteredData = useMemo(() => {
         if (!data || data.length === 0) return [];
         
         return data.filter(row => {
-            // 1. Filtro por responsables (RespCtrlProd)
+            // 1. Filtro por responsables (proveniente de restricciones)
+            let matchesResp = true;
             if (validRespCodes.length > 0) {
-                // Buscamos en todos los posibles nombres de campo para el responsable
-                const rowResp = String(
-                    row.RESPCONTROLPROD || 
-                    row.RespControlProd || 
-                    row.RESP_CTRL_PROD || 
-                    row.RESPCTRLPROD || 
-                    row.RespCtrlProd || 
-                    ''
-                ).trim();
-
-                // Normalización para comparación numérica (ej: "019" -> "19")
-                const normalize = (s: string) => s.replace(/^0+/, '');
-                const normalizedRowResp = normalize(rowResp);
-                const normalizedValidCodes = validRespCodes.map(normalize);
-
-                const matchesResponsible = validRespCodes.includes(rowResp) || 
-                                           normalizedValidCodes.includes(normalizedRowResp);
-
-                if (!matchesResponsible) return false;
+                // Buscamos en el campo RESPCONTROLPROD que devuelve el API Alpha
+                const rowResp = String(row.RESPCONTROLPROD || '').trim();
+                // Normalizamos (quitando ceros a la izquierda) para asegurar coincidencia
+                matchesResp = validRespCodes.some(code => 
+                    rowResp === code || 
+                    rowResp.replace(/^0+/, '') === code.replace(/^0+/, '')
+                );
             }
+
+            if (!matchesResp) return false;
 
             // 2. Filtro por buscador manual (searchTerm)
             if (!searchTerm.trim()) return true;
