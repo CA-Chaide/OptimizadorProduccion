@@ -46,7 +46,7 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
     const fetchData = async (page: number, rows: number) => {
         setIsLoading(true);
         try {
-            const response = await serviciosService.OrdenesProvisionalesAlphaPaginados(page, rows);
+            const response = await serviciosService.getOrdenesProvisionalesAlphaPaginados(page, rows);
             if (response && response.data) {
                 const dataArray = Array.isArray(response.data) ? response.data : [response.data];
                 setData(dataArray);

@@ -394,7 +394,7 @@ export const serviciosService = {
     return response.json();
   },
 
-  async OrdenesProvisionalesAlphaPaginados(page: number, rowsPerPage: number): Promise<BodyResponse<any>> {
+  async getOrdenesProvisionalesAlphaPaginados(page: number, rowsPerPage: number): Promise<BodyResponse<any>> {
     const response = await fetch(API_URL + "/OrdenesProvisionalesAlphaPaginadas", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -407,5 +407,9 @@ export const serviciosService = {
       throw new Error(errorBody.message || "Failed to fetch Ordenes Alpha");
     }
     return response.json();
+  },
+
+  async OrdenesProvisionalesAlphaPaginados(page: number, rowsPerPage: number): Promise<BodyResponse<any>> {
+    return this.getOrdenesProvisionalesAlphaPaginados(page, rowsPerPage);
   },
 };
