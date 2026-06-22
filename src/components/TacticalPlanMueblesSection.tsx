@@ -14,6 +14,7 @@ import { CuboInventariosTab } from './CuboInventariosTab';
 import { CuboInventariosTelasTab } from './CuboInventariosTelasTab';
 import { HabilidadesMueblesTab } from './HabilidadesMueblesTab';
 import { PendientesTotalesTab } from './PendientesTotalesTab';
+import { ProvisionalOrdersAlphaTab } from './ProvisionalOrdersAlphaTab';
 import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
 import { serviciosService } from '@/services/servicios.service';
@@ -209,17 +210,18 @@ export const TacticalPlanMueblesSection: React.FC = () => {
       </div>
 
       <Tabs defaultValue="plan" className="w-full">
-          <TabsList className="grid w-full grid-cols-5 h-auto p-2 bg-muted border border-dashed border-gray-300 rounded-lg gap-2">
-              <TabsTrigger value="grupos" className="text-sm py-2 px-1">Grupos</TabsTrigger>
-              <TabsTrigger value="restricciones" className="text-sm py-2 px-1">Restricciones</TabsTrigger>
-              <TabsTrigger value="ordenes" className="text-sm py-2 px-1">Ord. Prev.</TabsTrigger>
-              <TabsTrigger value="ordenesFert" className="text-sm py-2 px-1">Ord. Fert</TabsTrigger>
-              <TabsTrigger value="tiemposMuebles" className="text-sm py-2 px-1">Tiempos</TabsTrigger>
-              <TabsTrigger value="habilidades" className="text-sm py-2 px-1">Habilidades</TabsTrigger>
-              <TabsTrigger value="cascos" className="text-sm py-2 px-1">Cascos</TabsTrigger>
-              <TabsTrigger value="telas" className="text-sm py-2 px-1">Telas</TabsTrigger>
-              <TabsTrigger value="pendientes" className="text-sm py-2 px-1">PEND TOTALES</TabsTrigger>
-              <TabsTrigger value="plan" className="text-sm py-2 px-1 font-bold">PLAN</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-6 h-auto p-2 bg-muted border border-dashed border-gray-300 rounded-lg gap-2">
+              <TabsTrigger value="grupos" className="text-xs py-2 px-1">Grupos</TabsTrigger>
+              <TabsTrigger value="restricciones" className="text-xs py-2 px-1">Restricciones</TabsTrigger>
+              <TabsTrigger value="ordenes" className="text-xs py-2 px-1">Ord. Prev.</TabsTrigger>
+              <TabsTrigger value="ordenesFert" className="text-xs py-2 px-1">Ord. Fert</TabsTrigger>
+              <TabsTrigger value="tiemposMuebles" className="text-xs py-2 px-1">Tiempos</TabsTrigger>
+              <TabsTrigger value="habilidades" className="text-xs py-2 px-1">Habilidades</TabsTrigger>
+              <TabsTrigger value="cascos" className="text-xs py-2 px-1">Cascos</TabsTrigger>
+              <TabsTrigger value="telas" className="text-xs py-2 px-1">Telas</TabsTrigger>
+              <TabsTrigger value="pendientes" className="text-xs py-2 px-1">PEND TOTALES</TabsTrigger>
+              <TabsTrigger value="planTactivo" className="text-xs py-2 px-1">PLAN TÁCTICO</TabsTrigger>
+              <TabsTrigger value="plan" className="text-xs py-2 px-1 font-bold col-span-2">PLAN</TabsTrigger>
           </TabsList>
           
           <TabsContent value="grupos" className="mt-4">
@@ -309,6 +311,19 @@ export const TacticalPlanMueblesSection: React.FC = () => {
                   </CardHeader>
                   <CardContent>
                       <PendientesTotalesTab />
+                  </CardContent>
+              </Card>
+          </TabsContent>
+          <TabsContent value="planTactivo" className="mt-4">
+              <Card>
+                  <CardHeader>
+                      <CardTitle>Plan Táctico (Alpha)</CardTitle>
+                      <CardDescription>
+                          Exploración avanzada de órdenes previsionales utilizando el método Alpha.
+                      </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                      <ProvisionalOrdersAlphaTab />
                   </CardContent>
               </Card>
           </TabsContent>
