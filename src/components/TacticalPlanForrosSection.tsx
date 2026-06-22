@@ -60,6 +60,26 @@ const NOCTURNA_OPTIONS = [
   { value: "12", label: "12 Horas" },
 ];
 
+// Grupos de estaciones para la pestaña de Personal & Turnos
+const workstationGroups = [
+  {
+    title: "Células de Acolchado y Tapas",
+    items: ["ACOLCHADORA02", "ACOLCHADORA06", "ACOLCHADORA07", "ACOLCHADORA08", "ACOLCHADORA09", "ACOLCHADORA10", "ACOLCHADORA13", "COSEDORA-ACH02", "COSEDORA-ACH06", "COSEDORA-ACH07", "COSEDORA-ACH08", "COSEDORA-ACH09", "COSEDORA-ACH10", "PEGADORA-ACH02", "PEGADORA-ACH06", "PEGADORA-ACH07", "PEGADORA-ACH08", "PEGADORA-ACH09", "PEGADORA-ACH10"]
+  },
+  {
+    title: "Procesos de Bandas y Bordado",
+    items: ["ACOLCHADORA11", "ACOLCHADORA12", "BORDADORA-BANDA01", "RMTB-01", "RMTB-02", "RMTB-M", "COS3D", "ENCINTADOBD"]
+  },
+  {
+    title: "Interiores, Bases y Corte",
+    items: ["INTP-PR", "INTP-PT", "INTP-F", "MTBS1", "MTBS", "CT-BAN", "CT-BSC", "CT-CHN", "CT-INT", "TTCF", "TTSUP"]
+  },
+  {
+    title: "Ensamble de Forros",
+    items: ["FORRO-COLCHONES", "FBASE-01", "FBASE-02"]
+  }
+];
+
 interface WorkstationConfig {
   machine: string;
   isDayActive: boolean;
@@ -197,7 +217,7 @@ const MachineCard = React.memo(({
                 const qty = Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0);
                 const tSeconds = calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', qty, o);
                 const tHours = tSeconds / 3600;
-                const materialCode = o['CodMaterial'] || o['CodMaterial'] || normalizeMaterialCode(o['MATERIAL'] || '');
+                const materialCode = o['CodMaterial'] || normalizeMaterialCode(o['MATERIAL'] || '');
                 const materialName = o['NOMBRE'] || o['TEXTOMATERIAL'] || o['Material'] || '—';
                 const fechaInicio = o['FECHAINICIO'] || o['FECHA'] || '—';
                 
@@ -264,7 +284,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [targetDate1000, setTargetDate1000] = useState<string>("");
   const [targetDate2000, setTargetDate2000] = useState<string>("");
   
-  // Estados para filtro de fecha en tableros técnicos
+  // Filtros de fecha para tableros técnicos
   const [techStartDate, setTechStartDate] = useState<string>("");
   const [techEndDate, setTechEndDate] = useState<string>("");
 
@@ -360,7 +380,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
       if (!targetDate1000) setTargetDate1000(addBusinessDays(today, 3));
       if (!targetDate2000) setTargetDate2000(addBusinessDays(today, 2));
       
-      // Inicializar filtros de tableros técnicos: Hoy y Mañana laboral
+      // Filtros técnicos: Hoy y Mañana laboral
       if (!techStartDate) setTechStartDate(today.toISOString().split('T')[0]);
       if (!techEndDate) setTechEndDate(addBusinessDays(today, 1));
     }
@@ -426,7 +446,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     setBomDownloadProgress(0);
     try {
       const rowsPerPage = 5000;
-      // FIRST CALL: get total and first batch
+      // FIRST CALL
       const firstResponse = await serviciosService.ReporteExplosionMateriales(1, rowsPerPage);
       const firstData = firstResponse.data || [];
       const total = firstResponse.totalRegistros || firstResponse.totalRecords || firstResponse.totalRows || 0;
@@ -434,7 +454,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
       let allData = [...firstData];
       const totalPages = Math.ceil(total / rowsPerPage);
       
-      // SEQUENTIAL LOADING: wait for each batch before requesting next
+      // SEQUENTIAL LOADING
       if (totalPages > 1) {
         for (let p = 2; p <= totalPages; p++) {
           setBomDownloadProgress(Math.round(((p - 1) / totalPages) * 100));
@@ -561,7 +581,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return filtered;
   }, [ordenesPrevisionalesData, allowedRespCodes]);
   
-  // Órdenes previsionales filtradas por RANGO DE FECHA para tableros técnicos
+  // Órdenes previsionales filtradas por RANGO DE FECHA
   const techFilteredOrdenes = useMemo(() => {
     return filteredOrdenesPrevisionales.filter(order => {
       const dateVal = String(order['FECHAINICIO'] || order['FECHA'] || '').split('T')[0];
@@ -1185,7 +1205,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="lista-materiales">
-          <Card className="rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden shadow-sm">
+          <Card className="rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden shadow-sm border-none">
             <CardHeader className="bg-slate-50/50 border-b border-slate-200 p-10">
               <div className="flex items-center justify-between">
                 <div>
@@ -1247,7 +1267,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="versiones-fabricacion">
-          <Card className="rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden shadow-sm">
+          <Card className="rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden shadow-sm border-none">
             <CardHeader className="bg-slate-50/50 border-b border-slate-200 p-10">
               <div className="flex items-center justify-between">
                 <div>
