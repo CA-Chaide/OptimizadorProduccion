@@ -488,6 +488,7 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
                       <th className="px-4 py-3 text-right text-[10px] font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50/30">Total Cantidad</th>
                       <th className="px-4 py-3 text-right text-[10px] font-bold text-emerald-800 uppercase tracking-wider bg-emerald-100/20">Tiempo ordFab</th>
                       <th className="px-4 py-3 text-right text-[10px] font-bold text-amber-800 uppercase tracking-wider bg-amber-100/20">Tiempo ordPrev</th>
+                      <th className="px-4 py-3 text-right text-[10px] font-bold text-indigo-800 uppercase tracking-wider bg-indigo-100/20">Tiempo Total</th>
                     </>
                   )}
                   {!isCompact && (
@@ -515,6 +516,7 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
                   // Cálculos de tiempo en horas: (tiempo_min * cantidad) / 60
                   const tiempoOrdFab = (Number(row.Tiempo_Min || 0) * cantOrdFab) / 60;
                   const tiempoOrdPrev = (Number(row.Tiempo_Min || 0) * cantOrdPrev) / 60;
+                  const tiempoTotalHoras = tiempoOrdFab + tiempoOrdPrev;
 
                   return (
                     <tr key={`${row.CodMaterial}-${idx}`} className="hover:bg-gray-50 transition-colors">
@@ -541,6 +543,9 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
                           <td className="px-4 py-3 whitespace-nowrap text-xs font-bold text-right text-amber-800 bg-amber-100/10">
                             {tiempoOrdPrev > 0 ? tiempoOrdPrev.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0'}
                           </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-xs font-bold text-right text-indigo-800 bg-indigo-100/10">
+                            {tiempoTotalHoras > 0 ? tiempoTotalHoras.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0'}
+                          </td>
                         </>
                       )}
                       {!isCompact && (
@@ -561,7 +566,7 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
                   );
                 }) : (
                   <tr>
-                    <td colSpan={isCompact ? 9 : 10} className="px-6 py-12 text-center text-gray-400 italic">
+                    <td colSpan={isCompact ? 10 : 10} className="px-6 py-12 text-center text-gray-400 italic">
                       <div className="flex flex-col items-center justify-center gap-2">
                         <AlertCircle className="w-8 h-8 text-gray-300" />
                         <span>No se encontraron registros técnicos para el centro seleccionado.</span>
