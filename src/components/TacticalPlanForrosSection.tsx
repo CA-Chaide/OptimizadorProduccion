@@ -446,7 +446,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     setBomDownloadProgress(0);
     try {
       const rowsPerPage = 5000;
-      // FIRST CALL - SEQUENTIAL LOADING REQUIRED
+      // PRIMERA LLAMADA - CARGA SECUENCIAL REQUERIDA
       const firstResponse = await serviciosService.ReporteExplosionMateriales(1, rowsPerPage);
       const firstData = firstResponse.data || [];
       const total = firstResponse.totalRegistros || firstResponse.totalRecords || firstResponse.totalRows || 0;
@@ -454,7 +454,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
       let allData = [...firstData];
       const totalPages = Math.ceil(total / rowsPerPage);
       
-      // SEQUENTIAL LOADING WITH AWAIT TO AVOID SERVER SATURATION
+      // CARGA SECUENCIAL CON AWAIT PARA EVITAR SATURAR EL SERVIDOR
       if (totalPages > 1) {
         for (let p = 2; p <= totalPages; p++) {
           setBomDownloadProgress(Math.round(((p - 1) / totalPages) * 100));
