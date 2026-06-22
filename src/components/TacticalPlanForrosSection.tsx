@@ -61,11 +61,19 @@ const NOCTURNA_OPTIONS = [
 // Grupos de estaciones para la pestaña de Personal & Turnos
 const workstationGroups = [
   {
-    title: "Células de Acolchado y Tapas",
+    title: "Acolchado y Tapas",
     items: [
-      "ACOLCHADORA02", "ACOLCHADORA06", "ACOLCHADORA07", "ACOLCHADORA08", "ACOLCHADORA09", "ACOLCHADORA10", "ACOLCHADORA13", 
+      // Organizados por Pares (ACOLCHADORA + COSEDORA correspondiente)
+      "ACOLCHADORA02", "COSEDORA-ACH02",
+      "ACOLCHADORA06", "COSEDORA-ACH06",
+      "ACOLCHADORA07", "COSEDORA-ACH07",
+      "ACOLCHADORA08", "COSEDORA-ACH08",
+      "ACOLCHADORA09", "COSEDORA-ACH09",
+      "ACOLCHADORA10", "COSEDORA-ACH10",
+      "ACOLCHADORA13", "COSEDORA-ACH13",
+      
+      // Máquinas que no empatan o variantes técnicas al final del grupo
       "ACH02", "ACH06", "ACH07", "ACH08", "ACH09", "ACH10", "ACH13",
-      "COSEDORA-ACH02", "COSEDORA-ACH06", "COSEDORA-ACH07", "COSEDORA-ACH08", "COSEDORA-ACH09", "COSEDORA-ACH10", "COSEDORA-ACH13",
       "PEGADORA-ACH02", "PEGADORA-ACH06", "PEGADORA-ACH07", "PEGADORA-ACH08", "PEGADORA-ACH09", "PEGADORA-ACH10", "PEGADORA-ACH13",
       "PEF02", "PEF06", "PEF07", "PEF08", "PEF09", "PEF10", "PEF13"
     ]
