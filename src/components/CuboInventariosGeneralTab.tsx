@@ -80,6 +80,7 @@ export const CuboInventariosGeneralTab: React.FC = () => {
                         findCol('Material'), 
                         findCol('Descripcion'), 
                         findCol('StockActual'), 
+                        'STOCK DISPONIBLE', // Nueva columna calculada
                         findCol('RESPCTRLPROD'), 
                         findCol('Centro'), 
                         findCol('ClaseAprovisionam')
@@ -109,19 +110,20 @@ export const CuboInventariosGeneralTab: React.FC = () => {
 
         return allData.filter(row => {
             // Regla 1: No muestres nada que empiece con "PTBO" de la columna "DESCRIPCION"
-            // Buscamos variaciones del nombre de la columna
-            const descValue = String(row.Descripcion || row.DESCRIPCION || row.descripcion || '').trim().toUpperCase();
+            const descKey = Object.keys(row).find(k => k.toUpperCase() === 'DESCRIPCION');
+            const descValue = String(row[descKey || ''] || '').trim().toUpperCase();
             if (descValue.startsWith('PTBO')) return false;
             
             // Regla 2: Muestra solamente la información de "006" y "019" de la columna "RESPCTRLPROD"
-            // Buscamos variaciones del nombre de la columna
-            const respValue = String(row.RESPCTRLPROD || row.RespControlProd || row.RespCtrlProd || row.RESP_CTRL_PROD || '').trim();
+            const respKey = Object.keys(row).find(k => k.toUpperCase() === 'RESPCTRLPROD');
+            const respValue = String(row[respKey || ''] || '').trim();
             if (respValue !== '006' && respValue !== '019') return false;
             
             // Filtro de búsqueda manual (buscador)
             if (searchTerm.trim()) {
                 const term = searchTerm.toLowerCase();
-                const material = String(row.Material || row.MATERIAL || '').toLowerCase();
+                const materialKey = Object.keys(row).find(k => k.toUpperCase() === 'MATERIAL');
+                const material = String(row[materialKey || ''] || '').toLowerCase();
                 return material.includes(term) || descValue.toLowerCase().includes(term);
             }
             
@@ -182,6 +184,9 @@ export const CuboInventariosGeneralTab: React.FC = () => {
                 <Badge variant="secondary" className="bg-white border-indigo-300 text-indigo-700 text-[10px] font-bold">
                     EXCLUYE: PTBO*
                 </Badge>
+                <Badge variant="secondary" className="bg-indigo-600 text-white text-[10px] font-bold">
+                    CÁLCULO: STOCK DISPONIBLE = ACTUAL - SEGURIDAD
+                </Badge>
                 {isLoading && (
                     <div className="flex items-center gap-2 text-xs text-indigo-600 ml-auto animate-pulse font-medium">
                         <Loader2 className="w-3 h-3 animate-spin" />
@@ -240,7 +245,10 @@ export const CuboInventariosGeneralTab: React.FC = () => {
                             <thead className="bg-gray-100 sticky top-0 z-10 shadow-sm">
                                 <tr className="border-b-2 border-gray-300">
                                     {columns.map(col => (
-                                        <TableHead key={col} className="text-center font-bold text-gray-700 uppercase tracking-wider px-4 py-2.5 border-r border-dashed border-gray-300 last:border-r-0 whitespace-nowrap bg-gray-50">
+                                        <TableHead key={col} className={cn(
+                                            "text-center font-bold text-gray-700 uppercase tracking-wider px-4 py-2.5 border-r border-dashed border-gray-300 last:border-r-0 whitespace-nowrap bg-gray-50",
+                                            col === 'STOCK DISPONIBLE' && "bg-indigo-600 text-white border-white border-solid"
+                                        )}>
                                             {col.replace(/_/g, ' ')}
                                         </TableHead>
                                     ))}
@@ -250,21 +258,34 @@ export const CuboInventariosGeneralTab: React.FC = () => {
                                 {displayedData.map((row, idx) => (
                                     <tr key={idx} className="hover:bg-blue-50/40 transition-colors">
                                         {columns.map((col, colIndex) => {
-                                            let val = row[col];
+                                            let val: any;
                                             const isMaterial = col.toUpperCase().includes('MATERIAL');
                                             const isResp = col.toUpperCase().includes('RESP');
                                             const isStock = col.toUpperCase().includes('STOCK');
+                                            const isAvailable = col === 'STOCK DISPONIBLE';
+
+                                            if (isAvailable) {
+                                              // Cálculo Dinámico: Actual - Seguridad
+                                              const keys = Object.keys(row);
+                                              const saKey = keys.find(k => k.toUpperCase() === 'STOCKACTUAL');
+                                              const ssKey = keys.find(k => k.toUpperCase() === 'STOCKSEGURIDAD');
+                                              val = Number(row[saKey || ''] || 0) - Number(row[ssKey || ''] || 0);
+                                            } else {
+                                              val = row[col];
+                                            }
 
                                             if (isMaterial) val = String(val).replace(/^0+/, '');
                                             
                                             return (
                                                 <TableCell key={`${idx}-${col}`} className={cn(
                                                     "px-4 py-2 text-center border-r border-dashed border-gray-200 last:border-r-0 whitespace-nowrap",
-                                                    isStock && Number(val) > 0 && "font-bold text-emerald-700 bg-emerald-50/20",
+                                                    (isStock || isAvailable) && Number(val) > 0 && "font-bold text-emerald-700 bg-emerald-50/20",
+                                                    (isStock || isAvailable) && Number(val) < 0 && "font-bold text-red-700 bg-red-50/20",
                                                     isMaterial && "font-mono font-bold text-indigo-700",
-                                                    isResp && "font-bold text-blue-700 bg-blue-50/20"
+                                                    isResp && "font-bold text-blue-700 bg-blue-50/20",
+                                                    isAvailable && "bg-indigo-50 border-x-2 border-indigo-200"
                                                 )}>
-                                                    {String(val ?? '-')}
+                                                    {typeof val === 'number' ? val.toLocaleString() : String(val ?? '-')}
                                                 </TableCell>
                                             );
                                         })}
