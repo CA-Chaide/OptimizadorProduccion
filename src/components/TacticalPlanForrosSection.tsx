@@ -63,7 +63,7 @@ const workstationGroups = [
   {
     title: "Acolchado y Tapas",
     items: [
-      // Organizados por Pares (ACOLCHADORA + COSEDORA correspondiente)
+      // Estructura de Pares (ACOLCHADORA + COSEDORA correspondiente)
       "ACOLCHADORA02", "COSEDORA-ACH02",
       "ACOLCHADORA06", "COSEDORA-ACH06",
       "ACOLCHADORA07", "COSEDORA-ACH07",
@@ -92,7 +92,7 @@ const workstationGroups = [
     items: [
       "INTP-PR", "INTP-PT", "INTP-F", "INTPF", "INTPF1", "INTPF2", 
       "COSEDORA-INTPF", "COSEDORA-INTP-F", "COSEDORA-INTPF1", "COSEDORA-INTPF2",
-      "COSEDORA-INTPR", "COSEDORA-INTPT",
+      "COSEDORA-INTPR", "COSEDORA-INTPT", "COSEDORA-INTP-PR", "COSEDORA-INTP-PT",
       "MTBS1", "MTBS", "COSEDORA-BSC-CC", "COSEDORA-BSCTP", "COSEDORA-MTBS1",
       "CT-BAN", "CT-BSC", "CT-CHN", "CT-INT", "TTCF", "TTSUP", "TELAS", "FUNDAS",
       "COSEDORA-TTSUP-CHN"
@@ -100,7 +100,7 @@ const workstationGroups = [
   },
   {
     title: "Ensamble de Forros",
-    items: ["FORRO-COLCHONES", "FBASE-01", "FBASE-02", "FORRO-BASE-BCAMAS"]
+    items: ["FORRO-COLCHONES", "FBASE-01", "FBASE-02", "FORRO-BASE-BCAMAS", "FORRO-BASE-BCAMA"]
   }
 ];
 
@@ -361,6 +361,14 @@ export const TacticalPlanForrosSection: React.FC = () => {
     if (!pn || pn === '—' || pn === 'NULL') return '';
     if (hojaRutaCacheRef.current[pn]) return hojaRutaCacheRef.current[pn];
     
+    // Primero buscar en el Maestro KPI (Prioridad técnica solicitada)
+    const kpiMatch = kpiMaestroData.find(k => String(k.Categoria || '').toUpperCase().trim() === pn);
+    if (kpiMatch && kpiMatch.HRUTA) {
+      const result = String(kpiMatch.HRUTA).trim().toUpperCase();
+      hojaRutaCacheRef.current[pn] = result;
+      return result;
+    }
+    
     let result = '';
     if (pn === 'ACOLCHADORA09') result = 'HR-ACH09';
     else if (pn === 'COSEDORA-ACH02') result = 'HR-PEF02';
@@ -377,16 +385,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
     
     if (!result) {
-      for (const key in kpiIndexRef.current) {
-        const kpi = kpiIndexRef.current[key];
-        if (String(kpi.Categoria || '').toUpperCase().trim() === pn) {
-          result = kpi.HRUTA;
-          break;
-        }
-      }
-    }
-    
-    if (!result) {
       const numMatch = pn.match(/\d+/);
       const num = numMatch ? numMatch[0].padStart(2, '0') : '';
       if (pn.includes('COSEDORA') || pn.includes('PEGADORA') || pn.includes('PEF')) result = `HR-PEF${num}`;
@@ -396,7 +394,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     
     hojaRutaCacheRef.current[pn] = result;
     return result;
-  }, []);
+  }, [kpiMaestroData]);
 
   useEffect(() => {
     if (isMounted) {
@@ -478,7 +476,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
       const totalPages = Math.ceil(total / rowsPerPage);
       
       if (totalPages > 1) {
-        // Carga secuencial para no saturar el servidor
+        // Carga secuencial estricta solicitada
         for (let p = 2; p <= totalPages; p++) {
           setBomDownloadProgress(Math.round(((p - 1) / totalPages) * 100));
           const nextResponse = await serviciosService.ReporteExplosionMateriales(p, rowsPerPage);
@@ -648,6 +646,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return match ? String(match.PuestoTrabajo || match.nombre_estacion || match.Maquina || '').trim().toUpperCase() : '';
   }, [tiemposProduccion, normalizeMaterialCode]);
 
+  // Columna PUESTO DE TRABAJO alimentada por Categoría / Puesto de KPI Maestro
   const uniquePuestos = useMemo(() => {
     const pSet = new Set<string>();
     kpiMaestroData.forEach(kpi => {
@@ -965,23 +964,26 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {uniquePuestos.map((p, idx) => {
+                      const hrMatch = kpiMaestroData.find(k => String(k.Categoria || '').trim().toUpperCase() === p);
+                      const hrCodeFromMaestro = hrMatch?.HRUTA || 'S/HR';
+
                       const orders = filteredOrdenesPrevisionales.filter(o => {
-                        const targetHR = mapToHojaRutaInternal(p).trim().toUpperCase();
                         const orderHR = String(o['MAQUINA'] || o['Maquina'] || '').trim().toUpperCase();
-                        return orderHR === targetHR;
+                        return orderHR === hrCodeFromMaestro;
                       });
+
                       const totalUnits = orders.reduce((sum, o) => sum + Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0), 0);
                       const totalTimeHours = orders.reduce((sum, o) => sum + calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0), o), 0) / 3600;
                       const config = workstationConfigs[p] || { machine: p, isDayActive: true, isNightActive: false };
                       const capacityHours = (config.isDayActive ? horasNetasDiurnasVal : 0) + (config.isNightActive ? horasNetasNocturnasVal : 0);
                       const utilization = capacityHours > 0 ? (totalTimeHours / capacityHours) * 100 : 0;
-                      const hrCode = mapToHojaRutaInternal(p);
+                      
                       return (
                         <tr key={idx} className="hover:bg-slate-50 transition-all">
                           <td className="px-8 py-5 font-black text-slate-900 uppercase whitespace-nowrap">{p}</td>
                           <td className="px-8 py-5 font-mono font-black text-indigo-700 uppercase whitespace-nowrap">
                             <Badge className="bg-indigo-50 text-indigo-700 border-indigo-200 font-bold px-3 py-1 rounded-lg">
-                              {hrCode || 'S/HR'}
+                              {hrCodeFromMaestro}
                             </Badge>
                           </td>
                           <td className="px-8 py-5 text-right font-mono font-black text-slate-800">{totalUnits.toLocaleString()}</td>
@@ -1255,7 +1257,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
               {isLoadingListaMateriales && (
                 <div className="mt-6 space-y-2">
                   <div className="flex justify-between text-xs font-black text-emerald-700 uppercase tracking-widest">
-                    <span>Sincronizando explosión de materiales...</span>
+                    <span>Descargando explosión de materiales (secuencial)...</span>
                     <span>{bomDownloadProgress}%</span>
                   </div>
                   <Progress value={bomDownloadProgress} className="h-2 bg-emerald-100 [&>div]:bg-emerald-600" />
@@ -1267,7 +1269,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 {isLoadingListaMateriales && listaMaterialesData.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-32 space-y-4">
                     <Loader2 className="w-12 h-12 animate-spin text-emerald-600" />
-                    <span className="text-slate-500 font-black uppercase tracking-widest text-xs">Descargando reporte completo secuencialmente...</span>
+                    <span className="text-slate-500 font-black uppercase tracking-widest text-xs">Procesando bloques de datos...</span>
                   </div>
                 ) : listaMaterialesData.length > 0 ? (
                   <table className="w-full text-[11px] border-collapse">
@@ -1477,7 +1479,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       <tr>
                         <th className="px-6 py-4">Código Material</th>
                         <th className="px-6 py-4">HOJA DE RUTA</th>
-                        <th className="px-6 py-4 text-right bg-indigo-900/40">T. Promedio (seg)</th>
+                        <th className="px-6 py-4 text-right bg-indigo-950/20">T. Promedio (seg)</th>
                         <th className="px-6 py-4">Categoría / Puesto</th>
                       </tr>
                     </thead>
