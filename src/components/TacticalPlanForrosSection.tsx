@@ -92,13 +92,15 @@ const workstationGroups = [
     items: [
       "INTP-PR", "INTP-PT", "INTP-F", "INTPF", "INTPF1", "INTPF2", 
       "COSEDORA-INTPF", "COSEDORA-INTP-F", "COSEDORA-INTPF1", "COSEDORA-INTPF2",
+      "COSEDORA-INTPR", "COSEDORA-INTPT",
       "MTBS1", "MTBS", "COSEDORA-BSC-CC", "COSEDORA-BSCTP", "COSEDORA-MTBS1",
-      "CT-BAN", "CT-BSC", "CT-CHN", "CT-INT", "TTCF", "TTSUP", "TELAS", "FUNDAS"
+      "CT-BAN", "CT-BSC", "CT-CHN", "CT-INT", "TTCF", "TTSUP", "TELAS", "FUNDAS",
+      "COSEDORA-TTSUP-CHN"
     ]
   },
   {
     title: "Ensamble de Forros",
-    items: ["FORRO-COLCHONES", "FBASE-01", "FBASE-02"]
+    items: ["FORRO-COLCHONES", "FBASE-01", "FBASE-02", "FORRO-BASE-BCAMAS"]
   }
 ];
 
@@ -1093,7 +1095,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
               p.includes('BSC-CC') ||
               p.includes('BSCTP') ||
               p.includes('COSEDORA-INTPF') ||
-              p.includes('COSEDORA-BSC-CC')
+              p.includes('COSEDORA-BSC-CC') ||
+              p.includes('COSEDORA-INTPR') ||
+              p.includes('COSEDORA-INTPT') ||
+              p.includes('COSEDORA-TTSUP-CHN')
             ).map((pName) => (
               <MachineCard 
                 key={pName} 
