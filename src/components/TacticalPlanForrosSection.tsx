@@ -96,7 +96,7 @@ const workstationGroups = [
       "COSEDORA-INTPR", "COSEDORA-INTPT", "COSEDORA-INTP-PR", "COSEDORA-INTP-PT",
       "MTBS1", "MTBS", "COSEDORA-BSC-CC", "COSEDORA-BSCTP", "COSEDORA-MTBS1",
       "CT-BAN", "CT-BSC", "CT-CHN", "CT-INT", "TTCF", "TTSUP", "TELAS", "FUNDAS",
-      "COSEDORA-TTSUP-CHN", "CORTE-ESPUMA", "CORTELA10"
+      "COSEDORA-TTCHN", "COSEDORA-TTSUP-CHN", "CORTE-ESPUMA", "CORTELA10"
     ]
   },
   {
@@ -376,6 +376,13 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
     if (pn === 'CORTELA10') {
       const res = 'HR-CTBSC / HR-CTCHN / HR-CTINT / HR-CTBAN';
+      hojaRutaCacheRef.current[pn] = res;
+      return res;
+    }
+
+    // CORRECCIÓN SOLICITADA: COSEDORA-TTCHN A HR-TTCF
+    if (pn === 'COSEDORA-TTCHN' || pn === 'TTCF') {
+      const res = 'HR-TTCF';
       hojaRutaCacheRef.current[pn] = res;
       return res;
     }
@@ -1160,6 +1167,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
               p.includes('COSEDORA-INTPR') ||
               p.includes('COSEDORA-INTPT') ||
               p.includes('COSEDORA-TTSUP-CHN') ||
+              p.includes('COSEDORA-TTCHN') ||
               p.includes('CORTE-ESPUMA') ||
               p.includes('CORTELA10')
             ).map((pName) => (
