@@ -8,14 +8,19 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
+import type { Restriccion } from '@/types/interfaces';
 
 interface OrderAlphaItem {
   [key: string]: any;
 }
 
+interface ProvisionalOrdersAlphaTabProps {
+  restricciones?: Restriccion[];
+}
+
 const ROWS_PER_PAGE_OPTIONS = [20, 50, 100];
 
-export const ProvisionalOrdersAlphaTab: React.FC = () => {
+export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps> = ({ restricciones = [] }) => {
     const { addNotification } = useAppContext();
     const [isMounted, setIsMounted] = useState(false);
     const [data, setData] = useState<OrderAlphaItem[]>([]);
@@ -64,17 +69,37 @@ export const ProvisionalOrdersAlphaTab: React.FC = () => {
         }
     }, [currentPage, rowsPerPage, isMounted]);
 
-    // Filtrado local
+    // Obtener códigos válidos de responsabilidad desde las restricciones
+    const validRespCodes = useMemo(() => {
+        const respRestriccion = restricciones.find(r => r.nombre_restriccion === 'RespCtrlProd');
+        if (!respRestriccion || !respRestriccion.valor_restriccion) return [];
+        
+        // Separar por & o ,
+        return respRestriccion.valor_restriccion
+            .split(/[&,]/)
+            .map(code => String(code).trim())
+            .filter(Boolean);
+    }, [restricciones]);
+
+    // Filtrado local y por restricción
     const filteredData = useMemo(() => {
         if (!data) return [];
-        if (!searchTerm.trim()) return data;
-        const term = searchTerm.toLowerCase();
-        return data.filter(row => 
-            Object.values(row).some(val => 
+        
+        return data.filter(row => {
+            // 1. Filtro por restricción RespCtrlProd
+            if (validRespCodes.length > 0) {
+                const rowResp = String(row.RESPCONTROLPROD || row.RespControlProd || '').trim();
+                if (!validRespCodes.includes(rowResp)) return false;
+            }
+
+            // 2. Filtro por buscador manual
+            if (!searchTerm.trim()) return true;
+            const term = searchTerm.toLowerCase();
+            return Object.values(row).some(val => 
                 String(val).toLowerCase().includes(term)
-            )
-        );
-    }, [data, searchTerm]);
+            );
+        });
+    }, [data, searchTerm, validRespCodes]);
 
     const totalPages = Math.max(1, Math.ceil(totalRecords / rowsPerPage));
 
@@ -115,18 +140,32 @@ export const ProvisionalOrdersAlphaTab: React.FC = () => {
     return (
         <div className="space-y-4">
             <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
-                <div className="relative w-full md:w-96">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                    <Input 
-                        placeholder="Buscar en el plan táctico..." 
-                        className="pl-10"
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                    />
+                <div className="flex flex-col gap-2 flex-1">
+                    <div className="relative w-full md:w-96">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                        <Input 
+                            placeholder="Buscar en el plan táctico..." 
+                            className="pl-10"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                        />
+                    </div>
+                    {validRespCodes.length > 0 && (
+                        <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-bold text-gray-500 uppercase">Filtro Responsables:</span>
+                            <div className="flex gap-1">
+                                {validRespCodes.map(code => (
+                                    <Badge key={code} variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200 text-[10px] px-2 py-0">
+                                        {code}
+                                    </Badge>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </div>
                 <div className="flex items-center gap-2 text-sm text-gray-500">
                     <LayoutDashboard className="w-4 h-4" />
-                    <span>Total Registros: <strong>{totalRecords.toLocaleString()}</strong></span>
+                    <span>Registros en página: <strong>{filteredData.length}</strong></span>
                 </div>
             </div>
 
@@ -162,6 +201,13 @@ export const ProvisionalOrdersAlphaTab: React.FC = () => {
                                         ))}
                                     </tr>
                                 ))}
+                                {filteredData.length === 0 && (
+                                    <tr>
+                                        <td colSpan={columns.length} className="py-20 text-center text-gray-500 italic">
+                                            No hay registros que coincidan con los códigos de responsabilidad ({validRespCodes.join(', ')}) o el término de búsqueda.
+                                        </td>
+                                    </tr>
+                                )}
                             </tbody>
                         </table>
                     </div>

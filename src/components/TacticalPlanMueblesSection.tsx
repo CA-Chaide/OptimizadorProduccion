@@ -323,7 +323,7 @@ export const TacticalPlanMueblesSection: React.FC = () => {
                       </CardDescription>
                   </CardHeader>
                   <CardContent>
-                      <ProvisionalOrdersAlphaTab />
+                      <ProvisionalOrdersAlphaTab restricciones={restriccionesMuebles} />
                   </CardContent>
               </Card>
           </TabsContent>
