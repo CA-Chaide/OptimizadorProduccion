@@ -77,7 +77,7 @@ const workstationGroups = [
     items: [
       "ACOLCHADORA11", "ACOLCHADORA12", "ACH11", "ACH12", 
       "BORDADORA-BANDA01", "BO01", "RMTB-01", "RMTB-02", "RMTB-M", "RMTB01", "RMTB02", "RMTBM",
-      "COS3D", "COSEDORA-BANDA3D", 
+      "COS3D", "COSEDORA-BANDA3D", "COSEDORA-BANDA-3D",
       "ENCINTADOBD", "COSEDORA-ENCINTADOBD"
     ]
   },
@@ -85,8 +85,8 @@ const workstationGroups = [
     title: "Interiores, Bases y Corte",
     items: [
       "INTP-PR", "INTP-PT", "INTP-F", "INTPF", "INTPF1", "INTPF2", 
-      "COSEDORA-INTPF", "COSEDORA-INTPF1", "COSEDORA-INTPF2",
-      "MTBS1", "MTBS", "COSEDORA-BSC-CC", "COSEDORA-BSCTP",
+      "COSEDORA-INTPF", "COSEDORA-INTP-F", "COSEDORA-INTPF1", "COSEDORA-INTPF2",
+      "MTBS1", "MTBS", "COSEDORA-BSC-CC", "COSEDORA-BSCTP", "COSEDORA-MTBS1",
       "CT-BAN", "CT-BSC", "CT-CHN", "CT-INT", "TTCF", "TTSUP", "TELAS", "FUNDAS"
     ]
   },
@@ -462,7 +462,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     setBomDownloadProgress(0);
     try {
       const rowsPerPage = 5000;
-      // USANDO ReporteExplosionMateriales SECUENCIALMENTE para evitar saturación del servidor
       const firstResponse = await serviciosService.ReporteExplosionMateriales(1, rowsPerPage);
       const firstData = firstResponse.data || [];
       const total = firstResponse.totalRegistros || firstResponse.totalRecords || firstResponse.totalRows || 0;
@@ -471,7 +470,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
       const totalPages = Math.ceil(total / rowsPerPage);
       
       if (totalPages > 1) {
-        // Carga secuencial para no saturar el servidor
         for (let p = 2; p <= totalPages; p++) {
           setBomDownloadProgress(Math.round(((p - 1) / totalPages) * 100));
           const nextResponse = await serviciosService.ReporteExplosionMateriales(p, rowsPerPage);
@@ -597,7 +595,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return filtered;
   }, [ordenesPrevisionalesData, allowedRespCodes]);
   
-  // Órdenes previsionales filtradas por RANGO DE FECHA para tableros técnicos
   const techFilteredOrdenes = useMemo(() => {
     return filteredOrdenesPrevisionales.filter(order => {
       const dateVal = String(order['FECHAINICIO'] || order['FECHA'] || '').split('T')[0];
@@ -644,7 +641,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   const uniquePuestos = useMemo(() => {
     const pSet = new Set<string>();
-    // REGLA: Puestos de trabajo obtenidos directamente de la columna 'Categoría / Puesto' del Maestro KPI
     kpiMaestroData.forEach(kpi => {
       const p = String(kpi.Categoria || '').trim().toUpperCase();
       if (p && p !== 'NULL' && p !== '-' && p !== '—') pSet.add(p);
