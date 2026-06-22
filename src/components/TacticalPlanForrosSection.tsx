@@ -95,7 +95,7 @@ const workstationGroups = [
       "COSEDORA-INTPR", "COSEDORA-INTPT", "COSEDORA-INTP-PR", "COSEDORA-INTP-PT",
       "MTBS1", "MTBS", "COSEDORA-BSC-CC", "COSEDORA-BSCTP", "COSEDORA-MTBS1",
       "CT-BAN", "CT-BSC", "CT-CHN", "CT-INT", "TTCF", "TTSUP", "TELAS", "FUNDAS",
-      "COSEDORA-TTSUP-CHN"
+      "COSEDORA-TTSUP-CHN", "CORTE-ESPUMA"
     ]
   },
   {
@@ -361,6 +361,13 @@ export const TacticalPlanForrosSection: React.FC = () => {
     if (!pn || pn === '—' || pn === 'NULL') return '';
     if (hojaRutaCacheRef.current[pn]) return hojaRutaCacheRef.current[pn];
     
+    // ASIGNACIÓN ESPECÍFICA SOLICITADA
+    if (pn === 'CORTE-ESPUMA') {
+      const res = 'HR-CTBAN';
+      hojaRutaCacheRef.current[pn] = res;
+      return res;
+    }
+
     // Primero buscar en el Maestro KPI (Prioridad técnica solicitada)
     const kpiMatch = kpiMaestroData.find(k => String(k.Categoria || '').toUpperCase().trim() === pn);
     if (kpiMatch && kpiMatch.HRUTA) {
@@ -964,8 +971,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {uniquePuestos.map((p, idx) => {
-                      const hrMatch = kpiMaestroData.find(k => String(k.Categoria || '').trim().toUpperCase() === p);
-                      const hrCodeFromMaestro = hrMatch?.HRUTA || 'S/HR';
+                      const hrCodeFromMaestro = mapToHojaRutaInternal(p) || 'S/HR';
 
                       const orders = filteredOrdenesPrevisionales.filter(o => {
                         const orderHR = String(o['MAQUINA'] || o['Maquina'] || '').trim().toUpperCase();
@@ -1100,7 +1106,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
               p.includes('COSEDORA-BSC-CC') ||
               p.includes('COSEDORA-INTPR') ||
               p.includes('COSEDORA-INTPT') ||
-              p.includes('COSEDORA-TTSUP-CHN')
+              p.includes('COSEDORA-TTSUP-CHN') ||
+              p.includes('CORTE-ESPUMA')
             ).map((pName) => (
               <MachineCard 
                 key={pName} 
