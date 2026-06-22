@@ -135,7 +135,7 @@ const MachineCard = React.memo(({
   const { filteredOrders, totalTimeHours, utilization, isOverloaded, capacityHours } = useMemo(() => {
     const filtered = orders.filter(o => {
       const orderHR = String(o['MAQUINA'] || o['Maquina'] || '').trim().toUpperCase();
-      // Handle multi-mapping for CORTELA10
+      // Manejar mapeos múltiples para CORTELA10
       if (hrCode.includes(' / ')) {
         const codes = hrCode.split(' / ').map(c => c.trim().toUpperCase());
         return codes.includes(orderHR);
@@ -159,29 +159,31 @@ const MachineCard = React.memo(({
 
   return (
     <div className={cn(
-      "flex border border-slate-200 rounded-3xl overflow-hidden shadow-sm bg-white transition-all hover:shadow-lg",
+      "flex border border-slate-200 rounded-[2rem] overflow-hidden shadow-sm bg-white transition-all hover:shadow-lg",
       small ? "h-[420px]" : "h-[480px]"
     )}>
       <div className={cn(
         "bg-indigo-50/50 p-6 text-slate-900 flex flex-col border-r border-indigo-100",
         small ? "w-[42%]" : "w-[38%]"
       )}>
-        <div className="mb-6">
+        <div className="mb-6 relative">
           <div className="flex flex-col gap-2">
             <Badge className="w-fit bg-indigo-600 text-white font-black text-[10px] uppercase tracking-widest px-3 py-1 rounded-lg border-none shadow-md shadow-indigo-200">
               {hrCode || 'S/HR'}
             </Badge>
-            <h3 className="text-2xl font-black uppercase tracking-tighter text-indigo-950 flex items-center gap-2 break-words leading-tight">
+            <h3 className="text-2xl font-black uppercase tracking-tighter text-indigo-950 flex items-center gap-2 break-words leading-tight pr-12">
               <Cpu className="w-6 h-6 text-indigo-600 shrink-0" />
               <span>{puestoName}</span>
             </h3>
-            {config.people > 0 && (
-              <div className="flex items-center gap-1.5 bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-lg w-fit mt-1">
-                <Users className="w-3 h-3" />
-                <span className="text-[10px] font-black uppercase tracking-tight">{config.people} Personas</span>
-              </div>
-            )}
           </div>
+
+          {/* INDICADOR PROMINENTE DE PERSONAL (ESTILO PLANO TÉCNICO) */}
+          {config.people > 0 && (
+            <div className="absolute top-0 right-0 flex flex-col items-center justify-center bg-white border-2 border-dashed border-indigo-300 w-16 h-16 rounded-2xl shadow-inner animate-in fade-in zoom-in duration-500">
+              <span className="text-3xl font-black text-indigo-700 leading-none">{config.people}</span>
+              <span className="text-[7px] font-black uppercase text-indigo-400 mt-1 tracking-tighter">Personas</span>
+            </div>
+          )}
         </div>
 
         <div className="flex-1 space-y-4">
@@ -371,7 +373,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     if (!pn || pn === '—' || pn === 'NULL') return '';
     if (hojaRutaCacheRef.current[pn]) return hojaRutaCacheRef.current[pn];
     
-    // ASIGNACIONES ESPECÍFICAS
+    // UNIFICACIONES TÉCNICAS MANDATORIAS
     if (pn === 'CORTE-ESPUMA') {
       const res = 'HR-CTESP';
       hojaRutaCacheRef.current[pn] = res;
@@ -694,7 +696,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
   }, [dataReady, uniquePuestos]);
 
-  // Sincronización automática de turnos y PERSONAL basado en restricciones PERSONAL_
+  // SINCRONIZACIÓN AUTOMÁTICA DE PERSONAL Y TURNOS DESDE RESTRICCIONES
   useEffect(() => {
     if (restricciones.length > 0 && uniquePuestos.length > 0) {
       setWorkstationConfigs(prev => {
@@ -704,7 +706,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
         uniquePuestos.forEach(p => {
           const normP = p.toUpperCase().trim();
           
-          // Buscar restricciones relacionadas con PERSONAL para este puesto
+          // Buscar restricciones que incluyan PERSONAL y el nombre del puesto
           const relevantRestrictions = restricciones.filter(r => 
             r.nombre_restriccion.toUpperCase().trim().includes('PERSONAL') &&
             r.nombre_restriccion.toUpperCase().trim().includes(normP)
@@ -718,11 +720,11 @@ export const TacticalPlanForrosSection: React.FC = () => {
             relevantRestrictions.forEach(r => {
               const valor = r.valor_restriccion.toUpperCase();
               
-              // Detectar turnos
+              // Detectar turnos en el valor de la restricción
               if (valor.includes('DIURNO') || valor.includes('DÍA') || valor.includes('DIA')) isDay = true;
               if (valor.includes('NOCTURNO') || valor.includes('NOCHE')) isNight = true;
               
-              // Detectar cantidad de personas (mayor similitud numérica)
+              // Extraer el número de personas (mayor coincidencia numérica)
               const numMatch = valor.match(/\d+/);
               if (numMatch) {
                 peopleCount = Math.max(peopleCount, parseInt(numMatch[0]));
@@ -731,7 +733,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
               }
             });
 
-            // Si no se encontró nada por turnos en el valor, pero la restricción existe, asumir diurno por defecto
+            // Fallback: Si no hay turnos especificados pero la restricción existe, asumir Diurno
             if (!isDay && !isNight && relevantRestrictions.length > 0) isDay = true;
 
             const current = next[p] || { machine: p, isDayActive: true, isNightActive: false, people: 0 };
@@ -754,6 +756,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     const hojaRuta = mapToHojaRuta(puestoName);
     if (!materialCode || !hojaRuta) return null;
     
+    // Manejo de mapeo múltiple (Pool de Corte)
     if (hojaRuta.includes(' / ')) {
       const codes = hojaRuta.split(' / ').map(c => c.trim().toUpperCase());
       const orderHR = String(order['MAQUINA'] || order['Maquina'] || '').trim().toUpperCase();
@@ -1520,7 +1523,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                             <div className="flex items-start justify-between mb-4">
                               <div className="min-w-0 flex-1">
                                 <div className="flex flex-col gap-1 mb-2">
-                                  <p className="font-black text-indigo-950 uppercase text-lg leading-tight break-words pr-12">{p}</p>
+                                  <p className="font-black text-indigo-950 uppercase text-lg leading-tight break-words pr-14">{p}</p>
                                 </div>
                                 <div className="flex flex-wrap gap-2">
                                   <Badge className="bg-indigo-600 text-white border-none font-mono text-[10px] uppercase font-bold tracking-widest px-2.5 py-0.5 rounded-lg shadow-sm">
@@ -1533,11 +1536,11 @@ export const TacticalPlanForrosSection: React.FC = () => {
                                 </div>
                               </div>
                               
-                              {/* INDICADOR DE PERSONAS POR PUESTO (ESTILO PLANO TÉCNICO) */}
+                              {/* INDICADOR VISUAL DEL NÚMERO DE PERSONAS (CUADRO TÉCNICO) */}
                               {config.people > 0 && (
-                                <div className="flex flex-col items-center justify-center bg-slate-50 border-2 border-dashed border-slate-200 w-14 h-14 rounded-2xl shrink-0 shadow-inner group-hover:bg-indigo-50 group-hover:border-indigo-200 transition-colors">
-                                  <span className="text-2xl font-black text-indigo-600 leading-none">{config.people}</span>
-                                  <span className="text-[7px] font-black uppercase text-slate-400 mt-1 tracking-tighter">Personas</span>
+                                <div className="flex flex-col items-center justify-center bg-indigo-50 border-2 border-dashed border-indigo-300 w-16 h-16 rounded-2xl shrink-0 shadow-inner group-hover:bg-indigo-100 transition-colors">
+                                  <span className="text-3xl font-black text-indigo-700 leading-none">{config.people}</span>
+                                  <span className="text-[7px] font-black uppercase text-indigo-400 mt-1 tracking-tighter">Personas</span>
                                 </div>
                               )}
                             </div>
