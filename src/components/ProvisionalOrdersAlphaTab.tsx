@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { serviciosService } from '@/services/servicios.service';
 import { useAppContext } from '@/context/AppProvider';
-import { Package, Loader2, Search, Info } from 'lucide-react';
+import { Package, Loader2, Search, Info, Check, ChevronsUpDown } from 'lucide-react';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -27,26 +27,25 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
     const [currentPage, setCurrentPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(ROWS_PER_PAGE_OPTIONS[0]);
 
-    // Refs para el sistema de scrollbar doble (superior e inferior)
+    // Refs para el sistema de scrollbar doble
     const topScrollRef = useRef<HTMLDivElement>(null);
     const tableScrollRef = useRef<HTMLDivElement>(null);
     const tableRef = useRef<HTMLTableElement>(null);
     const [tableWidth, setTableWidth] = useState(0);
     const lastScrolledRef = useRef<'top' | 'table' | null>(null);
 
-    // 1. Obtención de códigos de responsabilidad desde las restricciones (LITERAL)
+    // Obtención literal de códigos de responsabilidad desde las restricciones
     const validRespCodes = useMemo(() => {
         const respRestriccion = restricciones.find(r => r.nombre_restriccion === 'RespCtrlProd');
         if (!respRestriccion || !respRestriccion.valor_restriccion) return [];
         
-        // Separar por & o , y limpiar espacios pero MANTENER ceros a la izquierda
         return respRestriccion.valor_restriccion
             .split(/[&,]/)
             .map(code => String(code).trim())
             .filter(Boolean);
     }, [restricciones]);
 
-    // 2. Carga de datos desde el método solicitado
+    // Carga de datos base desde el servidor
     const fetchData = async (page: number, rows: number) => {
         setIsLoading(true);
         try {
@@ -55,9 +54,10 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
             if (response && response.data) {
                 const dataArray = Array.isArray(response.data) ? response.data : [response.data];
                 setData(dataArray);
-                setTotalRecords(response.totalRegistros || response.length || dataArray.length);
+                setTotalRecords(response.totalRegistros || dataArray.length);
                 
-                if (dataArray.length > 0) {
+                // Extraer columnas dinámicamente del primer registro si no existen
+                if (dataArray.length > 0 && columns.length === 0) {
                     setColumns(Object.keys(dataArray[0]));
                 }
             } else {
@@ -76,18 +76,19 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
         fetchData(currentPage, rowsPerPage);
     }, [currentPage, rowsPerPage]);
 
-    // 3. Aplicación de FILTROS (Responsabilidad literal + Buscador)
+    // Filtrado Combinado: Restricción de Responsable + Término de Búsqueda
     const filteredData = useMemo(() => {
         if (!data || data.length === 0) return [];
         
         return data.filter(row => {
-            // A. Filtro por responsables (Comparación literal)
+            // 1. Filtrado por Responsable (RespCtrlProd literal)
+            // Si hay códigos definidos en las restricciones, aplicamos el filtro
             if (validRespCodes.length > 0) {
-                const rowResp = String(row.RESPCONTROLPROD || row.RespControlProd || row.RESP_CTRL_PROD || '').trim();
+                const rowResp = String(row.RESPCONTROLPROD || '').trim();
                 if (!validRespCodes.includes(rowResp)) return false;
             }
 
-            // B. Filtro por término de búsqueda manual
+            // 2. Filtrado por término de búsqueda manual
             if (!searchTerm.trim()) return true;
             const term = searchTerm.toLowerCase();
             return Object.values(row).some(val => 
@@ -142,7 +143,7 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
                             onChange={(e) => setSearchTerm(e.target.value)}
                         />
                     </div>
-                    {validRespCodes.length > 0 && (
+                    {validRespCodes.length > 0 ? (
                         <div className="flex items-center gap-2">
                             <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Responsables (Literal):</span>
                             <div className="flex gap-1">
@@ -153,11 +154,15 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
                                 ))}
                             </div>
                         </div>
+                    ) : (
+                        <span className="text-[10px] text-amber-600 font-semibold italic">
+                            ⚠️ No se encontró la restricción "RespCtrlProd". Mostrando todos los datos.
+                        </span>
                     )}
                 </div>
                 <div className="text-[11px] text-gray-500 bg-gray-50 px-3 py-1.5 rounded-md border flex items-center gap-2">
                     <Info className="w-3 h-3 text-blue-500" />
-                    <span>Total Página: <strong>{data.length}</strong></span>
+                    <span>Registros Página: <strong>{data.length}</strong></span>
                     <span className="text-gray-300">|</span>
                     <span>Tras Filtro: <strong>{filteredData.length}</strong></span>
                 </div>
@@ -199,7 +204,7 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
                                 {filteredData.length === 0 && (
                                     <tr>
                                         <td colSpan={columns.length} className="py-24 text-center text-gray-500 italic bg-gray-50/50">
-                                            No se encontraron registros para los responsables configurados en esta página.
+                                            No se encontraron registros que coincidan con los responsables configurados en las restricciones.
                                         </td>
                                     </tr>
                                 )}
