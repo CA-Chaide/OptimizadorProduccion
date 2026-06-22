@@ -47,17 +47,15 @@ import { useAppContext } from '@/context/AppProvider';
 
 // Constantes de configuración de jornada
 const DIURNA_OPTIONS = [
-  { value: "8.75", label: "8.75 Horas" },
-  { value: "8", label: "8 Horas" },
-  { value: "9", label: "9 Horas" },
-  { value: "12", label: "12 Horas" },
+  { value: "8.75", label: "7:00 - 15:45 (8.75 h)" },
+  { value: "10", label: "7:00 - 17:00 (10h)" },
+  { value: "11", label: "7:00 - 18:00 (11h)" },
 ];
 
 const NOCTURNA_OPTIONS = [
-  { value: "0", label: "0 Horas (Sin turno)" },
-  { value: "8", label: "8 Horas" },
-  { value: "9", label: "9 Horas" },
-  { value: "12", label: "12 Horas" },
+  { value: "0", label: "Sin jornada" },
+  { value: "8.5", label: "21:00 - 5:30 (8.5h)" },
+  { value: "10.5", label: "19:00 - 5:30 (10.5h)" },
 ];
 
 // Grupos de estaciones para la pestaña de Personal & Turnos
@@ -470,6 +468,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
       const totalPages = Math.ceil(total / rowsPerPage);
       
       if (totalPages > 1) {
+        // Carga secuencial para no saturar el servidor
         for (let p = 2; p <= totalPages; p++) {
           setBomDownloadProgress(Math.round(((p - 1) / totalPages) * 100));
           const nextResponse = await serviciosService.ReporteExplosionMateriales(p, rowsPerPage);
@@ -1052,7 +1051,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
               p.includes('BANDA3D') ||
               p.includes('ENCINTADOBD') || 
               p.includes('BO01') || 
-              p.includes('BORDADORA-BANDA01')
+              p.includes('BORDADORA-BANDA01') ||
+              p.includes('COSEDORA-BANDA3D') ||
+              p.includes('COSEDORA-ENCINTADOBD')
             ).map((pName) => (
               <MachineCard 
                 key={pName} 
@@ -1082,7 +1083,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
               p.includes('TELAS') || 
               p.includes('FUNDAS') ||
               p.includes('BSC-CC') ||
-              p.includes('BSCTP')
+              p.includes('BSCTP') ||
+              p.includes('COSEDORA-INTPF') ||
+              p.includes('COSEDORA-BSC-CC')
             ).map((pName) => (
               <MachineCard 
                 key={pName} 
@@ -1409,7 +1412,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                                   config.isDayActive ? "bg-amber-500 text-white border-amber-600 shadow-amber-200" : "bg-white text-slate-300 border-slate-100"
                                 )}
                               >
-                                < Sun className="w-4 h-4" />
+                                <Sun className="w-4 h-4" />
                                 <span className="text-[10px] font-black uppercase tracking-widest">{config.isDayActive ? 'Día ON' : 'Día OFF'}</span>
                               </button>
                               <button 
