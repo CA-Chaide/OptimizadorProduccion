@@ -1,11 +1,9 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { serviciosService } from '@/services/servicios.service';
 import { useAppContext } from '@/context/AppProvider';
-import { logger } from '@/services/LogService';
-import { Package, Loader2, Search, AlertCircle, Info, Check, ChevronsUpDown } from 'lucide-react';
+import { Package, Loader2, Search, Info } from 'lucide-react';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,20 +11,15 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import type { Restriccion } from '@/types/interfaces';
 
-interface OrderAlphaItem {
-  [key: string]: any;
-}
-
 interface ProvisionalOrdersAlphaTabProps {
-  restricciones?: Restriccion[];
+  restricciones: Restriccion[];
 }
 
 const ROWS_PER_PAGE_OPTIONS = [20, 50, 100, 500];
 
-export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps> = ({ restricciones = [] }) => {
+export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps> = ({ restricciones }) => {
     const { addNotification } = useAppContext();
-    const [isMounted, setIsMounted] = useState(false);
-    const [data, setData] = useState<OrderAlphaItem[]>([]);
+    const [data, setData] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [columns, setColumns] = useState<string[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
@@ -34,17 +27,26 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
     const [currentPage, setCurrentPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(ROWS_PER_PAGE_OPTIONS[0]);
 
-    // Refs para scrollbar doble
+    // Refs para el sistema de scrollbar doble (superior e inferior)
     const topScrollRef = useRef<HTMLDivElement>(null);
     const tableScrollRef = useRef<HTMLDivElement>(null);
     const tableRef = useRef<HTMLTableElement>(null);
     const [tableWidth, setTableWidth] = useState(0);
     const lastScrolledRef = useRef<'top' | 'table' | null>(null);
 
-    useEffect(() => {
-        setIsMounted(true);
-    }, []);
+    // 1. Obtención de códigos de responsabilidad desde las restricciones (LITERAL)
+    const validRespCodes = useMemo(() => {
+        const respRestriccion = restricciones.find(r => r.nombre_restriccion === 'RespCtrlProd');
+        if (!respRestriccion || !respRestriccion.valor_restriccion) return [];
+        
+        // Separar por & o , y limpiar espacios pero MANTENER ceros a la izquierda
+        return respRestriccion.valor_restriccion
+            .split(/[&,]/)
+            .map(code => String(code).trim())
+            .filter(Boolean);
+    }, [restricciones]);
 
+    // 2. Carga de datos desde el método solicitado
     const fetchData = async (page: number, rows: number) => {
         setIsLoading(true);
         try {
@@ -64,41 +66,28 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
             }
         } catch (error) {
             console.error('Error al cargar órdenes alpha:', error);
-            addNotification('error', 'Error al cargar el plan táctico');
+            addNotification('error', 'Error al obtener el plan táctico desde el servidor.');
         } finally {
             setIsLoading(false);
         }
     };
 
     useEffect(() => {
-        if (isMounted) {
-            fetchData(currentPage, rowsPerPage);
-        }
-    }, [currentPage, rowsPerPage, isMounted]);
+        fetchData(currentPage, rowsPerPage);
+    }, [currentPage, rowsPerPage]);
 
-    // Obtener códigos válidos de responsabilidad desde las restricciones (literal)
-    const validRespCodes = useMemo(() => {
-        const respRestriccion = restricciones.find(r => r.nombre_restriccion === 'RespCtrlProd');
-        if (!respRestriccion || !respRestriccion.valor_restriccion) return [];
-        
-        return respRestriccion.valor_restriccion
-            .split(/[&,]/)
-            .map(code => String(code).trim())
-            .filter(Boolean);
-    }, [restricciones]);
-
-    // Lógica de filtrado con comparación literal
+    // 3. Aplicación de FILTROS (Responsabilidad literal + Buscador)
     const filteredData = useMemo(() => {
         if (!data || data.length === 0) return [];
         
         return data.filter(row => {
-            // 1. Filtro por responsables literal
+            // A. Filtro por responsables (Comparación literal)
             if (validRespCodes.length > 0) {
-                const rowResp = String(row.RESPCONTROLPROD || '').trim();
+                const rowResp = String(row.RESPCONTROLPROD || row.RespControlProd || row.RESP_CTRL_PROD || '').trim();
                 if (!validRespCodes.includes(rowResp)) return false;
             }
 
-            // 2. Filtro por buscador manual
+            // B. Filtro por término de búsqueda manual
             if (!searchTerm.trim()) return true;
             const term = searchTerm.toLowerCase();
             return Object.values(row).some(val => 
@@ -109,9 +98,8 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
 
     const totalPages = Math.max(1, Math.ceil(totalRecords / rowsPerPage));
 
-    // Sincronización de scrollbars
+    // Lógica de sincronización de barras de desplazamiento
     useEffect(() => {
-        if (!isMounted) return;
         const calculateWidth = () => {
             if (tableRef.current) setTableWidth(tableRef.current.offsetWidth);
         };
@@ -123,7 +111,7 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
             window.removeEventListener('resize', calculateWidth);
             if (tableRef.current) resizeObserver.unobserve(tableRef.current);
         };
-    }, [filteredData, isMounted]);
+    }, [filteredData]);
 
     const handleTopScroll = (e: React.UIEvent<HTMLDivElement>) => {
         if (lastScrolledRef.current === 'table') { lastScrolledRef.current = null; return; }
@@ -141,15 +129,6 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
         }
     };
 
-    const PRIORITY_COLUMNS = ['ORDENPREVISIONAL', 'MATERIAL', 'NOMBRE', 'CATEGORIA', 'CANTIDAD', 'UNIDAD', 'FECHAINICIO', 'FECHAFIN', 'RESPCONTROLPROD'];
-    const sortedColumns = useMemo(() => {
-        if (columns.length === 0) return PRIORITY_COLUMNS;
-        const remaining = columns.filter(c => !PRIORITY_COLUMNS.includes(c));
-        return [...columns.filter(c => PRIORITY_COLUMNS.includes(c)), ...remaining];
-    }, [columns]);
-
-    if (!isMounted) return null;
-
     return (
         <div className="space-y-4">
             <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
@@ -163,38 +142,35 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
                             onChange={(e) => setSearchTerm(e.target.value)}
                         />
                     </div>
-                    <div className="flex items-center gap-4">
-                        {validRespCodes.length > 0 && (
-                            <div className="flex items-center gap-2">
-                                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Responsables (Restricción):</span>
-                                <div className="flex gap-1">
-                                    {validRespCodes.map(code => (
-                                        <Badge key={code} variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200 text-[10px] px-2 py-0">
-                                            {code}
-                                        </Badge>
-                                    ))}
-                                </div>
+                    {validRespCodes.length > 0 && (
+                        <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Responsables (Literal):</span>
+                            <div className="flex gap-1">
+                                {validRespCodes.map(code => (
+                                    <Badge key={code} variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200 text-[10px] px-2 py-0">
+                                        {code}
+                                    </Badge>
+                                ))}
                             </div>
-                        )}
-                    </div>
+                        </div>
+                    )}
                 </div>
-                <div className="flex items-center gap-3">
-                     <div className="text-[11px] text-gray-500 bg-gray-100 px-2 py-1 rounded-md border border-gray-200 flex items-center gap-2">
-                        <Info className="w-3 h-3 text-blue-500" />
-                        <span>Total Pag.: <strong>{data.length}</strong></span>
-                        <span className="text-gray-300">|</span>
-                        <span>Filtrados: <strong>{filteredData.length}</strong></span>
-                    </div>
+                <div className="text-[11px] text-gray-500 bg-gray-50 px-3 py-1.5 rounded-md border flex items-center gap-2">
+                    <Info className="w-3 h-3 text-blue-500" />
+                    <span>Total Página: <strong>{data.length}</strong></span>
+                    <span className="text-gray-300">|</span>
+                    <span>Tras Filtro: <strong>{filteredData.length}</strong></span>
                 </div>
             </div>
 
             {isLoading && data.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-24 bg-gray-50 rounded-xl border-2 border-dashed">
-                    <Loader2 className="w-10 h-10 animate-spin text-indigo-600 mb-4" />
-                    <p className="text-gray-600 font-medium">Consultando Plan Táctico Alpha...</p>
+                <div className="flex flex-col items-center justify-center py-20 bg-gray-50 rounded-xl border-2 border-dashed">
+                    <Loader2 className="w-8 h-8 animate-spin text-indigo-600 mb-3" />
+                    <p className="text-sm text-gray-600 font-medium">Cargando Plan Táctico Alpha...</p>
                 </div>
             ) : data.length > 0 ? (
                 <>
+                    {/* Scrollbar Superior */}
                     <div ref={topScrollRef} onScroll={handleTopScroll} className="overflow-x-auto overflow-y-hidden h-[18px]">
                         <div style={{ width: `${tableWidth}px`, height: '1px' }}></div>
                     </div>
@@ -203,7 +179,7 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
                         <table ref={tableRef} className="min-w-full text-[11px] border-collapse">
                             <thead className="bg-gray-100 sticky top-0 z-10 shadow-sm">
                                 <tr className="border-b-2 border-gray-300">
-                                    {sortedColumns.map(col => (
+                                    {columns.map(col => (
                                         <TableHead key={col} className="text-center font-bold text-gray-700 uppercase tracking-wider px-4 py-2 border-r border-dashed border-gray-300 last:border-r-0 whitespace-nowrap">
                                             {col.replace(/_/g, ' ')}
                                         </TableHead>
@@ -213,11 +189,8 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
                             <tbody className="divide-y divide-gray-100">
                                 {filteredData.map((row, idx) => (
                                     <tr key={idx} className="hover:bg-indigo-50/30 transition-colors">
-                                        {sortedColumns.map((col, cIdx) => (
-                                          <TableCell key={`${idx}-${cIdx}`} className={cn(
-                                              "px-4 py-2 text-center border-r border-dashed border-gray-200 last:border-r-0 whitespace-nowrap text-gray-600",
-                                              col === 'ORDENPREVISIONAL' && "font-bold text-indigo-700 bg-indigo-50/20"
-                                          )}>
+                                        {columns.map((col, cIdx) => (
+                                          <TableCell key={`${idx}-${cIdx}`} className="px-4 py-2 text-center border-r border-dashed border-gray-200 last:border-r-0 whitespace-nowrap text-gray-600">
                                               {row[col] ?? '-'}
                                           </TableCell>
                                         ))}
@@ -225,7 +198,7 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
                                 ))}
                                 {filteredData.length === 0 && (
                                     <tr>
-                                        <td colSpan={sortedColumns.length} className="py-24 text-center text-gray-500 italic bg-gray-50/50">
+                                        <td colSpan={columns.length} className="py-24 text-center text-gray-500 italic bg-gray-50/50">
                                             No se encontraron registros para los responsables configurados en esta página.
                                         </td>
                                     </tr>
