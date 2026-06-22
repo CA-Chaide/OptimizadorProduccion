@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { serviciosService } from '@/services/servicios.service';
 import { useAppContext } from '@/context/AppProvider';
-import { Package, Loader2, Search, Info, Check, ChevronsUpDown } from 'lucide-react';
+import { Package, Loader2, Search, Info } from 'lucide-react';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -34,7 +34,7 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
     const [tableWidth, setTableWidth] = useState(0);
     const lastScrolledRef = useRef<'top' | 'table' | null>(null);
 
-    // Obtención literal de códigos de responsabilidad desde las restricciones (separados por & o ,)
+    // 1. Obtención literal de códigos de responsabilidad desde las restricciones (RespCtrlProd)
     const validRespCodes = useMemo(() => {
         const respRestriccion = restricciones.find(r => r.nombre_restriccion === 'RespCtrlProd');
         if (!respRestriccion || !respRestriccion.valor_restriccion) return [];
@@ -43,6 +43,24 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
             .split(/[&,]/)
             .map(code => String(code).trim())
             .filter(Boolean);
+    }, [restricciones]);
+
+    // 2. Obtención y parseo de la restricción HRNP (Hoja de Ruta No Permitida)
+    // Formato esperado: [CODIGO:{MAQUINA}] o [CODIGO:{MAQ1,MAQ2}]
+    const forbiddenMachinesMap = useMemo(() => {
+        const hrnpRestriccion = restricciones.find(r => r.nombre_restriccion === 'HRNP');
+        if (!hrnpRestriccion || !hrnpRestriccion.valor_restriccion) return new Map<string, string[]>();
+        
+        const map = new Map<string, string[]>();
+        const regex = /\[(\d+):\{([^}]+)\}\]/g;
+        let match;
+        
+        while ((match = regex.exec(hrnpRestriccion.valor_restriccion)) !== null) {
+            const respCode = match[1];
+            const machines = match[2].split(',').map(m => m.trim());
+            map.set(respCode, machines);
+        }
+        return map;
     }, [restricciones]);
 
     // Función para cargar ABSOLUTAMENTE TODOS los datos del servidor
@@ -62,7 +80,7 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
 
             setDownloadProgress({ current: 0, total });
 
-            // 2. Carga en bloques grandes para eficiencia (20,000 por batch)
+            // 2. Descarga en bloques grandes para eficiencia (20,000 por batch)
             const BATCH_SIZE = 20000;
             const totalPages = Math.ceil(total / BATCH_SIZE);
             let combinedData: any[] = [];
@@ -95,25 +113,35 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
         fetchAllData();
     }, []);
 
-    // FILTRADO SOBRE EL SET COMPLETO (Garantiza que no se pierdan datos por paginación del API)
+    // FILTRADO SOBRE EL SET COMPLETO
     const filteredData = useMemo(() => {
         if (!allRawData || allRawData.length === 0) return [];
         
         return allRawData.filter(row => {
-            // 1. Filtrado por Responsable (Literal desde restricciones)
+            const rowResp = String(row.RESPCONTROLPROD || '').trim();
+
+            // 1. Filtrado por Responsable (Literal desde restricciones RespCtrlProd)
             if (validRespCodes.length > 0) {
-                const rowResp = String(row.RESPCONTROLPROD || '').trim();
                 if (!validRespCodes.includes(rowResp)) return false;
             }
 
-            // 2. Filtrado por término de búsqueda manual
+            // 2. NUEVO CRITERIO: Filtrado por HRNP (Hoja de Ruta No Permitida)
+            if (forbiddenMachinesMap.has(rowResp)) {
+                const rowMachine = String(row.MAQUINA || row.Maquina || '').trim();
+                const forbiddenOnes = forbiddenMachinesMap.get(rowResp);
+                if (forbiddenOnes?.includes(rowMachine)) {
+                    return false; // Excluir si la máquina está en la lista negra para este responsable
+                }
+            }
+
+            // 3. Filtrado por término de búsqueda manual
             if (!searchTerm.trim()) return true;
             const term = searchTerm.toLowerCase();
             return Object.values(row).some(val => 
                 String(val).toLowerCase().includes(term)
             );
         });
-    }, [allRawData, searchTerm, validRespCodes]);
+    }, [allRawData, searchTerm, validRespCodes, forbiddenMachinesMap]);
 
     // PAGINACIÓN LOCAL (Sobre el set ya filtrado)
     const totalFilteredRecords = filteredData.length;
@@ -168,18 +196,34 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
                             onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
                         />
                     </div>
-                    {validRespCodes.length > 0 && (
-                        <div className="flex items-center gap-2">
-                            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Filtrando por (Literal):</span>
-                            <div className="flex gap-1">
-                                {validRespCodes.map(code => (
-                                    <Badge key={code} variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200 text-[10px] px-2 py-0">
-                                        {code}
-                                    </Badge>
-                                ))}
+                    
+                    <div className="flex flex-wrap gap-4 items-center">
+                        {validRespCodes.length > 0 && (
+                            <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Responsables:</span>
+                                <div className="flex gap-1">
+                                    {validRespCodes.map(code => (
+                                        <Badge key={code} variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200 text-[10px] px-2 py-0">
+                                            {code}
+                                        </Badge>
+                                    ))}
+                                </div>
                             </div>
-                        </div>
-                    )}
+                        )}
+                        
+                        {forbiddenMachinesMap.size > 0 && (
+                            <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-bold text-red-500 uppercase tracking-wider">Exclusiones (HRNP):</span>
+                                <div className="flex gap-1">
+                                    {Array.from(forbiddenMachinesMap.entries()).map(([resp, machines]) => (
+                                        <Badge key={resp} variant="outline" className="text-red-600 border-red-200 bg-red-50 text-[10px] px-2 py-0">
+                                            {resp}: {machines.join(', ')}
+                                        </Badge>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
                 </div>
                 <div className="flex flex-col items-end gap-1">
                     <div className="text-[11px] text-gray-500 bg-gray-50 px-3 py-1.5 rounded-md border flex items-center gap-2">
@@ -241,7 +285,7 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
                                 {paginatedData.length === 0 && (
                                     <tr>
                                         <td colSpan={columns.length} className="py-24 text-center text-gray-500 italic bg-gray-50/50">
-                                            No hay registros que coincidan con los filtros de responsabilidad.
+                                            No hay registros que coincidan con los filtros de responsabilidad y exclusión.
                                         </td>
                                     </tr>
                                 )}
