@@ -23,7 +23,8 @@ import {
   ListTree,
   Cog,
   CalendarDays,
-  Calendar as CalendarIcon
+  Calendar as CalendarIcon,
+  Monitor
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -107,6 +108,7 @@ interface WorkstationConfig {
   isDayActive: boolean;
   isNightActive: boolean;
   people: number;
+  machines: number; // Nueva propiedad para máquinas disponibles
 }
 
 const MachineCard = React.memo(({ 
@@ -145,7 +147,11 @@ const MachineCard = React.memo(({
 
     const totalSeconds = filtered.reduce((sum, o) => sum + calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0), o), 0);
     const totalHours = totalSeconds / 3600;
-    const capacity = (config.isDayActive ? horasNetasDiurnas : 0) + (config.isNightActive ? horasNetasNocturnas : 0);
+    
+    // Capacidad ahora considera el número de máquinas
+    const numMachines = config.machines || 1;
+    const capacity = ((config.isDayActive ? horasNetasDiurnas : 0) + (config.isNightActive ? horasNetasNocturnas : 0)) * numMachines;
+    
     const util = capacity > 0 ? (totalHours / capacity) * 100 : 0;
     
     return {
@@ -155,7 +161,7 @@ const MachineCard = React.memo(({
       isOverloaded: util > 100,
       capacityHours: capacity
     };
-  }, [orders, hrCode, calculateProductionTime, config.isDayActive, config.isNightActive, horasNetasDiurnas, horasNetasNocturnas]);
+  }, [orders, hrCode, calculateProductionTime, config.isDayActive, config.isNightActive, config.machines, horasNetasDiurnas, horasNetasNocturnas]);
 
   return (
     <div className={cn(
@@ -177,13 +183,21 @@ const MachineCard = React.memo(({
             </h3>
           </div>
 
-          {/* INDICADOR PROMINENTE DE PERSONAL (ESTILO PLANO TÉCNICO) */}
-          {config.people > 0 && (
-            <div className="absolute top-0 right-0 flex flex-col items-center justify-center bg-white border-2 border-dashed border-indigo-300 w-16 h-16 rounded-2xl shadow-inner animate-in fade-in zoom-in duration-500">
-              <span className="text-3xl font-black text-indigo-700 leading-none">{config.people}</span>
-              <span className="text-[7px] font-black uppercase text-indigo-400 mt-1 tracking-tighter">Personas</span>
-            </div>
-          )}
+          {/* INDICADORES PROMINENTES (PERSONAS Y MÁQUINAS) */}
+          <div className="absolute top-0 right-0 flex flex-col gap-2">
+            {config.people > 0 && (
+              <div className="flex flex-col items-center justify-center bg-white border-2 border-dashed border-indigo-300 w-14 h-14 rounded-2xl shadow-inner animate-in fade-in zoom-in duration-500">
+                <span className="text-2xl font-black text-indigo-700 leading-none">{config.people}</span>
+                <span className="text-[6px] font-black uppercase text-indigo-400 mt-0.5 tracking-tighter">Personas</span>
+              </div>
+            )}
+            {config.machines > 0 && (
+              <div className="flex flex-col items-center justify-center bg-sky-50 border-2 border-dashed border-sky-300 w-14 h-14 rounded-2xl shadow-inner animate-in fade-in zoom-in duration-700">
+                <span className="text-2xl font-black text-sky-700 leading-none">{config.machines}</span>
+                <span className="text-[6px] font-black uppercase text-sky-400 mt-0.5 tracking-tighter">Máquinas</span>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="flex-1 space-y-4">
@@ -280,7 +294,10 @@ const MachineCard = React.memo(({
 }, (prevProps, nextProps) => {
   return prevProps.puestoName === nextProps.puestoName &&
     prevProps.small === nextProps.small &&
-    prevProps.config === nextProps.config &&
+    prevProps.config.machines === nextProps.config.machines &&
+    prevProps.config.isDayActive === nextProps.config.isDayActive &&
+    prevProps.config.isNightActive === nextProps.config.isNightActive &&
+    prevProps.config.people === nextProps.config.people &&
     prevProps.horasNetasDiurnas === nextProps.horasNetasDiurnas &&
     prevProps.horasNetasNocturnas === nextProps.horasNetasNocturnas &&
     prevProps.orders === nextProps.orders;
@@ -689,7 +706,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
         if (Object.keys(prev).length > 0) return prev;
         const initial: Record<string, WorkstationConfig> = {};
         uniquePuestos.forEach(p => {
-          initial[p] = { machine: p, isDayActive: true, isNightActive: false, people: 0 };
+          initial[p] = { machine: p, isDayActive: true, isNightActive: false, people: 0, machines: 1 };
         });
         return initial;
       });
@@ -706,7 +723,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
         uniquePuestos.forEach(p => {
           const normP = p.toUpperCase().trim();
           
-          // Buscar restricciones que incluyan PERSONAL y el nombre del puesto
           const relevantRestrictions = restricciones.filter(r => 
             r.nombre_restriccion.toUpperCase().trim().includes('PERSONAL') &&
             r.nombre_restriccion.toUpperCase().trim().includes(normP)
@@ -719,12 +735,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
             relevantRestrictions.forEach(r => {
               const valor = r.valor_restriccion.toUpperCase();
-              
-              // Detectar turnos en el valor de la restricción
               if (valor.includes('DIURNO') || valor.includes('DÍA') || valor.includes('DIA')) isDay = true;
               if (valor.includes('NOCTURNO') || valor.includes('NOCHE')) isNight = true;
               
-              // Extraer el número de personas (mayor coincidencia numérica)
               const numMatch = valor.match(/\d+/);
               if (numMatch) {
                 peopleCount = Math.max(peopleCount, parseInt(numMatch[0]));
@@ -733,10 +746,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
               }
             });
 
-            // Fallback: Si no hay turnos especificados pero la restricción existe, asumir Diurno
             if (!isDay && !isNight && relevantRestrictions.length > 0) isDay = true;
 
-            const current = next[p] || { machine: p, isDayActive: true, isNightActive: false, people: 0 };
+            const current = next[p] || { machine: p, isDayActive: true, isNightActive: false, people: 0, machines: 1 };
             
             if (current.isDayActive !== isDay || current.isNightActive !== isNight || current.people !== peopleCount) {
               next[p] = { ...current, isDayActive: isDay, isNightActive: isNight, people: peopleCount };
@@ -756,7 +768,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     const hojaRuta = mapToHojaRuta(puestoName);
     if (!materialCode || !hojaRuta) return null;
     
-    // Manejo de mapeo múltiple (Pool de Corte)
     if (hojaRuta.includes(' / ')) {
       const codes = hojaRuta.split(' / ').map(c => c.trim().toUpperCase());
       const orderHR = String(order['MAQUINA'] || order['Maquina'] || '').trim().toUpperCase();
@@ -791,7 +802,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   const toggleWorkstationShift = (p: string, shift: 'day' | 'night') => {
     setWorkstationConfigs(prev => {
-      const current = prev[p] || { machine: p, isDayActive: true, isNightActive: false, people: 0 };
+      const current = prev[p] || { machine: p, isDayActive: true, isNightActive: false, people: 0, machines: 1 };
       return {
         ...prev,
         [p]: {
@@ -1081,8 +1092,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
                         
                         let totalCapacityHours = 0;
                         groupInfo.puestos.forEach(p => {
-                          const config = workstationConfigs[p] || { machine: p, isDayActive: true, isNightActive: false, people: 0 };
-                          totalCapacityHours += (config.isDayActive ? horasNetasDiurnasVal : 0) + (config.isNightActive ? horasNetasNocturnasVal : 0);
+                          const config = workstationConfigs[p] || { machine: p, isDayActive: true, isNightActive: false, people: 0, machines: 1 };
+                          const stationHours = (config.isDayActive ? horasNetasDiurnasVal : 0) + (config.isNightActive ? horasNetasNocturnasVal : 0);
+                          totalCapacityHours += stationHours * (config.machines || 1);
                         });
 
                         const utilization = totalCapacityHours > 0 ? (totalTimeHours / totalCapacityHours) * 100 : 0;
@@ -1137,7 +1149,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       puestoName={achNames[0]} 
                       orders={techFilteredOrdenes}
                       calculateProductionTime={calculateProductionTime}
-                      config={workstationConfigs[achNames[0]] || { machine: achNames[0], isDayActive: true, isNightActive: false, people: 0 }}
+                      config={workstationConfigs[achNames[0]] || { machine: achNames[0], isDayActive: true, isNightActive: false, people: 0, machines: 1 }}
                       horasNetasDiurnas={horasNetasDiurnasVal}
                       horasNetasNocturnas={horasNetasNocturnasVal}
                       mapToHojaRuta={mapToHojaRutaInternal}
@@ -1149,7 +1161,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       puestoName={pefNames[0]} 
                       orders={techFilteredOrdenes}
                       calculateProductionTime={calculateProductionTime}
-                      config={workstationConfigs[pefNames[0]] || { machine: pefNames[0], isDayActive: true, isNightActive: false, people: 0 }}
+                      config={workstationConfigs[pefNames[0]] || { machine: pefNames[0], isDayActive: true, isNightActive: false, people: 0, machines: 1 }}
                       horasNetasDiurnas={horasNetasDiurnasVal}
                       horasNetasNocturnas={horasNetasNocturnasVal}
                       mapToHojaRuta={mapToHojaRutaInternal}
@@ -1185,7 +1197,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 small 
                 orders={techFilteredOrdenes}
                 calculateProductionTime={calculateProductionTime}
-                config={workstationConfigs[pName] || { machine: pName, isDayActive: true, isNightActive: false, people: 0 }}
+                config={workstationConfigs[pName] || { machine: pName, isDayActive: true, isNightActive: false, people: 0, machines: 1 }}
                 horasNetasDiurnas={horasNetasDiurnasVal}
                 horasNetasNocturnas={horasNetasNocturnasVal}
                 mapToHojaRuta={mapToHojaRutaInternal}
@@ -1223,7 +1235,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 small 
                 orders={techFilteredOrdenes}
                 calculateProductionTime={calculateProductionTime}
-                config={workstationConfigs[pName] || { machine: pName, isDayActive: true, isNightActive: false, people: 0 }}
+                config={workstationConfigs[pName] || { machine: pName, isDayActive: true, isNightActive: false, people: 0, machines: 1 }}
                 horasNetasDiurnas={horasNetasDiurnasVal}
                 horasNetasNocturnas={horasNetasNocturnasVal}
                 mapToHojaRuta={mapToHojaRutaInternal}
@@ -1243,7 +1255,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 small 
                 orders={techFilteredOrdenes}
                 calculateProductionTime={calculateProductionTime}
-                config={workstationConfigs[pName] || { machine: pName, isDayActive: true, isNightActive: false, people: 0 }}
+                config={workstationConfigs[pName] || { machine: pName, isDayActive: true, isNightActive: false, people: 0, machines: 1 }}
                 horasNetasDiurnas={horasNetasDiurnasVal}
                 horasNetasNocturnas={horasNetasNocturnasVal}
                 mapToHojaRuta={mapToHojaRutaInternal}
@@ -1515,8 +1527,12 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                       {availableItems.map(p => {
-                        const config = workstationConfigs[p] || { machine: p, isDayActive: true, isNightActive: false, people: 0 };
-                        const capPuesto = (config.isDayActive ? horasNetasDiurnasVal : 0) + (config.isNightActive ? horasNetasNocturnasVal : 0);
+                        const config = workstationConfigs[p] || { machine: p, isDayActive: true, isNightActive: false, people: 0, machines: 1 };
+                        
+                        // Capacidad considerando número de máquinas
+                        const capPuestoBase = (config.isDayActive ? horasNetasDiurnasVal : 0) + (config.isNightActive ? horasNetasNocturnasVal : 0);
+                        const capPuestoTotal = capPuestoBase * (config.machines || 1);
+                        
                         const hrCode = mapToHojaRutaInternal(p);
                         return (
                           <div key={p} className="flex flex-col p-6 border-2 border-slate-100 rounded-[2rem] bg-white hover:border-indigo-200 transition-all shadow-sm relative group">
@@ -1531,40 +1547,74 @@ export const TacticalPlanForrosSection: React.FC = () => {
                                   </Badge>
                                   <div className="flex items-center gap-1.5 bg-emerald-50 text-emerald-700 px-3 py-1 rounded-xl border border-emerald-100 shadow-sm">
                                     <Clock className="w-3 h-3" />
-                                    <span className="font-mono text-[10px] font-black uppercase tracking-wider">{capPuesto.toFixed(2)}h Disponibles</span>
+                                    <span className="font-mono text-[10px] font-black uppercase tracking-wider">{capPuestoTotal.toFixed(2)}h Disponibles</span>
                                   </div>
                                 </div>
                               </div>
                               
-                              {/* INDICADOR VISUAL DEL NÚMERO DE PERSONAS (CUADRO TÉCNICO) */}
-                              {config.people > 0 && (
-                                <div className="flex flex-col items-center justify-center bg-indigo-50 border-2 border-dashed border-indigo-300 w-16 h-16 rounded-2xl shrink-0 shadow-inner group-hover:bg-indigo-100 transition-colors">
-                                  <span className="text-3xl font-black text-indigo-700 leading-none">{config.people}</span>
-                                  <span className="text-[7px] font-black uppercase text-indigo-400 mt-1 tracking-tighter">Personas</span>
-                                </div>
-                              )}
+                              {/* INDICADORES VISUALES (PERSONAS Y MÁQUINAS) */}
+                              <div className="flex flex-col gap-2 shrink-0">
+                                {config.people > 0 && (
+                                  <div className="flex flex-col items-center justify-center bg-indigo-50 border-2 border-dashed border-indigo-300 w-14 h-14 rounded-2xl shadow-inner group-hover:bg-indigo-100 transition-colors">
+                                    <span className="text-2xl font-black text-indigo-700 leading-none">{config.people}</span>
+                                    <span className="text-[6px] font-black uppercase text-indigo-400 mt-0.5 tracking-tighter">Personas</span>
+                                  </div>
+                                )}
+                                {config.machines > 0 && (
+                                  <div className="flex flex-col items-center justify-center bg-sky-50 border-2 border-dashed border-sky-300 w-14 h-14 rounded-2xl shadow-inner group-hover:bg-sky-100 transition-colors">
+                                    <span className="text-2xl font-black text-sky-700 leading-none">{config.machines}</span>
+                                    <span className="text-[6px] font-black uppercase text-sky-400 mt-0.5 tracking-tighter">Máquinas</span>
+                                  </div>
+                                )}
+                              </div>
                             </div>
-                            <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-100">
-                              <button 
-                                onClick={() => toggleWorkstationShift(p, 'day')}
-                                className={cn(
-                                  "flex-1 h-12 rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm border-2",
-                                  config.isDayActive ? "bg-amber-500 text-white border-amber-600 shadow-amber-200" : "bg-white text-slate-300 border-slate-100"
-                                )}
-                              >
-                                <Sun className="w-4 h-4" />
-                                <span className="text-[10px] font-black uppercase tracking-widest">{config.isDayActive ? 'Día ON' : 'Día OFF'}</span>
-                              </button>
-                              <button 
-                                onClick={() => toggleWorkstationShift(p, 'night')}
-                                className={cn(
-                                  "flex-1 h-12 rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm border-2",
-                                  config.isNightActive ? "bg-indigo-700 text-white border-indigo-800 shadow-indigo-200" : "bg-white text-slate-300 border-slate-100"
-                                )}
-                              >
-                                <Moon className="w-4 h-4" />
-                                <span className="text-[10px] font-black uppercase tracking-widest">{config.isNightActive ? 'Noc ON' : 'Noc OFF'}</span>
-                              </button>
+
+                            {/* SELECTOR DE MÁQUINAS Y TURNOS */}
+                            <div className="space-y-3 mt-auto">
+                              <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block ml-1">Nº Máquinas Disponibles</label>
+                                <div className="flex items-center gap-3">
+                                  <div className="bg-white p-1 rounded-xl border-2 border-slate-200 flex-1 flex items-center shadow-sm">
+                                    <Monitor className="w-4 h-4 text-sky-600 ml-2" />
+                                    <input 
+                                      type="number" 
+                                      min="1"
+                                      value={config.machines || 1}
+                                      onChange={(e) => {
+                                        const val = Math.max(1, parseInt(e.target.value) || 1);
+                                        setWorkstationConfigs(prev => ({
+                                          ...prev,
+                                          [p]: { ...config, machines: val }
+                                        }));
+                                      }}
+                                      className="w-full bg-transparent border-none text-right font-black text-slate-900 focus:ring-0 outline-none pr-3 py-1.5"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                                <button 
+                                  onClick={() => toggleWorkstationShift(p, 'day')}
+                                  className={cn(
+                                    "flex-1 h-12 rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm border-2",
+                                    config.isDayActive ? "bg-amber-500 text-white border-amber-600 shadow-amber-200" : "bg-white text-slate-300 border-slate-100"
+                                  )}
+                                >
+                                  <Sun className="w-4 h-4" />
+                                  <span className="text-[10px] font-black uppercase tracking-widest">{config.isDayActive ? 'Día ON' : 'Día OFF'}</span>
+                                </button>
+                                <button 
+                                  onClick={() => toggleWorkstationShift(p, 'night')}
+                                  className={cn(
+                                    "flex-1 h-12 rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm border-2",
+                                    config.isNightActive ? "bg-indigo-700 text-white border-indigo-800 shadow-indigo-200" : "bg-white text-slate-300 border-slate-100"
+                                  )}
+                                >
+                                  <Moon className="w-4 h-4" />
+                                  <span className="text-[10px] font-black uppercase tracking-widest">{config.isNightActive ? 'Noc ON' : 'Noc OFF'}</span>
+                                </button>
+                              </div>
                             </div>
                           </div>
                         );
