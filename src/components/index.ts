@@ -27,6 +27,7 @@ export * from './OrdenesFertTabSection';
 export * from './TiemposEnsambladoTab';
 export * from './CuboInventariosTab';
 export * from './CuboInventariosTelasTab';
+export * from './CuboInventariosGeneralTab';
 export * from './HabilidadesMueblesTab';
 export * from './TacticalPlanPlanchasMixtasSection';
 export * from './PendientesTotalesTab';

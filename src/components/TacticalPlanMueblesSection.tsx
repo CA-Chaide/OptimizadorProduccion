@@ -12,6 +12,7 @@ import { OrdenesFertTabSection } from './OrdenesFertTabSection';
 import { TiemposEnsambladoTab } from './TiemposEnsambladoTab';
 import { CuboInventariosTab } from './CuboInventariosTab';
 import { CuboInventariosTelasTab } from './CuboInventariosTelasTab';
+import { CuboInventariosGeneralTab } from './CuboInventariosGeneralTab';
 import { HabilidadesMueblesTab } from './HabilidadesMueblesTab';
 import { PendientesTotalesTab } from './PendientesTotalesTab';
 import { ProvisionalOrdersAlphaTab } from './ProvisionalOrdersAlphaTab';
@@ -217,6 +218,7 @@ export const TacticalPlanMueblesSection: React.FC = () => {
               <TabsTrigger value="ordenesFert" className="text-xs py-2 px-1">Ord. Fert</TabsTrigger>
               <TabsTrigger value="tiemposMuebles" className="text-xs py-2 px-1">Tiempos</TabsTrigger>
               <TabsTrigger value="habilidades" className="text-xs py-2 px-1">Habilidades</TabsTrigger>
+              <TabsTrigger value="inventario" className="text-xs py-2 px-1 font-bold bg-blue-50 text-blue-700">INVENTARIO</TabsTrigger>
               <TabsTrigger value="cascos" className="text-xs py-2 px-1">Cascos</TabsTrigger>
               <TabsTrigger value="telas" className="text-xs py-2 px-1">Telas</TabsTrigger>
               <TabsTrigger value="pendientes" className="text-xs py-2 px-1">PEND TOTALES</TabsTrigger>
@@ -272,6 +274,19 @@ export const TacticalPlanMueblesSection: React.FC = () => {
                   </CardHeader>
                   <CardContent>
                       <HabilidadesMueblesTab />
+                  </CardContent>
+              </Card>
+          </TabsContent>
+          <TabsContent value="inventario" className="mt-4">
+              <Card>
+                  <CardHeader>
+                      <CardTitle>Cubo de Inventarios (General)</CardTitle>
+                      <CardDescription>
+                          Visualización completa y búsqueda global en el maestro de inventarios.
+                      </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                      <CuboInventariosGeneralTab />
                   </CardContent>
               </Card>
           </TabsContent>
