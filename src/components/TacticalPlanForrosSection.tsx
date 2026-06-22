@@ -95,7 +95,7 @@ const workstationGroups = [
       "COSEDORA-INTPR", "COSEDORA-INTPT", "COSEDORA-INTP-PR", "COSEDORA-INTP-PT",
       "MTBS1", "MTBS", "COSEDORA-BSC-CC", "COSEDORA-BSCTP", "COSEDORA-MTBS1",
       "CT-BAN", "CT-BSC", "CT-CHN", "CT-INT", "TTCF", "TTSUP", "TELAS", "FUNDAS",
-      "COSEDORA-TTSUP-CHN", "CORTE-ESPUMA"
+      "COSEDORA-TTSUP-CHN", "CORTE-ESPUMA", "CORTELA10"
     ]
   },
   {
@@ -136,6 +136,11 @@ const MachineCard = React.memo(({
   const { filteredOrders, totalTimeHours, utilization, isOverloaded, capacityHours } = useMemo(() => {
     const filtered = orders.filter(o => {
       const orderHR = String(o['MAQUINA'] || o['Maquina'] || '').trim().toUpperCase();
+      // Handle multi-mapping for CORTELA10
+      if (hrCode.includes(' / ')) {
+        const codes = hrCode.split(' / ').map(c => c.trim().toUpperCase());
+        return codes.includes(orderHR);
+      }
       return orderHR === hrCode;
     });
 
@@ -361,9 +366,15 @@ export const TacticalPlanForrosSection: React.FC = () => {
     if (!pn || pn === '—' || pn === 'NULL') return '';
     if (hojaRutaCacheRef.current[pn]) return hojaRutaCacheRef.current[pn];
     
-    // ASIGNACIÓN ESPECÍFICA SOLICITADA
+    // ASIGNACIONES ESPECÍFICAS SOLICITADAS
     if (pn === 'CORTE-ESPUMA') {
-      const res = 'HR-CTBAN';
+      const res = 'HR-CTESP'; // Updated to HR-CTESP
+      hojaRutaCacheRef.current[pn] = res;
+      return res;
+    }
+
+    if (pn === 'CORTELA10') {
+      const res = 'HR-CTBSC / HR-CTCHN / HR-CTINT / HR-CTBAN';
       hojaRutaCacheRef.current[pn] = res;
       return res;
     }
@@ -681,6 +692,18 @@ export const TacticalPlanForrosSection: React.FC = () => {
     const puestoName = getResolvedPuesto(order);
     const hojaRuta = mapToHojaRuta(puestoName);
     if (!materialCode || !hojaRuta) return null;
+    
+    // Support multi-mapping concatenation for CORTELA10 in filter
+    if (hojaRuta.includes(' / ')) {
+      const codes = hojaRuta.split(' / ').map(c => c.trim().toUpperCase());
+      const orderHR = String(order['MAQUINA'] || order['Maquina'] || '').trim().toUpperCase();
+      if (codes.includes(orderHR)) {
+        const key = `${materialCode}|${orderHR}`;
+        const match = kpiIndexRef.current[key];
+        return match ? Number(match.TPromedio) : null;
+      }
+    }
+
     const key = `${materialCode}|${hojaRuta.toUpperCase().trim()}`;
     const match = kpiIndexRef.current[key];
     return match ? Number(match.TPromedio) : null;
@@ -975,6 +998,11 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
                       const orders = filteredOrdenesPrevisionales.filter(o => {
                         const orderHR = String(o['MAQUINA'] || o['Maquina'] || '').trim().toUpperCase();
+                        // Special multi-matching logic for CORTELA10
+                        if (hrCodeFromMaestro.includes(' / ')) {
+                          const codes = hrCodeFromMaestro.split(' / ').map(c => c.trim().toUpperCase());
+                          return codes.includes(orderHR);
+                        }
                         return orderHR === hrCodeFromMaestro;
                       });
 
@@ -1107,7 +1135,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
               p.includes('COSEDORA-INTPR') ||
               p.includes('COSEDORA-INTPT') ||
               p.includes('COSEDORA-TTSUP-CHN') ||
-              p.includes('CORTE-ESPUMA')
+              p.includes('CORTE-ESPUMA') ||
+              p.includes('CORTELA10')
             ).map((pName) => (
               <MachineCard 
                 key={pName} 
