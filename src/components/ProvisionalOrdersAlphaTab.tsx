@@ -19,7 +19,7 @@ const ROWS_PER_PAGE_OPTIONS = [20, 50, 100, 500];
 
 export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps> = ({ restricciones }) => {
     const { addNotification } = useAppContext();
-    const [allRawData, setAllRawData] = useState<any[]>([]); // Almacena TODO el set de datos del servidor
+    const [allRawData, setAllRawData] = useState<any[]>([]); 
     const [isLoading, setIsLoading] = useState(false);
     const [columns, setColumns] = useState<string[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
@@ -46,18 +46,20 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
     }, [restricciones]);
 
     // 2. Obtención y parseo de la restricción HRNP (Hoja de Ruta No Permitida)
-    // Formato esperado: [CODIGO:{MAQUINA}] o [CODIGO:{MAQ1,MAQ2}]
+    // Formato: [CODIGO:{MAQUINA}] o [CODIGO:{MAQ1,MAQ2}]
     const forbiddenMachinesMap = useMemo(() => {
         const hrnpRestriccion = restricciones.find(r => r.nombre_restriccion === 'HRNP');
         if (!hrnpRestriccion || !hrnpRestriccion.valor_restriccion) return new Map<string, string[]>();
         
         const map = new Map<string, string[]>();
-        const regex = /\[(\d+):\{([^}]+)\}\]/g;
+        // Regex para capturar [CODIGO:{VALORES}]
+        const regex = /\[([^:]+):\{([^}]+)\}\]/g;
         let match;
         
-        while ((match = regex.exec(hrnpRestriccion.valor_restriccion)) !== null) {
-            const respCode = match[1];
-            const machines = match[2].split(',').map(m => m.trim());
+        const rawValue = hrnpRestriccion.valor_restriccion;
+        while ((match = regex.exec(rawValue)) !== null) {
+            const respCode = match[1].trim();
+            const machines = match[2].split(',').map(m => m.trim()).filter(Boolean);
             map.set(respCode, machines);
         }
         return map;
@@ -68,7 +70,6 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
         setIsLoading(true);
         setDownloadProgress({ current: 0, total: 0 });
         try {
-            // 1. Exploración para obtener el total
             const exploreRes = await serviciosService.getOrdenesProvisionalesAlphaPaginados(1, 1);
             const total = exploreRes.totalRegistros || 0;
             
@@ -80,7 +81,6 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
 
             setDownloadProgress({ current: 0, total });
 
-            // 2. Descarga en bloques grandes para eficiencia (20,000 por batch)
             const BATCH_SIZE = 20000;
             const totalPages = Math.ceil(total / BATCH_SIZE);
             let combinedData: any[] = [];
@@ -92,7 +92,6 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
                     combinedData = combinedData.concat(batch);
                     setDownloadProgress({ current: combinedData.length, total });
                     
-                    // Extraer columnas del primer registro encontrado
                     if (combinedData.length > 0 && columns.length === 0) {
                         setColumns(Object.keys(combinedData[0]));
                     }
@@ -125,7 +124,8 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
                 if (!validRespCodes.includes(rowResp)) return false;
             }
 
-            // 2. NUEVO CRITERIO: Filtrado por HRNP (Hoja de Ruta No Permitida)
+            // 2. Filtrado por HRNP (Hoja de Ruta No Permitida)
+            // Soporta múltiples valores separados por coma: [CODIGO:{MAQ1,MAQ2}]
             if (forbiddenMachinesMap.has(rowResp)) {
                 const rowMachine = String(row.MAQUINA || row.Maquina || '').trim();
                 const forbiddenOnes = forbiddenMachinesMap.get(rowResp);
@@ -152,7 +152,7 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
         return filteredData.slice(start, start + rowsPerPage);
     }, [filteredData, currentPage, rowsPerPage]);
 
-    // Lógica de sincronización de barras de desplazamiento
+    // Sincronización de scrollbars
     useEffect(() => {
         const calculateWidth = () => {
             if (tableRef.current) setTableWidth(tableRef.current.offsetWidth);
@@ -216,8 +216,8 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
                                 <span className="text-[10px] font-bold text-red-500 uppercase tracking-wider">Exclusiones (HRNP):</span>
                                 <div className="flex gap-1">
                                     {Array.from(forbiddenMachinesMap.entries()).map(([resp, machines]) => (
-                                        <Badge key={resp} variant="outline" className="text-red-600 border-red-200 bg-red-50 text-[10px] px-2 py-0">
-                                            {resp}: {machines.join(', ')}
+                                        <Badge key={resp} variant="outline" className="text-red-600 border-red-200 bg-red-50 text-[10px] px-2 py-0" title={`Excluye: ${machines.join(', ')}`}>
+                                            {resp}: {machines.length > 2 ? `${machines.slice(0, 2).join(', ')}...` : machines.join(', ')}
                                         </Badge>
                                     ))}
                                 </div>
@@ -256,7 +256,6 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
                 </div>
             ) : allRawData.length > 0 ? (
                 <>
-                    {/* Scrollbar Superior */}
                     <div ref={topScrollRef} onScroll={handleTopScroll} className="overflow-x-auto overflow-y-hidden h-[18px]">
                         <div style={{ width: `${tableWidth}px`, height: '1px' }}></div>
                     </div>
@@ -293,7 +292,6 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
                         </table>
                     </div>
 
-                    {/* Controles de Paginación Local */}
                     <div className="flex items-center justify-between mt-4 bg-white p-3 rounded-lg border shadow-sm">
                         <div className="flex items-center space-x-3">
                             <span className="text-xs text-gray-600 font-medium">Filas por página:</span>
