@@ -74,11 +74,21 @@ const workstationGroups = [
   },
   {
     title: "Procesos de Bandas y Bordado",
-    items: ["ACOLCHADORA11", "ACOLCHADORA12", "ACH11", "ACH12", "BORDADORA-BANDA01", "BO01", "RMTB-01", "RMTB-02", "RMTB-M", "COS3D", "ENCINTADOBD"]
+    items: [
+      "ACOLCHADORA11", "ACOLCHADORA12", "ACH11", "ACH12", 
+      "BORDADORA-BANDA01", "BO01", "RMTB-01", "RMTB-02", "RMTB-M", "RMTB01", "RMTB02", "RMTBM",
+      "COS3D", "COSEDORA-BANDA3D", 
+      "ENCINTADOBD", "COSEDORA-ENCINTADOBD"
+    ]
   },
   {
     title: "Interiores, Bases y Corte",
-    items: ["INTP-PR", "INTP-PT", "INTP-F", "MTBS1", "MTBS", "CT-BAN", "CT-BSC", "CT-CHN", "CT-INT", "TTCF", "TTSUP", "TELAS", "FUNDAS"]
+    items: [
+      "INTP-PR", "INTP-PT", "INTP-F", "INTPF", "INTPF1", "INTPF2", 
+      "COSEDORA-INTPF", "COSEDORA-INTPF1", "COSEDORA-INTPF2",
+      "MTBS1", "MTBS", "COSEDORA-BSC-CC", "COSEDORA-BSCTP",
+      "CT-BAN", "CT-BSC", "CT-CHN", "CT-INT", "TTCF", "TTSUP", "TELAS", "FUNDAS"
+    ]
   },
   {
     title: "Ensamble de Forros",
@@ -452,7 +462,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     setBomDownloadProgress(0);
     try {
       const rowsPerPage = 5000;
-      // USANDO ReporteExplosionMateriales SECUENCIALMENTE
+      // USANDO ReporteExplosionMateriales SECUENCIALMENTE para evitar saturación del servidor
       const firstResponse = await serviciosService.ReporteExplosionMateriales(1, rowsPerPage);
       const firstData = firstResponse.data || [];
       const total = firstResponse.totalRegistros || firstResponse.totalRecords || firstResponse.totalRows || 0;
@@ -461,7 +471,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
       const totalPages = Math.ceil(total / rowsPerPage);
       
       if (totalPages > 1) {
-        // REGLA: Carga secuencial para no saturar el servidor
+        // Carga secuencial para no saturar el servidor
         for (let p = 2; p <= totalPages; p++) {
           setBomDownloadProgress(Math.round(((p - 1) / totalPages) * 100));
           const nextResponse = await serviciosService.ReporteExplosionMateriales(p, rowsPerPage);
@@ -587,7 +597,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return filtered;
   }, [ordenesPrevisionalesData, allowedRespCodes]);
   
-  // Órdenes previsionales filtradas por RANGO DE FECHA
+  // Órdenes previsionales filtradas por RANGO DE FECHA para tableros técnicos
   const techFilteredOrdenes = useMemo(() => {
     return filteredOrdenesPrevisionales.filter(order => {
       const dateVal = String(order['FECHAINICIO'] || order['FECHA'] || '').split('T')[0];
@@ -1043,6 +1053,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
               p.includes('ACH12') || 
               p.includes('RMTB') || 
               p.includes('COS3D') || 
+              p.includes('BANDA3D') ||
               p.includes('ENCINTADOBD') || 
               p.includes('BO01') || 
               p.includes('BORDADORA-BANDA01')
@@ -1066,7 +1077,17 @@ export const TacticalPlanForrosSection: React.FC = () => {
         <TabsContent value="interiores-corte" className="space-y-6 pb-20">
           {renderDateFilterHeader()}
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-10">
-            {uniquePuestos.filter(p => p.includes('INTP') || p.includes('MTBS') || p.includes('CT') || p.includes('TTCF') || p.includes('TTSUP') || p.includes('TELAS') || p.includes('FUNDAS')).map((pName) => (
+            {uniquePuestos.filter(p => 
+              p.includes('INTP') || 
+              p.includes('MTBS') || 
+              p.includes('CT') || 
+              p.includes('TTCF') || 
+              p.includes('TTSUP') || 
+              p.includes('TELAS') || 
+              p.includes('FUNDAS') ||
+              p.includes('BSC-CC') ||
+              p.includes('BSCTP')
+            ).map((pName) => (
               <MachineCard 
                 key={pName} 
                 puestoName={pName} 
@@ -1392,7 +1413,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                                   config.isDayActive ? "bg-amber-500 text-white border-amber-600 shadow-amber-200" : "bg-white text-slate-300 border-slate-100"
                                 )}
                               >
-                                <Sun className="w-4 h-4" />
+                                < Sun className="w-4 h-4" />
                                 <span className="text-[10px] font-black uppercase tracking-widest">{config.isDayActive ? 'Día ON' : 'Día OFF'}</span>
                               </button>
                               <button 
