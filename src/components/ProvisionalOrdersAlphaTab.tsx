@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { serviciosService } from '@/services/servicios.service';
 import { useAppContext } from '@/context/AppProvider';
-import { Package, Loader2, Search, Info, Calendar, LayoutDashboard, Clock } from 'lucide-react';
+import { Package, Loader2, Search, Clock, Calendar, LayoutDashboard, History } from 'lucide-react';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,6 +15,14 @@ import type { Restriccion } from '@/types/interfaces';
 interface ProvisionalOrdersAlphaTabProps {
   restricciones: Restriccion[];
   tiemposData?: any[];
+}
+
+interface PaginationState {
+  currentPage: number;
+  totalRegistros: number;
+  pageSize: number;
+  isExploring: boolean;
+  rowsPerPage: number;
 }
 
 const ROWS_PER_PAGE_OPTIONS = [20, 50, 100, 500];
@@ -30,7 +38,7 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
     const [isLoading, setIsLoading] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [currentPage, setCurrentPage] = useState(1);
-    const [rowsPerPage, setRowsPerPage] = useState(ROWS_PER_PAGE_OPTIONS[1]);
+    const [rowsPerPage, setRowsPerPage] = useState(100); // Default set to 100 as requested
     const [downloadProgress, setDownloadProgress] = useState({ current: 0, total: 0 });
     const [deliveryDatesMap, setDeliveryDatesMap] = useState<Map<string, string>>(new Map());
 
