@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -701,6 +700,41 @@ export const TacticalPlanForrosSection: React.FC = () => {
       });
     }
   }, [dataReady, uniquePuestos]);
+
+  // NUEVO: Sincronización automática de turnos basada en restricciones PERSONAL_
+  useEffect(() => {
+    if (restricciones.length > 0 && uniquePuestos.length > 0) {
+      setWorkstationConfigs(prev => {
+        const next = { ...prev };
+        let updated = false;
+
+        restricciones.forEach(r => {
+          const name = r.nombre_restriccion.toUpperCase().trim();
+          if (name.startsWith('PERSONAL_')) {
+            const puestoFromRestriccion = name.replace('PERSONAL_', '').trim();
+            // Buscar el match en uniquePuestos
+            const matchingPuesto = uniquePuestos.find(p => p.toUpperCase().trim() === puestoFromRestriccion);
+            
+            if (matchingPuesto) {
+              const valor = r.valor_restriccion.toUpperCase();
+              const isDay = valor.includes('DIURNO') || valor.includes('DÍA') || valor.includes('DIA');
+              const isNight = valor.includes('NOCTURNO') || valor.includes('NOCHE');
+              
+              if (!next[matchingPuesto]) {
+                next[matchingPuesto] = { machine: matchingPuesto, isDayActive: isDay, isNightActive: isNight };
+                updated = true;
+              } else if (next[matchingPuesto].isDayActive !== isDay || next[matchingPuesto].isNightActive !== isNight) {
+                next[matchingPuesto] = { ...next[matchingPuesto], isDayActive: isDay, isNightActive: isNight };
+                updated = true;
+              }
+            }
+          }
+        });
+
+        return updated ? next : prev;
+      });
+    }
+  }, [restricciones, uniquePuestos]);
 
   const getKPITimeSecondsForOrder = useCallback((order: any) => {
     const materialCode = normalizeMaterialCode(order['MATERIAL'] || order['CodMaterial'] || '');
