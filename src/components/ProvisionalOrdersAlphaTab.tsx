@@ -235,13 +235,12 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
         return filteredData.slice(start, start + rowsPerPage);
     }, [filteredData, currentPage, rowsPerPage]);
 
-    // Orden de columnas solicitado
+    // Orden de columnas solicitado: Disponibilidad al lado de CANTIDAD
     const displayColumns = useMemo(() => {
       if (allRawData.length === 0) return [];
       
       const rawCols = Object.keys(allRawData[0]);
       
-      // Columnas iniciales reordenadas
       const startCols = [
           'ORDENPREVISIONAL', 
           'PEDIDOVENTAS', 
@@ -249,14 +248,13 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
           'MATERIAL', 
           'NOMBRE', 
           'CANTIDAD', 
+          'CANT DISPONIBLE 1000',
+          'CANT DISPONIBLE 2000',
           'FECHA DE ENTREGA', 
           'TIEMPOS',
-          'FECHAINICIO',
-          'CANT DISPONIBLE 1000',
-          'CANT DISPONIBLE 2000'
+          'FECHAINICIO'
       ];
       
-      // Columnas finales solicitadas
       const endCols = ['CATEGORIA', 'UNIDAD', 'Maquina'];
       
       const middleCols = rawCols.filter(c => !startCols.includes(c) && !endCols.includes(c) && c !== 'FECHAINICIO' && c !== 'Maquina');
@@ -336,7 +334,6 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
                     </Button>
                 </div>
 
-                {/* RECUADRO INFORMATIVO */}
                 {!isLoading && allRawData.length > 0 && (
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div className="bg-indigo-600 text-white rounded-lg p-4 shadow-md flex items-center gap-4">
