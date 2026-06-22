@@ -64,15 +64,21 @@ const NOCTURNA_OPTIONS = [
 const workstationGroups = [
   {
     title: "Células de Acolchado y Tapas",
-    items: ["ACOLCHADORA02", "ACOLCHADORA06", "ACOLCHADORA07", "ACOLCHADORA08", "ACOLCHADORA09", "ACOLCHADORA10", "ACOLCHADORA13", "COSEDORA-ACH02", "COSEDORA-ACH06", "COSEDORA-ACH07", "COSEDORA-ACH08", "COSEDORA-ACH09", "COSEDORA-ACH10", "PEGADORA-ACH02", "PEGADORA-ACH06", "PEGADORA-ACH07", "PEGADORA-ACH08", "PEGADORA-ACH09", "PEGADORA-ACH10"]
+    items: [
+      "ACOLCHADORA02", "ACOLCHADORA06", "ACOLCHADORA07", "ACOLCHADORA08", "ACOLCHADORA09", "ACOLCHADORA10", "ACOLCHADORA13", 
+      "ACH02", "ACH06", "ACH07", "ACH08", "ACH09", "ACH10", "ACH13",
+      "COSEDORA-ACH02", "COSEDORA-ACH06", "COSEDORA-ACH07", "COSEDORA-ACH08", "COSEDORA-ACH09", "COSEDORA-ACH10", "COSEDORA-ACH13",
+      "PEGADORA-ACH02", "PEGADORA-ACH06", "PEGADORA-ACH07", "PEGADORA-ACH08", "PEGADORA-ACH09", "PEGADORA-ACH10", "PEGADORA-ACH13",
+      "PEF02", "PEF06", "PEF07", "PEF08", "PEF09", "PEF10", "PEF13"
+    ]
   },
   {
     title: "Procesos de Bandas y Bordado",
-    items: ["ACOLCHADORA11", "ACOLCHADORA12", "BORDADORA-BANDA01", "RMTB-01", "RMTB-02", "RMTB-M", "COS3D", "ENCINTADOBD"]
+    items: ["ACOLCHADORA11", "ACOLCHADORA12", "ACH11", "ACH12", "BORDADORA-BANDA01", "BO01", "RMTB-01", "RMTB-02", "RMTB-M", "COS3D", "ENCINTADOBD"]
   },
   {
     title: "Interiores, Bases y Corte",
-    items: ["INTP-PR", "INTP-PT", "INTP-F", "MTBS1", "MTBS", "CT-BAN", "CT-BSC", "CT-CHN", "CT-INT", "TTCF", "TTSUP"]
+    items: ["INTP-PR", "INTP-PT", "INTP-F", "MTBS1", "MTBS", "CT-BAN", "CT-BSC", "CT-CHN", "CT-INT", "TTCF", "TTSUP", "TELAS", "FUNDAS"]
   },
   {
     title: "Ensamble de Forros",
@@ -271,7 +277,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [isLoadingTiempos, setIsLoadingTiempos] = useState(false);
   const [bomDownloadProgress, setBomDownloadProgress] = useState(0);
   
-  const [loadedTabs, setLoadedTabs] = useState<Set<string>>(new Set(['resumen-produccion', 'acolchado-tapas', 'bandas', 'interiores-corte', 'forros', 'personal-turnos']));
+  const [loadedTabs, setLoadedTabs] = useState<Set<string>>(new Set(['acolchado-tapas']));
   const hojaRutaCacheRef = React.useRef<Record<string, string>>({});
   const kpiIndexRef = React.useRef<Record<string, any>>({});
   const tiemposIndexRef = React.useRef<Record<string, any>>({});
@@ -446,6 +452,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     setBomDownloadProgress(0);
     try {
       const rowsPerPage = 5000;
+      // USANDO ReporteExplosionMateriales SECUENCIALMENTE
       const firstResponse = await serviciosService.ReporteExplosionMateriales(1, rowsPerPage);
       const firstData = firstResponse.data || [];
       const total = firstResponse.totalRegistros || firstResponse.totalRecords || firstResponse.totalRows || 0;
@@ -454,6 +461,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
       const totalPages = Math.ceil(total / rowsPerPage);
       
       if (totalPages > 1) {
+        // REGLA: Carga secuencial para no saturar el servidor
         for (let p = 2; p <= totalPages; p++) {
           setBomDownloadProgress(Math.round(((p - 1) / totalPages) * 100));
           const nextResponse = await serviciosService.ReporteExplosionMateriales(p, rowsPerPage);
