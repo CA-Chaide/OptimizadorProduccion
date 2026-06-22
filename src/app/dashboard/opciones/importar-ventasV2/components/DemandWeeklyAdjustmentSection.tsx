@@ -24,18 +24,6 @@ const safeNum = (v: unknown) => {
 
 const monthKey = (anio: number, mes: number) => `${anio}-${String(mes).padStart(2, '0')}`;
 
-/** Códigos de sector al inicio del texto (p. ej. "01 COLCHONES") para preselección del multiselect. */
-const DEFAULT_SECTOR_CODES = ['01', '02', '03'] as const;
-
-function extractLeadingSectorCode(sector: string): string | null {
-  const t = sector.trim();
-  const m = t.match(/^(\d+)\b/);
-  if (!m) return null;
-  const n = parseInt(m[1], 10);
-  if (!Number.isFinite(n) || n < 0) return null;
-  return String(n).padStart(2, '0');
-}
-
 /**
  * Reparte la demanda mensual en semanas L-V con peso = diasLaborales por segmento.
  * Usa mayor residuo (como el ledger IV4) para que la suma de semanas coincida exactamente
@@ -287,12 +275,7 @@ export const DemandWeeklyAdjustmentSection: React.FC<Props> = ({ rawData, year, 
   );
 
   useEffect(() => {
-    const want = new Set<string>(DEFAULT_SECTOR_CODES);
-    const next = allBaselineSectors.filter(sec => {
-      const code = extractLeadingSectorCode(sec);
-      return code != null && want.has(code);
-    });
-    setSelectedSectors(next.length > 0 ? [...next] : []);
+    setSelectedSectors([...allBaselineSectors]);
   }, [allBaselineSectors]);
 
   const sectorOptions = useMemo(() => {

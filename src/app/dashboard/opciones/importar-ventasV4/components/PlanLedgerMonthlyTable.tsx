@@ -64,8 +64,8 @@ export const PlanLedgerMonthlyTable: React.FC<Props> = ({ rows, title }) => {
               <th className="px-2 py-1 text-left">Descripcion</th>
               <th className="px-2 py-1 text-right">Demanda</th>
               <th className="px-2 py-1 text-right">Despachos</th>
-              <th className="px-2 py-1 text-right">Produccion</th>
-              <th className="px-2 py-1 text-right">Prod Fill</th>
+              <th className="px-2 py-1 text-right bg-blue-50 font-semibold">Produccion</th>
+              <th className="px-2 py-1 text-right bg-blue-50 font-semibold">Prod Fill</th>
               <th className="px-2 py-1 text-right">Tras. Sal.</th>
               <th className="px-2 py-1 text-right">Tras. Ent.</th>
               <th className="px-2 py-1 text-right">Stock Ini</th>
@@ -88,8 +88,8 @@ export const PlanLedgerMonthlyTable: React.FC<Props> = ({ rows, title }) => {
                 <td className="px-2 py-1 truncate max-w-[200px]" title={r.descripcion}>{r.descripcion}</td>
                 <td className="px-2 py-1 text-right">{fmt(r.demanda)}</td>
                 <td className="px-2 py-1 text-right">{fmt(r.despachosVentas)}</td>
-                <td className="px-2 py-1 text-right">{fmt(r.produccion)}</td>
-                <td className="px-2 py-1 text-right">{fmt(r.produccionFill)}</td>
+                <td className="px-2 py-1 text-right bg-blue-50 font-semibold">{fmt(r.produccion)}</td>
+                <td className="px-2 py-1 text-right bg-blue-50">{fmt(r.produccionFill)}</td>
                 <td className="px-2 py-1 text-right">{fmt(r.trasladoSaliente)}</td>
                 <td className="px-2 py-1 text-right">{fmt(r.trasladoEntrante)}</td>
                 <td className="px-2 py-1 text-right">{fmt(r.stockInicialMes)}</td>

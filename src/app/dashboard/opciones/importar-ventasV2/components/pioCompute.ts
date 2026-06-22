@@ -23,15 +23,30 @@ export function buildPioMap(
         ?.valor_restriccion ?? '2'
     ) || 2;
 
-  const etiquetaDias = new Map<string, number>();
+  // Días de inventario objetivo POR CENTRO. Cada restricción trae el centro de
+  // su grupo (`r.grupo.centro`), así dos centros pueden tener días distintos
+  // para la misma etiqueta. Se mantiene un fallback "global" por etiqueta por si
+  // algún grupo no trae centro (compatibilidad con el comportamiento anterior).
+  const diasPorCentroEtiqueta = new Map<string, number>(); // `${centro}|${etiqueta}` -> dias
+  const diasGlobalPorEtiqueta = new Map<string, number>(); // etiqueta -> dias (fallback)
   restricciones
     .filter(r => String(r.nombre_restriccion ?? '').startsWith('DIAS_INV_OBJETIVO_'))
     .forEach(r => {
       const etiqueta = String(r.nombre_restriccion).replace('DIAS_INV_OBJETIVO_', '').trim();
-      etiquetaDias.set(etiqueta, parseInt(r.valor_restriccion) || 10);
+      const dias = parseInt(r.valor_restriccion) || 10;
+      const centro = String(r?.grupo?.centro ?? '').trim();
+      if (centro) diasPorCentroEtiqueta.set(`${centro}|${etiqueta}`, dias);
+      diasGlobalPorEtiqueta.set(etiqueta, dias);
     });
 
-  if (etiquetaDias.size === 0 || firstThreeMeses.length === 0) return map;
+  if (diasGlobalPorEtiqueta.size === 0 || firstThreeMeses.length === 0) return map;
+
+  // Días objetivo para (centro, etiqueta): específico por centro, con fallback
+  // al valor global de la etiqueta y, en último caso, 10 días.
+  const diasObjetivoDe = (centro: string, etiqueta: string): number =>
+    diasPorCentroEtiqueta.get(`${centro}|${etiqueta}`) ??
+    diasGlobalPorEtiqueta.get(etiqueta) ??
+    10;
 
   const totalDias = firstThreeMeses.reduce((sum, mes) => {
     const tc = tiemposCanon.find(t => t.mesNumero === mes);
@@ -50,7 +65,7 @@ export function buildPioMap(
     const uds = parseFloat(String(r.UnidadesProyectado ?? '0')) || 0;
     if (
       sector !== SECTOR_COLCHONES ||
-      !etiquetaDias.has(etiqueta) ||
+      !diasGlobalPorEtiqueta.has(etiqueta) ||
       !firstThreeMeses.includes(mes) ||
       uds <= 0
     ) continue;
@@ -74,7 +89,7 @@ export function buildPioMap(
     const sepIdx = key.indexOf('|');
     const centro = key.slice(0, sepIdx);
     const etiqueta = key.slice(sepIdx + 1);
-    const diasObjetivo = etiquetaDias.get(etiqueta) ?? 10;
+    const diasObjetivo = diasObjetivoDe(centro, etiqueta);
     mats
       .sort((a, b) => b.totalUds - a.totalUds)
       .slice(0, topN)

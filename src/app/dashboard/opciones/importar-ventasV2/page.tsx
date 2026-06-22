@@ -136,15 +136,16 @@ export default function ImportarVentasPage() {
   // Cargar restricciones
   useEffect(() => {
     const PIO_RESTRICCIONES: { nombre: string; valor: string }[] = [
-      { nombre: 'DIAS_INV_OBJETIVO_ZAFIRO 29',          valor: '10' },
-      { nombre: 'DIAS_INV_OBJETIVO_ZAFIRO 24',          valor: '10' },
-      { nombre: 'DIAS_INV_OBJETIVO_IMPERIAL 31',         valor: '10' },
-      { nombre: 'DIAS_INV_OBJETIVO_IMPERIAL 27',         valor: '10' },
-      { nombre: 'DIAS_INV_OBJETIVO_IMPERIAL 23',         valor: '10' },
-      { nombre: 'DIAS_INV_OBJETIVO_IMPERIAL PILLOW TOP', valor: '10' },
+      { nombre: 'DIAS_INV_OBJETIVO_ZAFIRO 29',          valor: '7'  },
+      { nombre: 'DIAS_INV_OBJETIVO_ZAFIRO 24',          valor: '7'  },
+      { nombre: 'DIAS_INV_OBJETIVO_IMPERIAL 31',         valor: '7'  },
+      { nombre: 'DIAS_INV_OBJETIVO_IMPERIAL 27',         valor: '7'  },
+      { nombre: 'DIAS_INV_OBJETIVO_IMPERIAL 23',         valor: '7'  },
+      { nombre: 'DIAS_INV_OBJETIVO_IMPERIAL PILLOW TOP', valor: '5'  },
       { nombre: 'DIAS_INV_OBJETIVO_CONT LUJO PILLOW TOP',valor: '10' },
-      { nombre: 'DIAS_INV_OBJETIVO_GRAND PALACE',        valor: '10' },
-      { nombre: 'DIAS_INV_OBJETIVO_EXCELLENCE NF',       valor: '10' },
+      { nombre: 'DIAS_INV_OBJETIVO_GRAND PALACE',        valor: '15' },
+      { nombre: 'DIAS_INV_OBJETIVO_GRAND HOTEL',         valor: '15' },
+      { nombre: 'DIAS_INV_OBJETIVO_EXCELLENCE NF',       valor: '15' },
       { nombre: 'TOP_N_INV_OBJETIVO',                    valor: '2'  },
     ];
 
