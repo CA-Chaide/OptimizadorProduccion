@@ -24,7 +24,8 @@ import {
   Cog,
   Truck,
   CalendarDays,
-  FileText
+  FileText,
+  Calendar as CalendarIcon
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -88,7 +89,6 @@ const MachineCard = React.memo(({
 }) => {
   const hrCode = mapToHojaRuta(puestoName).trim().toUpperCase();
   
-  // MEMOIZAR: Cálculos solo se hacen cuando los datos cambien realmente
   const { filteredOrders, totalTimeHours, utilization, isOverloaded, capacityHours } = useMemo(() => {
     const filtered = orders.filter(o => {
       const orderHR = String(o['MAQUINA'] || o['Maquina'] || '').trim().toUpperCase();
@@ -222,12 +222,12 @@ const MachineCard = React.memo(({
     </div>
   );
 }, (prevProps, nextProps) => {
-  // Custom equality check - re-render solo si estas props cambian
   return prevProps.puestoName === nextProps.puestoName &&
     prevProps.small === nextProps.small &&
     prevProps.config === nextProps.config &&
     prevProps.horasNetasDiurnas === nextProps.horasNetasDiurnas &&
-    prevProps.horasNetasNocturnas === nextProps.horasNetasNocturnas;
+    prevProps.horasNetasNocturnas === nextProps.horasNetasNocturnas &&
+    prevProps.orders === nextProps.orders;
 });
 
 export const TacticalPlanForrosSection: React.FC = () => {
@@ -251,7 +251,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [isLoadingTiempos, setIsLoadingTiempos] = useState(false);
   const [bomDownloadProgress, setBomDownloadProgress] = useState(0);
   
-  // Lazy loading flags y caches de optimización
   const [loadedTabs, setLoadedTabs] = useState<Set<string>>(new Set(['resumen-produccion', 'acolchado-tapas', 'bandas', 'interiores-corte', 'forros', 'personal-turnos']));
   const hojaRutaCacheRef = React.useRef<Record<string, string>>({});
   const kpiIndexRef = React.useRef<Record<string, any>>({});
@@ -264,8 +263,22 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   const [targetDate1000, setTargetDate1000] = useState<string>("");
   const [targetDate2000, setTargetDate2000] = useState<string>("");
+  
+  // Estados para filtro de fecha en tableros técnicos
+  const [techStartDate, setTechStartDate] = useState<string>("");
+  const [techEndDate, setTechEndDate] = useState<string>("");
 
-  // Crear índices para búsquedas rápidas
+  const addBusinessDays = useCallback((startDate: Date, days: number): string => {
+    const date = new Date(startDate);
+    let count = 0;
+    while (count < days) {
+      date.setDate(date.getDate() + 1);
+      const day = date.getDay();
+      if (day !== 0 && day !== 6) count++;
+    }
+    return date.toISOString().split('T')[0];
+  }, []);
+
   useEffect(() => {
     if (kpiMaestroData.length > 0) {
       const newIndex: Record<string, any> = {};
@@ -302,22 +315,15 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const mapToHojaRuta = useCallback((puestoName: string): string => {
     const pn = String(puestoName || '').toUpperCase().trim();
     if (!pn || pn === '—' || pn === 'NULL') return '';
-    
-    // CACHE: Verificar si ya fue calculado
-    if (hojaRutaCacheRef.current[pn]) {
-      return hojaRutaCacheRef.current[pn];
-    }
+    if (hojaRutaCacheRef.current[pn]) return hojaRutaCacheRef.current[pn];
     
     let result = '';
-    
-    // Mapeo hardcodeado (búsqueda O(1))
     if (pn === 'ACOLCHADORA09') result = 'HR-ACH09';
     else if (pn === 'COSEDORA-ACH02') result = 'HR-PEF02';
     else if (pn === 'COSEDORA-ACH08') result = 'HR-PEF08';
     else if (pn === 'BORDADORA-BANDA01') result = 'HR-BO01';
     else if (pn.includes('FORRO-COLCHONES')) result = 'HR-FORRO';
     
-    // Si no encontró en hardcoding, buscar en índice de tiempos (O(1) con índice)
     if (!result && tiemposIndexRef.current[pn]) {
       const tiemposList = tiemposIndexRef.current[pn];
       if (Array.isArray(tiemposList) && tiemposList.length > 0) {
@@ -326,7 +332,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
       }
     }
     
-    // Si aún no, buscar en KPI index por categoría
     if (!result) {
       for (const key in kpiIndexRef.current) {
         const kpi = kpiIndexRef.current[key];
@@ -337,7 +342,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
       }
     }
     
-    // Patrón de generación si no encontró
     if (!result) {
       const numMatch = pn.match(/\d+/);
       const num = numMatch ? numMatch[0].padStart(2, '0') : '';
@@ -346,27 +350,21 @@ export const TacticalPlanForrosSection: React.FC = () => {
       else result = pn.startsWith('HR-') ? pn : `HR-${pn}`;
     }
     
-    // CACHE: Guardar resultado para próximas llamadas
     hojaRutaCacheRef.current[pn] = result;
     return result;
-  }, []); // Sin dependencias - usa refs que se actualizan independientemente
+  }, []);
 
   useEffect(() => {
     if (isMounted) {
-      const addBusinessDays = (days: number) => {
-        let date = new Date();
-        let count = 0;
-        while (count < days) {
-          date.setDate(date.getDate() + 1);
-          const day = date.getDay();
-          if (day !== 0 && day !== 6) count++;
-        }
-        return date.toISOString().split('T')[0];
-      };
-      if (!targetDate1000) setTargetDate1000(addBusinessDays(3));
-      if (!targetDate2000) setTargetDate2000(addBusinessDays(2));
+      const today = new Date();
+      if (!targetDate1000) setTargetDate1000(addBusinessDays(today, 3));
+      if (!targetDate2000) setTargetDate2000(addBusinessDays(today, 2));
+      
+      // Inicializar filtros de tableros técnicos: Hoy y Mañana laboral
+      if (!techStartDate) setTechStartDate(today.toISOString().split('T')[0]);
+      if (!techEndDate) setTechEndDate(addBusinessDays(today, 1));
     }
-  }, [isMounted, targetDate1000, targetDate2000]);
+  }, [isMounted, targetDate1000, targetDate2000, techStartDate, techEndDate, addBusinessDays]);
 
   const fetchBaseData = useCallback(async () => {
     try {
@@ -428,6 +426,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     setBomDownloadProgress(0);
     try {
       const rowsPerPage = 5000;
+      // FIRST CALL: get total and first batch
       const firstResponse = await serviciosService.ReporteExplosionMateriales(1, rowsPerPage);
       const firstData = firstResponse.data || [];
       const total = firstResponse.totalRegistros || firstResponse.totalRecords || firstResponse.totalRows || 0;
@@ -435,6 +434,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
       let allData = [...firstData];
       const totalPages = Math.ceil(total / rowsPerPage);
       
+      // SEQUENTIAL LOADING: wait for each batch before requesting next
       if (totalPages > 1) {
         for (let p = 2; p <= totalPages; p++) {
           setBomDownloadProgress(Math.round(((p - 1) / totalPages) * 100));
@@ -468,17 +468,14 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
   }, [addNotification]);
 
-  // LAZY LOADING: Solo cargar datos esenciales al iniciar
   useEffect(() => {
     if (isMounted) {
       fetchBaseData();
-      fetchKPIMaestro();  // Necesario para cálculos
-      fetchOrdenesPrevisionales();  // Necesario para resumen
-      // fetchOrdenesFert, fetchListaMateriales, fetchVersionesFabricacion se cargan ON DEMAND
+      fetchKPIMaestro();
+      fetchOrdenesPrevisionales();
     }
   }, [isMounted, fetchBaseData, fetchKPIMaestro, fetchOrdenesPrevisionales]);
   
-  // Marcar que datos esenciales están listos
   useEffect(() => {
     if (tiemposProduccion.length > 0 && kpiMaestroData.length > 0 && ordenesPrevisionalesData.length > 0) {
       setDataReady(true);
@@ -495,7 +492,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const allowedRespCodes = useMemo(() => {
     const codes = new Set<string>();
     const forroGroupCodes = new Set(forrosGruposList.map(g => g.codigo_grupo));
-    
     restricciones.forEach(r => {
       if (forroGroupCodes.has(r.codigo_grupo)) {
         const normName = r.nombre_restriccion.toUpperCase().trim();
@@ -508,7 +504,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
         }
       }
     });
-    
     return Array.from(codes);
   }, [restricciones, forrosGruposList]);
 
@@ -565,6 +560,15 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
     return filtered;
   }, [ordenesPrevisionalesData, allowedRespCodes]);
+  
+  // Órdenes previsionales filtradas por RANGO DE FECHA para tableros técnicos
+  const techFilteredOrdenes = useMemo(() => {
+    return filteredOrdenesPrevisionales.filter(order => {
+      const dateVal = String(order['FECHAINICIO'] || order['FECHA'] || '').split('T')[0];
+      if (!dateVal || dateVal === '—') return false;
+      return dateVal >= techStartDate && dateVal <= techEndDate;
+    });
+  }, [filteredOrdenesPrevisionales, techStartDate, techEndDate]);
 
   const fetchTiemposProduccion = useCallback(async () => {
     if (forrosGruposList.length === 0) return;
@@ -615,12 +619,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return Array.from(pSet).sort();
   }, [tiemposProduccion, filteredOrdenesPrevisionales, getResolvedPuesto]);
 
-  // ROMPER CICLO: Solo inicializar workstationConfigs UNA sola vez basado en uniquePuestos
   useEffect(() => {
     if (dataReady && uniquePuestos.length > 0) {
       setWorkstationConfigs(prev => {
-        if (Object.keys(prev).length > 0) return prev; // Ya inicializado, no hacer nada
-        
+        if (Object.keys(prev).length > 0) return prev;
         const initial: Record<string, WorkstationConfig> = {};
         uniquePuestos.forEach(p => {
           initial[p] = { machine: p, isDayActive: true, isNightActive: false };
@@ -628,32 +630,24 @@ export const TacticalPlanForrosSection: React.FC = () => {
         return initial;
       });
     }
-  }, [dataReady, uniquePuestos]); // Removido workstationConfigs de dependencias
+  }, [dataReady, uniquePuestos]);
 
   const getKPITimeSecondsForOrder = useCallback((order: any) => {
     const materialCode = normalizeMaterialCode(order['MATERIAL'] || order['CodMaterial'] || '');
     const puestoName = getResolvedPuesto(order);
     const hojaRuta = mapToHojaRuta(puestoName);
     if (!materialCode || !hojaRuta) return null;
-    
-    // ÍNDICE: Usar búsqueda O(1) en lugar de find() en array
     const key = `${materialCode}|${hojaRuta.toUpperCase().trim()}`;
     const match = kpiIndexRef.current[key];
-    
     return match ? Number(match.TPromedio) : null;
   }, [normalizeMaterialCode, getResolvedPuesto, mapToHojaRuta]);
 
   const calculateProductionTime = useCallback((material: string, quantity: number, order: any) => {
     if (!material) return 0;
     const kpiSec = getKPITimeSecondsForOrder(order);
-    if (kpiSec !== null) {
-      return (kpiSec * quantity);
-    }
-    
-    // Usar índice para búsqueda rápida
+    if (kpiSec !== null) return (kpiSec * quantity);
     const normMaterial = normalizeMaterialCode(material);
     const timesList = tiemposIndexRef.current[normMaterial];
-    
     if (timesList && Array.isArray(timesList)) {
       const puesto = getResolvedPuesto(order);
       const match = timesList.find(t => {
@@ -662,7 +656,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
       }) || timesList[0];
       return match ? (Number(match.Tiempo || match.Tiempo_Min || 0) * 60 * quantity) : 0;
     }
-    
     return 0;
   }, [normalizeMaterialCode, getResolvedPuesto, getKPITimeSecondsForOrder]);
 
@@ -679,57 +672,41 @@ export const TacticalPlanForrosSection: React.FC = () => {
     });
   };
 
-  const filterOrdersByHR = useCallback((puestoName: string) => {
-    const targetHR = mapToHojaRuta(puestoName).trim().toUpperCase();
-    if (!targetHR) return [];
-    return filteredOrdenesPrevisionales.filter(o => {
-      const orderHR = String(o['MAQUINA'] || o['Maquina'] || '').trim().toUpperCase();
-      return orderHR === targetHR;
-    });
-  }, [filteredOrdenesPrevisionales, mapToHojaRuta]);
-
-  const workstationGroups = [
-    { 
-      title: "ACOLCHADORAS DE TAPAS Y PEGADORAS DE FALSO", 
-      items: [
-        "ACOLCHADORA02", "COSEDORA-ACH02", "ACOLCHADORA06", "COSEDORA-ACH06", 
-        "ACOLCHADORA07", "COSEDORA-ACH07", "ACOLCHADORA08", "COSEDORA-ACH08", 
-        "ACOLCHADORA09", "COSEDORA-ACH09", "ACOLCHADORA10", "COSEDORA-ACH10", 
-        "COSEDORA-ACH13"
-      ] 
-    },
-    { 
-      title: "BANDAS", 
-      items: ["ACOLCHADORA11", "ACOLCHADORA12", "COSEDORA-ACH11", "COSEDORA-ACH12", "COSEDORA-BANDA3D", "COSEDORA-BO01", "COSEDORA-ENCINTADOBD", "BORDADORA-BANDA01"] 
-    },
-    { 
-      title: "REMATADORADAS DE BANDAS", 
-      items: ["COSEDORA-RMTB1", "COSEDORA-RMTB2", "COSEDORA-RMTB3", "COSEDORA-RMTBM"] 
-    },
-    { 
-      title: "CORTADORA DE TELA", 
-      items: ["CORTELA10", "CORTE-ESPUMA"] 
-    },
-    { 
-      title: "INTERIORES", 
-      items: ["COSEDORA-INTPF", "COSEDORA-INTPF1", "COSEDORA-INTPF2", "COSEDORA-INTPR", "COSEDORA-INTPT"] 
-    },
-    { 
-      title: "BASES", 
-      items: ["COSEDORA-BSCTP", "COSEDORA-BSC-CC"] 
-    },
-    { 
-      title: "TAPAS TELAS Y TAPAS SUPERIORES", 
-      items: ["COSEDORA-TTCHN", "COSEDORA-TTSUP-CHN"] 
-    },
-    { 
-      title: "FORROS CHN Y BASES", 
-      items: ["FORRO-BASE-BCAMAS", "FORRO-COLCHONES"] 
-    }
-  ];
+  const mapToHojaRutaInternal = useCallback((puestoName: string): string => mapToHojaRuta(puestoName), [mapToHojaRuta]);
 
   const horasNetasDiurnasVal = parseFloat(jornadaDiurnaSel || "0") * 0.84;
   const horasNetasNocturnasVal = parseFloat(jornadaNocturnaSel || "0") * 0.84;
+
+  const renderDateFilterHeader = () => (
+    <div className="flex flex-col md:flex-row items-center gap-4 p-5 bg-white border border-slate-200 rounded-[1.5rem] shadow-sm mb-6">
+      <div className="flex items-center gap-2 text-indigo-600 font-black uppercase tracking-widest text-[10px]">
+        <CalendarIcon className="w-4 h-4" /> Filtro de Producción Técnica
+      </div>
+      <div className="flex items-center gap-3">
+        <div className="flex items-center bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 gap-2">
+          <span className="text-[9px] font-black text-slate-400 uppercase">Desde</span>
+          <input 
+            type="date" 
+            value={techStartDate} 
+            onChange={(e) => setTechStartDate(e.target.value)}
+            className="bg-transparent border-none text-slate-700 text-xs font-bold focus:ring-0 outline-none p-0 cursor-pointer"
+          />
+        </div>
+        <div className="flex items-center bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 gap-2">
+          <span className="text-[9px] font-black text-slate-400 uppercase">Hasta</span>
+          <input 
+            type="date" 
+            value={techEndDate} 
+            onChange={(e) => setTechEndDate(e.target.value)}
+            className="bg-transparent border-none text-slate-700 text-xs font-bold focus:ring-0 outline-none p-0 cursor-pointer"
+          />
+        </div>
+        <div className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">
+          {techFilteredOrdenes.length} órdenes en período
+        </div>
+      </div>
+    </div>
+  );
 
   const renderFertTable = (orders: any[], summary: any[], title: string, date: string, setDate: (d: string) => void, color: string) => {
     const fertCols = [
@@ -841,8 +818,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     );
   };
 
-  if (!isMounted) return null;
-
   return (
     <div className="p-6 md:p-8 space-y-6 bg-slate-50/40 min-h-screen font-body">
       <div className="flex flex-col xl:flex-row items-center justify-between gap-6 bg-white p-7 rounded-[2rem] border border-slate-200 shadow-sm">
@@ -886,19 +861,13 @@ export const TacticalPlanForrosSection: React.FC = () => {
         defaultValue="acolchado-tapas" 
         className="w-full"
         onValueChange={(tabValue) => {
-          // Lazy loading: Cargar datos solo cuando se abre un tab
           if (!loadedTabs.has(tabValue)) {
             const newLoaded = new Set(loadedTabs);
             newLoaded.add(tabValue);
             setLoadedTabs(newLoaded);
-            
-            if (tabValue === 'ordenes-fert' && ordenesFert.length === 0) {
-              fetchOrdenesFert();
-            } else if (tabValue === 'lista-materiales' && listaMaterialesData.length === 0) {
-              fetchListaMateriales();
-            } else if (tabValue === 'versiones-fabricacion' && versionesFabricacionData.length === 0) {
-              fetchVersionesFabricacion();
-            }
+            if (tabValue === 'ordenes-fert' && ordenesFert.length === 0) fetchOrdenesFert();
+            else if (tabValue === 'lista-materiales' && listaMaterialesData.length === 0) fetchListaMateriales();
+            else if (tabValue === 'versiones-fabricacion' && versionesFabricacionData.length === 0) fetchVersionesFabricacion();
           }
         }}
       >
@@ -958,13 +927,17 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {uniquePuestos.map((p, idx) => {
-                      const orders = filterOrdersByHR(p);
+                      const orders = filteredOrdenesPrevisionales.filter(o => {
+                        const targetHR = mapToHojaRutaInternal(p).trim().toUpperCase();
+                        const orderHR = String(o['MAQUINA'] || o['Maquina'] || '').trim().toUpperCase();
+                        return orderHR === targetHR;
+                      });
                       const totalUnits = orders.reduce((sum, o) => sum + Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0), 0);
                       const totalTimeHours = orders.reduce((sum, o) => sum + calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0), o), 0) / 3600;
                       const config = workstationConfigs[p] || { machine: p, isDayActive: true, isNightActive: false };
                       const capacityHours = (config.isDayActive ? horasNetasDiurnasVal : 0) + (config.isNightActive ? horasNetasNocturnasVal : 0);
                       const utilization = capacityHours > 0 ? (totalTimeHours / capacityHours) * 100 : 0;
-                      const hrCode = mapToHojaRuta(p);
+                      const hrCode = mapToHojaRutaInternal(p);
                       return (
                         <tr key={idx} className="hover:bg-slate-50 transition-all">
                           <td className="px-8 py-5 font-black text-slate-900 uppercase whitespace-nowrap">{p}</td>
@@ -994,7 +967,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
           </Card>
         </TabsContent>
 
-        <TabsContent value="acolchado-tapas" className="space-y-16 pb-20">
+        <TabsContent value="acolchado-tapas" className="space-y-6 pb-20">
+          {renderDateFilterHeader()}
           {['02', '06', '07', '08', '09', '10', '13'].map(suffix => {
             const achNames = uniquePuestos.filter(p => p.includes(`ACH${suffix}`) || p.includes(`ACOLCHADORA${suffix}`));
             const pefNames = uniquePuestos.filter(p => p.includes(`PEF${suffix}`) || p.includes(`COSEDORA-ACH${suffix}`) || p.includes(`PEGADORA${suffix}`));
@@ -1009,24 +983,24 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   {achNames.length > 0 && (
                     <MachineCard 
                       puestoName={achNames[0]} 
-                      orders={filteredOrdenesPrevisionales}
+                      orders={techFilteredOrdenes}
                       calculateProductionTime={calculateProductionTime}
                       config={workstationConfigs[achNames[0]] || { machine: achNames[0], isDayActive: true, isNightActive: false }}
                       horasNetasDiurnas={horasNetasDiurnasVal}
                       horasNetasNocturnas={horasNetasNocturnasVal}
-                      mapToHojaRuta={mapToHojaRuta}
+                      mapToHojaRuta={mapToHojaRutaInternal}
                       normalizeMaterialCode={normalizeMaterialCode}
                     />
                   )}
                   {pefNames.length > 0 && (
                     <MachineCard 
                       puestoName={pefNames[0]} 
-                      orders={filteredOrdenesPrevisionales}
+                      orders={techFilteredOrdenes}
                       calculateProductionTime={calculateProductionTime}
                       config={workstationConfigs[pefNames[0]] || { machine: pefNames[0], isDayActive: true, isNightActive: false }}
                       horasNetasDiurnas={horasNetasDiurnasVal}
                       horasNetasNocturnas={horasNetasNocturnasVal}
-                      mapToHojaRuta={mapToHojaRuta}
+                      mapToHojaRuta={mapToHojaRutaInternal}
                       normalizeMaterialCode={normalizeMaterialCode}
                     />
                   )}
@@ -1036,7 +1010,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
           })}
         </TabsContent>
 
-        <TabsContent value="bandas" className="space-y-10 pb-20">
+        <TabsContent value="bandas" className="space-y-6 pb-20">
+          {renderDateFilterHeader()}
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-10">
             {uniquePuestos.filter(p => 
               p.includes('ACOLCHADORA11') || 
@@ -1053,50 +1028,52 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 key={pName} 
                 puestoName={pName} 
                 small 
-                orders={filteredOrdenesPrevisionales}
+                orders={techFilteredOrdenes}
                 calculateProductionTime={calculateProductionTime}
                 config={workstationConfigs[pName] || { machine: pName, isDayActive: true, isNightActive: false }}
                 horasNetasDiurnas={horasNetasDiurnasVal}
                 horasNetasNocturnas={horasNetasNocturnasVal}
-                mapToHojaRuta={mapToHojaRuta}
+                mapToHojaRuta={mapToHojaRutaInternal}
                 normalizeMaterialCode={normalizeMaterialCode}
               />
             ))}
           </div>
         </TabsContent>
 
-        <TabsContent value="interiores-corte" className="space-y-10 pb-20">
+        <TabsContent value="interiores-corte" className="space-y-6 pb-20">
+          {renderDateFilterHeader()}
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-10">
             {uniquePuestos.filter(p => p.includes('INTP') || p.includes('MTBS') || p.includes('CT') || p.includes('TTCF') || p.includes('TTSUP') || p.includes('TELAS') || p.includes('FUNDAS')).map((pName) => (
               <MachineCard 
                 key={pName} 
                 puestoName={pName} 
                 small 
-                orders={filteredOrdenesPrevisionales}
+                orders={techFilteredOrdenes}
                 calculateProductionTime={calculateProductionTime}
                 config={workstationConfigs[pName] || { machine: pName, isDayActive: true, isNightActive: false }}
                 horasNetasDiurnas={horasNetasDiurnasVal}
                 horasNetasNocturnas={horasNetasNocturnasVal}
-                mapToHojaRuta={mapToHojaRuta}
+                mapToHojaRuta={mapToHojaRutaInternal}
                 normalizeMaterialCode={normalizeMaterialCode}
               />
             ))}
           </div>
         </TabsContent>
 
-        <TabsContent value="forros" className="space-y-10 pb-20">
+        <TabsContent value="forros" className="space-y-6 pb-20">
+          {renderDateFilterHeader()}
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-10">
             {uniquePuestos.filter(p => p.includes('FORRO') || p.includes('FBASE')).map((pName) => (
               <MachineCard 
                 key={pName} 
                 puestoName={pName} 
                 small 
-                orders={filteredOrdenesPrevisionales}
+                orders={techFilteredOrdenes}
                 calculateProductionTime={calculateProductionTime}
                 config={workstationConfigs[pName] || { machine: pName, isDayActive: true, isNightActive: false }}
                 horasNetasDiurnas={horasNetasDiurnasVal}
                 horasNetasNocturnas={horasNetasNocturnasVal}
-                mapToHojaRuta={mapToHojaRuta}
+                mapToHojaRuta={mapToHojaRutaInternal}
                 normalizeMaterialCode={normalizeMaterialCode}
               />
             ))}
@@ -1234,7 +1211,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 {isLoadingListaMateriales && listaMaterialesData.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-32 space-y-4">
                     <Loader2 className="w-12 h-12 animate-spin text-emerald-600" />
-                    <span className="text-slate-500 font-black uppercase tracking-widest text-xs">Descargando reporte completo...</span>
+                    <span className="text-slate-500 font-black uppercase tracking-widest text-xs">Descargando reporte completo secuencialmente...</span>
                   </div>
                 ) : listaMaterialesData.length > 0 ? (
                   <table className="w-full text-[11px] border-collapse">
@@ -1315,7 +1292,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
           </Card>
         </TabsContent>
 
-        <TabsContent value="personal-turnos">
+        <TabsContent value="personal-turnos" className="pb-20">
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-10">
             <Card className="lg:col-span-1 rounded-[2.5rem] bg-white border-none shadow-sm ring-1 ring-slate-100">
                <CardHeader className="bg-slate-950 text-white p-8 rounded-t-[2.5rem]"><CardTitle className="text-xl font-black uppercase">Configuración de Jornada</CardTitle></CardHeader>
@@ -1367,7 +1344,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       {availableItems.map(p => {
                         const config = workstationConfigs[p] || { machine: p, isDayActive: true, isNightActive: false };
                         const capPuesto = (config.isDayActive ? horasNetasDiurnasVal : 0) + (config.isNightActive ? horasNetasNocturnasVal : 0);
-                        const hrCode = mapToHojaRuta(p);
+                        const hrCode = mapToHojaRutaInternal(p);
                         return (
                           <div key={p} className="flex flex-col p-6 border-2 border-slate-100 rounded-[2rem] bg-white hover:border-indigo-200 transition-all shadow-sm">
                             <div className="flex items-center justify-between mb-4">
