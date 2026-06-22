@@ -22,9 +22,7 @@ import {
   Filter,
   ListTree,
   Cog,
-  Truck,
   CalendarDays,
-  FileText,
   Calendar as CalendarIcon
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -1518,17 +1516,11 @@ export const TacticalPlanForrosSection: React.FC = () => {
                         const capPuesto = (config.isDayActive ? horasNetasDiurnasVal : 0) + (config.isNightActive ? horasNetasNocturnasVal : 0);
                         const hrCode = mapToHojaRutaInternal(p);
                         return (
-                          <div key={p} className="flex flex-col p-6 border-2 border-slate-100 rounded-[2rem] bg-white hover:border-indigo-200 transition-all shadow-sm">
-                            <div className="flex items-center justify-between mb-4">
+                          <div key={p} className="flex flex-col p-6 border-2 border-slate-100 rounded-[2rem] bg-white hover:border-indigo-200 transition-all shadow-sm relative group">
+                            <div className="flex items-start justify-between mb-4">
                               <div className="min-w-0 flex-1">
                                 <div className="flex flex-col gap-1 mb-2">
-                                  <p className="font-black text-indigo-950 uppercase text-lg leading-tight break-words">{p}</p>
-                                  {config.people > 0 && (
-                                    <div className="flex items-center gap-1.5 bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-lg w-fit border border-indigo-100">
-                                      <Users className="w-3 h-3" />
-                                      <span className="text-[10px] font-black uppercase tracking-tight">{config.people} Personas</span>
-                                    </div>
-                                  )}
+                                  <p className="font-black text-indigo-950 uppercase text-lg leading-tight break-words pr-12">{p}</p>
                                 </div>
                                 <div className="flex flex-wrap gap-2">
                                   <Badge className="bg-indigo-600 text-white border-none font-mono text-[10px] uppercase font-bold tracking-widest px-2.5 py-0.5 rounded-lg shadow-sm">
@@ -1540,6 +1532,14 @@ export const TacticalPlanForrosSection: React.FC = () => {
                                   </div>
                                 </div>
                               </div>
+                              
+                              {/* INDICADOR DE PERSONAS POR PUESTO (ESTILO PLANO TÉCNICO) */}
+                              {config.people > 0 && (
+                                <div className="flex flex-col items-center justify-center bg-slate-50 border-2 border-dashed border-slate-200 w-14 h-14 rounded-2xl shrink-0 shadow-inner group-hover:bg-indigo-50 group-hover:border-indigo-200 transition-colors">
+                                  <span className="text-2xl font-black text-indigo-600 leading-none">{config.people}</span>
+                                  <span className="text-[7px] font-black uppercase text-slate-400 mt-1 tracking-tighter">Personas</span>
+                                </div>
+                              )}
                             </div>
                             <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-100">
                               <button 
