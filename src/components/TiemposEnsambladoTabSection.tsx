@@ -178,7 +178,7 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
       }
       
     } catch (err) {
-      addNotification('error', `Error al cargar datos técnicos: ${(err as Error).message}`);
+      addNotification('error', `Error al cargar datos: ${(err as Error).message}`);
     } finally {
       setIsLoading(false);
     }
@@ -294,7 +294,7 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
   const totalPagesLocal = Math.max(1, Math.ceil(currentViewData.length / rowsPerPage));
   const startIndex = (currentPage - 1) * rowsPerPage;
   const endIndex = startIndex + rowsPerPage;
-  const displayedData = currentViewData.slice(startIndex, endIndex);
+  const displayedData = currentViewData.slice(startIndex, startIndex + rowsPerPage);
 
   const formatMaterial = (mat: string) => String(mat || '').replace(/^0+/, '');
 
@@ -485,6 +485,7 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
                     <>
                       <th className="px-4 py-3 text-right text-[10px] font-bold text-emerald-700 uppercase tracking-wider bg-emerald-50/30">Cant ordFab</th>
                       <th className="px-4 py-3 text-right text-[10px] font-bold text-amber-700 uppercase tracking-wider bg-amber-50/30">Cant ordPrev</th>
+                      <th className="px-4 py-3 text-right text-[10px] font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50/30">Total Cantidad</th>
                       <th className="px-4 py-3 text-right text-[10px] font-bold text-emerald-800 uppercase tracking-wider bg-emerald-100/20">Tiempo ordFab</th>
                       <th className="px-4 py-3 text-right text-[10px] font-bold text-amber-800 uppercase tracking-wider bg-amber-100/20">Tiempo ordPrev</th>
                     </>
@@ -509,6 +510,7 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
                   
                   const cantOrdFab = fertSumMap.get(key) || 0;
                   const cantOrdPrev = provisionalSumMap.get(key) || 0;
+                  const totalCantidad = cantOrdFab + cantOrdPrev;
                   
                   // Cálculos de tiempo en horas: (tiempo_min * cantidad) / 60
                   const tiempoOrdFab = (Number(row.Tiempo_Min || 0) * cantOrdFab) / 60;
@@ -529,6 +531,9 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap text-xs font-bold text-right text-amber-700 bg-amber-50/5">
                             {cantOrdPrev > 0 ? cantOrdPrev.toLocaleString() : '0'}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-xs font-bold text-right text-indigo-700 bg-indigo-50/5">
+                            {totalCantidad > 0 ? totalCantidad.toLocaleString() : '0'}
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap text-xs font-bold text-right text-emerald-800 bg-emerald-100/10">
                             {tiempoOrdFab > 0 ? tiempoOrdFab.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0'}
@@ -556,7 +561,7 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
                   );
                 }) : (
                   <tr>
-                    <td colSpan={isCompact ? 8 : 10} className="px-6 py-12 text-center text-gray-400 italic">
+                    <td colSpan={isCompact ? 9 : 10} className="px-6 py-12 text-center text-gray-400 italic">
                       <div className="flex flex-col items-center justify-center gap-2">
                         <AlertCircle className="w-8 h-8 text-gray-300" />
                         <span>No se encontraron registros técnicos para el centro seleccionado.</span>
