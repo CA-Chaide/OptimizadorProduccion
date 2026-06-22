@@ -7,6 +7,7 @@ import { ClipboardList, Loader2, Search, Package, LayoutDashboard } from 'lucide
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import type { Restriccion } from '@/types/interfaces';
 
