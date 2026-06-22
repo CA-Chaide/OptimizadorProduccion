@@ -72,7 +72,7 @@ const workstationGroups = [
       "ACOLCHADORA10", "COSEDORA-ACH10",
       "ACOLCHADORA13", "COSEDORA-ACH13",
       
-      // Máquinas que no empatan o variantes técnicas al final del grupo
+      // Máquinas que no empaten o variantes técnicas al final del grupo
       "ACH02", "ACH06", "ACH07", "ACH08", "ACH09", "ACH10", "ACH13",
       "PEGADORA-ACH02", "PEGADORA-ACH06", "PEGADORA-ACH07", "PEGADORA-ACH08", "PEGADORA-ACH09", "PEGADORA-ACH10", "PEGADORA-ACH13",
       "PEF02", "PEF06", "PEF07", "PEF08", "PEF09", "PEF10", "PEF13"
@@ -108,6 +108,7 @@ interface WorkstationConfig {
   machine: string;
   isDayActive: boolean;
   isNightActive: boolean;
+  people: number;
 }
 
 const MachineCard = React.memo(({ 
@@ -176,6 +177,12 @@ const MachineCard = React.memo(({
               <Cpu className="w-6 h-6 text-indigo-600 shrink-0" />
               <span>{puestoName}</span>
             </h3>
+            {config.people > 0 && (
+              <div className="flex items-center gap-1.5 bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-lg w-fit mt-1">
+                <Users className="w-3 h-3" />
+                <span className="text-[10px] font-black uppercase tracking-tight">{config.people} Personas</span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -366,7 +373,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     if (!pn || pn === '—' || pn === 'NULL') return '';
     if (hojaRutaCacheRef.current[pn]) return hojaRutaCacheRef.current[pn];
     
-    // ASIGNACIONES ESPECÍFICAS SOLICITADAS
+    // ASIGNACIONES ESPECÍFICAS
     if (pn === 'CORTE-ESPUMA') {
       const res = 'HR-CTESP';
       hojaRutaCacheRef.current[pn] = res;
@@ -379,21 +386,18 @@ export const TacticalPlanForrosSection: React.FC = () => {
       return res;
     }
 
-    // CORRECCIÓN SOLICITADA: COSEDORA-TTCHN A HR-TTCF
     if (pn === 'COSEDORA-TTCHN' || pn === 'TTCF') {
       const res = 'HR-TTCF';
       hojaRutaCacheRef.current[pn] = res;
       return res;
     }
 
-    // UNIFICACIÓN TÉCNICA SOLICITADA: COSEDORAS INTPF A HR-INTPF
     if (pn === 'COSEDORA-INTPF' || pn === 'COSEDORA-INTPF1' || pn === 'COSEDORA-INTPF2' || pn === 'INTPF' || pn === 'INTP-F') {
       const res = 'HR-INTPF';
       hojaRutaCacheRef.current[pn] = res;
       return res;
     }
 
-    // Primero buscar en el Maestro KPI (Prioridad técnica solicitada)
     const kpiMatch = kpiMaestroData.find(k => String(k.Categoria || '').toUpperCase().trim() === pn);
     if (kpiMatch && kpiMatch.HRUTA) {
       const result = String(kpiMatch.HRUTA).trim().toUpperCase();
@@ -433,8 +437,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
       const today = new Date();
       if (!targetDate1000) setTargetDate1000(addBusinessDays(today, 3));
       if (!targetDate2000) setTargetDate2000(addBusinessDays(today, 2));
-      
-      // Filtros técnicos: Hoy y Mañana laboral
       if (!techStartDate) setTechStartDate(today.toISOString().split('T')[0]);
       if (!techEndDate) setTechEndDate(addBusinessDays(today, 1));
     }
@@ -503,21 +505,15 @@ export const TacticalPlanForrosSection: React.FC = () => {
       const firstResponse = await serviciosService.ReporteExplosionMateriales(1, rowsPerPage);
       const firstData = firstResponse.data || [];
       const total = firstResponse.totalRegistros || firstResponse.totalRecords || firstResponse.totalRows || 0;
-      
       let allData = [...firstData];
       const totalPages = Math.ceil(total / rowsPerPage);
-      
       if (totalPages > 1) {
-        // Carga secuencial estricta solicitada
         for (let p = 2; p <= totalPages; p++) {
           setBomDownloadProgress(Math.round(((p - 1) / totalPages) * 100));
           const nextResponse = await serviciosService.ReporteExplosionMateriales(p, rowsPerPage);
-          if (nextResponse.data) {
-            allData = [...allData, ...nextResponse.data];
-          }
+          if (nextResponse.data) allData = [...allData, ...nextResponse.data];
         }
       }
-      
       setListaMaterialesData(allData);
       setBomDownloadProgress(100);
     } catch (error: any) {
@@ -678,7 +674,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return match ? String(match.PuestoTrabajo || match.nombre_estacion || match.Maquina || '').trim().toUpperCase() : '';
   }, [tiemposProduccion, normalizeMaterialCode]);
 
-  // Columna PUESTO DE TRABAJO alimentada por Categoría / Puesto de KPI Maestro
   const uniquePuestos = useMemo(() => {
     const pSet = new Set<string>();
     kpiMaestroData.forEach(kpi => {
@@ -694,39 +689,58 @@ export const TacticalPlanForrosSection: React.FC = () => {
         if (Object.keys(prev).length > 0) return prev;
         const initial: Record<string, WorkstationConfig> = {};
         uniquePuestos.forEach(p => {
-          initial[p] = { machine: p, isDayActive: true, isNightActive: false };
+          initial[p] = { machine: p, isDayActive: true, isNightActive: false, people: 0 };
         });
         return initial;
       });
     }
   }, [dataReady, uniquePuestos]);
 
-  // NUEVO: Sincronización automática de turnos basada en restricciones PERSONAL_
+  // Sincronización automática de turnos y PERSONAL basado en restricciones PERSONAL_
   useEffect(() => {
     if (restricciones.length > 0 && uniquePuestos.length > 0) {
       setWorkstationConfigs(prev => {
         const next = { ...prev };
         let updated = false;
 
-        restricciones.forEach(r => {
-          const name = r.nombre_restriccion.toUpperCase().trim();
-          if (name.startsWith('PERSONAL_')) {
-            const puestoFromRestriccion = name.replace('PERSONAL_', '').trim();
-            // Buscar el match en uniquePuestos
-            const matchingPuesto = uniquePuestos.find(p => p.toUpperCase().trim() === puestoFromRestriccion);
-            
-            if (matchingPuesto) {
+        uniquePuestos.forEach(p => {
+          const normP = p.toUpperCase().trim();
+          
+          // Buscar restricciones relacionadas con PERSONAL para este puesto
+          const relevantRestrictions = restricciones.filter(r => 
+            r.nombre_restriccion.toUpperCase().trim().includes('PERSONAL') &&
+            r.nombre_restriccion.toUpperCase().trim().includes(normP)
+          );
+
+          if (relevantRestrictions.length > 0) {
+            let isDay = false;
+            let isNight = false;
+            let peopleCount = 0;
+
+            relevantRestrictions.forEach(r => {
               const valor = r.valor_restriccion.toUpperCase();
-              const isDay = valor.includes('DIURNO') || valor.includes('DÍA') || valor.includes('DIA');
-              const isNight = valor.includes('NOCTURNO') || valor.includes('NOCHE');
               
-              if (!next[matchingPuesto]) {
-                next[matchingPuesto] = { machine: matchingPuesto, isDayActive: isDay, isNightActive: isNight };
-                updated = true;
-              } else if (next[matchingPuesto].isDayActive !== isDay || next[matchingPuesto].isNightActive !== isNight) {
-                next[matchingPuesto] = { ...next[matchingPuesto], isDayActive: isDay, isNightActive: isNight };
-                updated = true;
+              // Detectar turnos
+              if (valor.includes('DIURNO') || valor.includes('DÍA') || valor.includes('DIA')) isDay = true;
+              if (valor.includes('NOCTURNO') || valor.includes('NOCHE')) isNight = true;
+              
+              // Detectar cantidad de personas (mayor similitud numérica)
+              const numMatch = valor.match(/\d+/);
+              if (numMatch) {
+                peopleCount = Math.max(peopleCount, parseInt(numMatch[0]));
+              } else if (!isNaN(Number(valor)) && Number(valor) > 0) {
+                peopleCount = Math.max(peopleCount, Number(valor));
               }
+            });
+
+            // Si no se encontró nada por turnos en el valor, pero la restricción existe, asumir diurno por defecto
+            if (!isDay && !isNight && relevantRestrictions.length > 0) isDay = true;
+
+            const current = next[p] || { machine: p, isDayActive: true, isNightActive: false, people: 0 };
+            
+            if (current.isDayActive !== isDay || current.isNightActive !== isNight || current.people !== peopleCount) {
+              next[p] = { ...current, isDayActive: isDay, isNightActive: isNight, people: peopleCount };
+              updated = true;
             }
           }
         });
@@ -742,7 +756,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     const hojaRuta = mapToHojaRuta(puestoName);
     if (!materialCode || !hojaRuta) return null;
     
-    // Support multi-mapping concatenation for CORTELA10 in filter
     if (hojaRuta.includes(' / ')) {
       const codes = hojaRuta.split(' / ').map(c => c.trim().toUpperCase());
       const orderHR = String(order['MAQUINA'] || order['Maquina'] || '').trim().toUpperCase();
@@ -777,7 +790,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   const toggleWorkstationShift = (p: string, shift: 'day' | 'night') => {
     setWorkstationConfigs(prev => {
-      const current = prev[p] || { machine: p, isDayActive: true, isNightActive: false };
+      const current = prev[p] || { machine: p, isDayActive: true, isNightActive: false, people: 0 };
       return {
         ...prev,
         [p]: {
@@ -1043,7 +1056,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {(() => {
-                      // Agrupación por Hoja de Ruta para unificar puestos técnicos (como las costureras INTPF)
                       const hrGroups = new Map<string, { name: string, puestos: string[] }>();
                       uniquePuestos.forEach(p => {
                         const hr = mapToHojaRutaInternal(p) || 'S/HR';
@@ -1066,10 +1078,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
                         const totalUnits = orders.reduce((sum, o) => sum + Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0), 0);
                         const totalTimeHours = orders.reduce((sum, o) => sum + calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0), o), 0) / 3600;
                         
-                        // Consolidar capacidad de todos los puestos que pertenecen a esta Hoja de Ruta
                         let totalCapacityHours = 0;
                         groupInfo.puestos.forEach(p => {
-                          const config = workstationConfigs[p] || { machine: p, isDayActive: true, isNightActive: false };
+                          const config = workstationConfigs[p] || { machine: p, isDayActive: true, isNightActive: false, people: 0 };
                           totalCapacityHours += (config.isDayActive ? horasNetasDiurnasVal : 0) + (config.isNightActive ? horasNetasNocturnasVal : 0);
                         });
 
@@ -1125,7 +1136,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       puestoName={achNames[0]} 
                       orders={techFilteredOrdenes}
                       calculateProductionTime={calculateProductionTime}
-                      config={workstationConfigs[achNames[0]] || { machine: achNames[0], isDayActive: true, isNightActive: false }}
+                      config={workstationConfigs[achNames[0]] || { machine: achNames[0], isDayActive: true, isNightActive: false, people: 0 }}
                       horasNetasDiurnas={horasNetasDiurnasVal}
                       horasNetasNocturnas={horasNetasNocturnasVal}
                       mapToHojaRuta={mapToHojaRutaInternal}
@@ -1137,7 +1148,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       puestoName={pefNames[0]} 
                       orders={techFilteredOrdenes}
                       calculateProductionTime={calculateProductionTime}
-                      config={workstationConfigs[pefNames[0]] || { machine: pefNames[0], isDayActive: true, isNightActive: false }}
+                      config={workstationConfigs[pefNames[0]] || { machine: pefNames[0], isDayActive: true, isNightActive: false, people: 0 }}
                       horasNetasDiurnas={horasNetasDiurnasVal}
                       horasNetasNocturnas={horasNetasNocturnasVal}
                       mapToHojaRuta={mapToHojaRutaInternal}
@@ -1173,7 +1184,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 small 
                 orders={techFilteredOrdenes}
                 calculateProductionTime={calculateProductionTime}
-                config={workstationConfigs[pName] || { machine: pName, isDayActive: true, isNightActive: false }}
+                config={workstationConfigs[pName] || { machine: pName, isDayActive: true, isNightActive: false, people: 0 }}
                 horasNetasDiurnas={horasNetasDiurnasVal}
                 horasNetasNocturnas={horasNetasNocturnasVal}
                 mapToHojaRuta={mapToHojaRutaInternal}
@@ -1211,7 +1222,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 small 
                 orders={techFilteredOrdenes}
                 calculateProductionTime={calculateProductionTime}
-                config={workstationConfigs[pName] || { machine: pName, isDayActive: true, isNightActive: false }}
+                config={workstationConfigs[pName] || { machine: pName, isDayActive: true, isNightActive: false, people: 0 }}
                 horasNetasDiurnas={horasNetasDiurnasVal}
                 horasNetasNocturnas={horasNetasNocturnasVal}
                 mapToHojaRuta={mapToHojaRutaInternal}
@@ -1231,7 +1242,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 small 
                 orders={techFilteredOrdenes}
                 calculateProductionTime={calculateProductionTime}
-                config={workstationConfigs[pName] || { machine: pName, isDayActive: true, isNightActive: false }}
+                config={workstationConfigs[pName] || { machine: pName, isDayActive: true, isNightActive: false, people: 0 }}
                 horasNetasDiurnas={horasNetasDiurnasVal}
                 horasNetasNocturnas={horasNetasNocturnasVal}
                 mapToHojaRuta={mapToHojaRutaInternal}
@@ -1503,14 +1514,22 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                       {availableItems.map(p => {
-                        const config = workstationConfigs[p] || { machine: p, isDayActive: true, isNightActive: false };
+                        const config = workstationConfigs[p] || { machine: p, isDayActive: true, isNightActive: false, people: 0 };
                         const capPuesto = (config.isDayActive ? horasNetasDiurnasVal : 0) + (config.isNightActive ? horasNetasNocturnasVal : 0);
                         const hrCode = mapToHojaRutaInternal(p);
                         return (
                           <div key={p} className="flex flex-col p-6 border-2 border-slate-100 rounded-[2rem] bg-white hover:border-indigo-200 transition-all shadow-sm">
                             <div className="flex items-center justify-between mb-4">
                               <div className="min-w-0 flex-1">
-                                <p className="font-black text-indigo-950 uppercase text-lg leading-tight mb-2 break-words">{p}</p>
+                                <div className="flex flex-col gap-1 mb-2">
+                                  <p className="font-black text-indigo-950 uppercase text-lg leading-tight break-words">{p}</p>
+                                  {config.people > 0 && (
+                                    <div className="flex items-center gap-1.5 bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-lg w-fit border border-indigo-100">
+                                      <Users className="w-3 h-3" />
+                                      <span className="text-[10px] font-black uppercase tracking-tight">{config.people} Personas</span>
+                                    </div>
+                                  )}
+                                </div>
                                 <div className="flex flex-wrap gap-2">
                                   <Badge className="bg-indigo-600 text-white border-none font-mono text-[10px] uppercase font-bold tracking-widest px-2.5 py-0.5 rounded-lg shadow-sm">
                                     {hrCode || 'S/HR'}
