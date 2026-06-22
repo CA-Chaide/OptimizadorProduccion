@@ -13,19 +13,25 @@ import type { Restriccion } from '@/types/interfaces';
 
 interface ProvisionalOrdersAlphaTabProps {
   restricciones: Restriccion[];
+  tiemposData?: any[];
 }
 
 const ROWS_PER_PAGE_OPTIONS = [20, 50, 100, 500];
 
-export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps> = ({ restricciones }) => {
+const normalizeMaterialCode = (code: string | number): string => {
+  const codeStr = String(code).trim();
+  return codeStr.slice(-8);
+};
+
+export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps> = ({ restricciones, tiemposData = [] }) => {
     const { addNotification } = useAppContext();
     const [allRawData, setAllRawData] = useState<any[]>([]); 
     const [isLoading, setIsLoading] = useState(false);
-    const [columns, setColumns] = useState<string[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [currentPage, setCurrentPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(ROWS_PER_PAGE_OPTIONS[1]);
     const [downloadProgress, setDownloadProgress] = useState({ current: 0, total: 0 });
+    const [deliveryDatesMap, setDeliveryDatesMap] = useState<Map<string, string>>(new Map());
 
     // Refs para el sistema de scrollbar doble
     const topScrollRef = useRef<HTMLDivElement>(null);
@@ -46,13 +52,11 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
     }, [restricciones]);
 
     // 2. Obtención y parseo de la restricción HRNP (Hoja de Ruta No Permitida)
-    // Formato: [CODIGO:{MAQUINA}] o [CODIGO:{MAQ1,MAQ2}]
     const forbiddenMachinesMap = useMemo(() => {
         const hrnpRestriccion = restricciones.find(r => r.nombre_restriccion === 'HRNP');
         if (!hrnpRestriccion || !hrnpRestriccion.valor_restriccion) return new Map<string, string[]>();
         
         const map = new Map<string, string[]>();
-        // Regex para capturar [CODIGO:{VALORES}]
         const regex = /\[([^:]+):\{([^}]+)\}\]/g;
         let match;
         
@@ -65,11 +69,47 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
         return map;
     }, [restricciones]);
 
-    // Función para cargar ABSOLUTAMENTE TODOS los datos del servidor
+    // 3. Mapa de Tiempos para cálculo de columna TIEMPOS
+    const tiemposMap = useMemo(() => {
+        const map = new Map<string, number>();
+        tiemposData.forEach(item => {
+            const materialCode = normalizeMaterialCode(item.CodMaterial ?? item.MATERIAL ?? item.Material ?? '');
+            const tiempo = Number(item.Tiempo_Min ?? item.Tiempo ?? 0);
+            if (materialCode && tiempo > 0) {
+                if (!map.has(materialCode)) {
+                    map.set(materialCode, tiempo);
+                }
+            }
+        });
+        return map;
+    }, [tiemposData]);
+
     const fetchAllData = async () => {
         setIsLoading(true);
         setDownloadProgress({ current: 0, total: 0 });
         try {
+            // Cargar Fechas de Entrega primero (Cruce con PEND TOTALES)
+            const pendResponse = await serviciosService.getPendientesTotales(1, 20000);
+            if (pendResponse.data) {
+              const pendData = Array.isArray(pendResponse.data) ? pendResponse.data : [pendResponse.data];
+              const dateMap = new Map<string, string>();
+              pendData.forEach((item: any) => {
+                const pedido = String(item.PEDIDO || '').trim();
+                if (pedido) {
+                  const dia = String(item.DIAENTREGA || '').padStart(2, '0');
+                  const mes = String(item.MESENTREGA || '').padStart(2, '0');
+                  const anio = String(item.ANIOENTREGA || '');
+                  if (dia !== '00' && mes !== '00' && anio) {
+                    const formatted = `${dia}-${mes}-${anio}`;
+                    dateMap.set(pedido, formatted);
+                    dateMap.set(pedido.replace(/^0+/, ''), formatted);
+                  }
+                }
+              });
+              setDeliveryDatesMap(dateMap);
+            }
+
+            // Cargar Órdenes Alpha
             const exploreRes = await serviciosService.getOrdenesProvisionalesAlphaPaginados(1, 1);
             const total = exploreRes.totalRegistros || 0;
             
@@ -91,10 +131,6 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
                     const batch = Array.isArray(res.data) ? res.data : [res.data];
                     combinedData = combinedData.concat(batch);
                     setDownloadProgress({ current: combinedData.length, total });
-                    
-                    if (combinedData.length > 0 && columns.length === 0) {
-                        setColumns(Object.keys(combinedData[0]));
-                    }
                 }
             }
 
@@ -112,29 +148,24 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
         fetchAllData();
     }, []);
 
-    // FILTRADO SOBRE EL SET COMPLETO
     const filteredData = useMemo(() => {
         if (!allRawData || allRawData.length === 0) return [];
         
         return allRawData.filter(row => {
             const rowResp = String(row.RESPCONTROLPROD || '').trim();
 
-            // 1. Filtrado por Responsable (Literal desde restricciones RespCtrlProd)
             if (validRespCodes.length > 0) {
                 if (!validRespCodes.includes(rowResp)) return false;
             }
 
-            // 2. Filtrado por HRNP (Hoja de Ruta No Permitida)
-            // Soporta múltiples valores separados por coma: [CODIGO:{MAQ1,MAQ2}]
             if (forbiddenMachinesMap.has(rowResp)) {
                 const rowMachine = String(row.MAQUINA || row.Maquina || '').trim();
                 const forbiddenOnes = forbiddenMachinesMap.get(rowResp);
                 if (forbiddenOnes?.includes(rowMachine)) {
-                    return false; // Excluir si la máquina está en la lista negra para este responsable
+                    return false;
                 }
             }
 
-            // 3. Filtrado por término de búsqueda manual
             if (!searchTerm.trim()) return true;
             const term = searchTerm.toLowerCase();
             return Object.values(row).some(val => 
@@ -143,7 +174,6 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
         });
     }, [allRawData, searchTerm, validRespCodes, forbiddenMachinesMap]);
 
-    // PAGINACIÓN LOCAL (Sobre el set ya filtrado)
     const totalFilteredRecords = filteredData.length;
     const totalPages = Math.max(1, Math.ceil(totalFilteredRecords / rowsPerPage));
     
@@ -152,7 +182,21 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
         return filteredData.slice(start, start + rowsPerPage);
     }, [filteredData, currentPage, rowsPerPage]);
 
-    // Sincronización de scrollbars
+    // Definición de orden de columnas solicitado
+    const displayColumns = useMemo(() => {
+      if (allRawData.length === 0) return [];
+      
+      const rawCols = Object.keys(allRawData[0]);
+      
+      // Columnas fijas según requerimiento
+      const startCols = ['FECHAINICIO', 'Maquina', 'ORDENPREVISIONAL', 'PEDIDOVENTAS', 'POSICIONPEDIDO', 'MATERIAL', 'NOMBRE', 'CANTIDAD', 'FECHA DE ENTREGA', 'TIEMPOS'];
+      const endCols = ['CATEGORIA', 'UNIDAD'];
+      
+      const middleCols = rawCols.filter(c => !startCols.includes(c) && !endCols.includes(c));
+      
+      return [...startCols, ...middleCols, ...endCols];
+    }, [allRawData]);
+
     useEffect(() => {
         const calculateWidth = () => {
             if (tableRef.current) setTableWidth(tableRef.current.offsetWidth);
@@ -264,7 +308,7 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
                         <table ref={tableRef} className="min-w-full text-[11px] border-collapse">
                             <thead className="bg-gray-100 sticky top-0 z-10 shadow-sm">
                                 <tr className="border-b-2 border-gray-300">
-                                    {columns.map(col => (
+                                    {displayColumns.map(col => (
                                         <TableHead key={col} className="text-center font-bold text-gray-700 uppercase tracking-wider px-4 py-2 border-r border-dashed border-gray-300 last:border-r-0 whitespace-nowrap">
                                             {col.replace(/_/g, ' ')}
                                         </TableHead>
@@ -274,16 +318,50 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
                             <tbody className="divide-y divide-gray-100">
                                 {paginatedData.map((row, idx) => (
                                     <tr key={idx} className="hover:bg-indigo-50/30 transition-colors">
-                                        {columns.map((col, cIdx) => (
-                                          <TableCell key={`${idx}-${cIdx}`} className="px-4 py-2 text-center border-r border-dashed border-gray-200 last:border-r-0 whitespace-nowrap text-gray-600">
-                                              {row[col] ?? '-'}
-                                          </TableCell>
-                                        ))}
+                                        {displayColumns.map((col, cIdx) => {
+                                          if (col === 'FECHA DE ENTREGA') {
+                                            const pedido = String(row.PEDIDOVENTAS || '').trim();
+                                            const entrega = deliveryDatesMap.get(pedido) || deliveryDatesMap.get(pedido.replace(/^0+/, '')) || '-';
+                                            return (
+                                              <TableCell key={`${idx}-${cIdx}`} className="px-4 py-2 text-center border-r border-dashed border-gray-200 whitespace-nowrap text-emerald-700 font-semibold">
+                                                {entrega}
+                                              </TableCell>
+                                            );
+                                          }
+
+                                          if (col === 'TIEMPOS') {
+                                            const material = normalizeMaterialCode(row.MATERIAL);
+                                            const tUnit = tiemposMap.get(material) || 0;
+                                            const cant = Number(row.CANTIDAD) || 0;
+                                            const tTotal = tUnit * cant;
+                                            return (
+                                              <TableCell key={`${idx}-${cIdx}`} className="px-4 py-2 text-center border-r border-dashed border-gray-200 whitespace-nowrap text-blue-700 font-bold font-mono">
+                                                {tTotal > 0 ? tTotal.toFixed(2) : '-'}
+                                              </TableCell>
+                                            );
+                                          }
+
+                                          let displayValue = row[col] ?? '-';
+                                          
+                                          // Limpieza visual de MATERIAL
+                                          if (col === 'MATERIAL' && typeof displayValue === 'string' && displayValue.startsWith('0000000000')) {
+                                            displayValue = displayValue.substring(10);
+                                          }
+
+                                          return (
+                                            <TableCell key={`${idx}-${cIdx}`} className={cn(
+                                              "px-4 py-2 text-center border-r border-dashed border-gray-200 last:border-r-0 whitespace-nowrap text-gray-600",
+                                              col === 'CANTIDAD' && "font-bold text-gray-900"
+                                            )}>
+                                                {displayValue}
+                                            </TableCell>
+                                          );
+                                        })}
                                     </tr>
                                 ))}
                                 {paginatedData.length === 0 && (
                                     <tr>
-                                        <td colSpan={columns.length} className="py-24 text-center text-gray-500 italic bg-gray-50/50">
+                                        <td colSpan={displayColumns.length} className="py-24 text-center text-gray-500 italic bg-gray-50/50">
                                             No hay registros que coincidan con los filtros de responsabilidad y exclusión.
                                         </td>
                                     </tr>
