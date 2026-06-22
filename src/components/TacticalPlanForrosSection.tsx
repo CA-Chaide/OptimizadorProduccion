@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -368,13 +369,20 @@ export const TacticalPlanForrosSection: React.FC = () => {
     
     // ASIGNACIONES ESPECÍFICAS SOLICITADAS
     if (pn === 'CORTE-ESPUMA') {
-      const res = 'HR-CTESP'; // Updated to HR-CTESP
+      const res = 'HR-CTESP';
       hojaRutaCacheRef.current[pn] = res;
       return res;
     }
 
     if (pn === 'CORTELA10') {
       const res = 'HR-CTBSC / HR-CTCHN / HR-CTINT / HR-CTBAN';
+      hojaRutaCacheRef.current[pn] = res;
+      return res;
+    }
+
+    // UNIFICACIÓN TÉCNICA SOLICITADA: COSEDORAS INTPF A HR-INTPF
+    if (pn === 'COSEDORA-INTPF' || pn === 'COSEDORA-INTPF1' || pn === 'COSEDORA-INTPF2' || pn === 'INTPF' || pn === 'INTP-F') {
+      const res = 'HR-INTPF';
       hojaRutaCacheRef.current[pn] = res;
       return res;
     }
@@ -993,47 +1001,64 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {uniquePuestos.map((p, idx) => {
-                      const hrCodeFromMaestro = mapToHojaRutaInternal(p) || 'S/HR';
-
-                      const orders = filteredOrdenesPrevisionales.filter(o => {
-                        const orderHR = String(o['MAQUINA'] || o['Maquina'] || '').trim().toUpperCase();
-                        // Special multi-matching logic for CORTELA10
-                        if (hrCodeFromMaestro.includes(' / ')) {
-                          const codes = hrCodeFromMaestro.split(' / ').map(c => c.trim().toUpperCase());
-                          return codes.includes(orderHR);
+                    {(() => {
+                      // Agrupación por Hoja de Ruta para unificar puestos técnicos (como las costureras INTPF)
+                      const hrGroups = new Map<string, { name: string, puestos: string[] }>();
+                      uniquePuestos.forEach(p => {
+                        const hr = mapToHojaRutaInternal(p) || 'S/HR';
+                        if (!hrGroups.has(hr)) {
+                          hrGroups.set(hr, { name: p, puestos: [] });
                         }
-                        return orderHR === hrCodeFromMaestro;
+                        hrGroups.get(hr)!.puestos.push(p);
                       });
 
-                      const totalUnits = orders.reduce((sum, o) => sum + Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0), 0);
-                      const totalTimeHours = orders.reduce((sum, o) => sum + calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0), o), 0) / 3600;
-                      const config = workstationConfigs[p] || { machine: p, isDayActive: true, isNightActive: false };
-                      const capacityHours = (config.isDayActive ? horasNetasDiurnasVal : 0) + (config.isNightActive ? horasNetasNocturnasVal : 0);
-                      const utilization = capacityHours > 0 ? (totalTimeHours / capacityHours) * 100 : 0;
-                      
-                      return (
-                        <tr key={idx} className="hover:bg-slate-50 transition-all">
-                          <td className="px-8 py-5 font-black text-slate-900 uppercase whitespace-nowrap">{p}</td>
-                          <td className="px-8 py-5 font-mono font-black text-indigo-700 uppercase whitespace-nowrap">
-                            <Badge className="bg-indigo-50 text-indigo-700 border-indigo-200 font-bold px-3 py-1 rounded-lg">
-                              {hrCodeFromMaestro}
-                            </Badge>
-                          </td>
-                          <td className="px-8 py-5 text-right font-mono font-black text-slate-800">{totalUnits.toLocaleString()}</td>
-                          <td className="px-8 py-5 text-right font-mono font-black text-indigo-700 bg-indigo-50/40">{totalTimeHours.toFixed(2)}h</td>
-                          <td className="px-8 py-5 text-right font-mono font-bold text-slate-900">{capacityHours.toFixed(2)}h</td>
-                          <td className="px-8 py-5 text-center">
-                             <div className="flex items-center justify-center gap-4">
-                               <div className="flex-1 bg-slate-100 h-2 rounded-full overflow-hidden max-w-[100px] border border-slate-200">
-                                 <div className={cn("h-full", utilization > 100 ? "bg-red-500" : "bg-indigo-600")} style={{ width: `${Math.min(utilization, 100)}%` }} />
+                      return Array.from(hrGroups.entries()).map(([hrCodeFromMaestro, groupInfo], idx) => {
+                        const orders = filteredOrdenesPrevisionales.filter(o => {
+                          const orderHR = String(o['MAQUINA'] || o['Maquina'] || '').trim().toUpperCase();
+                          if (hrCodeFromMaestro.includes(' / ')) {
+                            const codes = hrCodeFromMaestro.split(' / ').map(c => c.trim().toUpperCase());
+                            return codes.includes(orderHR);
+                          }
+                          return orderHR === hrCodeFromMaestro;
+                        });
+
+                        const totalUnits = orders.reduce((sum, o) => sum + Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0), 0);
+                        const totalTimeHours = orders.reduce((sum, o) => sum + calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0), o), 0) / 3600;
+                        
+                        // Consolidar capacidad de todos los puestos que pertenecen a esta Hoja de Ruta
+                        let totalCapacityHours = 0;
+                        groupInfo.puestos.forEach(p => {
+                          const config = workstationConfigs[p] || { machine: p, isDayActive: true, isNightActive: false };
+                          totalCapacityHours += (config.isDayActive ? horasNetasDiurnasVal : 0) + (config.isNightActive ? horasNetasNocturnasVal : 0);
+                        });
+
+                        const utilization = totalCapacityHours > 0 ? (totalTimeHours / totalCapacityHours) * 100 : 0;
+                        const isUnified = groupInfo.puestos.length > 1;
+                        const displayName = isUnified ? `${groupInfo.name} (POOL)` : groupInfo.name;
+                        
+                        return (
+                          <tr key={idx} className="hover:bg-slate-50 transition-all">
+                            <td className="px-8 py-5 font-black text-slate-900 uppercase whitespace-nowrap">{displayName}</td>
+                            <td className="px-8 py-5 font-mono font-black text-indigo-700 uppercase whitespace-nowrap">
+                              <Badge className="bg-indigo-50 text-indigo-700 border-indigo-200 font-bold px-3 py-1 rounded-lg">
+                                {hrCodeFromMaestro}
+                              </Badge>
+                            </td>
+                            <td className="px-8 py-5 text-right font-mono font-black text-slate-800">{totalUnits.toLocaleString()}</td>
+                            <td className="px-8 py-5 text-right font-mono font-black text-indigo-700 bg-indigo-50/40">{totalTimeHours.toFixed(2)}h</td>
+                            <td className="px-8 py-5 text-right font-mono font-bold text-slate-900">{totalCapacityHours.toFixed(2)}h</td>
+                            <td className="px-8 py-5 text-center">
+                               <div className="flex items-center justify-center gap-4">
+                                 <div className="flex-1 bg-slate-100 h-2 rounded-full overflow-hidden max-w-[100px] border border-slate-200">
+                                   <div className={cn("h-full", utilization > 100 ? "bg-red-500" : "bg-indigo-600")} style={{ width: `${Math.min(utilization, 100)}%` }} />
+                                 </div>
+                                 <span className={cn("font-mono font-black text-[10px]", utilization > 100 ? "text-red-600" : "text-slate-900")}>{utilization.toFixed(0)}%</span>
                                </div>
-                               <span className={cn("font-mono font-black text-[10px]", utilization > 100 ? "text-red-600" : "text-slate-900")}>{utilization.toFixed(0)}%</span>
-                             </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
+                            </td>
+                          </tr>
+                        );
+                      });
+                    })()}
                   </tbody>
                 </table>
               </div>
