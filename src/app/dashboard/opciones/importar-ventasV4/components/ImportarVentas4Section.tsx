@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useToast } from '@/hooks/use-toast';
 import { serviciosService } from '@/services/servicios.service';
 import { bottleneckAnalysisService } from '@/services/BottleneckAnalysisService';
 import { planGlobalService } from '@/services/planglobal.service';
@@ -119,7 +120,7 @@ async function saveIv4DetailsBatch(
       codigo_material: String(r.material || ''),
       cantidad_proyectada: Number(r.demanda || 0),
       cantidad_producir: Number((r.produccion || 0) + (r.produccionFill || 0)),
-      semana: Number(r.isoWeek || 0),
+      semana: String(r.weekKey || ''),
       cantidad_transferencia: Number(r.trasladoSaliente || 0),
       linea_produccion: String(r.linea || ''),
       estado: 'A',
@@ -166,6 +167,7 @@ export const ImportarVentas4Section: React.FC<Props> = ({
   const [savingPlanGlobal, setSavingPlanGlobal] = useState(false);
   const [saveProgress, setSaveProgress] = useState<{ done: number; total: number } | null>(null);
   const [savePlanMsg, setSavePlanMsg] = useState<string>('');
+  const { toast } = useToast();
 
   const tableRef = useRef<RawBackendDataTableHandle>(null);
 
@@ -978,12 +980,16 @@ export const ImportarVentas4Section: React.FC<Props> = ({
         setSaveProgress({ done, total });
       });
       setSavePlanMsg(`Plan Global guardado: ${identificador} (codigo_plan=${codigoPlan}).`);
+      toast({
+        title: 'Éxito',
+        description: `Plan guardado exitosamente para los meses seleccionados.`,
+        variant: 'success',
+      });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setSavePlanMsg(`Error al guardar en Plan Global: ${msg}`);
     } finally {
       setSavingPlanGlobal(false);
-      setTimeout(() => setSaveProgress(null), 1200);
     }
   }, [canShowResults, filteredWeekly]);
 

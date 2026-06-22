@@ -93,6 +93,13 @@ export interface Detalles {
     cantidad_transferencia: string;
     cantidad_produccion_neta: string;
     centro: string;
+    centro_produccion?: string;
+    linea_produccion?: string;
+    semana?: string;
+    fecha_inicio?: string | Date;
+    fecha_fin?: string | Date;
+    cantidad_proyectada?: number | string;
+    cantidad_producir?: number | string;
     resp_ctrl_prod: string;
     estado: string;
     fecha_creacion: Date;
@@ -167,7 +174,7 @@ export interface DetallePlanSemanal {
     codigo_material:          string;
     cantidad_proyectada:      number;
     cantidad_producir:        number;
-    semana:                   number;
+    semana:                   string;
     cantidad_transferencia:   number;
     linea_produccion:         string;
     estado:                   string;
