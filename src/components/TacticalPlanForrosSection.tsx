@@ -446,7 +446,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     setBomDownloadProgress(0);
     try {
       const rowsPerPage = 5000;
-      // PRIMERA LLAMADA - CARGA SECUENCIAL REQUERIDA
       const firstResponse = await serviciosService.ReporteExplosionMateriales(1, rowsPerPage);
       const firstData = firstResponse.data || [];
       const total = firstResponse.totalRegistros || firstResponse.totalRecords || firstResponse.totalRows || 0;
@@ -454,7 +453,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
       let allData = [...firstData];
       const totalPages = Math.ceil(total / rowsPerPage);
       
-      // CARGA SECUENCIAL CON AWAIT PARA EVITAR SATURAR EL SERVIDOR
       if (totalPages > 1) {
         for (let p = 2; p <= totalPages; p++) {
           setBomDownloadProgress(Math.round(((p - 1) / totalPages) * 100));
@@ -628,16 +626,13 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   const uniquePuestos = useMemo(() => {
     const pSet = new Set<string>();
-    tiemposProduccion.forEach(t => {
-      const p = String(t.PuestoTrabajo || t.nombre_estacion || t.Maquina || '').trim().toUpperCase();
+    // REGLA: Puestos de trabajo obtenidos directamente de la columna 'Categoría / Puesto' del Maestro KPI
+    kpiMaestroData.forEach(kpi => {
+      const p = String(kpi.Categoria || '').trim().toUpperCase();
       if (p && p !== 'NULL' && p !== '-' && p !== '—') pSet.add(p);
     });
-    filteredOrdenesPrevisionales.forEach(o => {
-      const p = getResolvedPuesto(o);
-      if (p && p !== '') pSet.add(p);
-    });
     return Array.from(pSet).sort();
-  }, [tiemposProduccion, filteredOrdenesPrevisionales, getResolvedPuesto]);
+  }, [kpiMaestroData]);
 
   useEffect(() => {
     if (dataReady && uniquePuestos.length > 0) {
