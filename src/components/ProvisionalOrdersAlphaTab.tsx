@@ -35,10 +35,11 @@ const normalizeMaterialCode = (code: string | number): string => {
 export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps> = ({ restricciones, tiemposData = [] }) => {
     const { addNotification } = useAppContext();
     const [allRawData, setAllRawData] = useState<any[]>([]); 
+    const [inventoryMap, setInventoryMap] = useState<Map<string, number>>(new Map());
     const [isLoading, setIsLoading] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [currentPage, setCurrentPage] = useState(1);
-    const [rowsPerPage, setRowsPerPage] = useState(100); // Default set to 100 as requested
+    const [rowsPerPage, setRowsPerPage] = useState(100); 
     const [downloadProgress, setDownloadProgress] = useState({ current: 0, total: 0 });
     const [deliveryDatesMap, setDeliveryDatesMap] = useState<Map<string, string>>(new Map());
 
@@ -49,7 +50,7 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
     const [tableWidth, setTableWidth] = useState(0);
     const lastScrolledRef = useRef<'top' | 'table' | null>(null);
 
-    // 1. Obtención literal de códigos de responsabilidad desde las restricciones (RespCtrlProd)
+    // 1. Obtención de responsables de las restricciones
     const validRespCodes = useMemo(() => {
         const respRestriccion = restricciones.find(r => r.nombre_restriccion === 'RespCtrlProd');
         if (!respRestriccion || !respRestriccion.valor_restriccion) return [];
@@ -60,7 +61,7 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
             .filter(Boolean);
     }, [restricciones]);
 
-    // 2. Obtención y parseo de la restricción HRNP (Hoja de Ruta No Permitida)
+    // 2. Obtención de exclusiones HRNP
     const forbiddenMachinesMap = useMemo(() => {
         const hrnpRestriccion = restricciones.find(r => r.nombre_restriccion === 'HRNP');
         if (!hrnpRestriccion || !hrnpRestriccion.valor_restriccion) return new Map<string, string[]>();
@@ -78,7 +79,7 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
         return map;
     }, [restricciones]);
 
-    // 3. Mapa de Tiempos para cálculo de columna TIEMPOS
+    // 3. Mapa de Tiempos
     const tiemposMap = useMemo(() => {
         const map = new Map<string, number>();
         tiemposData.forEach(item => {
@@ -97,7 +98,7 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
         setIsLoading(true);
         setDownloadProgress({ current: 0, total: 0 });
         try {
-            // Cargar Fechas de Entrega primero (Cruce con PEND TOTALES)
+            // Cargar Fechas de Entrega
             const pendResponse = await serviciosService.getPendientesTotales(1, 20000);
             if (pendResponse.data) {
               const pendData = Array.isArray(pendResponse.data) ? pendResponse.data : [pendResponse.data];
@@ -116,6 +117,29 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
                 }
               });
               setDeliveryDatesMap(dateMap);
+            }
+
+            // Cargar Inventario para disponibilidad (STOCKACTUAL - STOCKSEGURIDAD)
+            const invExplore = await serviciosService.getCuboInventarios(1, 1);
+            const totalInv = invExplore.totalRegistros || 0;
+            if (totalInv > 0) {
+              const BATCH_INV = 20000;
+              const pagesInv = Math.ceil(totalInv / BATCH_INV);
+              const iMap = new Map<string, number>();
+              for (let i = 1; i <= pagesInv; i++) {
+                const res = await serviciosService.getCuboInventarios(i, BATCH_INV);
+                if (res.data) {
+                  const items = Array.isArray(res.data) ? res.data : [res.data];
+                  items.forEach((item: any) => {
+                    const material = normalizeMaterialCode(item.Material || '');
+                    const centro = String(item.Centro || '').trim();
+                    const actual = Number(item.StockActual) || 0;
+                    const seguridad = Number(item.StockSeguridad) || 0;
+                    iMap.set(`${material}|${centro}`, actual - seguridad);
+                  });
+                }
+              }
+              setInventoryMap(iMap);
             }
 
             // Cargar Órdenes Alpha
@@ -144,10 +168,10 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
             }
 
             setAllRawData(combinedData);
-            addNotification('success', `Se descargaron ${combinedData.length} registros totales del servidor.`);
+            addNotification('success', `Carga completada: ${combinedData.length} órdenes y disponibilidad de inventario sincronizada.`);
         } catch (error) {
             console.error('Error al cargar datos alpha:', error);
-            addNotification('error', 'Error crítico al descargar el set completo de datos Alpha.');
+            addNotification('error', 'Error crítico al descargar el set de datos Alpha.');
         } finally {
             setIsLoading(false);
         }
@@ -183,7 +207,6 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
         });
     }, [allRawData, searchTerm, validRespCodes, forbiddenMachinesMap]);
 
-    // CÁLCULOS DE RESUMEN INFORMATIVO
     const summaryTotals = useMemo(() => {
         let totalQty = 0;
         let totalTimeMin = 0;
@@ -212,16 +235,14 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
         return filteredData.slice(start, start + rowsPerPage);
     }, [filteredData, currentPage, rowsPerPage]);
 
-    // Definición de orden de columnas solicitado
+    // Orden de columnas solicitado
     const displayColumns = useMemo(() => {
       if (allRawData.length === 0) return [];
       
       const rawCols = Object.keys(allRawData[0]);
       
-      // Columnas fijas según requerimiento
+      // Columnas iniciales reordenadas
       const startCols = [
-          'FECHAINICIO', 
-          'Maquina', 
           'ORDENPREVISIONAL', 
           'PEDIDOVENTAS', 
           'POSICIONPEDIDO', 
@@ -229,11 +250,16 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
           'NOMBRE', 
           'CANTIDAD', 
           'FECHA DE ENTREGA', 
-          'TIEMPOS'
+          'TIEMPOS',
+          'FECHAINICIO',
+          'CANT DISPONIBLE 1000',
+          'CANT DISPONIBLE 2000'
       ];
-      const endCols = ['CATEGORIA', 'UNIDAD'];
       
-      const middleCols = rawCols.filter(c => !startCols.includes(c) && !endCols.includes(c));
+      // Columnas finales solicitadas
+      const endCols = ['CATEGORIA', 'UNIDAD', 'Maquina'];
+      
+      const middleCols = rawCols.filter(c => !startCols.includes(c) && !endCols.includes(c) && c !== 'FECHAINICIO' && c !== 'Maquina');
       
       return [...startCols, ...middleCols, ...endCols];
     }, [allRawData]);
@@ -270,7 +296,6 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
 
     return (
         <div className="space-y-4">
-            {/* PANEL DE FILTROS Y RESUMEN */}
             <div className="flex flex-col space-y-4">
                 <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
                     <div className="flex flex-col gap-2 flex-1">
@@ -297,36 +322,21 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
                                     </div>
                                 </div>
                             )}
-                            
-                            {forbiddenMachinesMap.size > 0 && (
-                                <div className="flex items-center gap-2">
-                                    <span className="text-[10px] font-bold text-red-500 uppercase tracking-wider">Exclusiones (HRNP):</span>
-                                    <div className="flex gap-1">
-                                        {Array.from(forbiddenMachinesMap.entries()).map(([resp, machines]) => (
-                                            <Badge key={resp} variant="outline" className="text-red-600 border-red-200 bg-red-50 text-[10px] px-2 py-0" title={`Excluye: ${machines.join(', ')}`}>
-                                                {resp}: {machines.length > 2 ? `${machines.slice(0, 2).join(', ')}...` : machines.join(', ')}
-                                            </Badge>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
                         </div>
                     </div>
-                    <div className="flex flex-col items-end gap-1">
-                        <Button 
-                            variant="outline" 
-                            size="sm" 
-                            onClick={fetchAllData} 
-                            disabled={isLoading}
-                            className="text-[10px] h-8 bg-white"
-                        >
-                            {isLoading ? <Loader2 className="w-3 h-3 animate-spin mr-2" /> : null}
-                            Sincronizar Datos
-                        </Button>
-                    </div>
+                    <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={fetchAllData} 
+                        disabled={isLoading}
+                        className="text-[10px] h-8 bg-white"
+                    >
+                        {isLoading ? <Loader2 className="w-3 h-3 animate-spin mr-2" /> : null}
+                        Sincronizar Datos
+                    </Button>
                 </div>
 
-                {/* RECUADRO INFORMATIVO (SUMMARY) */}
+                {/* RECUADRO INFORMATIVO */}
                 {!isLoading && allRawData.length > 0 && (
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div className="bg-indigo-600 text-white rounded-lg p-4 shadow-md flex items-center gap-4">
@@ -366,7 +376,7 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
                 <div className="flex flex-col items-center justify-center py-20 bg-gray-50 rounded-xl border-2 border-dashed gap-4">
                     <Loader2 className="w-12 h-12 animate-spin text-indigo-600" />
                     <div className="text-center">
-                        <p className="text-sm font-bold text-gray-700">Descargando set de datos completo...</p>
+                        <p className="text-sm font-bold text-gray-700">Descargando datos y cruzando inventarios...</p>
                         <p className="text-xs text-gray-500 mt-1">
                             Procesados {downloadProgress.current.toLocaleString()} de {downloadProgress.total.toLocaleString()} registros
                         </p>
@@ -415,9 +425,22 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
                                             );
                                           }
 
+                                          if (col === 'CANT DISPONIBLE 1000' || col === 'CANT DISPONIBLE 2000') {
+                                            const material = normalizeMaterialCode(row.MATERIAL);
+                                            const centro = col.includes('1000') ? '1000' : '2000';
+                                            const val = inventoryMap.get(`${material}|${centro}`) ?? null;
+                                            return (
+                                              <TableCell key={`${idx}-${cIdx}`} className={cn(
+                                                "px-4 py-2 text-center border-r border-dashed border-gray-200 whitespace-nowrap font-bold",
+                                                val !== null && val > 0 ? "text-green-600 bg-green-50/20" : val !== null && val < 0 ? "text-red-600 bg-red-50/20" : "text-gray-400"
+                                              )}>
+                                                {val !== null ? val.toLocaleString() : '-'}
+                                              </TableCell>
+                                            );
+                                          }
+
                                           let displayValue = row[col] ?? '-';
                                           
-                                          // Limpieza visual de MATERIAL (quitar ceros a la izquierda para el display)
                                           if (col === 'MATERIAL' && typeof displayValue === 'string' && displayValue.startsWith('0000000000')) {
                                             displayValue = displayValue.substring(10);
                                           }
@@ -433,13 +456,6 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
                                         })}
                                     </tr>
                                 ))}
-                                {paginatedData.length === 0 && (
-                                    <tr>
-                                        <td colSpan={displayColumns.length} className="py-24 text-center text-gray-500 italic bg-gray-50/50">
-                                            No hay registros que coincidan con los filtros de responsabilidad y exclusión.
-                                        </td>
-                                    </tr>
-                                )}
                             </tbody>
                         </table>
                     </div>
@@ -472,12 +488,9 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
                     </div>
                 </>
             ) : (
-                <div className="flex flex-col items-center justify-center py-20 bg-gray-50 border-2 border-dashed rounded-xl shadow-inner">
+                <div className="flex flex-col items-center justify-center py-20 bg-gray-50 rounded-xl border-2 border-dashed">
                     <Package className="w-12 h-12 text-gray-300 mb-4" />
-                    <p className="text-gray-500 font-medium text-center">
-                        No se encontraron datos en el servidor.<br/>
-                        <span className="text-xs text-gray-400">Verifica la conexión o los parámetros del API.</span>
-                    </p>
+                    <p className="text-gray-500 font-medium">No se encontraron datos.</p>
                 </div>
             )}
         </div>
