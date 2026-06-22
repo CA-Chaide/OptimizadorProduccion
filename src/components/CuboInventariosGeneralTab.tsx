@@ -3,10 +3,11 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { serviciosService } from '@/services/servicios.service';
 import { useAppContext } from '@/context/AppProvider';
-import { Package, Loader2, Search, Table as TableIcon } from 'lucide-react';
+import { Package, Loader2, Search, Table as TableIcon, Filter } from 'lucide-react';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 
 interface CuboInventariosItem {
@@ -14,12 +15,6 @@ interface CuboInventariosItem {
 }
 
 const ROWS_PER_PAGE_OPTIONS = [20, 50, 100, 200];
-
-const normalizeMaterialCode = (code: string | number): string => {
-  const codeStr = String(code).trim();
-  // Quitar ceros a la izquierda para el buscador pero mantener consistencia
-  return codeStr.replace(/^0+/, '');
-};
 
 export const CuboInventariosGeneralTab: React.FC = () => {
     const { addNotification } = useAppContext();
@@ -51,8 +46,8 @@ export const CuboInventariosGeneralTab: React.FC = () => {
                     return;
                 }
                 
-                // Descarga masiva en bloques de 20,000 para eficiencia
-                const BATCH_SIZE = 20000;
+                // Descarga masiva en bloques para eficiencia
+                const BATCH_SIZE = 25000;
                 const totalPagesToFetch = Math.ceil(totalRecords / BATCH_SIZE);
                 let fetchedData: CuboInventariosItem[] = [];
 
@@ -68,8 +63,8 @@ export const CuboInventariosGeneralTab: React.FC = () => {
                 // Configuración dinámica de columnas
                 if (fetchedData.length > 0) {
                     const originalColumns = Object.keys(fetchedData[0]);
-                    // Reorganizar: Material, Descripcion y StockActual primero
-                    const priority = ['Material', 'Descripcion', 'StockActual', 'Centro', 'ClaseAprovisionam'];
+                    // Reorganizar columnas clave al inicio
+                    const priority = ['Material', 'Descripcion', 'StockActual', 'RESPCTRLPROD', 'Centro', 'ClaseAprovisionam'];
                     const others = originalColumns.filter(c => !priority.includes(c));
                     setColumns([...priority, ...others]);
                 }
@@ -85,11 +80,26 @@ export const CuboInventariosGeneralTab: React.FC = () => {
         fetchAllInventario();
     }, [addNotification]);
 
-    // Filtrado local sobre el set descargado
+    // Filtrado de negocio solicitado por el usuario
     const filteredData = useMemo(() => {
-        if (!searchTerm.trim()) return allData;
+        // 1. Aplicar reglas de negocio estáticas
+        let data = allData.filter(row => {
+            const desc = String(row.Descripcion || row.DESCRIPCION || '').trim().toUpperCase();
+            const resp = String(row.RESPCTRLPROD || row.RespControlProd || '').trim();
+            
+            // Regla 1: No muestres nada que empiece con "PTBO" de la columna "DESCRIPCION"
+            if (desc.startsWith('PTBO')) return false;
+            
+            // Regla 2: Muestra solamente la información de "006" y "019" de la columna "RESPCTRLPROD"
+            if (resp !== '006' && resp !== '019') return false;
+            
+            return true;
+        });
+
+        // 2. Aplicar buscador local
+        if (!searchTerm.trim()) return data;
         const term = searchTerm.toLowerCase();
-        return allData.filter(row => 
+        return data.filter(row => 
             String(row.Material || '').toLowerCase().includes(term) ||
             String(row.Descripcion || '').toLowerCase().includes(term)
         );
@@ -141,19 +151,39 @@ export const CuboInventariosGeneralTab: React.FC = () => {
 
     return (
         <div className="space-y-4">
+             {/* Indicadores de Filtro Activo */}
+             <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg flex items-center gap-4 flex-wrap">
+                <div className="flex items-center gap-2">
+                    <Filter className="w-4 h-4 text-blue-600" />
+                    <span className="text-xs font-bold text-blue-800 uppercase">Filtros Activos:</span>
+                </div>
+                <Badge variant="secondary" className="bg-white border-blue-300 text-blue-700 text-[10px]">
+                    Responsables: 006, 019
+                </Badge>
+                <Badge variant="secondary" className="bg-white border-blue-300 text-blue-700 text-[10px]">
+                    Excluye Desc: PTBO...
+                </Badge>
+                {isLoading && (
+                    <div className="flex items-center gap-2 text-xs text-blue-600 ml-auto animate-pulse">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        Descargando datos...
+                    </div>
+                )}
+             </div>
+
              <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
                 <div className="relative w-full md:w-96">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                     <Input 
                         placeholder="Buscar por código o descripción..." 
-                        className="pl-10"
+                        className="pl-10 h-9 text-sm"
                         value={searchTerm}
                         onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
                     />
                 </div>
                 <div className="flex items-center gap-2 text-sm text-gray-500 font-medium">
                     <TableIcon className="w-4 h-4" />
-                    <span>Resultados: <strong>{totalRecords.toLocaleString()}</strong> de {allData.length.toLocaleString()}</span>
+                    <span>Filtrados: <strong>{totalRecords.toLocaleString()}</strong> de {allData.length.toLocaleString()} descargados</span>
                 </div>
             </div>
 
@@ -168,28 +198,29 @@ export const CuboInventariosGeneralTab: React.FC = () => {
                         <div style={{ width: `${tableWidth}px`, height: '1px' }}></div>
                     </div>
 
-                    <div ref={tableScrollRef} onScroll={handleTableScroll} className="border rounded-lg overflow-auto max-h-[60vh] bg-white shadow-sm">
-                        <table ref={tableRef} className="min-w-full text-xs border-collapse">
+                    <div ref={tableScrollRef} onScroll={handleTableScroll} className="border rounded-lg overflow-auto max-h-[58vh] bg-white shadow-sm">
+                        <table ref={tableRef} className="min-w-full text-[11px] border-collapse">
                             <thead className="bg-gray-100 sticky top-0 z-10 shadow-sm">
                                 <tr className="border-b-2 border-gray-300">
                                     {columns.map(col => (
                                         <TableHead key={col} className="text-center font-bold text-gray-700 uppercase tracking-wider px-4 py-2 border-r border-dashed border-gray-300 last:border-r-0 whitespace-nowrap">
-                                            {col}
+                                            {col.replace(/_/g, ' ')}
                                         </TableHead>
                                     ))}
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
                                 {displayedData.length > 0 ? displayedData.map((row, idx) => (
-                                    <tr key={idx} className="hover:bg-gray-50 transition-colors">
+                                    <tr key={idx} className="hover:bg-blue-50/30 transition-colors">
                                         {columns.map((col, colIndex) => {
                                             let val = row[col];
                                             if (col === 'Material') val = String(val).replace(/^0+/, '');
                                             return (
                                                 <TableCell key={`${idx}-${col}`} className={cn(
                                                     "px-4 py-2 text-center border-r border-dashed border-gray-200 last:border-r-0 whitespace-nowrap",
-                                                    col === 'StockActual' && Number(val) > 0 && "font-bold text-green-700",
-                                                    col === 'Material' && "font-mono font-bold text-indigo-700"
+                                                    col === 'StockActual' && Number(val) > 0 && "font-bold text-green-700 bg-green-50/10",
+                                                    col === 'Material' && "font-mono font-bold text-indigo-700",
+                                                    col === 'RESPCTRLPROD' && "font-bold text-blue-700"
                                                 )}>
                                                     {String(val ?? '-')}
                                                 </TableCell>
@@ -199,7 +230,7 @@ export const CuboInventariosGeneralTab: React.FC = () => {
                                 )) : (
                                     <tr>
                                         <td colSpan={columns.length || 1} className="py-20 text-center text-gray-500 italic">
-                                            No se encontraron registros de inventario.
+                                            No se encontraron registros que cumplan con los filtros de responsabilidad y exclusión.
                                         </td>
                                     </tr>
                                 )}
@@ -209,7 +240,7 @@ export const CuboInventariosGeneralTab: React.FC = () => {
 
                     <div className="flex items-center justify-between mt-4 bg-gray-50 p-3 rounded-lg border">
                         <div className="flex items-center space-x-2">
-                            <span className="text-xs text-gray-600">Mostrar:</span>
+                            <span className="text-xs text-gray-600 font-medium">Filas por página:</span>
                             <select
                                 value={rowsPerPage}
                                 onChange={handleRowsPerPageChange}
@@ -219,12 +250,12 @@ export const CuboInventariosGeneralTab: React.FC = () => {
                             </select>
                         </div>
                         <div className="flex items-center space-x-2">
-                             <span className="text-xs text-gray-600 font-medium">Página <strong>{currentPage}</strong> de {totalPages}</span>
+                             <span className="text-xs text-gray-600 font-bold">Página {currentPage} de {totalPages}</span>
                              <div className="flex gap-1 ml-4">
-                                <Button variant="outline" size="sm" className="h-8" onClick={() => setCurrentPage(1)} disabled={currentPage === 1 || isLoading}>Primera</Button>
-                                <Button variant="outline" size="sm" className="h-8" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1 || isLoading}>Ant.</Button>
-                                <Button variant="outline" size="sm" className="h-8" onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage >= totalPages || isLoading}>Sig.</Button>
-                                <Button variant="outline" size="sm" className="h-8" onClick={() => setCurrentPage(totalPages)} disabled={currentPage >= totalPages || isLoading}>Última</Button>
+                                <Button variant="outline" size="sm" className="h-8 text-[10px]" onClick={() => setCurrentPage(1)} disabled={currentPage === 1 || isLoading}>Primera</Button>
+                                <Button variant="outline" size="sm" className="h-8 text-[10px]" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1 || isLoading}>Anterior</Button>
+                                <Button variant="outline" size="sm" className="h-8 text-[10px]" onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage >= totalPages || isLoading}>Siguiente</Button>
+                                <Button variant="outline" size="sm" className="h-8 text-[10px]" onClick={() => setCurrentPage(totalPages)} disabled={currentPage >= totalPages || isLoading}>Última</Button>
                              </div>
                         </div>
                     </div>
