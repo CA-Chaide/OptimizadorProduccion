@@ -1,9 +1,10 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { serviciosService } from '@/services/servicios.service';
 import { useAppContext } from '@/context/AppProvider';
-import { Package, Loader2, Search, Info } from 'lucide-react';
+import { Package, Loader2, Search, Info, Calendar, LayoutDashboard, Clock } from 'lucide-react';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -174,6 +175,27 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
         });
     }, [allRawData, searchTerm, validRespCodes, forbiddenMachinesMap]);
 
+    // CÁLCULOS DE RESUMEN INFORMATIVO
+    const summaryTotals = useMemo(() => {
+        let totalQty = 0;
+        let totalTimeMin = 0;
+        
+        filteredData.forEach(row => {
+            const cant = Number(row.CANTIDAD) || 0;
+            totalQty += cant;
+            
+            const material = normalizeMaterialCode(row.MATERIAL);
+            const tUnit = tiemposMap.get(material) || 0;
+            totalTimeMin += (tUnit * cant);
+        });
+
+        return {
+            totalQty,
+            totalHours: totalTimeMin / 60,
+            numOrders: filteredData.length
+        };
+    }, [filteredData, tiemposMap]);
+
     const totalFilteredRecords = filteredData.length;
     const totalPages = Math.max(1, Math.ceil(totalFilteredRecords / rowsPerPage));
     
@@ -189,7 +211,18 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
       const rawCols = Object.keys(allRawData[0]);
       
       // Columnas fijas según requerimiento
-      const startCols = ['FECHAINICIO', 'Maquina', 'ORDENPREVISIONAL', 'PEDIDOVENTAS', 'POSICIONPEDIDO', 'MATERIAL', 'NOMBRE', 'CANTIDAD', 'FECHA DE ENTREGA', 'TIEMPOS'];
+      const startCols = [
+          'FECHAINICIO', 
+          'Maquina', 
+          'ORDENPREVISIONAL', 
+          'PEDIDOVENTAS', 
+          'POSICIONPEDIDO', 
+          'MATERIAL', 
+          'NOMBRE', 
+          'CANTIDAD', 
+          'FECHA DE ENTREGA', 
+          'TIEMPOS'
+      ];
       const endCols = ['CATEGORIA', 'UNIDAD'];
       
       const middleCols = rawCols.filter(c => !startCols.includes(c) && !endCols.includes(c));
@@ -229,63 +262,96 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
 
     return (
         <div className="space-y-4">
-            <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
-                <div className="flex flex-col gap-2 flex-1">
-                    <div className="relative w-full md:w-96">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                        <Input 
-                            placeholder="Buscar en todo el set de datos..." 
-                            className="pl-10 h-9"
-                            value={searchTerm}
-                            onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
-                        />
-                    </div>
-                    
-                    <div className="flex flex-wrap gap-4 items-center">
-                        {validRespCodes.length > 0 && (
-                            <div className="flex items-center gap-2">
-                                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Responsables:</span>
-                                <div className="flex gap-1">
-                                    {validRespCodes.map(code => (
-                                        <Badge key={code} variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200 text-[10px] px-2 py-0">
-                                            {code}
-                                        </Badge>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
+            {/* PANEL DE FILTROS Y RESUMEN */}
+            <div className="flex flex-col space-y-4">
+                <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
+                    <div className="flex flex-col gap-2 flex-1">
+                        <div className="relative w-full md:w-96">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                            <Input 
+                                placeholder="Buscar en todo el set de datos..." 
+                                className="pl-10 h-9"
+                                value={searchTerm}
+                                onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
+                            />
+                        </div>
                         
-                        {forbiddenMachinesMap.size > 0 && (
-                            <div className="flex items-center gap-2">
-                                <span className="text-[10px] font-bold text-red-500 uppercase tracking-wider">Exclusiones (HRNP):</span>
-                                <div className="flex gap-1">
-                                    {Array.from(forbiddenMachinesMap.entries()).map(([resp, machines]) => (
-                                        <Badge key={resp} variant="outline" className="text-red-600 border-red-200 bg-red-50 text-[10px] px-2 py-0" title={`Excluye: ${machines.join(', ')}`}>
-                                            {resp}: {machines.length > 2 ? `${machines.slice(0, 2).join(', ')}...` : machines.join(', ')}
-                                        </Badge>
-                                    ))}
+                        <div className="flex flex-wrap gap-4 items-center">
+                            {validRespCodes.length > 0 && (
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Responsables:</span>
+                                    <div className="flex gap-1">
+                                        {validRespCodes.map(code => (
+                                            <Badge key={code} variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200 text-[10px] px-2 py-0">
+                                                {code}
+                                            </Badge>
+                                        ))}
+                                    </div>
                                 </div>
+                            )}
+                            
+                            {forbiddenMachinesMap.size > 0 && (
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[10px] font-bold text-red-500 uppercase tracking-wider">Exclusiones (HRNP):</span>
+                                    <div className="flex gap-1">
+                                        {Array.from(forbiddenMachinesMap.entries()).map(([resp, machines]) => (
+                                            <Badge key={resp} variant="outline" className="text-red-600 border-red-200 bg-red-50 text-[10px] px-2 py-0" title={`Excluye: ${machines.join(', ')}`}>
+                                                {resp}: {machines.length > 2 ? `${machines.slice(0, 2).join(', ')}...` : machines.join(', ')}
+                                            </Badge>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-1">
+                        <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={fetchAllData} 
+                            disabled={isLoading}
+                            className="text-[10px] h-8 bg-white"
+                        >
+                            {isLoading ? <Loader2 className="w-3 h-3 animate-spin mr-2" /> : null}
+                            Sincronizar Datos
+                        </Button>
+                    </div>
+                </div>
+
+                {/* RECUADRO INFORMATIVO (SUMMARY) */}
+                {!isLoading && allRawData.length > 0 && (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="bg-indigo-600 text-white rounded-lg p-4 shadow-md flex items-center gap-4">
+                            <div className="bg-indigo-500 p-2 rounded-lg">
+                                <LayoutDashboard className="w-6 h-6" />
                             </div>
-                        )}
+                            <div>
+                                <p className="text-[10px] font-bold uppercase opacity-80">Cantidad de Órdenes</p>
+                                <p className="text-2xl font-bold">{summaryTotals.numOrders.toLocaleString()}</p>
+                            </div>
+                        </div>
+
+                        <div className="bg-emerald-600 text-white rounded-lg p-4 shadow-md flex items-center gap-4">
+                            <div className="bg-emerald-500 p-2 rounded-lg">
+                                <Package className="w-6 h-6" />
+                            </div>
+                            <div>
+                                <p className="text-[10px] font-bold uppercase opacity-80">Sumatoria Unidades (CANTIDAD)</p>
+                                <p className="text-2xl font-bold">{summaryTotals.totalQty.toLocaleString()}</p>
+                            </div>
+                        </div>
+
+                        <div className="bg-blue-700 text-white rounded-lg p-4 shadow-md flex items-center gap-4">
+                            <div className="bg-blue-600 p-2 rounded-lg">
+                                <Clock className="w-6 h-6" />
+                            </div>
+                            <div>
+                                <p className="text-[10px] font-bold uppercase opacity-80">Tiempo Total Requerido</p>
+                                <p className="text-2xl font-bold">{summaryTotals.totalHours.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} <span className="text-sm font-normal opacity-80">Horas</span></p>
+                            </div>
+                        </div>
                     </div>
-                </div>
-                <div className="flex flex-col items-end gap-1">
-                    <div className="text-[11px] text-gray-500 bg-gray-50 px-3 py-1.5 rounded-md border flex items-center gap-2">
-                        <Info className="w-3 h-3 text-blue-500" />
-                        <span>Total Descargado: <strong>{allRawData.length.toLocaleString()}</strong></span>
-                        <span className="text-gray-300">|</span>
-                        <span>Coincidencias: <strong>{totalFilteredRecords.toLocaleString()}</strong></span>
-                    </div>
-                    <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        onClick={fetchAllData} 
-                        disabled={isLoading}
-                        className="text-[10px] h-6 text-blue-600 hover:text-blue-800"
-                    >
-                        Actualizar Todo
-                    </Button>
-                </div>
+                )}
             </div>
 
             {isLoading ? (
@@ -304,7 +370,7 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
                         <div style={{ width: `${tableWidth}px`, height: '1px' }}></div>
                     </div>
 
-                    <div ref={tableScrollRef} onScroll={handleTableScroll} className="border rounded-lg overflow-auto max-h-[60vh] bg-white shadow-sm">
+                    <div ref={tableScrollRef} onScroll={handleTableScroll} className="border rounded-lg overflow-auto max-h-[55vh] bg-white shadow-sm">
                         <table ref={tableRef} className="min-w-full text-[11px] border-collapse">
                             <thead className="bg-gray-100 sticky top-0 z-10 shadow-sm">
                                 <tr className="border-b-2 border-gray-300">
@@ -343,7 +409,7 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
 
                                           let displayValue = row[col] ?? '-';
                                           
-                                          // Limpieza visual de MATERIAL
+                                          // Limpieza visual de MATERIAL (quitar ceros a la izquierda para el display)
                                           if (col === 'MATERIAL' && typeof displayValue === 'string' && displayValue.startsWith('0000000000')) {
                                             displayValue = displayValue.substring(10);
                                           }
@@ -370,9 +436,9 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
                         </table>
                     </div>
 
-                    <div className="flex items-center justify-between mt-4 bg-white p-3 rounded-lg border shadow-sm">
+                    <div className="flex items-center justify-between mt-4 bg-white p-3 rounded-lg border shadow-sm text-gray-600 font-medium">
                         <div className="flex items-center space-x-3">
-                            <span className="text-xs text-gray-600 font-medium">Filas por página:</span>
+                            <span className="text-xs">Filas por página:</span>
                             <select
                                 value={rowsPerPage}
                                 onChange={(e) => {
@@ -385,8 +451,8 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
                             </select>
                         </div>
                         <div className="flex items-center space-x-2">
-                            <span className="text-xs text-gray-600 font-medium">
-                                Mostrando <strong>{((currentPage - 1) * rowsPerPage) + 1}</strong> - <strong>{Math.min(currentPage * rowsPerPage, totalFilteredRecords)}</strong> de <strong>{totalFilteredRecords.toLocaleString()}</strong> coincidencias
+                            <span className="text-xs">
+                                Mostrando <strong>{((currentPage - 1) * rowsPerPage) + 1}</strong> - <strong>{Math.min(currentPage * rowsPerPage, totalFilteredRecords)}</strong> de <strong>{totalFilteredRecords.toLocaleString()}</strong> registros
                             </span>
                             <div className="flex gap-1 ml-4">
                                 <Button variant="outline" size="sm" className="h-8" onClick={() => setCurrentPage(1)} disabled={currentPage === 1}>Primera</Button>
