@@ -28,6 +28,7 @@ interface MaterialBalanceoRow {
   habilitado: boolean;
   minimo: number;
   maximo: number;
+  cantPresupuesto: number;
 }
 
 interface DisplayRow extends MaterialBalanceoRow {
@@ -39,23 +40,23 @@ interface DisplayRow extends MaterialBalanceoRow {
 const STORAGE_KEY = 'material_balanceo_lineas_data';
 
 const INITIAL_DATA: MaterialBalanceoRow[] = [
-  { id: '1', centro: '1000', linea: 'LINEA 1', material: '20007201', descripcion: 'CHN ZAFIRO 135X190X029', habilitado: true, minimo: 0, maximo: 100 },
-  { id: '2', centro: '1000', linea: 'LINEA 1', material: '20004463', descripcion: 'CHN ZAFIRO 135X190X024', habilitado: true, minimo: 0, maximo: 100 },
-  { id: '3', centro: '1000', linea: 'LINEA 1', material: '20004462', descripcion: 'CHN ZAFIRO 105X190X024', habilitado: true, minimo: 0, maximo: 100 },
-  { id: '4', centro: '1000', linea: 'LINEA 1', material: '20007200', descripcion: 'CHN ZAFIRO 105X190X029', habilitado: true, minimo: 0, maximo: 100 },
-  { id: '5', centro: '1000', linea: 'LINEA 1', material: '20003642', descripcion: 'CHN IMPERIAL 31 135X190X31', habilitado: true, minimo: 0, maximo: 100 },
-  { id: '6', centro: '1000', linea: 'LINEA 1', material: '20006132', descripcion: 'CHN ALTERNATIVA ESPUMA 080X190X011', habilitado: false, minimo: 0, maximo: 100 },
-  { id: '7', centro: '1000', linea: 'LINEA 1', material: '20003275', descripcion: 'CHN ALTERNATIVA ESPUMA 080X190X015', habilitado: false, minimo: 0, maximo: 100 },
-  { id: '8', centro: '1000', linea: 'LINEA 1', material: '20006133', descripcion: 'CHN ALTERNATIVA ESPUMA 105X190X011', habilitado: false, minimo: 0, maximo: 100 },
-  { id: '9', centro: '1000', linea: 'LINEA 1', material: '20003277', descripcion: 'CHN ALTERNATIVA ESPUMA 105X190X015', habilitado: true, minimo: 0, maximo: 100 },
-  { id: '10', centro: '1000', linea: 'LINEA 1', material: '20006134', descripcion: 'CHN ALTERNATIVA ESPUMA 135X190X011', habilitado: true, minimo: 0, maximo: 100 },
-  { id: '11', centro: '1000', linea: 'LINEA 1', material: '20003278', descripcion: 'CHN ALTERNATIVA ESPUMA 135X190X015', habilitado: true, minimo: 0, maximo: 100 },
-  { id: '12', centro: '2000', linea: 'LINEA 3', material: '20006132', descripcion: 'CHN ALTERNATIVA ESPUMA 080X190X011', habilitado: true, minimo: 0, maximo: 100 },
-  { id: '13', centro: '2000', linea: 'LINEA 3', material: '20003275', descripcion: 'CHN ALTERNATIVA ESPUMA 080X190X015', habilitado: true, minimo: 0, maximo: 100 },
-  { id: '14', centro: '2000', linea: 'LINEA 3', material: '20006133', descripcion: 'CHN ALTERNATIVA ESPUMA 105X190X011', habilitado: true, minimo: 0, maximo: 100 },
-  { id: '15', centro: '2000', linea: 'LINEA 3', material: '20003277', descripcion: 'CHN ALTERNATIVA ESPUMA 105X190X015', habilitado: false, minimo: 0, maximo: 100 },
-  { id: '16', centro: '2000', linea: 'LINEA 3', material: '20006134', descripcion: 'CHN ALTERNATIVA ESPUMA 135X190X011', habilitado: false, minimo: 0, maximo: 100 },
-  { id: '17', centro: '2000', linea: 'LINEA 3', material: '20003278', descripcion: 'CHN ALTERNATIVA ESPUMA 135X190X015', habilitado: false, minimo: 0, maximo: 100 },
+  { id: '1', centro: '1000', linea: 'LINEA 1', material: '20007201', descripcion: 'CHN ZAFIRO 135X190X029', habilitado: true, minimo: 0, maximo: 100, cantPresupuesto: 0 },
+  { id: '2', centro: '1000', linea: 'LINEA 1', material: '20004463', descripcion: 'CHN ZAFIRO 135X190X024', habilitado: true, minimo: 0, maximo: 100, cantPresupuesto: 0 },
+  { id: '3', centro: '1000', linea: 'LINEA 1', material: '20004462', descripcion: 'CHN ZAFIRO 105X190X024', habilitado: true, minimo: 0, maximo: 100, cantPresupuesto: 0 },
+  { id: '4', centro: '1000', linea: 'LINEA 1', material: '20007200', descripcion: 'CHN ZAFIRO 105X190X029', habilitado: true, minimo: 0, maximo: 100, cantPresupuesto: 0 },
+  { id: '5', centro: '1000', linea: 'LINEA 1', material: '20003642', descripcion: 'CHN IMPERIAL 31 135X190X31', habilitado: true, minimo: 0, maximo: 100, cantPresupuesto: 0 },
+  { id: '6', centro: '1000', linea: 'LINEA 1', material: '20006132', descripcion: 'CHN ALTERNATIVA ESPUMA 080X190X011', habilitado: false, minimo: 0, maximo: 100, cantPresupuesto: 0 },
+  { id: '7', centro: '1000', linea: 'LINEA 1', material: '20003275', descripcion: 'CHN ALTERNATIVA ESPUMA 080X190X015', habilitado: false, minimo: 0, maximo: 100, cantPresupuesto: 0 },
+  { id: '8', centro: '1000', linea: 'LINEA 1', material: '20006133', descripcion: 'CHN ALTERNATIVA ESPUMA 105X190X011', habilitado: false, minimo: 0, maximo: 100, cantPresupuesto: 0 },
+  { id: '9', centro: '1000', linea: 'LINEA 1', material: '20003277', descripcion: 'CHN ALTERNATIVA ESPUMA 105X190X015', habilitado: true, minimo: 0, maximo: 100, cantPresupuesto: 0 },
+  { id: '10', centro: '1000', linea: 'LINEA 1', material: '20006134', descripcion: 'CHN ALTERNATIVA ESPUMA 135X190X011', habilitado: true, minimo: 0, maximo: 100, cantPresupuesto: 0 },
+  { id: '11', centro: '1000', linea: 'LINEA 1', material: '20003278', descripcion: 'CHN ALTERNATIVA ESPUMA 135X190X015', habilitado: true, minimo: 0, maximo: 100, cantPresupuesto: 0 },
+  { id: '12', centro: '2000', linea: 'LINEA 3', material: '20006132', descripcion: 'CHN ALTERNATIVA ESPUMA 080X190X011', habilitado: true, minimo: 0, maximo: 100, cantPresupuesto: 0 },
+  { id: '13', centro: '2000', linea: 'LINEA 3', material: '20003275', descripcion: 'CHN ALTERNATIVA ESPUMA 080X190X015', habilitado: true, minimo: 0, maximo: 100, cantPresupuesto: 0 },
+  { id: '14', centro: '2000', linea: 'LINEA 3', material: '20006133', descripcion: 'CHN ALTERNATIVA ESPUMA 105X190X011', habilitado: true, minimo: 0, maximo: 100, cantPresupuesto: 0 },
+  { id: '15', centro: '2000', linea: 'LINEA 3', material: '20003277', descripcion: 'CHN ALTERNATIVA ESPUMA 105X190X015', habilitado: false, minimo: 0, maximo: 100, cantPresupuesto: 0 },
+  { id: '16', centro: '2000', linea: 'LINEA 3', material: '20006134', descripcion: 'CHN ALTERNATIVA ESPUMA 135X190X011', habilitado: false, minimo: 0, maximo: 100, cantPresupuesto: 0 },
+  { id: '17', centro: '2000', linea: 'LINEA 3', material: '20003278', descripcion: 'CHN ALTERNATIVA ESPUMA 135X190X015', habilitado: false, minimo: 0, maximo: 100, cantPresupuesto: 0 },
 ];
 
 export const MaterialBalanceoLineasTabSection: React.FC = () => {
@@ -103,7 +104,8 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
           ...r,
           centro: r.centro || '1000',
           minimo: r.minimo !== undefined ? r.minimo : 0,
-          maximo: r.maximo !== undefined ? r.maximo : 100
+          maximo: r.maximo !== undefined ? r.maximo : 100,
+          cantPresupuesto: r.cantPresupuesto !== undefined ? r.cantPresupuesto : 0
         }));
         setRows(migrated);
       } catch (e) {
@@ -132,7 +134,8 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
       descripcion: '',
       habilitado: true,
       minimo: 0,
-      maximo: 100
+      maximo: 100,
+      cantPresupuesto: 0
     };
     setRows([...rows, newRow]);
   };
@@ -196,6 +199,7 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
       'Puesto Trabajo': r.puestoTrabajo,
       'Tiempo (min)': r.tiempoMin,
       'Habilitado': r.habilitado ? 'SI' : 'NO',
+      'Cant Presupuesto': r.cantPresupuesto,
       'Mínimo (%)': r.minimo,
       'Máximo (%)': r.maximo
     }));
@@ -243,6 +247,7 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
                   <th className="px-4 py-3 text-right font-bold text-indigo-700 uppercase tracking-wider border-r bg-indigo-50/20">tiempo (min)</th>
                   <th className="px-4 py-3 text-center font-bold text-gray-600 uppercase tracking-wider w-24 border-r">Habilitado</th>
                   <th className="px-4 py-3 text-center font-bold text-gray-600 uppercase tracking-wider w-16 border-r">Acción</th>
+                  <th className="px-4 py-3 text-center font-bold text-indigo-700 uppercase tracking-wider w-24 border-r bg-indigo-50/30">Cant Presupuesto</th>
                   <th className="px-4 py-3 text-center font-bold text-indigo-700 uppercase tracking-wider w-24 border-r bg-indigo-50/30">Mínimo (%)</th>
                   <th className="px-4 py-3 text-center font-bold text-indigo-700 uppercase tracking-wider w-24 bg-indigo-50/30">Máximo (%)</th>
                 </tr>
@@ -250,7 +255,7 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
               <tbody className="bg-white divide-y divide-gray-200">
                 {isLoadingTech && expandedRows.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="px-6 py-12 text-center text-gray-400">
+                    <td colSpan={11} className="px-6 py-12 text-center text-gray-400">
                       <div className="flex flex-col items-center gap-2">
                         <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
                         <span>Sincronizando información técnica de puestos...</span>
@@ -321,6 +326,14 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
                     <td className="px-2 py-1.5 border-r text-center bg-indigo-50/5">
                       <Input 
                         type="number"
+                        value={row.cantPresupuesto} 
+                        onChange={(e) => handleUpdateRow(row.id, 'cantPresupuesto', Number(e.target.value))}
+                        className="h-8 text-xs text-center border-none shadow-none focus-visible:ring-1 focus-visible:ring-indigo-500 font-bold text-indigo-700"
+                      />
+                    </td>
+                    <td className="px-2 py-1.5 border-r text-center bg-indigo-50/5">
+                      <Input 
+                        type="number"
                         value={row.minimo} 
                         onChange={(e) => handleUpdateRow(row.id, 'minimo', Number(e.target.value))}
                         className="h-8 text-xs text-center border-none shadow-none focus-visible:ring-1 focus-visible:ring-indigo-500 font-bold text-indigo-700"
@@ -338,7 +351,7 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
                 ))}
                 {expandedRows.length === 0 && !isLoadingTech && (
                   <tr>
-                    <td colSpan={10} className="px-6 py-12 text-center text-gray-400 italic">
+                    <td colSpan={11} className="px-6 py-12 text-center text-gray-400 italic">
                       No hay materiales configurados. Haga clic en "Añadir Línea" para comenzar.
                     </td>
                   </tr>
