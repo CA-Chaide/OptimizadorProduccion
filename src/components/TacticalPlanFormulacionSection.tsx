@@ -21,7 +21,8 @@ import {
   ShoppingCart,
   MapPin,
   Box,
-  TrendingUp
+  TrendingUp,
+  Info
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -39,7 +40,7 @@ import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 import { cn } from '@/lib/utils';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, differenceInDays, isValid, parseISO } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, isValid, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 const BLOCK_LENGTH_METERS = 20;
@@ -135,8 +136,11 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     return ordenesFert.filter(o => {
       const centro = String(getProp(o, ['CENTRO', 'Centro'])).trim();
       const alm = String(getProp(o, ['ALMACEN', 'Almacen'])).trim();
-      // Filtro enfocado a Formulación y Almacén 1006
-      if (alm !== '1006' && centro !== '1000') return false;
+      const nombre = String(getProp(o, ['NOMBRE', 'DESCRIPCION', 'MATERIAL']) || '').toUpperCase();
+      
+      const matchScope = alm === '1006' || centro === '1000' || nombre.includes('CORTE') || nombre.includes('LAMINADO');
+      if (!matchScope) return false;
+
       const itemDateFull = getProp(o, ['FECHA', 'FECHAINICIO', 'FECHA_INICIO']).trim();
       const itemDate = itemDateFull.includes('T') ? itemDateFull.split('T')[0] : itemDateFull;
       return selectedDates.size === 0 || selectedDates.has(itemDate);
@@ -245,7 +249,10 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       let diasRequeridos = 3; 
       
       if (fabDate && isValid(fabDate)) {
-        diasTranscurridos = Math.abs(differenceInDays(new Date(), fabDate));
+        const today = new Date();
+        today.setHours(0,0,0,0);
+        const diffTime = Math.abs(today.getTime() - fabDate.getTime());
+        diasTranscurridos = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
         diasRequeridos = info.apertura === '194.5' ? 2 : 3;
         estatus = diasTranscurridos >= diasRequeridos ? 'DISPONIBLE' : 'EN CURADO';
       }
@@ -292,7 +299,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         restriccionService.getAll(),
         serviciosService.OrdenesProvisionalesPaginados(1, 20000).catch(() => ({ data: [] })),
         serviciosService.getInventarioAñoActual().catch(() => ({ data: [] })),
-        serviciosService.getTiemposCuradoBloqueFormulado(1, 5000).catch(() => ({ data: [] })),
+        serviciosService.getTiemposCuradoBloqueFormulado(1, 10000).catch(() => ({ data: [] })),
         serviciosService.getOrdenesFert(1, 20000).catch(() => ({ data: [] }))
       ]);
 
@@ -321,7 +328,9 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     return [...Array(padding).fill(null), ...days];
   }, [viewDate]);
 
-  if (!mounted) return <div className="p-4 md:p-6 min-h-screen bg-white" />;
+  if (!mounted) {
+    return <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 font-sans text-left" />;
+  }
 
   return (
     <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
@@ -377,7 +386,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
             { v: 'resumen', l: 'Salida de Datos', i: LayoutDashboard }, 
             { v: 'curado', l: 'Control Curado', i: ThermometerSnowflake },
             { v: 'ordenes', l: 'Provisionales', i: Package }, 
-            { v: 'ordenesProd', l: 'Órdenes FERT', i: ShoppingCart },
+            { v: 'ordenesProd', l: 'FERT', i: ShoppingCart },
             { v: 'inventario', l: 'Inventarios SAP', i: Database }
           ].map(tab => (
             <TabsTrigger key={tab.v} value={tab.v} className="gap-2 text-[10px] font-black uppercase transition-all data-[state=active]:bg-white data-[state=active]:shadow-lg data-[state=active]:text-primary rounded-xl">
@@ -638,6 +647,14 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           </Card>
         </TabsContent>
       </Tabs>
+      
+      {/* NOTA TECNICA FINAL */}
+      <div className="flex items-center gap-3 p-5 bg-indigo-50 border border-indigo-100 rounded-[1.5rem] shadow-sm text-left">
+        <Info className="w-5 h-5 text-indigo-600 flex-shrink-0" />
+        <p className="text-[10px] font-bold text-indigo-700 uppercase tracking-widest leading-relaxed">
+          Nota Técnica: Auditoría multinivel FERT->BLOQUE. Los estatus de curado se calculan automáticamente según la apertura del bloque y su estampa de tiempo de fabricación SAP.
+        </p>
+      </div>
     </div>
   );
 };
