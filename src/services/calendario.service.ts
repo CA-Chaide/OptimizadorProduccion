@@ -3,14 +3,21 @@ import type { BodyResponse } from "@/types/body-response";
 import { environment } from "@/environments/environments.prod";
 import { Calendario } from "../types/interfaces";
 
-const API_URL = `${environment.apiURL}/api/Calendario`;
+const API_URL = `${environment.apiURL}/api/Calendarios`;
 
 export const calendarioService = {
   async getAll(): Promise<BodyListResponse<Calendario>> {
     const response = await fetch(API_URL);
     if (!response.ok) {
-      const errorBody = await response.text().catch(() => 'Error desconocido');
-      throw new Error(`Error ${response.status}: ${errorBody}`);
+      const errorText = await response.text().catch(() => 'No body');
+      let errorMessage = `Error ${response.status}: ${response.statusText}`;
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMessage = errorJson.message || errorMessage;
+      } catch (e) {
+        if (errorText.length < 100) errorMessage = errorText;
+      }
+      throw new Error(errorMessage || 'Error al obtener los Calendarios');
     }
     return response.json();
   },
