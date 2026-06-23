@@ -19,7 +19,11 @@ import {
   Plus,
   ThermometerSnowflake,
   Timer,
-  ShoppingCart
+  ShoppingCart,
+  MapPin,
+  Box,
+  TrendingUp,
+  Info
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -51,7 +55,7 @@ const cleanCode = (code: any): string => {
   return String(code || '').replace(/^0+/, '').trim();
 };
 
-const formatNum = (val: any, decimals: number = 2): string => {
+const formatNum = (val: any, decimals: number = 0): string => {
   const n = safeNum(val);
   return n.toLocaleString(undefined, { 
     minimumFractionDigits: decimals, 
@@ -130,20 +134,16 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   }, [ordenes, selectedDates]);
 
   const prodFiltradas = useMemo(() => {
-    const relevantResps = restricciones
-      .filter(r => r.nombre_restriccion === 'RESPCTRLPROD')
-      .flatMap(r => r.valor_restriccion.split(/[&,]/).map(v => v.trim()))
-      .filter(v => v !== '');
-
     return ordenesProceso.filter(o => {
-      const resp = getProp(o, ['RESP_CONTROL_PROD', 'RESPCONTROLPROD', 'RespControlProd']).trim();
-      const matchResp = relevantResps.length === 0 || relevantResps.includes(resp);
+      const centro = String(getProp(o, ['CENTRO', 'Centro'])).trim();
+      if (centro !== '1000') return false;
+      
       const itemDateFull = getProp(o, ['FECHA_INICIO', 'FECHA', 'FECHAINICIO']).trim();
       const itemDate = itemDateFull.includes('T') ? itemDateFull.split('T')[0] : itemDateFull;
       const matchDate = selectedDates.size === 0 || selectedDates.has(itemDate);
-      return matchResp && matchDate;
+      return matchDate;
     });
-  }, [ordenesProceso, restricciones, selectedDates]);
+  }, [ordenesProceso, selectedDates]);
 
   const handleProcessResumen = useCallback(async () => {
     if (provFiltradas.length === 0) {
@@ -252,18 +252,24 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         const fabDateRaw = getProp(row, ['FECHA_FABRICACION', 'FECHA', 'FECHA_FAB']);
         
         let fabDate: Date | null = null;
-        if (fabDateRaw && fabDateRaw !== 'null') {
+        if (fabDateRaw && fabDateRaw !== 'null' && fabDateRaw !== 'undefined') {
           const d = fabDateRaw.includes('T') ? fabDateRaw.split('T')[0] : fabDateRaw;
-          const [y, m, day] = d.split('-').map(Number);
-          fabDate = new Date(y, m - 1, day);
-          fabDate.setHours(0,0,0,0);
+          const parts = d.split('-');
+          if (parts.length === 3) {
+            const [y, m, day] = parts.map(Number);
+            const tempDate = new Date(y, m - 1, day);
+            if (!isNaN(tempDate.getTime())) {
+              fabDate = tempDate;
+              fabDate.setHours(0,0,0,0);
+            }
+          }
         }
         
         let estatus = 'SIN FECHA';
         let diasTranscurridos = 0;
         let diasRequeridos = 3; 
         
-        if (fabDate) {
+        if (fabDate && !isNaN(fabDate.getTime())) {
           diasTranscurridos = differenceInDays(today, fabDate);
           diasRequeridos = info.apertura === '194.5' ? 2 : 3;
           estatus = diasTranscurridos >= diasRequeridos ? 'DISPONIBLE' : 'EN CURADO';
@@ -273,14 +279,14 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           ...row,
           ...info,
           fabDate,
-          fabDateStr: fabDate ? format(fabDate, 'yyyy-MM-dd') : '—',
+          fabDateStr: (fabDate && !isNaN(fabDate.getTime())) ? format(fabDate, 'yyyy-MM-dd') : '—',
           diasTranscurridos,
           diasRequeridos,
           estatus,
           nroBloque: getProp(row, ['NRO_BLOQUE', 'BLOQUE', 'ID'])
         };
       })
-      .filter(row => row.fabDate && row.fabDate >= eightDaysAgo)
+      .filter(row => row.fabDate && !isNaN(row.fabDate.getTime()) && row.fabDate >= eightDaysAgo)
       .sort((a, b) => (b.fabDate?.getTime() || 0) - (a.fabDate?.getTime() || 0));
   }, [curadoData, extractMaterialInfo]);
 
@@ -333,6 +339,24 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     if (mounted) fetchDataAsync();
   }, [mounted, fetchDataAsync]);
 
+  const calendarDaysList = useMemo(() => {
+    const start = startOfMonth(viewDate);
+    const end = endOfMonth(viewDate);
+    const days = eachDayOfInterval({ start, end });
+    const startDay = getDay(start);
+    const padding = startDay === 0 ? 6 : startDay - 1;
+    return [...Array(padding).fill(null), ...days];
+  }, [viewDate]);
+
+  const datesWithOrdersSet = useMemo(() => {
+    const set = new Set<string>();
+    ordenesProceso.forEach(o => {
+      const d = String(getProp(o, ['FECHA_INICIO', 'FECHA'])).trim();
+      if (d && d !== 'null') set.add(d.includes('T') ? d.split('T')[0] : d);
+    });
+    return set;
+  }, [ordenesProceso]);
+
   if (!mounted) return null;
 
   if (isLoading) {
@@ -343,6 +367,13 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       </div>
     );
   }
+
+  const toggleGroupExpansion = (key: string) => {
+    const next = new Set(expandedGroups);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    setExpandedGroups(next);
+  };
 
   return (
     <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
@@ -435,7 +466,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
               const isExp = expandedGroups.has(key);
               return (
                 <div key={key} className="border-2 border-gray-100 rounded-[2rem] shadow-2xl overflow-hidden bg-white transition-all text-left">
-                  <div className="flex items-center justify-between bg-[#1e293b] text-white px-8 py-4 cursor-pointer" onClick={() => toggleGroup(key)}>
+                  <div className="flex items-center justify-between bg-[#1e293b] text-white px-8 py-4 cursor-pointer" onClick={() => toggleGroupExpansion(key)}>
                     <div className="flex items-center gap-4 flex-1">
                       {isExp ? <Minus className="w-5 h-5 text-red-500" /> : <Plus className="w-5 h-5 text-emerald-500" />}
                       <h4 className="text-sm font-black uppercase tracking-widest">Apertura: {key}</h4>
@@ -649,7 +680,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       <div className="flex items-center gap-3 p-5 bg-indigo-50 border border-indigo-100 rounded-[1.5rem] shadow-sm text-left">
         <Activity className="w-5 h-5 text-indigo-600 flex-shrink-0" />
         <p className="text-[10px] font-bold text-indigo-700 uppercase tracking-widest leading-relaxed">
-          Audit Técnica: Sincronización íntegra multinivel FERT->BLOQUE. Los estatus de maduración y stock (UN) se recalculan dinámicamente según la carga SAP.
+          Audit Técnica: Auditoría multinivel FERT->BLOQUE. Los estatus de curado se calculan automáticamente según la apertura del bloque y su estampa de tiempo de fabricación SAP.
         </p>
       </div>
     </div>
