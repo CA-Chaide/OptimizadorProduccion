@@ -30,6 +30,7 @@ import { useAppContext } from '@/context/AppProvider';
 import * as XLSX from 'xlsx';
 
 const STORAGE_KEY = 'presupuesto_semanal_filters_v2';
+const DATA_STORAGE_KEY = 'presupuesto_consolidado_data';
 
 // Helper para obtener el número de semana del año (ISO-8601)
 function getISOWeek(date: Date) {
@@ -161,6 +162,9 @@ export const PresupuestoProdSemanalTabSection: React.FC = () => {
 
       const finalData = Array.from(consolidatedMap.values());
       setPresupuestoData(finalData);
+      
+      // Guardar datos consolidados para ser usados por otras pestañas (como Mat Balanceo)
+      localStorage.setItem(DATA_STORAGE_KEY, JSON.stringify(finalData));
       
       if (finalData.length > 0) {
         addNotification('success', `Se recuperaron y consolidaron ${combinedData.length} registros de ${selectedWeeks.length} semanas.`);

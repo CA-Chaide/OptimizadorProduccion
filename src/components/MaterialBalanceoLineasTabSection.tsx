@@ -38,6 +38,7 @@ interface DisplayRow extends MaterialBalanceoRow {
 }
 
 const STORAGE_KEY = 'material_balanceo_lineas_data';
+const PRESUPUESTO_DATA_KEY = 'presupuesto_consolidado_data';
 
 const INITIAL_DATA: MaterialBalanceoRow[] = [
   { id: '1', centro: '1000', linea: 'LINEA 1', material: '20007201', descripcion: 'CHN ZAFIRO 135X190X029', habilitado: true, minimo: 0, maximo: 100, cantPresupuesto: 0 },
@@ -63,6 +64,7 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
   const { toast } = useToast();
   const [rows, setRows] = useState<MaterialBalanceoRow[]>([]);
   const [technicalData, setTechnicalData] = useState<any[]>([]);
+  const [presupuestoRefData, setPresupuestoRefData] = useState<any[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
   const [isLoadingTech, setIsLoadingTech] = useState(false);
 
@@ -96,6 +98,7 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
 
   // Cargar datos del localStorage al montar
   useEffect(() => {
+    // 1. Cargar configuración de filas de balanceo
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
       try {
@@ -114,6 +117,17 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
     } else {
       setRows(INITIAL_DATA);
     }
+
+    // 2. Cargar datos del presupuesto consolidado para vinculación automática
+    const presuDataRaw = localStorage.getItem(PRESUPUESTO_DATA_KEY);
+    if (presuDataRaw) {
+      try {
+        setPresupuestoRefData(JSON.parse(presuDataRaw));
+      } catch (e) {
+        console.error('Error parsing presupuesto reference data:', e);
+      }
+    }
+
     setIsLoaded(true);
     fetchTechnicalData();
   }, []);
@@ -148,7 +162,7 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
     setRows(rows.map(r => r.id === id ? { ...r, [field]: value } : r));
   };
 
-  // LÓGICA DE UNIÓN: Expandir filas por puestos de trabajo técnicos
+  // LÓGICA DE UNIÓN: Expandir filas por puestos de trabajo técnicos y vincular presupuesto
   const expandedRows = useMemo(() => {
     const results: DisplayRow[] = [];
 
@@ -156,6 +170,18 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
       const materialNorm = normalizeMaterialCode(baseRow.material);
       const lineaNorm = baseRow.linea.trim().toUpperCase();
       const centroNorm = String(baseRow.centro).trim();
+
+      // VINCULACIÓN DE PRESUPUESTO: Buscar coincidencia en los datos de la pestaña Presupuesto
+      const presuMatch = presupuestoRefData.find(p => 
+        normalizeMaterialCode(p.codigo_material) === materialNorm &&
+        String(p.centro || '').trim() === centroNorm &&
+        String(p.linea_produccion || '').trim().toUpperCase() === lineaNorm
+      );
+
+      // Si hay coincidencia, el valor de Cant Presupuesto es el del Presupuesto (prioridad automática)
+      const cantPresupuestoFinal = presuMatch 
+        ? Number(presuMatch.cantidad_proyectada || 0) 
+        : baseRow.cantPresupuesto;
 
       // Buscar coincidencias en technicalData filtrando por Centro, Linea y Material
       const matches = technicalData.filter(tech => {
@@ -171,6 +197,7 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
         matches.forEach(match => {
           results.push({
             ...baseRow,
+            cantPresupuesto: cantPresupuestoFinal,
             puestoTrabajo: String(match.PuestoTrabajo || '-'),
             tiempoMin: Number(match.Tiempo_Min || 0),
             esFilaTecnica: true
@@ -180,6 +207,7 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
         // Si no hay datos técnicos, mostrar fila base con valores vacíos
         results.push({
           ...baseRow,
+          cantPresupuesto: cantPresupuestoFinal,
           puestoTrabajo: '-',
           tiempoMin: 0,
           esFilaTecnica: false
@@ -188,7 +216,7 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
     });
 
     return results;
-  }, [rows, technicalData]);
+  }, [rows, technicalData, presupuestoRefData]);
 
   const handleExport = () => {
     const dataToExport = expandedRows.map(r => ({
@@ -365,7 +393,7 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
       <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg text-blue-800">
         <AlertCircle className="w-4 h-4 flex-shrink-0" />
         <p className="text-xs">
-          <b>Nota:</b> Los puestos de trabajo y tiempos se sincronizan automáticamente relacionando el <b>Centro</b>, la <b>Línea</b> y el <b>Material</b>. Si un material tiene múltiples puestos, se mostrará una fila por cada uno.
+          <b>Nota:</b> Los valores de <b>Cant Presupuesto</b> se sincronizan automáticamente con los datos de la pestaña Presupuesto basándose en la coincidencia de Centro, Línea y Material.
         </p>
       </div>
     </div>
