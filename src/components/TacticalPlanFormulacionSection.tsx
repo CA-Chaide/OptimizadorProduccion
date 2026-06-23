@@ -20,7 +20,8 @@ import {
   MapPin,
   Box,
   Info,
-  AlertCircle
+  TrendingUp,
+  ClipboardList
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -38,8 +39,9 @@ import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 import { cn } from '@/lib/utils';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { MaestroMaterialesExplosionSection } from './MaestroMaterialesExplosionSection';
 
 // --- CONSTANTES Y HELPERS TÉCNICOS ---
 const BLOCK_LENGTH_METERS = 20;
@@ -53,7 +55,7 @@ const cleanCode = (code: any): string => {
   return String(code || '').replace(/^0+/, '').trim();
 };
 
-const formatNum = (val: any, decimals: number = 0): string => {
+const formatNum = (val: any, decimals: number = 2): string => {
   const n = safeNum(val);
   return n.toLocaleString(undefined, { 
     minimumFractionDigits: decimals, 
@@ -71,19 +73,6 @@ const getProp = (obj: any, keys: string[]): string => {
   return '';
 };
 
-const parseCorridaProceso = (corrida: string) => {
-  if (!corrida || corrida === '—' || corrida === 'null') return { c1: '—', m1: '—', c2: '—', m2: '—' };
-  const parts = String(corrida).split('/');
-  const getSubDetail = (p: string) => {
-    if (!p) return { c: '—', m: '—' };
-    const sub = p.split('-');
-    return { c: sub[0]?.trim() || '—', m: sub[1]?.trim() || '—' };
-  };
-  const d1 = getSubDetail(parts[0]);
-  const d2 = getSubDetail(parts[1] || '');
-  return { c1: d1.c, m1: d1.m, c2: d2.c, m2: d2.m };
-};
-
 export const TacticalPlanFormulacionSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanFormulacion');
   const { addNotification } = useAppContext();
@@ -93,7 +82,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   const [grupos, setGrupos] = useState<Grupo[]>([]);
   const [restricciones, setRestricciones] = useState<Restriccion[]>([]);
   const [ordenes, setOrders] = useState<any[]>([]);
-  const [curadoRows, setCuradoRows] = useState<any[]>([]);
   const [inventarioSAP, setInventarioSAP] = useState<any[]>([]);
   const [tiemposEnsamblado, setTiemposEnsamblado] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -160,6 +148,9 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       totalBloques: number; planReposicion: number; 
       blockCode: string; blockDesc: string;
       stockKg: number; pesoBloque: number;
+      kgTotal: number;
+      ordenes: number;
+      unidades: number;
     }>();
 
     const uniqueMatKeys = Array.from(new Set(provFiltradas.map(o => {
@@ -186,6 +177,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       const densVal = parseFloat(String(info.dens)) || 0;
       const usefulHeight = (densVal < 30) ? 103 : 85;
       const itemBloques = (qty * espVal * anchoVal) / (usefulHeight * BLOCK_LENGTH_METERS * 100);
+      const itemKg = (anchoVal * 200 * espVal * densVal * qty) / 10000;
 
       if (!groupsMap.has(key)) {
         let blockCode = '—';
@@ -214,12 +206,16 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           fecha, maquina, material: info.code, descripcion: info.desc, 
           dens: info.dens, tipo: info.tipo, apertura: info.apertura, 
           ancho: anchoVal, esp: espVal, totalBloques: 0, planReposicion: 0,
-          blockCode, blockDesc, stockKg, pesoBloque
+          blockCode, blockDesc, stockKg, pesoBloque,
+          kgTotal: 0, ordenes: 0, unidades: 0
         });
       }
       
       const entry = groupsMap.get(key)!;
       entry.totalBloques += itemBloques;
+      entry.kgTotal += itemKg;
+      entry.unidades += qty;
+      entry.ordenes += 1;
       entry.planReposicion = Math.ceil(entry.totalBloques);
       
       if (i % 10 === 0) setResumenProgress({ current: i + 1, total: provFiltradas.length });
@@ -231,78 +227,34 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     addNotification('success', 'Auditoría técnica de carga completada.');
   }, [provFiltradas, inventarioSAP, addNotification, extractMaterialInfo]);
 
-  const apertureSummaryResumen = useMemo(() => {
-    const report = new Map<string, number>();
-    unifiedSummaryData.forEach(r => report.set(r.apertura || '—', (report.get(r.apertura || '—') || 0) + r.planReposicion));
-    return Array.from(report.entries()).sort((a, b) => b[1] - a[1]);
+  const globalStats = useMemo(() => {
+    return unifiedSummaryData.reduce((acc, row) => ({
+      ordenes: acc.ordenes + row.ordenes,
+      unidades: acc.unidades + row.unidades,
+      kilos: acc.kilos + row.kgTotal,
+      bloques: acc.bloques + row.planReposicion
+    }), { ordenes: 0, unidades: 0, kilos: 0, bloques: 0 });
   }, [unifiedSummaryData]);
 
-  const curadoSegments = useMemo(() => {
-    const leaderRows: any[] = [];
-    const cofamaRows: any[] = [];
-    
-    curadoRows.forEach(row => {
-      const maquinaVal = String(getProp(row, ['Maquina', 'MAQUINA'])).toUpperCase();
-      const estadoTrasVal = String(getProp(row, ['estadoTras', 'Estado_Tras'])).toUpperCase();
-      const fechaVal = String(getProp(row, ['fecha', 'FECHA']));
-      const pesoVal = safeNum(getProp(row, ['peso', 'PESO']));
-      
-      const info = extractMaterialInfo({ MATERIAL: row.NomMaterial || row.CodMaterial || '' });
-      let densityVal = getProp(row, ['Densidad', 'DENSIDAD', 'Dens']) || info.dens;
-
-      const enriched = { 
-        ...row, 
-        Apertura: info.apertura, 
-        Densidad: densityVal, 
-        pesoNumeric: pesoVal,
-        CantidadStock: pesoVal,
-        Idbloque: getProp(row, ['Idbloque', 'IDBLOQUE']),
-        fecha: fechaVal,
-        ESTADO: getProp(row, ['ESTADO']),
-        orden: getProp(row, ['orden', 'ORDEN']),
-        CodMaterial: cleanCode(getProp(row, ['CodMaterial', 'CODMATERIAL'])),
-        NomMaterial: String(getProp(row, ['NomMaterial', 'NOMMATERIAL'])).toUpperCase(),
-        corridaproceso: getProp(row, ['corridaproceso', 'CORRIDAPROCESO']),
-        peso: pesoVal,
-        estado: getProp(row, ['estado', 'ESTADO_TRAS']),
-        CodBloque: getProp(row, ['CodBloque', 'CODBLOQUE']),
-        operador: getProp(row, ['operador', 'OPERADOR']),
-        Maquina: maquinaVal,
-        estadoTras: estadoTrasVal
-      };
-
-      if (estadoTrasVal === 'CALLE' && maquinaVal === 'F_BLOQ' && fechaVal.includes('2026')) {
-        leaderRows.push(enriched);
-      }
-      else if (estadoTrasVal === 'BCALL' && maquinaVal === 'F_BLOQ_M' && pesoVal > 50) {
-        const p = parseCorridaProceso(enriched.corridaproceso);
-        cofamaRows.push({
-          ...enriched,
-          '1er Cant.': p.c1,
-          '1er Combinacion': p.m1,
-          '2da Cant.': p.c2,
-          '2da Combinacion': p.m2
-        });
-      }
+  const groupedNeeds = useMemo(() => {
+    const map = new Map<string, { apertura: string; items: any[]; totalKg: number; totalUn: number; totalBloques: number }>();
+    unifiedSummaryData.forEach(row => {
+      const key = row.apertura || '—';
+      if (!map.has(key)) map.set(key, { apertura: key, items: [], totalKg: 0, totalUn: 0, totalBloques: 0 });
+      const group = map.get(key)!;
+      group.items.push(row);
+      group.totalKg += row.kgTotal;
+      group.totalUn += row.unidades;
+      group.totalBloques += row.planReposicion;
     });
-
-    const getApertureSummary = (rows: any[]) => {
-      const report = new Map<string, number>();
-      rows.forEach(r => {
-        const key = r.Apertura || '—';
-        report.set(key, (report.get(key) || 0) + 1);
-      });
-      return Array.from(report.entries()).map(([ap, qty]) => ({ ap, qty }));
-    };
-
-    return [
-      { id: 'leader', label: 'BLOQUE FORMULADO LEADER', rows: leaderRows, apertures: getApertureSummary(leaderRows), badge: 'bg-indigo-600' },
-      { id: 'cofama', label: 'BLOQUE FORMULADO COFAMA', rows: cofamaRows, apertures: getApertureSummary(cofamaRows), badge: 'bg-slate-800' }
-    ];
-  }, [curadoRows, extractMaterialInfo]);
+    return Array.from(map.values()).sort((a, b) => b.totalKg - a.totalKg);
+  }, [unifiedSummaryData]);
 
   const inventarioFiltrado = useMemo(() => {
-    return inventarioSAP.filter(row => String(row.CODRESPPROD || row.CodRespProd || '').trim() === '005');
+    return inventarioSAP.filter(row => {
+      const resp = String(row.CODRESPPROD || row.CodRespProd || '').trim();
+      return resp === '005' || resp === '019';
+    });
   }, [inventarioSAP]);
 
   const datesWithOrdersSet = useMemo(() => {
@@ -343,17 +295,15 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       setGrupos(filteredGroups);
       const groupsIds = filteredGroups.map(g => g.codigo_grupo);
 
-      const [restrsRes, provsRes, curadoRes, invRes, timesRes] = await Promise.all([
+      const [restrsRes, provsRes, invRes, timesRes] = await Promise.all([
         restriccionService.getAll(),
         serviciosService.OrdenesProvisionalesPaginados(1, 20000),
-        serviciosService.getTiemposCuradoBloqueFormulado(1, 10000),
         serviciosService.getInventarioAñoActual(),
         serviciosService.getTiemposEnsamblado(1, 15000)
       ]);
 
       setRestricciones((restrsRes.data || []).filter((r: any) => groupsIds.includes(r.codigo_grupo)));
       setOrders(provsRes.data?.data || provsRes.data || []);
-      setCuradoRows(Array.isArray(curadoRes.data) ? curadoRes.data : []);
       setInventarioSAP(Array.isArray(invRes.data) ? invRes.data : []);
       setTiemposEnsamblado(timesRes.data?.data || timesRes.data || []);
       
@@ -378,72 +328,62 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
 
   // --- RENDER HELPERS ---
 
-  const renderRoot = (content: React.ReactNode) => (
-    <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
-      {content}
-    </div>
-  );
-
   if (!mounted) {
-    return renderRoot(
-      <div className="flex justify-center items-center h-64">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      </div>
-    );
+    return <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 font-sans text-left" />;
   }
 
   if (isLoading) {
-    return renderRoot(
-      <div className="flex flex-col items-center justify-center p-20 gap-4">
+    return (
+      <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 flex flex-col items-center justify-center gap-4">
         <Loader2 className="w-10 h-10 animate-spin text-primary" />
-        <p className="text-xs font-bold text-gray-400 uppercase tracking-widest animate-pulse">Sincronizando SAP...</p>
+        <p className="text-xs font-bold text-gray-400 uppercase tracking-widest animate-pulse">Sincronizando SAP Formulación...</p>
       </div>
     );
   }
 
-  return renderRoot(
-    <>
+  return (
+    <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
       <div className="flex items-center justify-between pb-4 border-b border-gray-100">
         <div className="flex items-center space-x-3">
-          <div className="p-2 bg-primary/10 rounded-xl shadow-inner"><FlaskConical className="w-6 h-6 text-primary" /></div>
+          <div className="p-2 bg-indigo-600/10 rounded-xl shadow-inner"><FlaskConical className="w-6 h-6 text-indigo-600" /></div>
           <h2 className="text-xl font-black text-gray-800 uppercase tracking-tighter">Programación Táctica Formulación</h2>
         </div>
 
         <div className="flex items-center gap-2">
-          <Button onClick={handleProcessResumen} disabled={isProcessingResumen} className="h-8 px-4 rounded-xl bg-primary text-white gap-2 font-black text-[9px] uppercase shadow-lg active:scale-95 transition-all">
-            {isProcessingResumen ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />} ACTUALIZAR DATOS
+          <Button onClick={handleProcessResumen} disabled={isProcessingResumen} className="h-9 px-5 rounded-xl bg-primary text-white gap-2 font-black text-[10px] uppercase shadow-lg active:scale-95 transition-all">
+            {isProcessingResumen ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} ACTUALIZAR AUDITORÍA
           </Button>
 
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="outline" className="h-8 px-4 rounded-xl border-gray-200 gap-2 font-black text-[9px] uppercase shadow-sm transition-all hover:border-primary/50">
-                <CalendarIcon className="w-3 h-3 text-primary" /> {selectedDates.size === 0 ? 'Plan Maestro' : `${selectedDates.size} Días`}
+              <Button variant="outline" className="h-9 px-5 rounded-xl border-gray-200 gap-2 font-black text-[10px] uppercase shadow-sm transition-all hover:border-primary/50">
+                <CalendarIcon className="w-4 h-4 text-primary" /> {selectedDates.size === 0 ? 'Plan Maestro' : `${selectedDates.size} Días Seleccionados`}
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-64 p-0 border-none shadow-2xl rounded-2xl overflow-hidden mt-2" align="end">
+            <PopoverContent className="w-72 p-0 border-none shadow-2xl rounded-2xl overflow-hidden mt-2" align="end">
               <div className="bg-white p-5 font-sans text-left text-[11px]">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="font-black text-slate-800 capitalize">{format(viewDate, 'MMMM yyyy', { locale: es })}</h3>
                   <div className="flex gap-1 bg-gray-50 p-1 rounded-xl">
-                    <Button variant="ghost" size="icon" onClick={() => setViewDate(prev => subMonths(prev, 1))} className="h-7 w-7 hover:bg-white"><ChevronLeft className="w-3 h-3" /></Button>
-                    <Button variant="ghost" size="icon" onClick={() => setViewDate(prev => addMonths(prev, 1))} className="h-7 w-7 hover:bg-white"><ChevronRight className="w-3 h-3" /></Button>
+                    <Button variant="ghost" size="icon" onClick={() => setViewDate(prev => subMonths(prev, 1))} className="h-8 w-8 hover:bg-white"><ChevronLeft className="w-4 h-4" /></Button>
+                    <Button variant="ghost" size="icon" onClick={() => setViewDate(prev => addMonths(prev, 1))} className="h-8 w-8 hover:bg-white"><ChevronRight className="w-4 h-4" /></Button>
                   </div>
                 </div>
                 <div className="grid grid-cols-7 gap-y-1 text-center mb-4">
-                  {['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO'].map(d => <div key={d} className="text-[8px] font-black text-slate-300 uppercase py-1">{d}</div>)}
+                  {['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO'].map(d => <div key={d} className="text-[9px] font-black text-slate-300 uppercase py-1">{d}</div>)}
                   {calendarDaysList.map((day, idx) => {
                     if (!day) return <div key={idx} />;
                     const dStr = format(day, 'yyyy-MM-dd');
                     const isSel = selectedDates.has(dStr);
                     return (
-                      <button key={dStr} onClick={() => { const n = new Set(selectedDates); isSel ? n.delete(dStr) : n.add(dStr); setSelectedDates(n); }} className={cn("relative h-7 w-7 mx-auto rounded-xl flex items-center justify-center transition-all", isSel ? "bg-primary text-white shadow-md shadow-primary/20" : "hover:bg-slate-50")}>
-                        <span className={cn("text-[10px] font-black", !datesWithOrdersSet.has(dStr) && !isSel ? "text-slate-200" : "text-slate-700")}>{format(day, 'd')}</span>
+                      <button key={dStr} onClick={() => { const n = new Set(selectedDates); isSel ? n.delete(dStr) : n.add(dStr); setSelectedDates(n); }} className={cn("relative h-8 w-8 mx-auto rounded-xl flex items-center justify-center transition-all", isSel ? "bg-primary text-white shadow-md shadow-primary/20" : "hover:bg-slate-50")}>
+                        <span className={cn("text-xs font-black", !datesWithOrdersSet.has(dStr) && !isSel ? "text-slate-200" : "text-slate-700")}>{format(day, 'd')}</span>
                         {datesWithOrdersSet.has(dStr) && !isSel && <div className="absolute bottom-1.5 w-1 h-1 bg-primary/40 rounded-full" />}
                       </button>
                     );
                   })}
                 </div>
-                <Button variant="ghost" size="sm" className="w-full text-[9px] font-black uppercase text-primary h-8 rounded-xl hover:bg-primary/5 tracking-widest" onClick={() => setSelectedDates(new Set())}>Ver Todo el Plan</Button>
+                <Button variant="ghost" size="sm" className="w-full text-[10px] font-black uppercase text-primary h-9 rounded-xl hover:bg-primary/5 tracking-widest" onClick={() => setSelectedDates(new Set())}>Ver Todo el Plan</Button>
               </div>
             </PopoverContent>
           </Popover>
@@ -451,258 +391,205 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-5 h-10 bg-gray-100/50 p-1 rounded-xl border border-gray-200 mb-6">
+        <TabsList className="grid grid-cols-5 h-11 bg-gray-100/50 p-1.5 rounded-2xl border border-gray-200 mb-8">
           {[ 
-            { v: 'resumen', l: 'Capacidad y Carga', i: LayoutDashboard }, 
-            { v: 'curado', l: 'Stock Curado', i: History },
-            { v: 'inventario', l: 'Inventarios SAP', i: Database },
+            { v: 'resumen', l: 'Salida de Datos', i: LayoutDashboard }, 
             { v: 'ordenes', l: 'Provisionales', i: Package }, 
+            { v: 'bom', l: 'BOOM Lista Materiales', i: ClipboardList },
+            { v: 'inventario', l: 'Inventarios SAP', i: Database },
             { v: 'tiempos', l: 'Catálogo Tiempos', i: Clock }
           ].map(tab => (
-            <TabsTrigger key={tab.v} value={tab.v} className="gap-2 text-[9px] font-black uppercase transition-all data-[state=active]:bg-white data-[state=active]:shadow-md data-[state=active]:text-primary rounded-lg">
-              <tab.i className="w-3.5 h-3.5" /> {tab.l}
+            <TabsTrigger key={tab.v} value={tab.v} className="gap-2 text-[10px] font-black uppercase transition-all data-[state=active]:bg-white data-[state=active]:shadow-lg data-[state=active]:text-primary rounded-xl">
+              <tab.i className="w-4 h-4" /> {tab.l}
             </TabsTrigger>
           ))}
         </TabsList>
 
-        <TabsContent value="resumen" className="space-y-6 animate-in fade-in duration-300">
-          <div className="flex flex-wrap gap-2">
-            {apertureSummaryResumen.map(([ap, qty]) => (
-              <Card key={ap} className="p-3 border-none shadow-sm bg-slate-900 text-white rounded-xl min-w-[100px]">
-                <p className="text-[7px] font-black uppercase text-slate-500 tracking-wider">Apertura</p>
-                <div className="flex justify-between items-end mt-1">
-                  <p className="text-xs font-black font-mono tracking-tighter text-[#facc15]">{ap}</p>
-                  <p className="text-xs font-black font-mono text-indigo-400">{qty}<span className="text-[7px] opacity-40 ml-0.5">BL</span></p>
-                </div>
-              </Card>
-            ))}
+        <TabsContent value="resumen" className="space-y-8 animate-in fade-in duration-300">
+          {/* Dashboard Superior Consolidado */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-[#0f172a] p-6 rounded-[2.5rem] border border-white/5 shadow-2xl text-white">
+            <div className="border-r border-white/10 pr-6 text-left">
+              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Consolidado Planta</p>
+              <h3 className="text-xl font-black uppercase text-indigo-400 mt-1 tracking-tighter">Reporte Maestro</h3>
+            </div>
+            <div className="flex flex-col gap-1 text-center">
+              <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Total Órdenes</p>
+              <p className="text-2xl font-black font-mono text-slate-100 tracking-tighter">{globalStats.ordenes}</p>
+            </div>
+            <div className="flex flex-col gap-1 text-center border-l border-white/10">
+              <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Total Unidades</p>
+              <p className="text-2xl font-black font-mono text-emerald-400 tracking-tighter">{globalStats.unidades.toLocaleString()}</p>
+            </div>
+            <div className="flex flex-col gap-1 text-center border-l border-white/10">
+              <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Peso Total (Kg)</p>
+              <p className="text-2xl font-black font-mono text-indigo-400 tracking-tighter">{globalStats.kilos.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+            </div>
           </div>
 
-          <Card className="border-2 border-gray-100 rounded-[2rem] shadow-2xl overflow-hidden bg-white">
-            <div className="overflow-x-auto max-h-[600px] relative">
-              <table className="w-full border-collapse text-center font-sans text-[10px] text-gray-700">
-                <thead className="sticky top-0 z-20">
-                  <tr className="bg-[#1e40af] text-white uppercase font-black tracking-tighter text-[10px]">
-                    <th colSpan={7} className="px-4 py-3 border-r border-white/5 bg-black/10">Producción Programada</th>
-                    <th colSpan={7} className="px-4 py-3 bg-[#1d4ed8]">Stock e Ingeniería (Bloque Formulado)</th>
-                  </tr>
-                  <tr className="bg-[#1e40af] text-white uppercase font-black tracking-tighter text-[9px] border-b border-white/10">
-                    <th className="px-4 py-3 border-r border-white/5 text-left">Fecha SAP</th>
-                    <th className="px-4 py-3 border-r border-white/5 text-left">Máquina</th>
-                    <th className="px-4 py-3 border-r border-white/5">Dens.</th>
-                    <th className="px-4 py-3 border-r border-white/5">Tipo</th>
-                    <th className="px-4 py-3 border-r border-white/5 bg-black/20">Apertura</th>
-                    <th className="px-4 py-3 border-r border-white/5 text-yellow-300">Bl. Teor.</th>
-                    <th className="px-4 py-3 border-r border-white/10 bg-yellow-400 text-black">Reposición</th>
-                    
-                    <th className="px-4 py-3 border-r border-white/5 text-left text-teal-300">Cód. Bloque</th>
-                    <th className="px-6 py-3 border-r border-white/5 text-left">Descripción Bloque</th>
-                    <th className="px-2 py-3 border-r border-white/5">[Un]</th>
-                    <th className="px-3 py-3 border-r border-white/5">Peso BL (Kg)</th>
-                    <th className="px-4 py-3 border-r border-white/5 text-green-300 bg-green-500/10">StockActual (Kg)</th>
-                    <th className="px-4 py-3 font-black text-white bg-green-600/30">Stock [Un]</th>
-                    <th className="px-3 py-3 text-left">MATERIAL_FERT</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 font-bold">
-                  {isProcessingResumen ? (
-                    <tr>
-                      <td colSpan={14} className="py-20 text-center">
-                        <Loader2 className="w-8 h-8 animate-spin mx-auto text-indigo-500 mb-3" />
-                        <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Ejecutando Explosión Técnica BOM: {resumenProgress.current} / {resumenProgress.total}</p>
-                      </td>
-                    </tr>
-                  ) : unifiedSummaryData.length === 0 ? (
-                    <tr><td colSpan={14} className="py-16 text-center text-slate-200 uppercase tracking-widest italic font-black">Presione "ACTUALIZAR DATOS" para iniciar la auditoría de carga</td></tr>
-                  ) : (
-                    unifiedSummaryData.map((row, i) => (
-                      <tr key={i} className="hover:bg-slate-50 transition-colors border-b">
-                        <td className="px-4 py-2 text-slate-400 border-r border-gray-100 text-left">{row.fecha}</td>
-                        <td className="px-4 py-2 font-black text-slate-800 border-r border-gray-100 uppercase text-left">{row.maquina}</td>
-                        <td className="px-4 py-2 border-r border-gray-100">{row.dens}</td>
-                        <td className="px-4 py-2 text-primary border-r border-gray-100 uppercase">{row.tipo}</td>
-                        <td className="px-4 py-2 text-blue-700 border-r border-gray-100 bg-blue-50/10 font-black">{row.apertura}</td>
-                        <td className="px-4 py-2 font-mono text-orange-600 border-r border-gray-100 bg-orange-50/10">{formatNum(row.totalBloques, 1)}</td>
-                        <td className="px-4 py-2 font-mono font-black text-indigo-700 border-r-2 border-gray-200 bg-indigo-50/20">{row.planReposicion}</td>
-                        
-                        <td className="px-4 py-2 text-left font-mono text-teal-600 border-r border-gray-100 bg-teal-50/5">{row.blockCode}</td>
-                        <td className="px-6 py-2 text-left text-gray-400 uppercase leading-tight italic text-[9px] truncate max-w-[150px] border-r border-gray-100">{row.blockDesc}</td>
-                        <td className="px-2 py-2 border-r border-gray-100 text-slate-300">BL</td>
-                        <td className="px-3 py-2 border-r border-gray-100 font-mono text-slate-500">{formatNum(row.pesoBloque, 1)}</td>
-                        <td className="px-4 py-2 border-r border-gray-100 font-mono font-black text-green-600 bg-green-50/10">{formatNum(row.stockKg)}</td>
-                        <td className="px-4 py-2 font-mono font-black text-indigo-600 bg-indigo-50/10 border-r border-gray-100">
-                          {formatNum(row.pesoBloque > 0 ? row.stockKg / row.pesoBloque : 0, 1)}
-                        </td>
-                        <td className="px-3 py-2 text-left font-mono text-slate-400">{row.material}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="curado" className="space-y-10 animate-in fade-in duration-300 text-left">
-          {curadoSegments.map((group) => (
-            <div key={group.id} className="space-y-4">
-              <div className="flex justify-between items-end px-1">
-                <div>
-                  <h3 className="text-sm font-black text-gray-800 uppercase tracking-tighter flex items-center gap-2">
-                    <div className={cn("w-2 h-2 rounded-full", group.badge)} /> {group.label}
-                  </h3>
-                  <div className="flex gap-1 mt-2">
-                    {group.apertures.map(ap => (
-                      <Badge key={ap.ap} variant="outline" className="px-2 py-0.5 border-gray-100 bg-gray-50 text-slate-500 font-black text-[8px] uppercase">
-                        AP {ap.ap}: {ap.qty} BL
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
+          {/* Grilla Jerárquica */}
+          <div className="space-y-10">
+            {groupedNeeds.length === 0 ? (
+              <div className="py-24 text-center bg-gray-50/30 rounded-3xl border-2 border-dashed border-gray-100">
+                <TrendingUp className="w-16 h-16 text-indigo-100 mx-auto" />
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-4">Presione el botón "ACTUALIZAR" para generar la auditoría técnica</p>
               </div>
+            ) : (
+              groupedNeeds.map((group) => {
+                const key = group.apertura;
+                const isExp = expandedGroups.has(key);
+                return (
+                  <div key={key} className="border-2 border-gray-100 rounded-[2.5rem] shadow-2xl overflow-hidden bg-white transition-all">
+                    {/* Barra Negra de Resumen Categoría */}
+                    <div 
+                      className="flex items-center justify-between bg-[#1e293b] text-white px-8 py-5 cursor-pointer hover:bg-[#0f172a] transition-colors"
+                      onClick={() => toggleGroup(key)}
+                    >
+                      <div className="flex items-center gap-4 flex-1">
+                        {isExp ? <Minus className="w-5 h-5 text-red-500" /> : <Plus className="w-5 h-5 text-emerald-500" />}
+                        <h4 className="text-sm font-black uppercase tracking-widest">Apertura: {key}</h4>
+                      </div>
+                      <div className="flex gap-12 font-mono">
+                        <div className="text-right">
+                          <p className="text-[8px] font-bold text-slate-500 uppercase opacity-60">Total Kg</p>
+                          <p className="text-sm font-black text-indigo-400">{group.totalKg.toLocaleString(undefined, { maximumFractionDigits: 1 })}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-[8px] font-bold text-slate-500 uppercase opacity-60">Total UN</p>
+                          <p className="text-sm font-black text-emerald-400">{group.totalUn.toLocaleString()}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-[8px] font-bold text-slate-500 uppercase opacity-60">Bloques Teor.</p>
+                          <p className="text-sm font-black text-yellow-400">{group.totalBloques.toLocaleString(undefined, { maximumFractionDigits: 1 })}</p>
+                        </div>
+                      </div>
+                    </div>
 
-              <Card className="border border-gray-100 rounded-xl shadow-lg overflow-hidden bg-white">
-                <div className="overflow-x-auto max-h-[500px]">
-                  <table className="w-full border-collapse text-center font-sans text-[9px]">
-                    <thead className="bg-[#f8fafc] sticky top-0 z-10 text-slate-400 uppercase font-black border-b border-gray-100">
-                      <tr>
-                        {group.id === 'leader' ? (
-                          <>
-                            <th className="px-4 py-3 border-r border-gray-100">Idbloque</th>
-                            <th className="px-4 py-3 border-r border-gray-100">fecha</th>
-                            <th className="px-4 py-3 border-r border-gray-100">ESTADO</th>
-                            <th className="px-4 py-3 border-r border-gray-100">orden</th>
-                            <th className="px-4 py-3 border-r border-gray-100">CodMaterial</th>
-                            <th className="px-4 py-3 border-r border-gray-100 text-left">NomMaterial</th>
-                            <th className="px-4 py-3 border-r border-gray-100">corridaproceso</th>
-                            <th className="px-4 py-3 border-r border-gray-100">peso</th>
-                            <th className="px-4 py-3 border-r border-gray-100">estado</th>
-                            <th className="px-4 py-3 border-r border-gray-100">CodBloque</th>
-                            <th className="px-4 py-3 border-r border-gray-100">operador</th>
-                            <th className="px-4 py-3 border-r border-gray-100">Maquina</th>
-                            <th className="px-4 py-3 border-r border-gray-100">estadoTras</th>
-                            <th className="px-4 py-3 border-r border-gray-100">Densidad</th>
-                            <th className="px-4 py-3 border-r border-gray-100 bg-blue-50/30 text-blue-900">Apertura</th>
-                            <th className="px-4 py-3 border-r border-gray-100">pesoNumeric</th>
-                            <th className="px-4 py-3">CantidadStock</th>
-                          </>
-                        ) : (
-                          <>
-                            <th className="px-4 py-3 border-r border-gray-100">Idbloque</th>
-                            <th className="px-4 py-3 border-r border-gray-100">fecha</th>
-                            <th className="px-4 py-3 border-r border-gray-100">orden</th>
-                            <th className="px-4 py-3 border-r border-gray-100">CodMaterial</th>
-                            <th className="px-4 py-3 border-r border-gray-100 text-left">NomMaterial</th>
-                            <th className="px-4 py-3 border-r border-gray-100">corridaproceso</th>
-                            <th className="px-3 py-3 border-r border-gray-100 bg-teal-50 text-teal-900">1er Cant.</th>
-                            <th className="px-3 py-3 border-r border-gray-100 bg-teal-50 text-teal-900">1er Combinacion</th>
-                            <th className="px-3 py-3 border-r border-gray-100 bg-emerald-50 text-emerald-900">2da Cant.</th>
-                            <th className="px-3 py-3 border-r border-gray-100 bg-emerald-50 text-emerald-900">2da Combinacion</th>
-                            <th className="px-4 py-3 border-r border-gray-100">peso</th>
-                            <th className="px-4 py-3 border-r border-gray-100">estado</th>
-                            <th className="px-4 py-3 border-r border-gray-100">CodBloque</th>
-                            <th className="px-4 py-3 border-r border-gray-100">operador</th>
-                            <th className="px-4 py-3 border-r border-gray-100">Maquina</th>
-                            <th className="px-4 py-3 border-r border-gray-100">estadoTras</th>
-                            <th className="px-4 py-3 border-r border-gray-100">CantidadStock</th>
-                            <th className="px-4 py-3">Densidad</th>
-                          </>
-                        )}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50 font-bold">
-                      {group.rows.map((row, i) => (
-                        <tr key={i} className="hover:bg-slate-50 transition-colors">
-                          {group.id === 'leader' ? (
-                            <>
-                              <td className="px-4 py-2 border-r border-gray-50 text-slate-400">{row.Idbloque}</td>
-                              <td className="px-4 py-2 border-r border-gray-50 text-slate-400 font-mono">{row.fecha}</td>
-                              <td className="px-4 py-2 border-r border-gray-50 text-slate-400">{row.ESTADO}</td>
-                              <td className="px-4 py-2 border-r border-gray-50 text-slate-400">{row.orden}</td>
-                              <td className="px-4 py-2 border-r border-gray-50 font-mono text-indigo-600">{row.CodMaterial}</td>
-                              <td className="px-4 py-2 border-r border-gray-50 text-left text-slate-600 uppercase max-w-[200px] truncate">{row.NomMaterial}</td>
-                              <td className="px-4 py-2 border-r border-gray-50 text-slate-400">{row.corridaproceso}</td>
-                              <td className="px-4 py-2 border-r border-gray-50 text-slate-900">{formatNum(row.peso, 1)}</td>
-                              <td className="px-4 py-2 border-r border-gray-50 text-slate-400">{row.estado}</td>
-                              <td className="px-4 py-2 border-r border-gray-50 text-slate-400">{row.CodBloque}</td>
-                              <td className="px-4 py-2 border-r border-gray-50 text-slate-400">{row.operador}</td>
-                              <td className="px-4 py-2 border-r border-gray-50 text-slate-400">{row.Maquina}</td>
-                              <td className="px-4 py-2 border-r border-gray-50 text-slate-400">{row.estadoTras}</td>
-                              <td className="px-4 py-2 border-r border-gray-50 text-indigo-700">{row.Densidad}</td>
-                              <td className="px-4 py-2 border-r border-gray-50 bg-blue-50/10 font-black text-blue-700">{row.Apertura}</td>
-                              <td className="px-4 py-2 border-r border-gray-50 text-slate-900">{formatNum(row.pesoNumeric, 1)}</td>
-                              <td className="px-4 py-2 text-indigo-900">{formatNum(row.CantidadStock, 1)}</td>
-                            </>
-                          ) : (
-                            <>
-                              <td className="px-4 py-2 border-r border-gray-50 text-slate-400">{row.Idbloque}</td>
-                              <td className="px-4 py-2 border-r border-gray-50 text-slate-400 font-mono">{row.fecha}</td>
-                              <td className="px-4 py-2 border-r border-gray-50 text-slate-400">{row.orden}</td>
-                              <td className="px-4 py-2 border-r border-gray-50 font-mono text-indigo-600">{row.CodMaterial}</td>
-                              <td className="px-4 py-2 border-r border-gray-50 text-left text-slate-600 uppercase max-w-[200px] truncate">{row.NomMaterial}</td>
-                              <td className="px-4 py-2 border-r border-gray-50 text-slate-400">{row.corridaproceso}</td>
-                              <td className="px-3 py-2 border-r border-gray-50 bg-teal-50/30 text-teal-700 font-black">{row['1er Cant.']}</td>
-                              <td className="px-3 py-2 border-r border-gray-50 bg-teal-50/30 text-teal-700 font-black">{row['1er Combinacion']}</td>
-                              <td className="px-3 py-2 border-r border-gray-50 bg-emerald-50/30 text-emerald-700 font-black">{row['2da Cant.']}</td>
-                              <td className="px-3 py-2 border-r border-gray-50 bg-emerald-50/30 text-emerald-700 font-black">{row['2da Combinacion']}</td>
-                              <td className="px-4 py-2 border-r border-gray-50 text-slate-900">{formatNum(row.peso, 1)}</td>
-                              <td className="px-4 py-2 border-r border-gray-50 text-slate-400">{row.estado}</td>
-                              <td className="px-4 py-2 border-r border-gray-50 text-slate-400">{row.CodBloque}</td>
-                              <td className="px-4 py-2 border-r border-gray-50 text-slate-400">{row.operador}</td>
-                              <td className="px-4 py-2 border-r border-gray-50 text-slate-400">{row.Maquina}</td>
-                              <td className="px-4 py-2 border-r border-gray-50 text-slate-400">{row.estadoTras}</td>
-                              <td className="px-4 py-2 border-r border-gray-50 text-indigo-900">{formatNum(row.CantidadStock, 1)}</td>
-                              <td className="px-4 py-2 text-indigo-700">{row.Densidad}</td>
-                            </>
-                          )}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </Card>
-            </div>
-          ))}
+                    {isExp && (
+                      <div className="overflow-x-auto">
+                        <table className="w-full border-collapse text-center font-sans text-[10px] text-gray-700">
+                          <thead className="bg-[#f8fafc] text-slate-400 uppercase font-black tracking-widest text-[9px] border-b border-gray-100">
+                            <tr>
+                              <th className="px-6 py-4 text-left border-r border-gray-50">Material</th>
+                              <th className="px-6 py-4 text-left border-r border-gray-50">Descripción del Producto</th>
+                              <th className="px-4 py-4 border-r border-gray-50">Densidad</th>
+                              <th className="px-4 py-4 border-r border-gray-50">Tipo</th>
+                              <th className="px-4 py-4 border-r border-gray-50">Ancho</th>
+                              <th className="px-4 py-4 border-r border-gray-50">Esp.</th>
+                              <th className="px-4 py-4 border-r border-gray-50 font-black text-slate-900 bg-slate-50/30">Cant. (UN)</th>
+                              <th className="px-5 py-4 border-r border-gray-50 text-indigo-700 bg-indigo-50/30">Total Kg</th>
+                              <th className="px-5 py-4 border-r border-gray-50 text-red-700 bg-red-50/30 font-black">Nro. Bloques</th>
+                              <th className="px-6 py-4 text-left border-r border-gray-50">Cód. Bloque (SAP)</th>
+                              <th className="px-6 py-4 text-left bg-emerald-50/30 text-emerald-800">Stock Actual (Kg)</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-50 font-bold">
+                            {group.items.map((item, idx) => (
+                              <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                                <td className="px-6 py-3 text-left font-mono font-black text-indigo-600 border-r border-gray-50">{item.material}</td>
+                                <td className="px-6 py-3 text-left uppercase text-slate-400 italic text-[9px] border-r border-gray-50 truncate max-w-[200px]" title={item.descripcion}>{item.descripcion}</td>
+                                <td className="px-4 py-3 border-r border-gray-50 font-mono">{item.dens}</td>
+                                <td className="px-4 py-3 border-r border-gray-50 uppercase text-slate-400">{item.tipo}</td>
+                                <td className="px-4 py-3 border-r border-gray-50 font-mono">{item.ancho}</td>
+                                <td className="px-4 py-3 border-r border-gray-50 font-mono">{item.esp}</td>
+                                <td className="px-4 py-3 border-r border-gray-50 font-mono font-black text-slate-900 bg-slate-50/10">{item.unidades.toLocaleString()}</td>
+                                <td className="px-5 py-3 border-r border-gray-50 font-mono font-black text-indigo-600 bg-indigo-50/10">{item.kgTotal.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+                                <td className="px-5 py-3 border-r border-gray-50 font-mono font-black text-red-600 bg-red-50/10">{item.planReposicion}</td>
+                                <td className="px-6 py-3 text-left font-mono text-slate-400 border-r border-gray-50">{item.blockCode}</td>
+                                <td className="px-6 py-3 text-left font-mono font-black text-emerald-600 bg-emerald-50/10">{item.stockKg.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
         </TabsContent>
 
-        <TabsContent value="inventario" className="animate-in fade-in duration-300 text-left">
-          <Card className="rounded-xl border border-gray-100 shadow-lg overflow-hidden bg-white">
-            <div className="overflow-x-auto max-h-[500px] relative">
+        <TabsContent value="ordenes" className="animate-in fade-in duration-300">
+           <div className="border-2 border-gray-50 rounded-[2rem] shadow-xl overflow-hidden bg-white">
+              <div className="overflow-x-auto">
+                <table className="w-full text-[10px] text-center border-collapse">
+                  <thead className="bg-[#1e293b] text-white uppercase font-black tracking-widest text-[8px] border-b border-white/5 sticky top-0 z-10">
+                    <tr>
+                      <th className="px-6 py-5 text-left border-r border-white/5">Orden Previsional</th>
+                      <th className="px-6 py-5 text-left border-r border-white/5">Material / Descripción</th>
+                      <th className="px-4 py-5 border-r border-white/5">Apertura</th>
+                      <th className="px-4 py-5 border-r border-white/5 bg-black/10">Dens.</th>
+                      <th className="px-6 py-5 border-r border-white/5 text-right font-black">Cant. Programada</th>
+                      <th className="px-4 py-5 border-r border-white/5">U.M.</th>
+                      <th className="px-4 py-5 border-r border-white/5">Máquina</th>
+                      <th className="px-4 py-5">Almacén</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50 font-bold text-slate-600">
+                    {provFiltradas.length === 0 ? (
+                      <tr><td colSpan={8} className="py-24 text-slate-200 uppercase tracking-widest italic font-black opacity-40">Sin órdenes provisionales detectadas en Formulación (Alm. 1006)</td></tr>
+                    ) : (
+                      provFiltradas.map((o, idx) => {
+                        const info = extractMaterialInfo(o);
+                        return (
+                          <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                            <td className="px-6 py-4 text-left font-mono font-black text-slate-900 border-r border-gray-50">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
+                            <td className="px-6 py-4 text-left border-r border-gray-50 max-w-[400px] truncate">
+                              <span className="text-indigo-600 font-black block text-[11px]">{info.code}</span>
+                              <span className="text-slate-400 text-[9px] uppercase italic block leading-tight">{info.desc}</span>
+                            </td>
+                            <td className="px-4 py-4 border-r border-gray-50 font-black text-blue-700 bg-blue-50/20">{info.apertura}</td>
+                            <td className="px-4 py-4 border-r border-gray-50 font-mono text-slate-900">{info.dens}</td>
+                            <td className="px-6 py-4 text-right font-mono font-black text-slate-900 bg-slate-50/30 border-r border-gray-50">{formatNum(o.CANTIDAD || o.CANTPROGRAMADA, 0)}</td>
+                            <td className="px-4 py-4 border-r border-gray-50 text-slate-300">UN</td>
+                            <td className="px-4 py-4 border-r border-gray-50 font-black text-slate-400 uppercase text-[9px]">{o.MAQUINA || o.RECURSO || '—'}</td>
+                            <td className="px-4 py-4 text-slate-200 font-bold">{o.ALMACEN || o.Almacen || '—'}</td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+           </div>
+        </TabsContent>
+
+        <TabsContent value="bom" className="animate-in fade-in duration-300">
+           <MaestroMaterialesExplosionSection ordenes={provFiltradas} />
+        </TabsContent>
+
+        <TabsContent value="inventario" className="animate-in fade-in duration-300">
+          <Card className="rounded-[2rem] border-2 border-gray-100 shadow-xl overflow-hidden bg-white">
+            <div className="overflow-x-auto max-h-[600px] relative">
               <table className="w-full border-collapse text-center font-sans text-[10px]">
                 <thead className="bg-[#1e293b] text-white border-b border-gray-100 uppercase font-black tracking-widest text-[8px] sticky top-0 z-10">
                   <tr>
-                    <th className="px-4 py-4 border-r border-white/5">Material</th>
-                    <th className="px-5 py-4 border-r border-white/5 text-left">Descripción del Producto</th>
-                    <th className="px-3 py-4 border-r border-white/5">Centro</th>
-                    <th className="px-3 py-4 border-r border-white/5 text-indigo-300">ALM.</th>
-                    <th className="px-3 py-4 border-r border-white/5">Año/Mes</th>
-                    <th className="px-3 py-4 border-r border-white/5 bg-green-500/30 text-green-300">Libre Utiliz.</th>
-                    <th className="px-3 py-4 border-r border-white/5 bg-blue-500/30 text-blue-200">En Traslado</th>
-                    <th className="px-3 py-4 border-r border-white/5">Insp. Calidad</th>
-                    <th className="px-3 py-4 border-r border-white/5 text-red-300">Bloqueado</th>
-                    <th className="px-3 py-4 border-r border-white/5">Punto Pedido</th>
-                    <th className="px-3 py-4">Tipo</th>
+                    <th className="px-6 py-5 border-r border-white/5">Material</th>
+                    <th className="px-6 py-5 border-r border-white/10 text-left">Descripción del Producto (SAP)</th>
+                    <th className="px-3 py-5 border-r border-white/5">Centro</th>
+                    <th className="px-3 py-5 border-r border-white/5 text-indigo-300">ALM.</th>
+                    <th className="px-3 py-5 border-r border-white/5">Año/Mes</th>
+                    <th className="px-3 py-5 border-r border-white/5 bg-green-500/30 text-green-300">Libre Utiliz.</th>
+                    <th className="px-3 py-5 border-r border-white/5 bg-blue-500/30 text-blue-200">En Traslado</th>
+                    <th className="px-3 py-5 border-r border-white/5 text-red-300">Bloqueado</th>
+                    <th className="px-3 py-5">Tipo</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-50 font-bold text-[10px]">
+                <tbody className="divide-y divide-gray-50 font-bold text-[11px]">
                   {inventarioFiltrado.length === 0 ? (
-                    <tr><td colSpan={11} className="py-20 text-slate-200 font-black uppercase tracking-widest italic text-center">Sin inventario para el responsable 005</td></tr>
+                    <tr><td colSpan={9} className="py-24 text-slate-200 font-black uppercase tracking-widest italic text-center">Sin inventario para el responsable 005 (Formulación)</td></tr>
                   ) : (
                     inventarioFiltrado.map((row, i) => (
                       <tr key={i} className="hover:bg-blue-50/10 transition-colors">
-                        <td className="px-4 py-2 border-r border-dashed border-gray-100 font-mono text-blue-600">{cleanCode(row.MATERIAL)}</td>
-                        <td className="px-5 py-2 border-r border-dashed border-gray-100 text-left uppercase text-slate-500 truncate max-w-[250px] leading-tight" title={row.NOMBRE}>{row.NOMBRE || '—'}</td>
-                        <td className="px-3 py-2 border-r border-dashed border-gray-100">{row.CENTRO}</td>
-                        <td className="px-3 py-2 border-r border-dashed border-gray-100 text-indigo-700 font-black bg-indigo-50/30">{row.ALMACEN}</td>
-                        <td className="px-3 py-2 border-r border-dashed border-gray-100 font-mono text-slate-400">{row.ANIO}/{row.MES}</td>
-                        <td className="px-3 py-2 border-r border-dashed border-gray-100 font-mono text-green-700 bg-green-50/30">{Number(row.LIBREUTILIZACION || 0).toLocaleString()}</td>
-                        <td className="px-3 py-2 border-r border-dashed border-gray-100 font-mono text-blue-500 bg-blue-50/30">{Number(row.ENTRASLADO || 0).toLocaleString()}</td>
-                        <td className="px-3 py-2 border-r border-dashed border-gray-100 font-mono text-slate-400">{Number(row.INSPECCCALIDAD || 0).toLocaleString()}</td>
-                        <td className="px-3 py-2 border-r border-dashed border-gray-100 font-mono text-red-600 bg-red-50/30">{Number(row.BLOQUEADO || 0).toLocaleString()}</td>
-                        <td className="px-3 py-2 border-r border-dashed border-gray-100 font-mono text-indigo-400">{Number(row.PUNTOPEDIDO || 0).toLocaleString()}</td>
-                        <td className="px-3 py-2 text-[9px] text-slate-300 uppercase">
-                          {row.TIPO_MATERIAL} {row.PETICIONBORRADO === 'X' && <span className="text-red-500 font-black" title="Petición de Borrado">[B]</span>}
-                        </td>
+                        <td className="px-6 py-3 border-r border-dashed border-gray-100 font-mono text-blue-600">{cleanCode(row.MATERIAL)}</td>
+                        <td className="px-6 py-3 border-r border-dashed border-gray-100 text-left uppercase text-slate-500 truncate max-w-[300px] leading-tight" title={row.NOMBRE}>{row.NOMBRE || '—'}</td>
+                        <td className="px-3 py-3 border-r border-dashed border-gray-100">{row.CENTRO}</td>
+                        <td className="px-3 py-3 border-r border-dashed border-gray-100 text-indigo-700 font-black bg-indigo-50/30">{row.ALMACEN}</td>
+                        <td className="px-3 py-3 border-r border-dashed border-gray-100 font-mono text-slate-400">{row.ANIO}/{row.MES}</td>
+                        <td className="px-3 py-3 border-r border-dashed border-gray-100 font-mono text-green-700 bg-green-50/30">{Number(row.LIBREUTILIZACION || 0).toLocaleString()}</td>
+                        <td className="px-3 py-3 border-r border-dashed border-gray-100 font-mono text-blue-500 bg-blue-50/30">{Number(row.ENTRASLADO || 0).toLocaleString()}</td>
+                        <td className="px-3 py-3 border-r border-dashed border-gray-100 font-mono text-red-600 bg-red-50/30">{Number(row.BLOQUEADO || 0).toLocaleString()}</td>
+                        <td className="px-3 py-3 text-[9px] text-slate-300 uppercase">{row.TIPO_MATERIAL}</td>
                       </tr>
                     ))
                   )}
@@ -712,64 +599,28 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           </Card>
         </TabsContent>
 
-        <TabsContent value="ordenes" className="animate-in fade-in duration-300 text-left">
-          <Card className="rounded-xl border border-gray-100 shadow-lg overflow-hidden bg-white">
-            <div className="overflow-x-auto max-h-[500px]">
-              <table className="w-full border-collapse text-center font-sans text-[10px]">
-                <thead className="bg-gray-50 sticky top-0 z-10 text-[9px] font-black uppercase text-slate-400 border-b border-gray-100">
-                  <tr>
-                    <th className="px-5 py-4 border-r border-gray-100 text-left">Orden SAP</th>
-                    <th className="px-5 py-4 border-r border-gray-100 text-left">Material / Descripción</th>
-                    <th className="px-4 py-4 border-r border-gray-100 bg-blue-50/50 text-blue-900">Apertura</th>
-                    <th className="px-5 py-4 border-r border-gray-100 font-black">Cant. (UN)</th>
-                    <th className="px-5 py-4">Máquina Recurso</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50 font-bold">
-                  {provFiltradas.length === 0 ? (
-                    <tr><td colSpan={5} className="py-20 text-slate-200 uppercase tracking-widest font-black italic text-center">No hay órdenes para los filtros seleccionados</td></tr>
-                  ) : (
-                    provFiltradas.map((o, i) => {
-                      const info = extractMaterialInfo(o);
-                      return (
-                        <tr key={i} className="hover:bg-slate-50/50 transition-colors">
-                          <td className="px-5 py-2 border-r border-gray-100 text-slate-400 font-mono">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
-                          <td className="px-5 py-2 border-r border-gray-100 text-left uppercase text-slate-600 truncate max-w-[350px]" title={info.desc}>{info.desc}</td>
-                          <td className="px-4 py-2 border-r border-gray-100 font-black text-blue-700 bg-blue-50/10">{info.apertura}</td>
-                          <td className="px-5 py-2 border-r border-gray-100 font-mono font-black text-slate-900 text-sm">{formatNum(o.CANTIDAD || o.CANTPROGRAMADA, 0)}</td>
-                          <td className="px-5 py-2 font-black text-indigo-700 uppercase tracking-tight">{o.MAQUINA || '—'}</td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="tiempos" className="animate-in fade-in duration-300 text-left">
-          <Card className="rounded-xl border border-gray-100 shadow-lg overflow-hidden bg-white">
-            <div className="overflow-x-auto max-h-[500px]">
+        <TabsContent value="tiempos" className="animate-in fade-in duration-300">
+          <Card className="rounded-[2rem] border-2 border-gray-100 shadow-xl overflow-hidden bg-white">
+            <div className="overflow-x-auto max-h-[600px]">
               <table className="w-full border-collapse text-center font-sans text-[10px]">
                 <thead className="bg-[#0f172a] text-white uppercase font-black tracking-widest text-[8px] sticky top-0 z-10">
                   <tr>
-                    <th className="px-6 py-4 border-r border-white/5 text-left">Material</th>
-                    <th className="px-6 py-4 border-r border-white/5 text-left">Descripción Técnica SAP</th>
-                    <th className="px-6 py-4 border-r border-white/5">Línea Prod.</th>
-                    <th className="px-6 py-4 text-teal-400 font-black">Estándar (Min)</th>
+                    <th className="px-6 py-5 border-r border-white/5 text-left">Material</th>
+                    <th className="px-6 py-5 border-r border-white/10 text-left">Descripción Técnica SAP</th>
+                    <th className="px-6 py-5 border-r border-white/5">Línea Prod.</th>
+                    <th className="px-6 py-5 text-teal-400 font-black">Estándar (Min)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 font-bold">
                   {tiemposEnsamblado.length === 0 ? (
-                    <tr><td colSpan={4} className="py-20 text-slate-200 uppercase tracking-widest text-center italic">Cargando Catálogo Maestro...</td></tr>
+                    <tr><td colSpan={4} className="py-24 text-slate-200 uppercase tracking-widest text-center italic">Cargando Catálogo Maestro de Formulación...</td></tr>
                   ) : (
                     tiemposEnsamblado.map((t, i) => (
                       <tr key={i} className="hover:bg-indigo-50/20 transition-colors">
-                        <td className="px-6 py-2 border-r border-gray-100 text-left font-mono text-indigo-600">{cleanCode(t.CodMaterial)}</td>
-                        <td className="px-6 py-2 border-r border-gray-100 text-left uppercase text-slate-500 truncate max-w-[400px] leading-tight">{t.Material || t.Descripcion}</td>
-                        <td className="px-6 py-2 border-r border-gray-100 text-slate-400 uppercase font-black text-[8px]">{t.Linea}</td>
-                        <td className="px-6 py-2 font-mono font-black text-teal-600 bg-teal-50/20 text-sm">{Number(t.Tiempo || 0).toFixed(4)}</td>
+                        <td className="px-6 py-3 border-r border-gray-100 text-left font-mono text-indigo-600">{cleanCode(t.CodMaterial)}</td>
+                        <td className="px-6 py-3 border-r border-gray-100 text-left uppercase text-slate-500 truncate max-w-[500px] leading-tight">{t.Material || t.Descripcion}</td>
+                        <td className="px-6 py-3 border-r border-gray-100 text-slate-400 uppercase font-black text-[9px]">{t.Linea}</td>
+                        <td className="px-6 py-3 font-mono font-black text-teal-600 bg-teal-50/20 text-sm">{Number(t.Tiempo || 0).toFixed(4)}</td>
                       </tr>
                     ))
                   )}
@@ -781,12 +632,12 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       </Tabs>
       
       {/* NOTA TECNICA FINAL */}
-      <div className="flex items-center gap-3 p-4 bg-blue-50 border border-blue-100 rounded-2xl">
-        <Info className="w-5 h-5 text-blue-600 flex-shrink-0" />
-        <p className="text-[10px] font-bold text-blue-700 uppercase tracking-widest leading-relaxed">
-          Nota de Ingeniería: Los bloques teóricos y el plan de reposición se calculan en base a la densidad real y altura útil del bloque formulado (103cm para D&lt;30, 85cm para D&ge;30).
+      <div className="flex items-center gap-3 p-5 bg-indigo-50 border border-indigo-100 rounded-[1.5rem] shadow-sm">
+        <Info className="w-5 h-5 text-indigo-600 flex-shrink-0" />
+        <p className="text-[10px] font-bold text-indigo-700 uppercase tracking-widest leading-relaxed">
+          Auditoría de Formulación: El sistema realiza una explosión multinivel sobre las órdenes 1006 para determinar el requerimiento de bloque formulado. Los bloques teóricos consideran una altura útil de 103cm (D&lt;30) y 85cm (D&ge;30).
         </p>
       </div>
-    </>
+    </div>
   );
 };
