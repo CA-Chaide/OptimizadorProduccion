@@ -1,3 +1,4 @@
+
 import type { BodyListResponse } from "@/types/body-list-response";
 import type { BodyResponse } from "@/types/body-response";
 import { environment } from "@/environments/environments.prod";
@@ -390,18 +391,27 @@ export const serviciosService = {
 
   async getProduccionEstimadaPorIntervalo(anio: string, mes: string, semana: string): Promise<BodyResponse<any>> {
     try {
-      const response = await fetch(API_URL + "/produccionEstimadaPorAnioMesSemana", {
+      const response = await fetch(API_URL + "/ProduccionEstimadaPorAnioMesSemana", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
-          anio: anio, 
-          mes: mes,
-          semana: semana
+          Anio: anio, 
+          Mes: mes,
+          Semana: semana
         }),
       });
       if (!response.ok) {
-        const errorBody = await response.json().catch(() => ({ message: "Error de red al consultar la producción estimada." }));
-        throw new Error(errorBody.message || "Error al consultar la producción estimada.");
+        let errorMsg = `Error ${response.status}: ${response.statusText}`;
+        try {
+          const errorBody = await response.json();
+          errorMsg = errorBody.message || errorMsg;
+        } catch (e) {
+          try {
+            const errorText = await response.text();
+            if (errorText && errorText.length < 200) errorMsg = errorText;
+          } catch (e2) {}
+        }
+        throw new Error(errorMsg);
       }
       return response.json();
     } catch (e) {
