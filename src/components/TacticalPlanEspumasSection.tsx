@@ -209,6 +209,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       });
     });
 
+    // CÁLCULO DE PARTICIPACIÓN BASADO EN PESO (KG)
     hierarchy.forEach(center => {
       center.forEach(items => {
         const totalKg = items.reduce((s, r) => s + r.peso, 0);
