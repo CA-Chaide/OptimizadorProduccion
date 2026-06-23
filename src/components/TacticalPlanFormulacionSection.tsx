@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -40,7 +39,7 @@ import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 import { cn } from '@/lib/utils';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, differenceInDays, parseISO } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, differenceInDays, isValid } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 const BLOCK_LENGTH_METERS = 20;
@@ -81,7 +80,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   const [grupos, setGrupos] = useState<Grupo[]>([]);
   const [restricciones, setRestricciones] = useState<Restriccion[]>([]);
   const [ordenes, setOrders] = useState<any[]>([]);
-  const [ordenesProceso, setOrdenesProceso] = useState<any[]>([]);
+  const [ordenesFert, setOrdersFert] = useState<any[]>([]);
   const [inventarioSAP, setInventarioSAP] = useState<any[]>([]);
   const [curadoData, setCuradoData] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -133,19 +132,16 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   }, [ordenes, selectedDates]);
 
   const prodFiltradas = useMemo(() => {
-    return ordenesProceso.filter(o => {
+    return ordenesFert.filter(o => {
       const centro = String(getProp(o, ['CENTRO', 'Centro'])).trim();
       const alm = String(getProp(o, ['ALMACEN', 'Almacen'])).trim();
-      
-      // Filtro para Formulación: Almacén 1006 o Planta 1000 (Quito)
       const matchArea = alm === '1006' || centro === '1000';
       if (!matchArea) return false;
-
-      const itemDateFull = getProp(o, ['FECHA_INICIO', 'FECHA', 'FECHAINICIO']).trim();
+      const itemDateFull = getProp(o, ['FECHA', 'FECHAINICIO', 'FECHA_INICIO']).trim();
       const itemDate = itemDateFull.includes('T') ? itemDateFull.split('T')[0] : itemDateFull;
       return selectedDates.size === 0 || selectedDates.has(itemDate);
     });
-  }, [ordenesProceso, selectedDates]);
+  }, [ordenesFert, selectedDates]);
 
   const handleProcessResumen = useCallback(async () => {
     if (provFiltradas.length === 0) {
@@ -214,8 +210,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       if (i % 10 === 0) setResumenProgress({ current: i + 1, total: provFiltradas.length });
     }
 
-    const finalData = Array.from(groupsMap.values()).sort((a, b) => b.kgTotal - a.kgTotal);
-    setUnifiedSummaryData(finalData);
+    setUnifiedSummaryData(Array.from(groupsMap.values()).sort((a, b) => b.kgTotal - a.kgTotal));
     setIsProcessingResumen(false);
   }, [provFiltradas, inventarioSAP, extractMaterialInfo]);
 
@@ -227,48 +222,46 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     }), { unidades: 0, kilos: 0, bloques: 0 });
   }, [unifiedSummaryData]);
 
+  // Auditoria Curado: Sin filtros restrictivos, solo mapeo
   const curadoAudit = useMemo(() => {
-    return curadoData
-      .map(row => {
-        const info = extractMaterialInfo(row);
-        const fabDateRaw = getProp(row, ['FECHA_FABRICACION', 'FECHA', 'FECHA_FAB']);
-        
-        let fabDate: Date | null = null;
-        if (fabDateRaw && fabDateRaw !== 'null' && fabDateRaw !== 'undefined') {
-          const d = fabDateRaw.includes('T') ? fabDateRaw.split('T')[0] : fabDateRaw;
-          const parts = d.split('-');
-          if (parts.length === 3) {
-            const [y, m, day] = parts.map(Number);
-            const tempDate = new Date(y, m - 1, day);
-            if (!isNaN(tempDate.getTime())) {
-              fabDate = tempDate;
-              fabDate.setHours(0,0,0,0);
-            }
+    return curadoData.map(row => {
+      const info = extractMaterialInfo(row);
+      const fabDateRaw = getProp(row, ['FECHA_FABRICACION', 'FECHA', 'FECHA_FAB']);
+      
+      let fabDate: Date | null = null;
+      if (fabDateRaw && fabDateRaw !== 'null') {
+        const d = fabDateRaw.includes('T') ? fabDateRaw.split('T')[0] : fabDateRaw;
+        const parts = d.split('-');
+        if (parts.length === 3) {
+          const tempDate = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+          if (isValid(tempDate)) {
+            fabDate = tempDate;
+            fabDate.setHours(0,0,0,0);
           }
         }
-        
-        let estatus = 'SIN FECHA';
-        let diasTranscurridos = 0;
-        let diasRequeridos = 3; 
-        
-        if (fabDate && !isNaN(fabDate.getTime())) {
-          diasTranscurridos = differenceInDays(new Date(), fabDate);
-          diasRequeridos = info.apertura === '194.5' ? 2 : 3;
-          estatus = diasTranscurridos >= diasRequeridos ? 'DISPONIBLE' : 'EN CURADO';
-        }
+      }
+      
+      let estatus = 'FECHA INVÁLIDA';
+      let diasTranscurridos = 0;
+      let diasRequeridos = 3; 
+      
+      if (fabDate && isValid(fabDate)) {
+        diasTranscurridos = differenceInDays(new Date(), fabDate);
+        diasRequeridos = info.apertura === '194.5' ? 2 : 3;
+        estatus = diasTranscurridos >= diasRequeridos ? 'DISPONIBLE' : 'EN CURADO';
+      }
 
-        return {
-          ...row,
-          ...info,
-          fabDate,
-          fabDateStr: (fabDate && !isNaN(fabDate.getTime())) ? format(fabDate, 'yyyy-MM-dd') : '—',
-          diasTranscurridos,
-          diasRequeridos,
-          estatus,
-          nroBloque: getProp(row, ['NRO_BLOQUE', 'BLOQUE', 'ID'])
-        };
-      })
-      .sort((a, b) => (b.fabDate?.getTime() || 0) - (a.fabDate?.getTime() || 0));
+      return {
+        ...row,
+        ...info,
+        fabDate,
+        fabDateStr: (fabDate && isValid(fabDate)) ? format(fabDate, 'yyyy-MM-dd') : '—',
+        diasTranscurridos,
+        diasRequeridos,
+        estatus,
+        nroBloque: getProp(row, ['NRO_BLOQUE', 'BLOQUE', 'ID'])
+      };
+    });
   }, [curadoData, extractMaterialInfo]);
 
   const filteredInventario = useMemo(() => {
@@ -306,7 +299,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
 
       setRestricciones((restrsRes.data || []).filter((r: any) => groupsIds.includes(r.codigo_grupo)));
       setOrders(provsRes.data?.data || provsRes.data || []);
-      setOrdenesProceso(fertsRes.data?.data || fertsRes.data || []);
+      setOrdersFert(fertsRes.data?.data || fertsRes.data || []);
       setInventarioSAP(Array.isArray(invRes.data) ? invRes.data : []);
       setCuradoData(curadoRes.data || []);
     } catch (error) {
@@ -328,15 +321,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     const padding = startDay === 0 ? 6 : startDay - 1;
     return [...Array(padding).fill(null), ...days];
   }, [viewDate]);
-
-  const datesWithOrdersSet = useMemo(() => {
-    const set = new Set<string>();
-    ordenesProceso.forEach(o => {
-      const d = String(getProp(o, ['FECHA_INICIO', 'FECHA', 'FECHAINICIO'])).trim();
-      if (d && d !== 'null' && d !== 'undefined') set.add(d.includes('T') ? d.split('T')[0] : d);
-    });
-    return set;
-  }, [ordenesProceso]);
 
   if (!mounted) return null;
 
@@ -383,11 +367,9 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                     if (!day) return <div key={idx} />;
                     const dStr = format(day, 'yyyy-MM-dd');
                     const isSel = selectedDates.has(dStr);
-                    const hasOrders = datesWithOrdersSet.has(dStr);
                     return (
                       <button key={dStr} onClick={() => { const n = new Set(selectedDates); isSel ? n.delete(dStr) : n.add(dStr); setSelectedDates(n); }} className={cn("relative h-8 w-8 mx-auto rounded-xl flex items-center justify-center transition-all", isSel ? "bg-primary text-white shadow-md" : "hover:bg-slate-50")}>
-                        <span className={cn("text-xs font-black", !hasOrders && !isSel ? "text-slate-200" : "text-slate-700")}>{format(day, 'd')}</span>
-                        {hasOrders && !isSel && <div className="absolute bottom-1.5 w-1 h-1 bg-primary/40 rounded-full" />}
+                        <span className={cn("text-xs font-black", isSel ? "text-white" : "text-slate-700")}>{format(day, 'd')}</span>
                       </button>
                     );
                   })}
@@ -400,7 +382,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-4 h-11 bg-gray-100/50 p-1.5 rounded-2xl border border-gray-200 mb-8">
+        <TabsList className="grid grid-cols-5 h-11 bg-gray-100/50 p-1.5 rounded-2xl border border-gray-200 mb-8">
           {[ 
             { v: 'resumen', l: 'Salida de Datos', i: LayoutDashboard }, 
             { v: 'curado', l: 'Control Curado', i: ThermometerSnowflake },
@@ -415,10 +397,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         </TabsList>
 
         <TabsContent value="resumen" className="space-y-8 animate-in fade-in duration-300">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-[#0f172a] p-6 rounded-[2.5rem] border border-white/5 shadow-2xl text-white">
-            <div className="border-r border-white/10 pr-6 text-left">
-              <h3 className="text-xl font-black uppercase text-indigo-400 mt-1 tracking-tighter">Plan de Reposición</h3>
-            </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-[#0f172a] p-6 rounded-[2.5rem] border border-white/5 shadow-2xl text-white">
             <div className="flex flex-col gap-1 text-center">
               <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Peso Total (Kg)</p>
               <p className="text-2xl font-black font-mono text-indigo-400 tracking-tighter">{globalStats.kilos.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
@@ -454,11 +433,11 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                     <tr>
                       <td colSpan={9} className="py-24 text-center">
                         <Loader2 className="w-8 h-8 animate-spin mx-auto text-primary mb-3" />
-                        <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Analizando Auditoría SAP: {resumenProgress.current} / {resumenProgress.total}</p>
+                        <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Ejecutando Explosión Técnica BOM: {resumenProgress.current} / {resumenProgress.total}</p>
                       </td>
                     </tr>
                   ) : unifiedSummaryData.length === 0 ? (
-                    <tr><td colSpan={9} className="py-24 text-slate-200 uppercase font-black tracking-widest text-center italic">Presione "ACTUALIZAR AUDITORÍA" para sincronizar la planta</td></tr>
+                    <tr><td colSpan={9} className="py-24 text-slate-200 uppercase font-black tracking-widest text-center italic">Presione el botón "ACTUALIZAR AUDITORÍA"</td></tr>
                   ) : (
                     unifiedSummaryData.map((row, idx) => (
                       <React.Fragment key={idx}>
@@ -514,7 +493,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                  </thead>
                  <tbody className="divide-y divide-gray-50 font-bold">
                     {curadoAudit.length === 0 ? (
-                      <tr><td colSpan={8} className="py-24 text-slate-200 uppercase font-black tracking-widest text-center">Sin bloques registrados en SAP</td></tr>
+                      <tr><td colSpan={8} className="py-24 text-slate-200 uppercase font-black tracking-widest text-center italic">Sin registros en la base de datos de curado</td></tr>
                     ) : (
                       curadoAudit.map((row, idx) => {
                         const isReady = row.estatus === 'DISPONIBLE';
