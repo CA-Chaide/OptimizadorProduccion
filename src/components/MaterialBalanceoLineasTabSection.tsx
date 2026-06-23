@@ -7,7 +7,8 @@ import {
   LayoutGrid, 
   Download, 
   AlertCircle,
-  Loader2
+  Loader2,
+  Building2
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -20,6 +21,7 @@ import { serviciosService } from '@/services/servicios.service';
 
 interface MaterialBalanceoRow {
   id: string;
+  centro: string;
   linea: string;
   material: string;
   descripcion: string;
@@ -37,30 +39,23 @@ interface DisplayRow extends MaterialBalanceoRow {
 const STORAGE_KEY = 'material_balanceo_lineas_data';
 
 const INITIAL_DATA: MaterialBalanceoRow[] = [
-  { id: '1', linea: 'LINEA 1', material: '20007201', descripcion: 'CHN ZAFIRO 135X190X029', habilitado: true, minimo: 0, maximo: 100 },
-  { id: '2', linea: 'LINEA 1', material: '20004463', descripcion: 'CHN ZAFIRO 135X190X024', habilitado: true, minimo: 0, maximo: 100 },
-  { id: '3', linea: 'LINEA 1', material: '20004462', descripcion: 'CHN ZAFIRO 105X190X024', habilitado: true, minimo: 0, maximo: 100 },
-  { id: '4', linea: 'LINEA 1', material: '20007200', descripcion: 'CHN ZAFIRO 105X190X029', habilitado: true, minimo: 0, maximo: 100 },
-  { id: '5', linea: 'LINEA 1', material: '20003642', descripcion: 'CHN IMPERIAL 31 135X190X31', habilitado: true, minimo: 0, maximo: 100 },
-  { id: '6', linea: 'LINEA 1', material: '20006132', descripcion: 'CHN ALTERNATIVA ESPUMA 080X190X011', habilitado: false, minimo: 0, maximo: 100 },
-  { id: '7', linea: 'LINEA 1', material: '20003275', descripcion: 'CHN ALTERNATIVA ESPUMA 080X190X015', habilitado: false, minimo: 0, maximo: 100 },
-  { id: '8', linea: 'LINEA 1', material: '20006133', descripcion: 'CHN ALTERNATIVA ESPUMA 105X190X011', habilitado: false, minimo: 0, maximo: 100 },
-  { id: '9', linea: 'LINEA 1', material: '20003277', descripcion: 'CHN ALTERNATIVA ESPUMA 105X190X015', habilitado: true, minimo: 0, maximo: 100 },
-  { id: '10', linea: 'LINEA 1', material: '20006134', descripcion: 'CHN ALTERNATIVA ESPUMA 135X190X011', habilitado: true, minimo: 0, maximo: 100 },
-  { id: '11', linea: 'LINEA 1', material: '20003278', descripcion: 'CHN ALTERNATIVA ESPUMA 135X190X015', habilitado: true, minimo: 0, maximo: 100 },
-  { id: '12', linea: 'LINEA 3', material: '20006132', descripcion: 'CHN ALTERNATIVA ESPUMA 080X190X011', habilitado: true, minimo: 0, maximo: 100 },
-  { id: '13', linea: 'LINEA 3', material: '20003275', descripcion: 'CHN ALTERNATIVA ESPUMA 080X190X015', habilitado: true, minimo: 0, maximo: 100 },
-  { id: '14', linea: 'LINEA 3', material: '20006133', descripcion: 'CHN ALTERNATIVA ESPUMA 105X190X011', habilitado: true, minimo: 0, maximo: 100 },
-  { id: '15', linea: 'LINEA 3', material: '20003277', descripcion: 'CHN ALTERNATIVA ESPUMA 105X190X015', habilitado: false, minimo: 0, maximo: 100 },
-  { id: '16', linea: 'LINEA 3', material: '20006134', descripcion: 'CHN ALTERNATIVA ESPUMA 135X190X011', habilitado: false, minimo: 0, maximo: 100 },
-  { id: '17', linea: 'LINEA 3', material: '20003278', descripcion: 'CHN ALTERNATIVA ESPUMA 135X190X015', habilitado: false, minimo: 0, maximo: 100 },
-  { id: '18', linea: 'LINEA 2', material: '20000178', descripcion: 'CHN CONTINENTAL PT GR AC 105X190X030', habilitado: false, minimo: 0, maximo: 100 },
-  { id: '19', linea: 'LINEA 2', material: '20000179', descripcion: 'CHN CONTINENTAL PT GR AC 135X190X030', habilitado: true, minimo: 0, maximo: 100 },
-  { id: '20', linea: 'LINEA 2', material: '20000181', descripcion: 'CHN CONTINENTAL PT GR AC 160X200X030', habilitado: true, minimo: 0, maximo: 100 },
-  { id: '21', linea: 'LINEA 2', material: '20000648', descripcion: 'CHN ORTOPÉDICO PT AC 090X190X023', habilitado: false, minimo: 0, maximo: 100 },
-  { id: '22', linea: 'LINEA 2', material: '20000650', descripcion: 'CHN ORTOPÉDICO PT AC 105X190X023', habilitado: true, minimo: 0, maximo: 100 },
-  { id: '23', linea: 'LINEA 2', material: '20000652', descripcion: 'CHN ORTOPÉDICO PT AC 135X190X023', habilitado: true, minimo: 0, maximo: 100 },
-  { id: '24', linea: 'LINEA 2', material: '20000654', descripcion: 'CHN ORTOPÉDICO PT AC 160X200X023', habilitado: false, minimo: 0, maximo: 100 },
+  { id: '1', centro: '1000', linea: 'LINEA 1', material: '20007201', descripcion: 'CHN ZAFIRO 135X190X029', habilitado: true, minimo: 0, maximo: 100 },
+  { id: '2', centro: '1000', linea: 'LINEA 1', material: '20004463', descripcion: 'CHN ZAFIRO 135X190X024', habilitado: true, minimo: 0, maximo: 100 },
+  { id: '3', centro: '1000', linea: 'LINEA 1', material: '20004462', descripcion: 'CHN ZAFIRO 105X190X024', habilitado: true, minimo: 0, maximo: 100 },
+  { id: '4', centro: '1000', linea: 'LINEA 1', material: '20007200', descripcion: 'CHN ZAFIRO 105X190X029', habilitado: true, minimo: 0, maximo: 100 },
+  { id: '5', centro: '1000', linea: 'LINEA 1', material: '20003642', descripcion: 'CHN IMPERIAL 31 135X190X31', habilitado: true, minimo: 0, maximo: 100 },
+  { id: '6', centro: '1000', linea: 'LINEA 1', material: '20006132', descripcion: 'CHN ALTERNATIVA ESPUMA 080X190X011', habilitado: false, minimo: 0, maximo: 100 },
+  { id: '7', centro: '1000', linea: 'LINEA 1', material: '20003275', descripcion: 'CHN ALTERNATIVA ESPUMA 080X190X015', habilitado: false, minimo: 0, maximo: 100 },
+  { id: '8', centro: '1000', linea: 'LINEA 1', material: '20006133', descripcion: 'CHN ALTERNATIVA ESPUMA 105X190X011', habilitado: false, minimo: 0, maximo: 100 },
+  { id: '9', centro: '1000', linea: 'LINEA 1', material: '20003277', descripcion: 'CHN ALTERNATIVA ESPUMA 105X190X015', habilitado: true, minimo: 0, maximo: 100 },
+  { id: '10', centro: '1000', linea: 'LINEA 1', material: '20006134', descripcion: 'CHN ALTERNATIVA ESPUMA 135X190X011', habilitado: true, minimo: 0, maximo: 100 },
+  { id: '11', centro: '1000', linea: 'LINEA 1', material: '20003278', descripcion: 'CHN ALTERNATIVA ESPUMA 135X190X015', habilitado: true, minimo: 0, maximo: 100 },
+  { id: '12', centro: '2000', linea: 'LINEA 3', material: '20006132', descripcion: 'CHN ALTERNATIVA ESPUMA 080X190X011', habilitado: true, minimo: 0, maximo: 100 },
+  { id: '13', centro: '2000', linea: 'LINEA 3', material: '20003275', descripcion: 'CHN ALTERNATIVA ESPUMA 080X190X015', habilitado: true, minimo: 0, maximo: 100 },
+  { id: '14', centro: '2000', linea: 'LINEA 3', material: '20006133', descripcion: 'CHN ALTERNATIVA ESPUMA 105X190X011', habilitado: true, minimo: 0, maximo: 100 },
+  { id: '15', centro: '2000', linea: 'LINEA 3', material: '20003277', descripcion: 'CHN ALTERNATIVA ESPUMA 105X190X015', habilitado: false, minimo: 0, maximo: 100 },
+  { id: '16', centro: '2000', linea: 'LINEA 3', material: '20006134', descripcion: 'CHN ALTERNATIVA ESPUMA 135X190X011', habilitado: false, minimo: 0, maximo: 100 },
+  { id: '17', centro: '2000', linea: 'LINEA 3', material: '20003278', descripcion: 'CHN ALTERNATIVA ESPUMA 135X190X015', habilitado: false, minimo: 0, maximo: 100 },
 ];
 
 export const MaterialBalanceoLineasTabSection: React.FC = () => {
@@ -106,6 +101,7 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
         const parsed = JSON.parse(stored);
         const migrated = parsed.map((r: any) => ({
           ...r,
+          centro: r.centro || '1000',
           minimo: r.minimo !== undefined ? r.minimo : 0,
           maximo: r.maximo !== undefined ? r.maximo : 100
         }));
@@ -130,6 +126,7 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
   const handleAddRow = () => {
     const newRow: MaterialBalanceoRow = {
       id: Date.now().toString(),
+      centro: '1000',
       linea: '',
       material: '',
       descripcion: '',
@@ -155,12 +152,16 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
     rows.forEach(baseRow => {
       const materialNorm = normalizeMaterialCode(baseRow.material);
       const lineaNorm = baseRow.linea.trim().toUpperCase();
+      const centroNorm = String(baseRow.centro).trim();
 
-      // Buscar coincidencias en technicalData
+      // Buscar coincidencias en technicalData filtrando por Centro, Linea y Material
       const matches = technicalData.filter(tech => {
         const techMaterial = normalizeMaterialCode(tech.CodMaterial);
         const techLinea = String(tech.Linea || '').trim().toUpperCase();
-        return techMaterial === materialNorm && (techLinea === lineaNorm || techLinea.includes(lineaNorm));
+        const techCentro = String(tech.Centro || '').trim();
+        return techMaterial === materialNorm && 
+               (techLinea === lineaNorm || techLinea.includes(lineaNorm)) &&
+               techCentro === centroNorm;
       });
 
       if (matches.length > 0) {
@@ -188,6 +189,7 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
 
   const handleExport = () => {
     const dataToExport = expandedRows.map(r => ({
+      'Centro': r.centro,
       'Línea': r.linea,
       'Material': r.material,
       'Descripción': r.descripcion,
@@ -233,6 +235,7 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
             <table className="min-w-full divide-y divide-gray-200 text-xs">
               <thead className="bg-gray-50 sticky top-0 z-10">
                 <tr>
+                  <th className="px-4 py-3 text-left font-bold text-gray-600 uppercase tracking-wider w-24 border-r">Centro</th>
                   <th className="px-4 py-3 text-left font-bold text-gray-600 uppercase tracking-wider w-32 border-r">Línea</th>
                   <th className="px-4 py-3 text-left font-bold text-gray-600 uppercase tracking-wider w-40 border-r">Material</th>
                   <th className="px-4 py-3 text-left font-bold text-gray-600 uppercase tracking-wider border-r">Descripción</th>
@@ -247,7 +250,7 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
               <tbody className="bg-white divide-y divide-gray-200">
                 {isLoadingTech && expandedRows.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-6 py-12 text-center text-gray-400">
+                    <td colSpan={10} className="px-6 py-12 text-center text-gray-400">
                       <div className="flex flex-col items-center gap-2">
                         <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
                         <span>Sincronizando información técnica de puestos...</span>
@@ -256,6 +259,16 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
                   </tr>
                 ) : expandedRows.map((row, idx) => (
                   <tr key={`${row.id}-${idx}`} className={cn("hover:bg-gray-50 transition-colors", !row.habilitado && "bg-gray-50/50 opacity-70")}>
+                    <td className="px-2 py-1.5 border-r">
+                      <select 
+                        value={row.centro} 
+                        onChange={(e) => handleUpdateRow(row.id, 'centro', e.target.value)}
+                        className="w-full h-8 text-xs border border-transparent bg-transparent hover:border-gray-200 rounded focus:ring-1 focus:ring-indigo-500 font-bold"
+                      >
+                        <option value="1000">1000</option>
+                        <option value="2000">2000</option>
+                      </select>
+                    </td>
                     <td className="px-2 py-1.5 border-r">
                       <Input 
                         value={row.linea} 
@@ -325,7 +338,7 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
                 ))}
                 {expandedRows.length === 0 && !isLoadingTech && (
                   <tr>
-                    <td colSpan={9} className="px-6 py-12 text-center text-gray-400 italic">
+                    <td colSpan={10} className="px-6 py-12 text-center text-gray-400 italic">
                       No hay materiales configurados. Haga clic en "Añadir Línea" para comenzar.
                     </td>
                   </tr>
@@ -339,7 +352,7 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
       <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg text-blue-800">
         <AlertCircle className="w-4 h-4 flex-shrink-0" />
         <p className="text-xs">
-          <b>Nota:</b> Los puestos de trabajo y tiempos se sincronizan automáticamente desde la base técnica relacionando la <b>Línea</b> y el <b>Material</b>. Si un material tiene múltiples puestos, se mostrará una fila por cada uno.
+          <b>Nota:</b> Los puestos de trabajo y tiempos se sincronizan automáticamente relacionando el <b>Centro</b>, la <b>Línea</b> y el <b>Material</b>. Si un material tiene múltiples puestos, se mostrará una fila por cada uno.
         </p>
       </div>
     </div>
