@@ -62,7 +62,6 @@ const workstationGroups = [
   {
     title: "Acolchado y Tapas",
     items: [
-      // Estructura de Pares (ACOLCHADORA + COSEDORA correspondiente)
       "ACOLCHADORA02", "COSEDORA-ACH02",
       "ACOLCHADORA06", "COSEDORA-ACH06",
       "ACOLCHADORA07", "COSEDORA-ACH07",
@@ -70,8 +69,6 @@ const workstationGroups = [
       "ACOLCHADORA09", "COSEDORA-ACH09",
       "ACOLCHADORA10", "COSEDORA-ACH10",
       "ACOLCHADORA13", "COSEDORA-ACH13",
-      
-      // Máquinas que no empaten o variantes técnicas al final del grupo
       "ACH02", "ACH06", "ACH07", "ACH08", "ACH09", "ACH10", "ACH13",
       "PEGADORA-ACH02", "PEGADORA-ACH06", "PEGADORA-ACH07", "PEGADORA-ACH08", "PEGADORA-ACH09", "PEGADORA-ACH10", "PEGADORA-ACH13",
       "PEF02", "PEF06", "PEF07", "PEF08", "PEF09", "PEF10", "PEF13"
@@ -82,16 +79,15 @@ const workstationGroups = [
     items: [
       "ACOLCHADORA11", "ACOLCHADORA12", "ACH11", "ACH12", 
       "BORDADORA-BANDA01", "BO01", "RMTB-01", "RMTB-02", "RMTB-M", "RMTB01", "RMTB02", "RMTBM",
-      "COS3D", "COSEDORA-BANDA3D", "COSEDORA-BANDA-3D",
-      "ENCINTADOBD", "COSEDORA-ENCINTADOBD"
+      "COS3D", "COSEDORA-BANDA3D", "ENCINTADOBD", "COSEDORA-ENCINTADOBD"
     ]
   },
   {
     title: "Interiores, Bases y Corte",
     items: [
       "INTP-PR", "INTP-PT", "INTP-F", "INTPF", "INTPF1", "INTPF2", 
-      "COSEDORA-INTPF", "COSEDORA-INTP-F", "COSEDORA-INTPF1", "COSEDORA-INTPF2",
-      "COSEDORA-INTPR", "COSEDORA-INTPT", "COSEDORA-INTP-PR", "COSEDORA-INTP-PT",
+      "COSEDORA-INTPF", "COSEDORA-INTPF1", "COSEDORA-INTPF2",
+      "COSEDORA-INTPR", "COSEDORA-INTPT",
       "MTBS1", "MTBS", "COSEDORA-BSC-CC", "COSEDORA-BSCTP", "COSEDORA-MTBS1",
       "CT-BAN", "CT-BSC", "CT-CHN", "CT-INT", "TTCF", "TTSUP", "TELAS", "FUNDAS",
       "COSEDORA-TTCHN", "COSEDORA-TTSUP-CHN", "CORTE-ESPUMA", "CORTELA10"
@@ -99,7 +95,7 @@ const workstationGroups = [
   },
   {
     title: "Ensamble de Forros",
-    items: ["FORRO-COLCHONES", "FBASE-01", "FBASE-02", "FORRO-BASE-BCAMAS", "FORRO-BASE-BCAMA"]
+    items: ["FORRO-COLCHONES", "FBASE-01", "FBASE-02", "FORRO-BASE-BCAMAS"]
   }
 ];
 
@@ -969,47 +965,48 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   return (
     <div className="p-6 md:p-8 space-y-6 bg-slate-50/40 min-h-screen font-body">
-      <div className="flex flex-col xl:flex-row items-center justify-between gap-6 bg-white p-7 rounded-[2rem] border border-slate-200 shadow-sm">
-        <div className="flex items-center space-x-6">
-          <div className="bg-slate-950 p-5 rounded-[1.5rem] text-white shadow-xl ring-4 ring-slate-100">
-            <CalendarClock className="w-9 h-9 text-sky-400" />
+      <div className="flex flex-col gap-8 bg-white p-10 rounded-[3rem] border border-slate-100 shadow-xl">
+        <div className="flex items-center gap-8">
+          <div className="bg-slate-950 p-6 rounded-[2rem] text-white shadow-2xl ring-8 ring-slate-50">
+            <CalendarClock className="w-12 h-12 text-sky-400" />
           </div>
-          <div>
-            <div className="flex items-center gap-3">
-              <h2 className="text-3xl font-black text-slate-900 uppercase tracking-tighter">Programación Táctica</h2>
-              <Badge className="bg-indigo-600 text-white font-black px-3 py-1 rounded-lg text-[10px] uppercase tracking-widest">Forros</Badge>
+          <div className="flex-1">
+            <div className="flex items-center gap-4 mb-2">
+              <h1 className="text-4xl font-black text-slate-900 uppercase tracking-tighter leading-none">Programación Táctica</h1>
+              <Badge className="bg-indigo-600 text-white font-black px-4 py-1.5 rounded-xl text-xs uppercase tracking-widest border-none shadow-md">Forros</Badge>
             </div>
-            <div className="flex items-center gap-3 mt-2 text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">
-              <Users className="w-3 h-3" /> Eficiencia Operativa: 84%
+            <div className="flex items-center gap-3 text-xs font-black text-slate-400 uppercase tracking-[0.3em]">
+              <Users className="w-4 h-4 text-indigo-500" /> Eficiencia Operativa: 84%
             </div>
           </div>
         </div>
-        <div className="flex flex-wrap gap-4 items-center">
-          {/* Nuevo indicador de fecha de planificación */}
-          <div className="bg-slate-50 border border-slate-100 rounded-3xl p-5 flex items-center gap-5 min-w-[240px]">
-            <div className="bg-indigo-700 p-3 rounded-2xl text-white shadow-md shadow-indigo-200"><CalendarIcon className="w-5 h-5" /></div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+          <div className="bg-slate-50 border border-slate-200/60 rounded-[2.5rem] p-7 flex items-center gap-6 shadow-sm hover:shadow-md transition-all">
+            <div className="bg-indigo-600 p-4 rounded-2xl text-white shadow-lg shadow-indigo-200"><CalendarIcon className="w-7 h-7" /></div>
             <div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Planificación para</p>
-              <p className="text-sm font-black text-indigo-900 capitalize">
+              <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Planificación para</p>
+              <p className="text-lg font-black text-indigo-900 capitalize leading-tight">
                 {planningDateFormatted}
               </p>
             </div>
           </div>
 
-          <div className="bg-slate-50 border border-slate-100 rounded-3xl p-5 flex items-center gap-5 min-w-[180px]">
-            <div className="bg-indigo-600 p-3 rounded-2xl text-white shadow-md shadow-indigo-100"><MapPin className="w-5 h-5" /></div>
+          <div className="bg-slate-50 border border-slate-200/60 rounded-[2.5rem] p-7 flex items-center gap-6 shadow-sm hover:shadow-md transition-all">
+            <div className="bg-indigo-500 p-4 rounded-2xl text-white shadow-lg shadow-indigo-100"><MapPin className="w-7 h-7" /></div>
             <div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">GYE (2000)</p>
-              <p className="text-2xl font-black text-slate-900 font-mono">
+              <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-1.5">GYE (2000)</p>
+              <p className="text-4xl font-black text-slate-900 font-mono leading-none tracking-tighter">
                 {ordenesPrevisionalesData.filter(o => String(o.Centro).trim() === '2000').length.toLocaleString()}
               </p>
             </div>
           </div>
-          <div className="bg-slate-50 border border-slate-100 rounded-3xl p-5 flex items-center gap-5 min-w-[180px]">
-            <div className="bg-slate-800 p-3 rounded-2xl text-white shadow-md shadow-slate-200"><MapPin className="w-5 h-5" /></div>
+
+          <div className="bg-slate-50 border border-slate-200/60 rounded-[2.5rem] p-7 flex items-center gap-6 shadow-sm hover:shadow-md transition-all">
+            <div className="bg-slate-800 p-4 rounded-2xl text-white shadow-lg shadow-slate-300"><MapPin className="w-7 h-7" /></div>
             <div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">UIO (1000)</p>
-              <p className="text-2xl font-black text-slate-900 font-mono">
+              <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-1.5">UIO (1000)</p>
+              <p className="text-4xl font-black text-slate-900 font-mono leading-none tracking-tighter">
                 {filteredOrdenesPrevisionales.length.toLocaleString()}
               </p>
             </div>
@@ -1497,9 +1494,14 @@ export const TacticalPlanForrosSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="personal-turnos" className="pb-24">
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-10">
-            <Card className="lg:col-span-1 rounded-[2.5rem] bg-white border-none shadow-sm ring-1 ring-slate-100">
-               <CardHeader className="bg-slate-950 text-white p-8 rounded-t-[2.5rem]"><CardTitle className="text-xl font-black uppercase">Jornada Global</CardTitle></CardHeader>
+          <div className="flex flex-col xl:flex-row gap-10">
+            <Card className="xl:w-[350px] shrink-0 rounded-[2.5rem] bg-white border-none shadow-sm ring-1 ring-slate-100">
+               <CardHeader className="bg-slate-950 text-white p-8 rounded-t-[2.5rem]">
+                 <CardTitle className="text-xl font-black uppercase">Jornada Global</CardTitle>
+                 <div className="mt-3 flex items-center gap-2 text-[10px] font-black text-sky-400 uppercase tracking-[0.25em]">
+                   <Users className="w-3.5 h-3.5" /> Eficiencia Operativa: 84%
+                 </div>
+               </CardHeader>
                <CardContent className="p-10 space-y-10">
                  <div className="space-y-5">
                     <label className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em] flex items-center gap-2"><Sun className="w-4 h-4 text-amber-500" /> Jornada Diurna</label>
@@ -1526,7 +1528,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                </CardContent>
             </Card>
 
-            <div className="lg:col-span-3 space-y-12">
+            <div className="flex-1 space-y-12">
               {workstationGroups.map((group, gIdx) => {
                 const availableItems = group.items.filter(item => uniquePuestos.includes(item));
                 if (availableItems.length === 0) return null;
