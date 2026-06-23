@@ -108,7 +108,7 @@ interface WorkstationConfig {
   isDayActive: boolean;
   isNightActive: boolean;
   people: number;
-  machines: number; // Nueva propiedad para máquinas disponibles
+  machines: number;
 }
 
 const MachineCard = React.memo(({ 
@@ -137,7 +137,6 @@ const MachineCard = React.memo(({
   const { filteredOrders, totalTimeHours, utilization, isOverloaded, capacityHours } = useMemo(() => {
     const filtered = orders.filter(o => {
       const orderHR = String(o['MAQUINA'] || o['Maquina'] || '').trim().toUpperCase();
-      // Manejar mapeos múltiples para CORTELA10
       if (hrCode.includes(' / ')) {
         const codes = hrCode.split(' / ').map(c => c.trim().toUpperCase());
         return codes.includes(orderHR);
@@ -148,7 +147,6 @@ const MachineCard = React.memo(({
     const totalSeconds = filtered.reduce((sum, o) => sum + calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0), o), 0);
     const totalHours = totalSeconds / 3600;
     
-    // Capacidad ahora considera el número de máquinas
     const numMachines = config.machines || 1;
     const capacity = ((config.isDayActive ? horasNetasDiurnas : 0) + (config.isNightActive ? horasNetasNocturnas : 0)) * numMachines;
     
@@ -165,101 +163,98 @@ const MachineCard = React.memo(({
 
   return (
     <div className={cn(
-      "flex border border-slate-200 rounded-[2rem] overflow-hidden shadow-sm bg-white transition-all hover:shadow-lg",
-      small ? "h-[420px]" : "h-[480px]"
+      "flex border border-slate-200 rounded-[2.5rem] overflow-hidden shadow-sm bg-white transition-all hover:shadow-lg",
+      small ? "h-[450px]" : "h-[500px]"
     )}>
       <div className={cn(
-        "bg-indigo-50/50 p-6 text-slate-900 flex flex-col border-r border-indigo-100",
-        small ? "w-[42%]" : "w-[38%]"
+        "bg-slate-50/50 p-7 text-slate-900 flex flex-col border-r border-slate-100",
+        small ? "w-[45%]" : "w-[40%]"
       )}>
         <div className="mb-6 relative">
           <div className="flex flex-col gap-2">
-            <Badge className="w-fit bg-indigo-600 text-white font-black text-[10px] uppercase tracking-widest px-3 py-1 rounded-lg border-none shadow-md shadow-indigo-200">
+            <Badge className="w-fit bg-indigo-600 text-white font-black text-[10px] uppercase tracking-widest px-3 py-1 rounded-lg border-none shadow-sm mb-1">
               {hrCode || 'S/HR'}
             </Badge>
-            <h3 className="text-2xl font-black uppercase tracking-tighter text-indigo-950 flex items-center gap-2 break-words leading-tight pr-12">
+            <h3 className="text-2xl font-black uppercase tracking-tighter text-indigo-950 flex items-center gap-2 break-words leading-tight pr-16">
               <Cpu className="w-6 h-6 text-indigo-600 shrink-0" />
               <span>{puestoName}</span>
             </h3>
           </div>
 
-          {/* INDICADORES PROMINENTES (PERSONAS Y MÁQUINAS) */}
           <div className="absolute top-0 right-0 flex flex-col gap-2">
+            <div className="flex flex-col items-center justify-center bg-white border-2 border-dashed border-sky-300 w-16 h-16 rounded-2xl shadow-sm">
+              <span className="text-2xl font-black text-sky-700 leading-none">{config.machines || 1}</span>
+              <span className="text-[7px] font-black uppercase text-sky-400 mt-0.5 tracking-tighter">Máquinas</span>
+            </div>
             {config.people > 0 && (
-              <div className="flex flex-col items-center justify-center bg-white border-2 border-dashed border-indigo-300 w-14 h-14 rounded-2xl shadow-inner animate-in fade-in zoom-in duration-500">
+              <div className="flex flex-col items-center justify-center bg-white border-2 border-dashed border-indigo-300 w-16 h-16 rounded-2xl shadow-sm">
                 <span className="text-2xl font-black text-indigo-700 leading-none">{config.people}</span>
-                <span className="text-[6px] font-black uppercase text-indigo-400 mt-0.5 tracking-tighter">Personas</span>
-              </div>
-            )}
-            {config.machines > 0 && (
-              <div className="flex flex-col items-center justify-center bg-sky-50 border-2 border-dashed border-sky-300 w-14 h-14 rounded-2xl shadow-inner animate-in fade-in zoom-in duration-700">
-                <span className="text-2xl font-black text-sky-700 leading-none">{config.machines}</span>
-                <span className="text-[6px] font-black uppercase text-sky-400 mt-0.5 tracking-tighter">Máquinas</span>
+                <span className="text-[7px] font-black uppercase text-indigo-400 mt-0.5 tracking-tighter">Personas</span>
               </div>
             )}
           </div>
         </div>
 
-        <div className="flex-1 space-y-4">
-          <div className="bg-white p-3 rounded-2xl border border-indigo-100 shadow-sm">
-            <div className="flex justify-between items-center text-[9px] text-slate-500 uppercase font-black tracking-widest mb-2">Turnos Activos</div>
-            <div className="grid grid-cols-2 gap-2">
-              <div className={cn("rounded-xl p-2 border flex flex-col items-center", config.isDayActive ? "bg-amber-50 border-amber-200" : "bg-slate-50 border-slate-100 opacity-40")}>
-                <Sun className={cn("w-3 h-3 mb-1", config.isDayActive ? "text-amber-600" : "text-slate-400")} />
-                <span className={cn("text-[8px] font-black uppercase", config.isDayActive ? "text-amber-700" : "text-slate-400")}>Día</span>
+        <div className="flex-1 space-y-5">
+          <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm">
+            <div className="flex justify-between items-center text-[10px] text-slate-400 uppercase font-black tracking-widest mb-3">Turnos Activos</div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className={cn("rounded-2xl p-2.5 border flex flex-col items-center", config.isDayActive ? "bg-amber-50 border-amber-200" : "bg-slate-50 border-slate-100 opacity-40")}>
+                <Sun className={cn("w-4 h-4 mb-1", config.isDayActive ? "text-amber-500" : "text-slate-400")} />
+                <span className={cn("text-[9px] font-black uppercase", config.isDayActive ? "text-amber-700" : "text-slate-400")}>Día</span>
               </div>
-              <div className={cn("rounded-xl p-2 border flex flex-col items-center", config.isNightActive ? "bg-indigo-50 border-indigo-200" : "bg-slate-50 border-slate-100 opacity-40")}>
-                <Moon className={cn("w-3 h-3 mb-1", config.isNightActive ? "text-indigo-600" : "text-slate-400")} />
-                <span className={cn("text-[8px] font-black uppercase", config.isNightActive ? "text-indigo-700" : "text-slate-400")}>Noche</span>
+              <div className={cn("rounded-2xl p-2.5 border flex flex-col items-center", config.isNightActive ? "bg-indigo-50 border-indigo-200" : "bg-slate-50 border-slate-100 opacity-40")}>
+                <Moon className={cn("w-4 h-4 mb-1", config.isNightActive ? "text-indigo-500" : "text-slate-400")} />
+                <span className={cn("text-[9px] font-black uppercase", config.isNightActive ? "text-indigo-700" : "text-slate-400")}>Noche</span>
               </div>
             </div>
           </div>
 
-          <div className="bg-white p-4 rounded-2xl border border-indigo-100 shadow-sm">
+          <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
             <div className="flex items-center justify-between mb-3">
               <p className="text-xs font-black uppercase text-slate-500">Ocupación</p>
-              <span className={cn("text-[10px] font-black px-2 py-0.5 rounded-lg border", isOverloaded ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700")}>
+              <Badge className={cn("text-[9px] font-black px-2 py-0.5 rounded-lg border-none", isOverloaded ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700")}>
                 {isOverloaded ? "Saturado" : "Estable"}
-              </span>
+              </Badge>
             </div>
-            <div className="flex items-baseline gap-1.5 mb-2">
-              <span className={cn("text-4xl font-black font-mono tracking-tighter", isOverloaded ? "text-red-600" : "text-indigo-800")}>
+            <div className="flex items-baseline gap-1.5 mb-3">
+              <span className={cn("text-5xl font-black font-mono tracking-tighter", isOverloaded ? "text-red-600" : "text-indigo-800")}>
                 {utilization.toFixed(0)}
               </span>
               <span className="text-xs font-black text-slate-400">%</span>
             </div>
-            <Progress value={utilization} className={cn("h-3 bg-slate-100", isOverloaded ? "[&>div]:bg-red-500" : "[&>div]:bg-indigo-600")} />
+            <Progress value={utilization} className={cn("h-3 bg-slate-100 rounded-full", isOverloaded ? "[&>div]:bg-red-500" : "[&>div]:bg-indigo-600")} />
             
-            <div className="mt-4 grid grid-cols-2 gap-2 text-[9px] font-black uppercase tracking-widest">
-              <div className="bg-slate-50 p-2 rounded-lg border border-slate-100 text-center">
-                <span className="text-slate-500 block mb-1">Carga</span>
-                <span className="text-slate-900 font-mono">{totalTimeHours.toFixed(2)}h</span>
+            <div className="mt-5 grid grid-cols-2 gap-3 text-[10px] font-black uppercase tracking-widest">
+              <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100 text-center">
+                <span className="text-slate-400 block mb-1">Carga</span>
+                <span className="text-slate-900 font-mono">{totalTimeHours.toFixed(2)}H</span>
               </div>
-              <div className={cn("p-2 rounded-lg border border-slate-100 text-center", isOverloaded ? "bg-red-50 text-red-700" : "bg-sky-50 text-sky-700")}>
-                <span className="text-slate-500 block mb-1">Cap. Total</span>
-                <span className="font-mono">{capacityHours.toFixed(2)}h</span>
+              <div className={cn("p-3 rounded-2xl border border-slate-100 text-center", isOverloaded ? "bg-red-50 text-red-700" : "bg-sky-50 text-sky-700")}>
+                <span className="text-slate-400 block mb-1">Cap. Total</span>
+                <span className="font-mono">{capacityHours.toFixed(2)}H</span>
               </div>
             </div>
           </div>
         </div>
       </div>
       
-      <div className="flex-1 p-6 flex flex-col bg-slate-50/30">
-        <div className="flex items-center justify-between mb-4">
-          <h4 className="text-[11px] font-black text-slate-800 uppercase tracking-[0.25em] flex items-center gap-2">
-            <ClipboardList className="w-4 h-4 text-indigo-600" /> Plan de Producción
+      <div className="flex-1 p-7 flex flex-col bg-slate-50/20">
+        <div className="flex items-center justify-between mb-5">
+          <h4 className="text-[12px] font-black text-slate-800 uppercase tracking-[0.25em] flex items-center gap-2">
+            <ClipboardList className="w-5 h-5 text-indigo-600" /> Plan Operativo
           </h4>
-          <Badge className="bg-white text-slate-900 border-slate-200 font-mono font-black text-[10px] px-3 py-0.5 rounded-full shadow-sm">{filteredOrders.length} <span className="ml-1 text-[8px] opacity-40 uppercase">ORD</span></Badge>
+          <Badge className="bg-white text-slate-900 border-slate-200 font-mono font-black text-[11px] px-4 py-1 rounded-full shadow-sm">{filteredOrders.length} ORD</Badge>
         </div>
-        <div className="flex-1 overflow-auto rounded-2xl border border-slate-200 bg-white shadow-inner text-[10px]">
+        <div className="flex-1 overflow-auto rounded-3xl border border-slate-200 bg-white shadow-inner text-[11px]">
           <table className="w-full border-collapse">
             <thead className="bg-slate-100/80 sticky top-0 z-10 text-slate-500 font-black uppercase tracking-widest text-left">
               <tr>
-                <th className="px-4 py-3 border-b border-slate-200">CODMATERIAL</th>
-                <th className="px-4 py-3 border-b border-slate-200 min-w-[200px]">NOMBRE</th>
-                <th className="px-4 py-3 border-b border-slate-200 text-right">CANTIDAD</th>
-                <th className="px-4 py-3 border-b border-slate-200 text-center">FECHA INICIO</th>
-                <th className="px-4 py-3 border-b border-slate-200 text-right text-indigo-700 bg-indigo-50/30">TIEMPO DE PRODUCCIÓN</th>
+                <th className="px-5 py-4 border-b border-slate-200">CODMATERIAL</th>
+                <th className="px-5 py-4 border-b border-slate-200 min-w-[200px]">NOMBRE</th>
+                <th className="px-5 py-4 border-b border-slate-200 text-right">CANT</th>
+                <th className="px-5 py-4 border-b border-slate-200 text-center">INICIO</th>
+                <th className="px-5 py-4 border-b border-slate-200 text-right text-indigo-700 bg-indigo-50/30">TIEMPO (H)</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -273,16 +268,16 @@ const MachineCard = React.memo(({
                 
                 return (
                   <tr key={i} className="hover:bg-indigo-50/30 transition-colors">
-                    <td className="px-4 py-3 font-mono font-bold text-slate-700 whitespace-nowrap">{materialCode}</td>
-                    <td className="px-4 py-3 text-slate-600 font-medium whitespace-normal break-words leading-tight">{materialName}</td>
-                    <td className="px-4 py-3 text-right font-mono font-black text-slate-800">{qty.toLocaleString()}</td>
-                    <td className="px-4 py-3 text-center font-medium text-slate-500">{fechaInicio}</td>
-                    <td className="px-4 py-3 text-right font-mono font-black text-indigo-600 bg-indigo-50/10">{tHours.toFixed(2)}h</td>
+                    <td className="px-5 py-4 font-mono font-bold text-slate-700 whitespace-nowrap">{materialCode}</td>
+                    <td className="px-5 py-4 text-slate-600 font-medium whitespace-normal break-words leading-tight">{materialName}</td>
+                    <td className="px-5 py-4 text-right font-mono font-black text-slate-800">{qty.toLocaleString()}</td>
+                    <td className="px-5 py-4 text-center font-medium text-slate-500">{fechaInicio}</td>
+                    <td className="px-5 py-4 text-right font-mono font-black text-indigo-600 bg-indigo-50/10">{tHours.toFixed(2)}</td>
                   </tr>
                 );
               }) : (
                 <tr>
-                  <td colSpan={5} className="py-20 text-center text-slate-400 uppercase font-black tracking-widest text-[9px] opacity-40">Sin carga de trabajo para esta ruta</td>
+                  <td colSpan={5} className="py-24 text-center text-slate-400 uppercase font-black tracking-widest text-[10px] opacity-30">Sin carga programada</td>
                 </tr>
               )}
             </tbody>
@@ -337,7 +332,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [targetDate1000, setTargetDate1000] = useState<string>("");
   const [targetDate2000, setTargetDate2000] = useState<string>("");
   
-  // Filtros de fecha para tableros técnicos
   const [techStartDate, setTechStartDate] = useState<string>("");
   const [techEndDate, setTechEndDate] = useState<string>("");
 
@@ -390,7 +384,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     if (!pn || pn === '—' || pn === 'NULL') return '';
     if (hojaRutaCacheRef.current[pn]) return hojaRutaCacheRef.current[pn];
     
-    // UNIFICACIONES TÉCNICAS MANDATORIAS
     if (pn === 'CORTE-ESPUMA') {
       const res = 'HR-CTESP';
       hojaRutaCacheRef.current[pn] = res;
@@ -713,7 +706,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
   }, [dataReady, uniquePuestos]);
 
-  // SINCRONIZACIÓN AUTOMÁTICA DE PERSONAL Y TURNOS DESDE RESTRICCIONES
   useEffect(() => {
     if (restricciones.length > 0 && uniquePuestos.length > 0) {
       setWorkstationConfigs(prev => {
@@ -1477,10 +1469,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
           </Card>
         </TabsContent>
 
-        <TabsContent value="personal-turnos" className="pb-20">
+        <TabsContent value="personal-turnos" className="pb-24">
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-10">
             <Card className="lg:col-span-1 rounded-[2.5rem] bg-white border-none shadow-sm ring-1 ring-slate-100">
-               <CardHeader className="bg-slate-950 text-white p-8 rounded-t-[2.5rem]"><CardTitle className="text-xl font-black uppercase">Configuración de Jornada</CardTitle></CardHeader>
+               <CardHeader className="bg-slate-950 text-white p-8 rounded-t-[2.5rem]"><CardTitle className="text-xl font-black uppercase">Jornada Global</CardTitle></CardHeader>
                <CardContent className="p-10 space-y-10">
                  <div className="space-y-5">
                     <label className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em] flex items-center gap-2"><Sun className="w-4 h-4 text-amber-500" /> Jornada Diurna</label>
@@ -1492,10 +1484,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
                         {DIURNA_OPTIONS.map(opt => <SelectItem key={opt.value} value={opt.value} className="font-black py-3">{opt.label}</SelectItem>)}
                       </SelectContent>
                     </Select>
-                    <div className="bg-amber-50 border border-amber-100 p-4 rounded-2xl flex justify-between items-center">
-                      <span className="text-[10px] font-black text-amber-700 uppercase">Capacidad Neta (D)</span>
-                      <span className="font-mono font-black text-amber-900">{horasNetasDiurnasVal.toFixed(2)}h</span>
-                    </div>
                  </div>
                  <div className="space-y-5">
                     <label className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em] flex items-center gap-2"><Moon className="w-4 h-4 text-indigo-500" /> Jornada Nocturna</label>
@@ -1507,10 +1495,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
                         {NOCTURNA_OPTIONS.map(opt => <SelectItem key={opt.value} value={opt.value} className="font-black py-3">{opt.label}</SelectItem>)}
                       </SelectContent>
                     </Select>
-                    <div className="bg-indigo-50 border border-indigo-100 p-4 rounded-2xl flex justify-between items-center">
-                      <span className="text-[10px] font-black text-indigo-700 uppercase">Capacidad Neta (N)</span>
-                      <span className="font-mono font-black text-indigo-900">{horasNetasNocturnasVal.toFixed(2)}h</span>
-                    </div>
                  </div>
                </CardContent>
             </Card>
@@ -1522,98 +1506,93 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 return (
                   <div key={gIdx} className="space-y-6">
                     <div className="flex items-center gap-4">
-                      <div className="h-8 w-1.5 bg-indigo-600 rounded-full" />
-                      <h3 className="text-lg font-black text-indigo-950 uppercase tracking-tighter">{group.title}</h3>
+                      <div className="h-8 w-2 bg-indigo-600 rounded-full" />
+                      <h3 className="text-xl font-black text-indigo-950 uppercase tracking-tighter">{group.title}</h3>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
                       {availableItems.map(p => {
                         const config = workstationConfigs[p] || { machine: p, isDayActive: true, isNightActive: false, people: 0, machines: 1 };
-                        
-                        // Capacidad considerando número de máquinas
                         const capPuestoBase = (config.isDayActive ? horasNetasDiurnasVal : 0) + (config.isNightActive ? horasNetasNocturnasVal : 0);
                         const capPuestoTotal = capPuestoBase * (config.machines || 1);
-                        
                         const hrCode = mapToHojaRutaInternal(p);
+
                         return (
-                          <div key={p} className="flex flex-col p-6 border-2 border-slate-100 rounded-[2rem] bg-white hover:border-indigo-200 transition-all shadow-sm relative group">
-                            <div className="flex items-start justify-between mb-4">
-                              <div className="min-w-0 flex-1">
-                                <div className="flex flex-col gap-1 mb-2">
-                                  <p className="font-black text-indigo-950 uppercase text-lg leading-tight break-words pr-14">{p}</p>
-                                </div>
-                                <div className="flex flex-wrap gap-2">
-                                  <Badge className="bg-indigo-600 text-white border-none font-mono text-[10px] uppercase font-bold tracking-widest px-2.5 py-0.5 rounded-lg shadow-sm">
-                                    {hrCode || 'S/HR'}
-                                  </Badge>
-                                  <div className="flex items-center gap-1.5 bg-emerald-50 text-emerald-700 px-3 py-1 rounded-xl border border-emerald-100 shadow-sm">
-                                    <Clock className="w-3 h-3" />
-                                    <span className="font-mono text-[10px] font-black uppercase tracking-wider">{capPuestoTotal.toFixed(2)}h Disponibles</span>
-                                  </div>
-                                </div>
-                              </div>
+                          <div key={p} className="flex flex-col p-8 border border-slate-200 rounded-[2.5rem] bg-white hover:border-indigo-300 transition-all shadow-sm relative group min-h-[420px]">
+                            <div className="mb-6 relative">
+                              <Badge className="bg-indigo-600 text-white border-none font-mono text-[10px] uppercase font-bold tracking-widest px-3 py-1 rounded-lg shadow-sm mb-3">
+                                {hrCode || 'S/HR'}
+                              </Badge>
+                              <h4 className="font-black text-indigo-950 uppercase text-2xl leading-tight break-words pr-20">{p}</h4>
                               
-                              {/* INDICADORES VISUALES (PERSONAS Y MÁQUINAS) */}
-                              <div className="flex flex-col gap-2 shrink-0">
+                              <div className="absolute top-0 right-0 flex flex-col gap-2">
+                                <div className="flex flex-col items-center justify-center bg-sky-50 border-2 border-dashed border-sky-300 w-16 h-16 rounded-2xl shadow-inner group-hover:bg-sky-100 transition-colors">
+                                  <span className="text-2xl font-black text-sky-700 leading-none">{config.machines || 1}</span>
+                                  <span className="text-[7px] font-black uppercase text-sky-400 mt-0.5 tracking-tighter">Máquinas</span>
+                                </div>
                                 {config.people > 0 && (
-                                  <div className="flex flex-col items-center justify-center bg-indigo-50 border-2 border-dashed border-indigo-300 w-14 h-14 rounded-2xl shadow-inner group-hover:bg-indigo-100 transition-colors">
+                                  <div className="flex flex-col items-center justify-center bg-indigo-50 border-2 border-dashed border-indigo-300 w-16 h-16 rounded-2xl shadow-inner group-hover:bg-indigo-100 transition-colors">
                                     <span className="text-2xl font-black text-indigo-700 leading-none">{config.people}</span>
-                                    <span className="text-[6px] font-black uppercase text-indigo-400 mt-0.5 tracking-tighter">Personas</span>
-                                  </div>
-                                )}
-                                {config.machines > 0 && (
-                                  <div className="flex flex-col items-center justify-center bg-sky-50 border-2 border-dashed border-sky-300 w-14 h-14 rounded-2xl shadow-inner group-hover:bg-sky-100 transition-colors">
-                                    <span className="text-2xl font-black text-sky-700 leading-none">{config.machines}</span>
-                                    <span className="text-[6px] font-black uppercase text-sky-400 mt-0.5 tracking-tighter">Máquinas</span>
+                                    <span className="text-[7px] font-black uppercase text-indigo-400 mt-0.5 tracking-tighter">Personas</span>
                                   </div>
                                 )}
                               </div>
                             </div>
 
-                            {/* SELECTOR DE MÁQUINAS Y TURNOS */}
-                            <div className="space-y-3 mt-auto">
-                              <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100">
-                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block ml-1">Nº Máquinas Disponibles</label>
-                                <div className="flex items-center gap-3">
-                                  <div className="bg-white p-1 rounded-xl border-2 border-slate-200 flex-1 flex items-center shadow-sm">
-                                    <Monitor className="w-4 h-4 text-sky-600 ml-2" />
-                                    <input 
-                                      type="number" 
-                                      min="1"
-                                      value={config.machines || 1}
-                                      onChange={(e) => {
-                                        const val = Math.max(1, parseInt(e.target.value) || 1);
-                                        setWorkstationConfigs(prev => ({
-                                          ...prev,
-                                          [p]: { ...config, machines: val }
-                                        }));
-                                      }}
-                                      className="w-full bg-transparent border-none text-right font-black text-slate-900 focus:ring-0 outline-none pr-3 py-1.5"
-                                    />
-                                  </div>
+                            <div className="space-y-6 mt-auto">
+                              <div className="bg-slate-50 p-4 rounded-3xl border border-slate-100">
+                                <div className="flex justify-between items-center text-[10px] text-slate-400 uppercase font-black tracking-widest mb-3">Turnos Activos</div>
+                                <div className="flex gap-3">
+                                  <button 
+                                    onClick={() => toggleWorkstationShift(p, 'day')}
+                                    className={cn(
+                                      "flex-1 h-14 rounded-2xl flex flex-col items-center justify-center gap-1 transition-all shadow-sm border-2",
+                                      config.isDayActive ? "bg-amber-500 text-white border-amber-600" : "bg-white text-slate-300 border-slate-100"
+                                    )}
+                                  >
+                                    <Sun className="w-5 h-5" />
+                                    <span className="text-[9px] font-black uppercase tracking-widest">Día</span>
+                                  </button>
+                                  <button 
+                                    onClick={() => toggleWorkstationShift(p, 'night')}
+                                    className={cn(
+                                      "flex-1 h-14 rounded-2xl flex flex-col items-center justify-center gap-1 transition-all shadow-sm border-2",
+                                      config.isNightActive ? "bg-indigo-700 text-white border-indigo-800" : "bg-white text-slate-300 border-slate-100"
+                                    )}
+                                  >
+                                    <Moon className="w-5 h-5" />
+                                    <span className="text-[9px] font-black uppercase tracking-widest">Noche</span>
+                                  </button>
                                 </div>
                               </div>
 
-                              <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-100">
-                                <button 
-                                  onClick={() => toggleWorkstationShift(p, 'day')}
-                                  className={cn(
-                                    "flex-1 h-12 rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm border-2",
-                                    config.isDayActive ? "bg-amber-500 text-white border-amber-600 shadow-amber-200" : "bg-white text-slate-300 border-slate-100"
-                                  )}
-                                >
-                                  <Sun className="w-4 h-4" />
-                                  <span className="text-[10px] font-black uppercase tracking-widest">{config.isDayActive ? 'Día ON' : 'Día OFF'}</span>
-                                </button>
-                                <button 
-                                  onClick={() => toggleWorkstationShift(p, 'night')}
-                                  className={cn(
-                                    "flex-1 h-12 rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm border-2",
-                                    config.isNightActive ? "bg-indigo-700 text-white border-indigo-800 shadow-indigo-200" : "bg-white text-slate-300 border-slate-100"
-                                  )}
-                                >
-                                  <Moon className="w-4 h-4" />
-                                  <span className="text-[10px] font-black uppercase tracking-widest">{config.isNightActive ? 'Noc ON' : 'Noc OFF'}</span>
-                                </button>
+                              <div className="bg-indigo-50/50 p-5 rounded-3xl border border-indigo-100 flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <Monitor className="w-5 h-5 text-indigo-600" />
+                                  <span className="text-xs font-black text-indigo-900 uppercase tracking-tighter">Configuración</span>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                  <span className="text-[10px] font-black text-slate-400 uppercase">Máquinas:</span>
+                                  <input 
+                                    type="number" 
+                                    min="1"
+                                    value={config.machines || 1}
+                                    onChange={(e) => {
+                                      const val = Math.max(1, parseInt(e.target.value) || 1);
+                                      setWorkstationConfigs(prev => ({
+                                        ...prev,
+                                        [p]: { ...config, machines: val }
+                                      }));
+                                    }}
+                                    className="w-14 bg-white border-2 border-indigo-100 rounded-xl text-center font-black text-indigo-900 focus:ring-indigo-500 py-1.5 shadow-sm"
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="flex items-center justify-center gap-2 px-4 py-2 bg-emerald-50 rounded-full border border-emerald-100">
+                                <Clock className="w-3.5 h-3.5 text-emerald-600" />
+                                <span className="font-mono text-[11px] font-black uppercase text-emerald-700 tracking-wider">
+                                  {capPuestoTotal.toFixed(2)}H Capacidad Neta
+                                </span>
                               </div>
                             </div>
                           </div>
