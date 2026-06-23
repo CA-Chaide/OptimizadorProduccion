@@ -270,8 +270,8 @@ export const PresupuestoProdSemanalTabSection: React.FC = () => {
                   {selectedWeeks.length === 0
                     ? "Seleccionar..."
                     : selectedWeeks.length === 1
-                    ? `Semana ${selectedWeeks[0]}`
-                    : `${selectedWeeks.length} semanas`}
+                    ? `${selectedWeeks[0]}`
+                    : `${selectedWeeks.length} seleccionadas`}
                 </span>
                 <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
               </Button>
@@ -294,7 +294,7 @@ export const PresupuestoProdSemanalTabSection: React.FC = () => {
                           selectedWeeks.includes(String(week)) ? "opacity-100" : "opacity-0"
                         )}
                       />
-                      Semana {week}
+                      {week}
                     </CommandItem>
                   ))}
                 </CommandGroup>
@@ -305,7 +305,7 @@ export const PresupuestoProdSemanalTabSection: React.FC = () => {
             <div className="flex flex-wrap gap-1 mt-1">
               {selectedWeeks.map(w => (
                 <Badge key={w} variant="secondary" className="text-[9px] px-1 bg-indigo-50 text-indigo-700 border-indigo-100">
-                  S{w}
+                  {w}
                 </Badge>
               ))}
             </div>
@@ -435,7 +435,7 @@ export const PresupuestoProdSemanalTabSection: React.FC = () => {
               {filteredData.length > 0 && (
                 <tfoot className="bg-gray-800 text-white font-bold text-[10px] sticky bottom-0 z-10">
                   <tr>
-                    <td colSpan={4} className="px-6 py-3 text-right uppercase border-r border-gray-700">Totales Consolidados ({selectedWeeks.length} sem):</td>
+                    <td colSpan={4} className="px-6 py-3 text-right uppercase border-r border-gray-700">Totales Consolidados ({selectedWeeks.length} selec):</td>
                     <td className="px-4 py-3 text-right font-mono text-indigo-300 border-r border-gray-700">{totals.proyectada.toLocaleString()}</td>
                     <td className="px-4 py-3 text-right font-mono text-emerald-300">{totals.producir.toLocaleString()}</td>
                   </tr>
