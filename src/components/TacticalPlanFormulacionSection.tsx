@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -40,7 +41,7 @@ import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 import { cn } from '@/lib/utils';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, differenceInDays, parseISO } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, differenceInDays, parseISO, subDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 // --- CONSTANTES Y HELPERS TÉCNICOS ---
@@ -61,6 +62,16 @@ const formatNum = (val: any, decimals: number = 2): string => {
     minimumFractionDigits: decimals, 
     maximumFractionDigits: decimals 
   });
+};
+
+const getProp = (obj: any, keys: string[]): string => {
+  if (!obj) return '';
+  const rowKeys = Object.keys(obj);
+  for (const k of keys) {
+    const found = rowKeys.find(rk => rk.toLowerCase().trim() === k.toLowerCase().trim());
+    if (found) return String(obj[found]).trim();
+  }
+  return '';
 };
 
 export const TacticalPlanFormulacionSection: React.FC = () => {
@@ -227,44 +238,55 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     return Array.from(map.values()).sort((a, b) => b.totalKg - a.totalKg);
   }, [unifiedSummaryData]);
 
-  // --- LOGICA DE CURADO REFINADA ---
   const curadoAudit = useMemo(() => {
     const today = new Date();
     today.setHours(0,0,0,0);
+    const eightDaysAgo = subDays(today, 8);
 
-    return curadoData.map(row => {
-      const info = extractMaterialInfo(row);
-      const fabDateRaw = String(row.FECHA_FABRICACION || row.FECHA || row.FECHA_FAB || '').trim();
-      
-      let fabDate: Date | null = null;
-      if (fabDateRaw && fabDateRaw !== 'null') {
-        const d = fabDateRaw.includes('T') ? fabDateRaw.split('T')[0] : fabDateRaw;
-        const [y, m, day] = d.split('-').map(Number);
-        fabDate = new Date(y, m - 1, day);
-        fabDate.setHours(0,0,0,0);
-      }
-      
-      let estatus = 'SIN FECHA';
-      let diasTranscurridos = 0;
-      let diasRequeridos = 3; // Default 3 días
-      
-      if (fabDate) {
-        diasTranscurridos = differenceInDays(today, fabDate);
-        // Regla Técnica: Apertura 194.5 -> 2 días | Otros (206, 219, 228) -> 3 días
-        diasRequeridos = info.apertura === '194.5' ? 2 : 3;
-        estatus = diasTranscurridos >= diasRequeridos ? 'DISPONIBLE' : 'EN CURADO';
-      }
+    return curadoData
+      .map(row => {
+        const info = extractMaterialInfo(row);
+        const fabDateRaw = String(row.FECHA_FABRICACION || row.FECHA || row.FECHA_FAB || '').trim();
+        
+        let fabDate: Date | null = null;
+        if (fabDateRaw && fabDateRaw !== 'null') {
+          const d = fabDateRaw.includes('T') ? fabDateRaw.split('T')[0] : fabDateRaw;
+          const [y, m, day] = d.split('-').map(Number);
+          fabDate = new Date(y, m - 1, day);
+          fabDate.setHours(0,0,0,0);
+        }
+        
+        let estatus = 'SIN FECHA';
+        let diasTranscurridos = 0;
+        let diasRequeridos = 3; 
+        
+        if (fabDate) {
+          diasTranscurridos = differenceInDays(today, fabDate);
+          diasRequeridos = info.apertura === '194.5' ? 2 : 3;
+          estatus = diasTranscurridos >= diasRequeridos ? 'DISPONIBLE' : 'EN CURADO';
+        }
 
-      return {
-        ...row,
-        ...info,
-        fabDateStr: fabDate ? format(fabDate, 'yyyy-MM-dd') : '—',
-        diasTranscurridos,
-        diasRequeridos,
-        estatus
-      };
-    });
+        return {
+          ...row,
+          ...info,
+          fabDate,
+          fabDateStr: fabDate ? format(fabDate, 'yyyy-MM-dd') : '—',
+          diasTranscurridos,
+          diasRequeridos,
+          estatus
+        };
+      })
+      .filter(row => row.fabDate && row.fabDate >= eightDaysAgo)
+      .sort((a, b) => (b.fabDate?.getTime() || 0) - (a.fabDate?.getTime() || 0));
   }, [curadoData, extractMaterialInfo]);
+
+  const filteredInventario = useMemo(() => {
+    return inventarioSAP.filter(row => {
+      const resp = String(getProp(row, ['RESP_CONTROL_PROD', 'RESPCONTROLPROD', 'RESP_CTRL_PROD', 'RESPONSABLE'])).trim();
+      // FILTRO AGIL: Mostrar solo responsable 005 en inventario
+      return resp === '005';
+    });
+  }, [inventarioSAP]);
 
   const datesWithOrdersSet = useMemo(() => {
     const s = new Set<string>();
@@ -309,7 +331,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         serviciosService.OrdenesProvisionalesPaginados(1, 20000),
         serviciosService.getInventarioAñoActual(),
         serviciosService.getTiemposEnsamblado(1, 15000),
-        serviciosService.getTiemposCuradoBloqueFormulado(1, 2000)
+        serviciosService.getTiemposCuradoBloqueFormulado(1, 3000)
       ]);
 
       setRestricciones((restrsRes.data || []).filter((r: any) => groupsIds.includes(r.codigo_grupo)));
@@ -477,7 +499,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                           <thead className="bg-[#f8fafc] text-slate-400 uppercase font-black tracking-widest text-[9px] border-b border-gray-100">
                             <tr>
                               <th className="px-6 py-4 text-left border-r border-gray-50">Material</th>
-                              <th className="px-6 py-4 text-left border-r border-gray-50">Descripción del Producto</th>
+                              <th className="px-6 py-4 text-left border-r border-gray-50">Descripción del Bloque (BOM)</th>
                               <th className="px-4 py-4 border-r border-gray-50">Densidad</th>
                               <th className="px-4 py-4 border-r border-gray-50">Tipo</th>
                               <th className="px-4 py-4 border-r border-gray-50 font-black text-slate-900 bg-slate-50/30">Cant. (UN)</th>
@@ -491,7 +513,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                             {group.items.map((item: any, idx: number) => (
                               <tr key={idx} className="hover:bg-slate-50 transition-colors">
                                 <td className="px-6 py-3 text-left font-mono font-black text-indigo-600 border-r border-gray-50">{item.material}</td>
-                                <td className="px-6 py-3 text-left uppercase text-slate-400 italic text-[9px] border-r border-gray-50 truncate max-w-[200px]" title={item.descripcion}>{item.descripcion}</td>
+                                <td className="px-6 py-3 text-left uppercase text-slate-900 font-black text-[9px] border-r border-gray-50 truncate max-w-[200px]" title={item.blockDesc}>{item.blockDesc !== '—' ? item.blockDesc : item.descripcion}</td>
                                 <td className="px-4 py-3 border-r border-gray-50 font-mono">{item.dens}</td>
                                 <td className="px-4 py-3 border-r border-gray-50 uppercase text-slate-400">{item.tipo}</td>
                                 <td className="px-4 py-3 border-r border-gray-50 font-mono font-black text-slate-900 bg-slate-50/10">{item.unidades.toLocaleString()}</td>
@@ -520,8 +542,8 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                     <Timer className="w-6 h-6" />
                  </div>
                  <div>
-                   <h3 className="text-lg font-black text-gray-800 uppercase tracking-tight">Audit de Curado y Maduración Química</h3>
-                   <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Lógica: 194.5 (2D) | 206/219/228 (3D) | Tiempo de Estabilización Térmica</p>
+                   <h3 className="text-lg font-black text-gray-800 uppercase tracking-tight">Audit de Curado y Maduración Química (Últimos 8 Días)</h3>
+                   <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Lógica: 194.5 (2D) | 206/219/228 (3D) | Auditoría Temporal Filtrada</p>
                  </div>
                </div>
 
@@ -533,8 +555,8 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                          <th className="px-6 py-5 text-left border-r border-white/5">Código Bloque</th>
                          <th className="px-6 py-5 text-left border-r border-white/5">Descripción Técnica</th>
                          <th className="px-4 py-5 border-r border-white/5">Apertura</th>
-                         <th className="px-4 py-5 border-r border-white/5">Dens.</th>
-                         <th className="px-6 py-5 border-r border-white/5 bg-white/5">Fecha Fabricación</th>
+                         <th className="px-4 py-5 border-r border-white/5 bg-white/5">Dens.</th>
+                         <th className="px-6 py-5 border-r border-white/5">Fecha Fabricación</th>
                          <th className="px-4 py-5 border-r border-white/5">Días Trans.</th>
                          <th className="px-4 py-5 border-r border-white/5">Min. Req.</th>
                          <th className="px-6 py-5">Estatus de Uso</th>
@@ -542,7 +564,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                      </thead>
                      <tbody className="divide-y divide-gray-50 font-bold">
                         {curadoAudit.length === 0 ? (
-                          <tr><td colSpan={8} className="py-24 text-slate-200 uppercase font-black tracking-widest italic opacity-40">Consultando datos de fabricación en SAP...</td></tr>
+                          <tr><td colSpan={8} className="py-24 text-slate-200 uppercase font-black tracking-widest italic opacity-40">Sin bloques fabricados en los últimos 8 días</td></tr>
                         ) : (
                           curadoAudit.map((row, idx) => {
                             const isReady = row.estatus === 'DISPONIBLE';
@@ -635,14 +657,14 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                     <th className="px-3 py-5 border-r border-white/5 bg-green-500/30 text-green-300">Libre Utiliz.</th>
                     <th className="px-3 py-5 border-r border-white/5 bg-blue-500/30 text-blue-200">En Traslado</th>
                     <th className="px-3 py-5 border-r border-white/5 text-red-300">Bloqueado</th>
-                    <th className="px-3 py-5">Tipo</th>
+                    <th className="px-3 py-5">Responsable</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50 font-bold text-[11px]">
-                  {inventarioSAP.length === 0 ? (
-                    <tr><td colSpan={9} className="py-24 text-slate-200 font-black uppercase tracking-widest italic text-center">Consultando stock en tiempo real...</td></tr>
+                  {filteredInventario.length === 0 ? (
+                    <tr><td colSpan={9} className="py-24 text-slate-200 font-black uppercase tracking-widest italic text-center">Sin stock registrado para el responsable 005</td></tr>
                   ) : (
-                    inventarioSAP.map((row, i) => (
+                    filteredInventario.map((row, i) => (
                       <tr key={i} className="hover:bg-blue-50/10 transition-colors">
                         <td className="px-6 py-3 border-r border-dashed border-gray-100 font-mono text-blue-600">{cleanCode(row.MATERIAL)}</td>
                         <td className="px-6 py-3 border-r border-dashed border-gray-100 text-left uppercase text-slate-500 truncate max-w-[300px] leading-tight" title={row.NOMBRE}>{row.NOMBRE || '—'}</td>
@@ -652,7 +674,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                         <td className="px-3 py-3 border-r border-dashed border-gray-100 font-mono text-green-700 bg-green-50/30">{Number(row.LIBREUTILIZACION || 0).toLocaleString()}</td>
                         <td className="px-3 py-3 border-r border-dashed border-gray-100 font-mono text-blue-500 bg-blue-50/30">{Number(row.ENTRASLADO || 0).toLocaleString()}</td>
                         <td className="px-3 py-3 border-r border-dashed border-gray-100 font-mono text-red-600 bg-red-50/30">{Number(row.BLOQUEADO || 0).toLocaleString()}</td>
-                        <td className="px-3 py-3 text-[9px] text-slate-300 uppercase">{row.TIPO_MATERIAL}</td>
+                        <td className="px-3 py-3 text-[9px] text-blue-600 uppercase font-black">{getProp(row, ['RESP_CONTROL_PROD', 'RESPCONTROLPROD', 'RESPONSABLE'])}</td>
                       </tr>
                     ))
                   )}
@@ -667,7 +689,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       <div className="flex items-center gap-3 p-5 bg-indigo-50 border border-indigo-100 rounded-[1.5rem] shadow-sm text-left">
         <Info className="w-5 h-5 text-indigo-600 flex-shrink-0" />
         <p className="text-[10px] font-bold text-indigo-700 uppercase tracking-widest leading-relaxed">
-          Nota Técnica: Auditoría íntegra SAP. Los estatus de curado se calculan automáticamente según la apertura del bloque y su fecha de fabricación.
+          Nota Técnica: Auditoría multinivel FERT->BLOQUE. Los estatus de curado se calculan automáticamente según la apertura del bloque y su estampa de tiempo de fabricación SAP.
         </p>
       </div>
     </div>
