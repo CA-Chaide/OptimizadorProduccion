@@ -40,9 +40,8 @@ import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 import { cn } from '@/lib/utils';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, differenceInDays } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, differenceInDays, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { MaestroMaterialesExplosionSection } from './MaestroMaterialesExplosionSection';
 
 // --- CONSTANTES Y HELPERS TÉCNICOS ---
 const BLOCK_LENGTH_METERS = 20;
@@ -89,9 +88,9 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   // --- LOGICA DE EXTRACCION Y FILTRADO ---
 
   const extractMaterialInfo = useCallback((item: any) => {
-    const matStr = String(item.MATERIAL || item.Material || item.CodMaterial || '').trim();
-    const nameStr = String(item.NOMBRE || item.NombreMaterial || item.Descripcion || item.NomMaterial || '').trim();
-    const catStr = String(item.CATEGORIA || item.Categoria || '').trim();
+    const matStr = String(item.MATERIAL || item.Material || item.CodMaterial || item.MATERIAL_ID || '').trim();
+    const nameStr = String(item.NOMBRE || item.NombreMaterial || item.Descripcion || item.NomMaterial || item.DESCRIPCION || '').trim();
+    const catStr = String(item.CATEGORIA || item.Categoria || item.CATEGORIA_DESC || '').trim();
     
     const match = matStr.match(/^(\d+)/);
     const code = match ? match[1].slice(-8) : matStr.slice(-8);
@@ -117,7 +116,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   }, []);
 
   const provFiltradas = useMemo(() => {
-    // FILTROS ELIMINADOS PARA VISIÓN INTEGRAL SEGÚN SOLICITUD
     return ordenes.filter(o => {
       const itemDateFull = String(o.FECHAINICIO || o.FECHA || '').trim();
       const itemDate = itemDateFull.includes('T') ? itemDateFull.split('T')[0] : itemDateFull;
@@ -229,21 +227,30 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     return Array.from(map.values()).sort((a, b) => b.totalKg - a.totalKg);
   }, [unifiedSummaryData]);
 
-  // --- LOGICA DE CURADO ---
+  // --- LOGICA DE CURADO REFINADA ---
   const curadoAudit = useMemo(() => {
     const today = new Date();
+    today.setHours(0,0,0,0);
+
     return curadoData.map(row => {
       const info = extractMaterialInfo(row);
-      const fabDateRaw = String(row.FECHA_FABRICACION || row.FECHA || '').trim();
-      const fabDate = fabDateRaw ? new Date(fabDateRaw) : null;
+      const fabDateRaw = String(row.FECHA_FABRICACION || row.FECHA || row.FECHA_FAB || '').trim();
       
-      let estatus = 'DESCONOCIDO';
+      let fabDate: Date | null = null;
+      if (fabDateRaw && fabDateRaw !== 'null') {
+        const d = fabDateRaw.includes('T') ? fabDateRaw.split('T')[0] : fabDateRaw;
+        const [y, m, day] = d.split('-').map(Number);
+        fabDate = new Date(y, m - 1, day);
+        fabDate.setHours(0,0,0,0);
+      }
+      
+      let estatus = 'SIN FECHA';
       let diasTranscurridos = 0;
-      let diasRequeridos = 0;
+      let diasRequeridos = 3; // Default 3 días
       
-      if (fabDate && !isNaN(fabDate.getTime())) {
+      if (fabDate) {
         diasTranscurridos = differenceInDays(today, fabDate);
-        // Regla: 194.5 -> 2 días | Otros -> 3 días
+        // Regla Técnica: Apertura 194.5 -> 2 días | Otros (206, 219, 228) -> 3 días
         diasRequeridos = info.apertura === '194.5' ? 2 : 3;
         estatus = diasTranscurridos >= diasRequeridos ? 'DISPONIBLE' : 'EN CURADO';
       }
@@ -251,7 +258,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       return {
         ...row,
         ...info,
-        fabDate: fabDate ? format(fabDate, 'yyyy-MM-dd') : '—',
+        fabDateStr: fabDate ? format(fabDate, 'yyyy-MM-dd') : '—',
         diasTranscurridos,
         diasRequeridos,
         estatus
@@ -302,7 +309,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         serviciosService.OrdenesProvisionalesPaginados(1, 20000),
         serviciosService.getInventarioAñoActual(),
         serviciosService.getTiemposEnsamblado(1, 15000),
-        serviciosService.getTiemposCuradoBloqueFormulado(1, 1000)
+        serviciosService.getTiemposCuradoBloqueFormulado(1, 2000)
       ]);
 
       setRestricciones((restrsRes.data || []).filter((r: any) => groupsIds.includes(r.codigo_grupo)));
@@ -395,14 +402,12 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-6 h-11 bg-gray-100/50 p-1.5 rounded-2xl border border-gray-200 mb-8">
+        <TabsList className="grid grid-cols-4 h-11 bg-gray-100/50 p-1.5 rounded-2xl border border-gray-200 mb-8">
           {[ 
             { v: 'resumen', l: 'Salida de Datos', i: LayoutDashboard }, 
             { v: 'curado', l: 'Control Curado', i: ThermometerSnowflake },
             { v: 'ordenes', l: 'Provisionales', i: Package }, 
-            { v: 'bom', l: 'BOOM Lista Materiales', i: ClipboardList },
-            { v: 'inventario', l: 'Inventarios SAP', i: Database },
-            { v: 'tiempos', l: 'Catálogo Tiempos', i: Clock }
+            { v: 'inventario', l: 'Inventarios SAP', i: Database }
           ].map(tab => (
             <TabsTrigger key={tab.v} value={tab.v} className="gap-2 text-[10px] font-black uppercase transition-all data-[state=active]:bg-white data-[state=active]:shadow-lg data-[state=active]:text-primary rounded-xl">
               <tab.i className="w-4 h-4" /> {tab.l}
@@ -547,7 +552,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                                 <td className="px-6 py-4 text-left uppercase text-slate-400 italic text-[9px] border-r border-gray-50 truncate max-w-[250px]" title={row.desc}>{row.desc}</td>
                                 <td className="px-4 py-4 border-r border-gray-50 font-black text-blue-700 bg-blue-50/20">{row.apertura}</td>
                                 <td className="px-4 py-4 border-r border-gray-50 font-mono">{row.dens}</td>
-                                <td className="px-6 py-4 border-r border-gray-50 font-mono text-slate-400 bg-slate-50/30">{row.fabDate}</td>
+                                <td className="px-6 py-4 border-r border-gray-50 font-mono text-slate-400 bg-slate-50/30">{row.fabDateStr}</td>
                                 <td className="px-4 py-4 border-r border-gray-50 font-black text-slate-700">{row.diasTranscurridos}</td>
                                 <td className="px-4 py-4 border-r border-gray-50 font-black text-slate-400">{row.diasRequeridos}D</td>
                                 <td className="px-6 py-4">
@@ -616,10 +621,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
            </div>
         </TabsContent>
 
-        <TabsContent value="bom" className="animate-in fade-in duration-300 text-left">
-           <MaestroMaterialesExplosionSection ordenes={provFiltradas} />
-        </TabsContent>
-
         <TabsContent value="inventario" className="animate-in fade-in duration-300 text-left">
           <Card className="rounded-[2rem] border-2 border-gray-100 shadow-xl overflow-hidden bg-white">
             <div className="overflow-x-auto max-h-[600px] relative">
@@ -660,44 +661,13 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
             </div>
           </Card>
         </TabsContent>
-
-        <TabsContent value="tiempos" className="animate-in fade-in duration-300 text-left">
-          <Card className="rounded-[2rem] border-2 border-gray-100 shadow-xl overflow-hidden bg-white">
-            <div className="overflow-x-auto max-h-[600px]">
-              <table className="w-full border-collapse text-center font-sans text-[10px]">
-                <thead className="bg-[#0f172a] text-white uppercase font-black tracking-widest text-[8px] sticky top-0 z-10">
-                  <tr>
-                    <th className="px-6 py-5 border-r border-white/5 text-left">Material</th>
-                    <th className="px-6 py-5 border-r border-white/10 text-left">Descripción Técnica SAP</th>
-                    <th className="px-6 py-5 border-r border-white/5">Línea Prod.</th>
-                    <th className="px-6 py-5 text-teal-400 font-black">Estándar (Min)</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 font-bold">
-                  {tiemposEnsamblado.length === 0 ? (
-                    <tr><td colSpan={4} className="py-24 text-slate-200 uppercase tracking-widest text-center italic">Cargando catálogo maestro...</td></tr>
-                  ) : (
-                    tiemposEnsamblado.map((t, i) => (
-                      <tr key={i} className="hover:bg-indigo-50/20 transition-colors">
-                        <td className="px-6 py-3 border-r border-gray-100 text-left font-mono text-indigo-600">{cleanCode(t.CodMaterial)}</td>
-                        <td className="px-6 py-3 border-r border-gray-100 text-left uppercase text-slate-500 truncate max-w-[500px] leading-tight">{t.Material || t.Descripcion}</td>
-                        <td className="px-6 py-3 border-r border-gray-100 text-slate-400 uppercase font-black text-[9px]">{t.Linea}</td>
-                        <td className="px-6 py-3 font-mono font-black text-teal-600 bg-teal-50/20 text-sm">{Number(t.Tiempo || 0).toFixed(4)}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-        </TabsContent>
       </Tabs>
       
       {/* NOTA TECNICA FINAL */}
       <div className="flex items-center gap-3 p-5 bg-indigo-50 border border-indigo-100 rounded-[1.5rem] shadow-sm text-left">
         <Info className="w-5 h-5 text-indigo-600 flex-shrink-0" />
         <p className="text-[10px] font-bold text-indigo-700 uppercase tracking-widest leading-relaxed">
-          Nota Técnica: Auditoría multinivel FERT->BLOQUE. Los estatus de curado se calculan automáticamente según la apertura del bloque y su estampa de tiempo de fabricación SAP.
+          Nota Técnica: Auditoría íntegra SAP. Los estatus de curado se calculan automáticamente según la apertura del bloque y su fecha de fabricación.
         </p>
       </div>
     </div>
