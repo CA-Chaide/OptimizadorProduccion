@@ -1,10 +1,12 @@
+
 export const environment = {
     production: true,
     nombreAplicacion: "APP_MARCACIONES_WEB",
     
-    //apiURL : 'http://localhost:5400',
-    apiURL : 'https://apps.chaide.com/ProductionOptimizer',
-    apiURLSeguridades : 'https://apps.chaide.com/seguridades',
+    // Se cambian las URLs absolutas por rutas relativas que coinciden con los rewrites de next.config.ts
+    // Esto soluciona los errores de CORS al usar el servidor de Next.js como proxy.
+    apiURL : '/ProductionOptimizer',
+    apiURLSeguridades : '/seguridades',
 
     tituloSistema: 'SISTEMA INTEGRADO DE Optimalidad Operativa',
 };
