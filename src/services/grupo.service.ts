@@ -3,7 +3,7 @@ import type { BodyResponse } from "@/types/body-response";
 import { environment } from "@/environments/environments.prod";
 import { Grupo } from "../types/interfaces";
 
-const API_URL = `${environment.apiURL}/api/Grupos`;
+const API_URL = `${environment.apiURL}/api/Grupo`;
 
 export const grupoService = {
   async getAll(): Promise<BodyListResponse<Grupo>> {

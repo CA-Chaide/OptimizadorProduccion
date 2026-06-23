@@ -3,7 +3,7 @@ import type { BodyResponse } from "@/types/body-response";
 import { environment } from "@/environments/environments.prod";
 import { Linea } from "../types/interfaces";
 
-const API_URL = `${environment.apiURL}/api/Lineas`;
+const API_URL = `${environment.apiURL}/api/Linea`;
 
 export const lineaService = {
   async getAll(): Promise<BodyListResponse<Linea>> {
