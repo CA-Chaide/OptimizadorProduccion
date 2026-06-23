@@ -14,12 +14,17 @@ import {
   Hash,
   PlayCircle,
   Database,
-  X
+  X,
+  Check,
+  ChevronsUpDown
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from '@/components/ui/command';
+import { cn } from '@/lib/utils';
 import { MONTH_NAMES } from '@/constants/constants';
 import { serviciosService } from '@/services/servicios.service';
 import { useAppContext } from '@/context/AppProvider';
@@ -58,7 +63,8 @@ export const PresupuestoProdSemanalTabSection: React.FC = () => {
   
   const [selectedYear, setSelectedYear] = useState<string>(new Date().getFullYear().toString());
   const [selectedMonth, setSelectedMonth] = useState<string>((new Date().getMonth() + 1).toString());
-  const [selectedWeek, setSelectedWeek] = useState<string>("");
+  const [selectedWeeks, setSelectedWeeks] = useState<string[]>([]);
+  const [isWeeksPopoverOpen, setIsWeeksPopoverOpen] = useState(false);
 
   const [presupuestoData, setPresupuestoData] = useState<any[]>([]);
 
@@ -74,18 +80,23 @@ export const PresupuestoProdSemanalTabSection: React.FC = () => {
     return getWeeksInMonth(Number(selectedYear), Number(selectedMonth));
   }, [selectedYear, selectedMonth, mounted]);
 
-  // Sincronizar semana seleccionada cuando cambia el mes o año
+  // Sincronizar semanas seleccionadas cuando cambia el mes o año
   useEffect(() => {
     if (mounted && availableWeeks.length > 0) {
-      if (!selectedWeek || !availableWeeks.includes(Number(selectedWeek))) {
-        setSelectedWeek(String(availableWeeks[0]));
-      }
+      // Filtrar semanas seleccionadas que ya no están disponibles en el nuevo mes/año
+      setSelectedWeeks(prev => prev.filter(w => availableWeeks.includes(Number(w))));
     }
-  }, [availableWeeks, selectedWeek, mounted]);
+  }, [availableWeeks, mounted]);
+
+  const toggleWeek = (week: string) => {
+    setSelectedWeeks(prev => 
+      prev.includes(week) ? prev.filter(w => w !== week) : [...prev, week]
+    );
+  };
 
   const handleFetchPresupuesto = async () => {
-    if (!selectedWeek) {
-      addNotification('warning', 'Por favor selecciona una semana específica.');
+    if (selectedWeeks.length === 0) {
+      addNotification('warning', 'Por favor selecciona al menos una semana.');
       return;
     }
 
@@ -93,17 +104,37 @@ export const PresupuestoProdSemanalTabSection: React.FC = () => {
     setPresupuestoData([]);
     
     try {
-      const response = await serviciosService.getProduccionEstimadaPorIntervalo(
-        selectedYear,
-        selectedMonth,
-        selectedWeek
-      );
-
-      const data = Array.isArray(response?.data) ? response.data : [];
-      setPresupuestoData(data);
+      let combinedData: any[] = [];
       
-      if (data.length > 0) {
-        addNotification('success', `Se recuperaron ${data.length} registros de presupuesto.`);
+      // Consultar cada semana seleccionada
+      for (const week of selectedWeeks) {
+        const response = await serviciosService.getProduccionEstimadaPorIntervalo(
+          selectedYear,
+          selectedMonth,
+          week
+        );
+        const data = Array.isArray(response?.data) ? response.data : [];
+        combinedData = [...combinedData, ...data];
+      }
+
+      // Consolidar por material, centro y línea para mostrar totales del período
+      const consolidatedMap = new Map<string, any>();
+      combinedData.forEach(item => {
+          const key = `${item.codigo_material}|${item.centro}|${item.linea_produccion}`;
+          if (consolidatedMap.has(key)) {
+              const existing = consolidatedMap.get(key);
+              existing.cantidad_proyectada = (Number(existing.cantidad_proyectada) || 0) + (Number(item.cantidad_proyectada) || 0);
+              existing.cantidad_producir = (Number(existing.cantidad_producir) || 0) + (Number(item.cantidad_producir) || 0);
+          } else {
+              consolidatedMap.set(key, { ...item });
+          }
+      });
+
+      const finalData = Array.from(consolidatedMap.values());
+      setPresupuestoData(finalData);
+      
+      if (finalData.length > 0) {
+        addNotification('success', `Se recuperaron y consolidaron ${combinedData.length} registros de ${selectedWeeks.length} semanas.`);
       } else {
         addNotification('info', 'No se encontraron datos para los criterios seleccionados.');
       }
@@ -153,7 +184,7 @@ export const PresupuestoProdSemanalTabSection: React.FC = () => {
     const ws = XLSX.utils.json_to_sheet(exportData);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Presupuesto");
-    XLSX.writeFile(wb, `Presupuesto_Semana_${selectedWeek}_${selectedYear}.xlsx`);
+    XLSX.writeFile(wb, `Presupuesto_Semanas_${selectedWeeks.join('-')}_${selectedYear}.xlsx`);
   };
 
   if (!mounted) return null;
@@ -165,7 +196,7 @@ export const PresupuestoProdSemanalTabSection: React.FC = () => {
           <CalendarRange className="w-6 h-6 text-indigo-600" />
           <div>
             <h3 className="text-xl font-semibold text-gray-800">Presupuesto de Producción Semanal</h3>
-            <p className="text-xs text-gray-500 mt-1">Cálculo de producción estimada por intervalo técnico</p>
+            <p className="text-xs text-gray-500 mt-1">Consolidación de producción estimada por semanas técnicas</p>
           </div>
         </div>
         
@@ -197,7 +228,7 @@ export const PresupuestoProdSemanalTabSection: React.FC = () => {
 
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4 p-4 bg-gray-50 border rounded-xl shadow-sm">
         <div className="space-y-1.5">
-          <label className="text-[10px] font-bold text-gray-500 uppercase flex items-center gap-1">
+          <label className="text-[10px] font-bold text-gray-400 uppercase flex items-center gap-1">
             <Calendar className="w-3 h-3" /> Año
           </label>
           <select 
@@ -210,7 +241,7 @@ export const PresupuestoProdSemanalTabSection: React.FC = () => {
         </div>
 
         <div className="space-y-1.5">
-          <label className="text-[10px] font-bold text-gray-500 uppercase flex items-center gap-1">
+          <label className="text-[10px] font-bold text-gray-400 uppercase flex items-center gap-1">
             <Filter className="w-3 h-3" /> Mes
           </label>
           <select 
@@ -225,23 +256,64 @@ export const PresupuestoProdSemanalTabSection: React.FC = () => {
         </div>
 
         <div className="space-y-1.5">
-          <label className="text-[10px] font-bold text-gray-500 uppercase flex items-center gap-1">
-            <Hash className="w-3 h-3" /> Semana (del Año)
+          <label className="text-[10px] font-bold text-gray-400 uppercase flex items-center gap-1">
+            <Hash className="w-3 h-3" /> Semanas (del Año)
           </label>
-          <select 
-            value={selectedWeek}
-            onChange={(e) => setSelectedWeek(e.target.value)}
-            className="w-full h-9 px-3 py-1 text-sm border border-gray-300 rounded-md bg-white focus:ring-2 focus:ring-indigo-500 outline-none font-medium text-indigo-700"
-          >
-            <option value="" disabled>Seleccione...</option>
-            {availableWeeks.map(w => (
-              <option key={w} value={String(w)}>{w}</option>
-            ))}
-          </select>
+          <Popover open={isWeeksPopoverOpen} onOpenChange={setIsWeeksPopoverOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                role="combobox"
+                className="w-full justify-between h-9 font-normal text-xs bg-white border-gray-300 text-indigo-700"
+              >
+                <span className="truncate">
+                  {selectedWeeks.length === 0
+                    ? "Seleccionar..."
+                    : selectedWeeks.length === 1
+                    ? `Semana ${selectedWeeks[0]}`
+                    : `${selectedWeeks.length} semanas`}
+                </span>
+                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[200px] p-0" align="start">
+              <Command>
+                <CommandInput placeholder="Buscar semana..." className="h-8 text-xs" />
+                <CommandEmpty>No encontrada.</CommandEmpty>
+                <CommandGroup className="max-h-60 overflow-y-auto">
+                  {availableWeeks.map((week) => (
+                    <CommandItem
+                      key={week}
+                      value={String(week)}
+                      onSelect={() => toggleWeek(String(week))}
+                      className="text-xs"
+                    >
+                      <Check
+                        className={cn(
+                          "mr-2 h-4 w-4",
+                          selectedWeeks.includes(String(week)) ? "opacity-100" : "opacity-0"
+                        )}
+                      />
+                      Semana {week}
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              </Command>
+            </PopoverContent>
+          </Popover>
+          {selectedWeeks.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1">
+              {selectedWeeks.map(w => (
+                <Badge key={w} variant="secondary" className="text-[9px] px-1 bg-indigo-50 text-indigo-700 border-indigo-100">
+                  S{w}
+                </Badge>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="space-y-1.5">
-          <label className="text-[10px] font-bold text-gray-500 uppercase flex items-center gap-1">
+          <label className="text-[10px] font-bold text-gray-400 uppercase flex items-center gap-1">
             <Home className="w-3 h-3" /> Centro
           </label>
           <select 
@@ -258,7 +330,7 @@ export const PresupuestoProdSemanalTabSection: React.FC = () => {
         <div className="flex items-end">
           <Button 
             onClick={handleFetchPresupuesto} 
-            disabled={isLoading || !selectedWeek}
+            disabled={isLoading || selectedWeeks.length === 0}
             className="w-full h-9 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs uppercase tracking-wider"
           >
             {isLoading ? (
@@ -275,7 +347,7 @@ export const PresupuestoProdSemanalTabSection: React.FC = () => {
           <Card className="bg-white border-l-4 border-l-blue-500">
             <CardContent className="p-4 flex items-center justify-between">
               <div>
-                <p className="text-[10px] font-bold text-gray-500 uppercase">Materiales Planificados</p>
+                <p className="text-[10px] font-bold text-gray-500 uppercase">Materiales Consolidados</p>
                 <p className="text-2xl font-mono font-bold text-blue-700">{filteredData.length}</p>
               </div>
               <Database className="w-8 h-8 text-blue-100" />
@@ -284,7 +356,7 @@ export const PresupuestoProdSemanalTabSection: React.FC = () => {
           <Card className="bg-white border-l-4 border-l-indigo-500">
             <CardContent className="p-4 flex items-center justify-between">
               <div>
-                <p className="text-[10px] font-bold text-gray-500 uppercase">Total Proyectado</p>
+                <p className="text-[10px] font-bold text-gray-500 uppercase">Total Proyectado (Período)</p>
                 <p className="text-2xl font-mono font-bold text-indigo-700">{totals.proyectada.toLocaleString()}</p>
               </div>
               <CalendarRange className="w-8 h-8 text-indigo-100" />
@@ -293,7 +365,7 @@ export const PresupuestoProdSemanalTabSection: React.FC = () => {
           <Card className="bg-white border-l-4 border-l-emerald-500">
             <CardContent className="p-4 flex items-center justify-between">
               <div>
-                <p className="text-[10px] font-bold text-gray-500 uppercase">Total a Producir</p>
+                <p className="text-[10px] font-bold text-gray-500 uppercase">Total a Producir (Período)</p>
                 <p className="text-2xl font-mono font-bold text-emerald-700">{totals.producir.toLocaleString()}</p>
               </div>
               <PlayCircle className="w-8 h-8 text-emerald-100" />
@@ -322,7 +394,7 @@ export const PresupuestoProdSemanalTabSection: React.FC = () => {
                     <td colSpan={6} className="px-6 py-12 text-center">
                       <div className="flex flex-col items-center gap-2">
                         <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
-                        <span className="text-sm font-medium text-gray-500">Consultando presupuesto...</span>
+                        <span className="text-sm font-medium text-gray-500">Consultando y consolidando presupuesto...</span>
                       </div>
                     </td>
                   </tr>
@@ -363,7 +435,7 @@ export const PresupuestoProdSemanalTabSection: React.FC = () => {
               {filteredData.length > 0 && (
                 <tfoot className="bg-gray-800 text-white font-bold text-[10px] sticky bottom-0 z-10">
                   <tr>
-                    <td colSpan={4} className="px-6 py-3 text-right uppercase border-r border-gray-700">Totales Página:</td>
+                    <td colSpan={4} className="px-6 py-3 text-right uppercase border-r border-gray-700">Totales Consolidados ({selectedWeeks.length} sem):</td>
                     <td className="px-4 py-3 text-right font-mono text-indigo-300 border-r border-gray-700">{totals.proyectada.toLocaleString()}</td>
                     <td className="px-4 py-3 text-right font-mono text-emerald-300">{totals.producir.toLocaleString()}</td>
                   </tr>
