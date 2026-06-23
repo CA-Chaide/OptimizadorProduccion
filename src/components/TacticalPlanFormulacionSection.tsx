@@ -40,7 +40,7 @@ import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 import { cn } from '@/lib/utils';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, differenceInDays, parseISO, subDays } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, differenceInDays, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 const BLOCK_LENGTH_METERS = 20;
@@ -133,23 +133,19 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   }, [ordenes, selectedDates]);
 
   const prodFiltradas = useMemo(() => {
-    const relevantResps = restricciones
-      .filter(r => r.nombre_restriccion === 'RESP_PROD' || r.nombre_restriccion === 'RESP_CTRL_PROD')
-      .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
-      .filter(v => v !== '');
-
     return ordenesProceso.filter(o => {
       const centro = String(getProp(o, ['CENTRO', 'Centro'])).trim();
-      if (centro !== '1000') return false;
+      const alm = String(getProp(o, ['ALMACEN', 'Almacen'])).trim();
       
-      const resp = String(getProp(o, ['RESP_CONTROL_PROD', 'RESPCONTROLPROD'])).trim();
-      if (relevantResps.length > 0 && !relevantResps.includes(resp)) return false;
+      // Filtro para Formulación: Almacén 1006 o Planta 1000 (Quito)
+      const matchArea = alm === '1006' || centro === '1000';
+      if (!matchArea) return false;
 
       const itemDateFull = getProp(o, ['FECHA_INICIO', 'FECHA', 'FECHAINICIO']).trim();
       const itemDate = itemDateFull.includes('T') ? itemDateFull.split('T')[0] : itemDateFull;
       return selectedDates.size === 0 || selectedDates.has(itemDate);
     });
-  }, [ordenesProceso, selectedDates, restricciones]);
+  }, [ordenesProceso, selectedDates]);
 
   const handleProcessResumen = useCallback(async () => {
     if (provFiltradas.length === 0) {
@@ -164,8 +160,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     for (let i = 0; i < provFiltradas.length; i++) {
       const o = provFiltradas[i];
       const info = extractMaterialInfo(o);
-      const dateRaw = getProp(o, ['FECHAINICIO', 'FECHA', 'N/A']).trim();
-      const fecha = dateRaw.includes('T') ? dateRaw.split('T')[0] : dateRaw;
       
       const qty = safeNum(o.CANTPROGRAMADA || o.CANTIDAD || 0);
       const anchoVal = parseFloat(info.ancho) || 0;
@@ -175,7 +169,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       const itemBloques = (qty * espVal * anchoVal) / (usefulHeight * BLOCK_LENGTH_METERS * 100);
       const itemKg = (anchoVal * 200 * espVal * densVal * qty) / 10000;
 
-      // UNIFICACION POR BLOQUE FORMULADO (BOM)
       let blockCode = '—';
       let blockDesc = '—';
       try {
@@ -235,10 +228,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   }, [unifiedSummaryData]);
 
   const curadoAudit = useMemo(() => {
-    const today = new Date();
-    today.setHours(0,0,0,0);
-    const fifteenDaysAgo = subDays(today, 15);
-
     return curadoData
       .map(row => {
         const info = extractMaterialInfo(row);
@@ -263,7 +252,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         let diasRequeridos = 3; 
         
         if (fabDate && !isNaN(fabDate.getTime())) {
-          diasTranscurridos = differenceInDays(today, fabDate);
+          diasTranscurridos = differenceInDays(new Date(), fabDate);
           diasRequeridos = info.apertura === '194.5' ? 2 : 3;
           estatus = diasTranscurridos >= diasRequeridos ? 'DISPONIBLE' : 'EN CURADO';
         }
@@ -279,7 +268,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           nroBloque: getProp(row, ['NRO_BLOQUE', 'BLOQUE', 'ID'])
         };
       })
-      .filter(row => row.fabDate && !isNaN(row.fabDate.getTime()) && row.fabDate >= fifteenDaysAgo)
       .sort((a, b) => (b.fabDate?.getTime() || 0) - (a.fabDate?.getTime() || 0));
   }, [curadoData, extractMaterialInfo]);
 
@@ -354,7 +342,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 flex flex-col items-center justify-center gap-4 text-left">
+      <div className="flex flex-col items-center justify-center p-20 gap-4">
         <Loader2 className="w-10 h-10 animate-spin text-primary" />
         <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest animate-pulse">Sincronizando SAP Formulación...</p>
       </div>
@@ -412,7 +400,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-5 h-11 bg-gray-100/50 p-1.5 rounded-2xl border border-gray-200 mb-8">
+        <TabsList className="grid grid-cols-4 h-11 bg-gray-100/50 p-1.5 rounded-2xl border border-gray-200 mb-8">
           {[ 
             { v: 'resumen', l: 'Salida de Datos', i: LayoutDashboard }, 
             { v: 'curado', l: 'Control Curado', i: ThermometerSnowflake },
@@ -526,7 +514,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                  </thead>
                  <tbody className="divide-y divide-gray-50 font-bold">
                     {curadoAudit.length === 0 ? (
-                      <tr><td colSpan={8} className="py-24 text-slate-200 uppercase font-black tracking-widest text-center">No se detectaron bloques en ventana de auditoría técnica (Últimos 15 días)</td></tr>
+                      <tr><td colSpan={8} className="py-24 text-slate-200 uppercase font-black tracking-widest text-center">Sin bloques registrados en SAP</td></tr>
                     ) : (
                       curadoAudit.map((row, idx) => {
                         const isReady = row.estatus === 'DISPONIBLE';
@@ -616,7 +604,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-50 font-bold text-slate-600">
                   {prodFiltradas.length === 0 ? (
-                    <tr><td colSpan={6} className="py-20 text-center text-slate-200 uppercase font-black">Sin órdenes de proceso para los responsables técnicos</td></tr>
+                    <tr><td colSpan={6} className="py-20 text-center text-slate-200 uppercase font-black">Sin órdenes de producción detectadas para Formulación / Almacén 1006</td></tr>
                   ) : (
                     prodFiltradas.map((o, idx) => {
                       const info = extractMaterialInfo(o);
