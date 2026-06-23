@@ -13,15 +13,15 @@ import {
   Filter, 
   Activity,
   Database,
-  History,
   RefreshCw,
   Minus,
   Plus,
-  MapPin,
-  Box,
-  Info,
   TrendingUp,
-  ClipboardList
+  ClipboardList,
+  ThermometerSnowflake,
+  AlertCircle,
+  CheckCircle2,
+  Timer
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -39,7 +39,7 @@ import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 import { cn } from '@/lib/utils';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, parseISO } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, differenceInDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { MaestroMaterialesExplosionSection } from './MaestroMaterialesExplosionSection';
 
@@ -63,16 +63,6 @@ const formatNum = (val: any, decimals: number = 2): string => {
   });
 };
 
-const getProp = (obj: any, keys: string[]): string => {
-  if (!obj) return '';
-  const rowKeys = Object.keys(obj);
-  for (const k of keys) {
-    const found = rowKeys.find(rk => rk.toLowerCase().trim() === k.toLowerCase().trim());
-    if (found) return String(obj[found]).trim();
-  }
-  return '';
-};
-
 export const TacticalPlanFormulacionSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanFormulacion');
   const { addNotification } = useAppContext();
@@ -84,6 +74,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   const [ordenes, setOrders] = useState<any[]>([]);
   const [inventarioSAP, setInventarioSAP] = useState<any[]>([]);
   const [tiemposEnsamblado, setTiemposEnsamblado] = useState<any[]>([]);
+  const [curadoData, setCuradoData] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
   const [isProcessingResumen, setIsProcessingResumen] = useState(false);
@@ -125,10 +116,8 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   }, []);
 
   const provFiltradas = useMemo(() => {
+    // FILTROS ELIMINADOS SEGÚN SOLICITUD PARA MOSTRAR DATA INTEGRAL
     return ordenes.filter(o => {
-      const itemCentro = String(o.Centro || o.CENTRO || '').trim();
-      const itemAlmValue = String(o.ALMACEN || o.Almacen || '').trim();
-      if (itemCentro !== '1000' || itemAlmValue !== '1006') return false; 
       const itemDateFull = String(o.FECHAINICIO || o.FECHA || '').trim();
       const itemDate = itemDateFull.includes('T') ? itemDateFull.split('T')[0] : itemDateFull;
       return selectedDates.size === 0 || selectedDates.has(itemDate);
@@ -142,17 +131,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     }
     
     setIsProcessingResumen(true);
-    const groupsMap = new Map<string, { 
-      fecha: string; maquina: string; material: string; descripcion: string;
-      dens: string; tipo: string; apertura: string; ancho: number; esp: number;
-      totalBloques: number; planReposicion: number; 
-      blockCode: string; blockDesc: string;
-      stockKg: number; pesoBloque: number;
-      kgTotal: number;
-      ordenes: number;
-      unidades: number;
-    }>();
-
+    const groupsMap = new Map<string, any>();
     const uniqueMatKeys = Array.from(new Set(provFiltradas.map(o => {
       const info = extractMaterialInfo(o);
       const dateRaw = String(o.FECHAINICIO || o.FECHA || 'N/A').trim();
@@ -195,7 +174,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         } catch (e) { console.warn(`Error BOM para ${info.code}`); }
 
         const finalBlockSearchCode = blockCode !== '—' ? blockCode : info.code;
-
         const stockKg = inventarioSAP
           .filter(inv => cleanCode(inv.MATERIAL) === finalBlockSearchCode)
           .reduce((sum, item) => sum + safeNum(item.LIBREUTILIZACION), 0);
@@ -237,7 +215,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   }, [unifiedSummaryData]);
 
   const groupedNeeds = useMemo(() => {
-    const map = new Map<string, { apertura: string; items: any[]; totalKg: number; totalUn: number; totalBloques: number }>();
+    const map = new Map<string, any>();
     unifiedSummaryData.forEach(row => {
       const key = row.apertura || '—';
       if (!map.has(key)) map.set(key, { apertura: key, items: [], totalKg: 0, totalUn: 0, totalBloques: 0 });
@@ -250,12 +228,35 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     return Array.from(map.values()).sort((a, b) => b.totalKg - a.totalKg);
   }, [unifiedSummaryData]);
 
-  const inventarioFiltrado = useMemo(() => {
-    return inventarioSAP.filter(row => {
-      const resp = String(row.CODRESPPROD || row.CodRespProd || '').trim();
-      return resp === '005' || resp === '019';
+  // --- LOGICA DE CURADO ---
+  const curadoAudit = useMemo(() => {
+    const today = new Date();
+    return curadoData.map(row => {
+      const info = extractMaterialInfo(row);
+      const fabDateRaw = String(row.FECHA_FABRICACION || row.FECHA || '').trim();
+      const fabDate = fabDateRaw ? new Date(fabDateRaw) : null;
+      
+      let estatus = 'DESCONOCIDO';
+      let diasTranscurridos = 0;
+      let diasRequeridos = 0;
+      
+      if (fabDate && !isNaN(fabDate.getTime())) {
+        diasTranscurridos = differenceInDays(today, fabDate);
+        // Regla: 194.5 -> 2 días | Otros -> 3 días
+        diasRequeridos = info.apertura === '194.5' ? 2 : 3;
+        estatus = diasTranscurridos >= diasRequeridos ? 'DISPONIBLE' : 'EN CURADO';
+      }
+
+      return {
+        ...row,
+        ...info,
+        fabDate: fabDate ? format(fabDate, 'yyyy-MM-dd') : '—',
+        diasTranscurridos,
+        diasRequeridos,
+        estatus
+      };
     });
-  }, [inventarioSAP]);
+  }, [curadoData, extractMaterialInfo]);
 
   const datesWithOrdersSet = useMemo(() => {
     const s = new Set<string>();
@@ -295,17 +296,19 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       setGrupos(filteredGroups);
       const groupsIds = filteredGroups.map(g => g.codigo_grupo);
 
-      const [restrsRes, provsRes, invRes, timesRes] = await Promise.all([
+      const [restrsRes, provsRes, invRes, timesRes, curadoRes] = await Promise.all([
         restriccionService.getAll(),
         serviciosService.OrdenesProvisionalesPaginados(1, 20000),
         serviciosService.getInventarioAñoActual(),
-        serviciosService.getTiemposEnsamblado(1, 15000)
+        serviciosService.getTiemposEnsamblado(1, 15000),
+        serviciosService.getTiemposCuradoBloqueFormulado(1, 1000)
       ]);
 
       setRestricciones((restrsRes.data || []).filter((r: any) => groupsIds.includes(r.codigo_grupo)));
       setOrders(provsRes.data?.data || provsRes.data || []);
       setInventarioSAP(Array.isArray(invRes.data) ? invRes.data : []);
       setTiemposEnsamblado(timesRes.data?.data || timesRes.data || []);
+      setCuradoData(curadoRes.data || []);
       
       addNotification('success', 'Sincronización técnica completada.');
     } catch (error) {
@@ -334,7 +337,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 flex flex-col items-center justify-center gap-4">
+      <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 flex flex-col items-center justify-center gap-4 text-left">
         <Loader2 className="w-10 h-10 animate-spin text-primary" />
         <p className="text-xs font-bold text-gray-400 uppercase tracking-widest animate-pulse">Sincronizando SAP Formulación...</p>
       </div>
@@ -344,7 +347,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   return (
     <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
       <div className="flex items-center justify-between pb-4 border-b border-gray-100">
-        <div className="flex items-center space-x-3">
+        <div className="flex items-center space-x-3 text-left">
           <div className="p-2 bg-indigo-600/10 rounded-xl shadow-inner"><FlaskConical className="w-6 h-6 text-indigo-600" /></div>
           <h2 className="text-xl font-black text-gray-800 uppercase tracking-tighter">Programación Táctica Formulación</h2>
         </div>
@@ -391,9 +394,10 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-5 h-11 bg-gray-100/50 p-1.5 rounded-2xl border border-gray-200 mb-8">
+        <TabsList className="grid grid-cols-6 h-11 bg-gray-100/50 p-1.5 rounded-2xl border border-gray-200 mb-8">
           {[ 
             { v: 'resumen', l: 'Salida de Datos', i: LayoutDashboard }, 
+            { v: 'curado', l: 'Control Curado', i: ThermometerSnowflake },
             { v: 'ordenes', l: 'Provisionales', i: Package }, 
             { v: 'bom', l: 'BOOM Lista Materiales', i: ClipboardList },
             { v: 'inventario', l: 'Inventarios SAP', i: Database },
@@ -406,7 +410,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         </TabsList>
 
         <TabsContent value="resumen" className="space-y-8 animate-in fade-in duration-300">
-          {/* Dashboard Superior Consolidado */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-[#0f172a] p-6 rounded-[2.5rem] border border-white/5 shadow-2xl text-white">
             <div className="border-r border-white/10 pr-6 text-left">
               <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Consolidado Planta</p>
@@ -426,7 +429,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
             </div>
           </div>
 
-          {/* Grilla Jerárquica */}
           <div className="space-y-10">
             {groupedNeeds.length === 0 ? (
               <div className="py-24 text-center bg-gray-50/30 rounded-3xl border-2 border-dashed border-gray-100">
@@ -438,8 +440,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                 const key = group.apertura;
                 const isExp = expandedGroups.has(key);
                 return (
-                  <div key={key} className="border-2 border-gray-100 rounded-[2.5rem] shadow-2xl overflow-hidden bg-white transition-all">
-                    {/* Barra Negra de Resumen Categoría */}
+                  <div key={key} className="border-2 border-gray-100 rounded-[2.5rem] shadow-2xl overflow-hidden bg-white transition-all text-left">
                     <div 
                       className="flex items-center justify-between bg-[#1e293b] text-white px-8 py-5 cursor-pointer hover:bg-[#0f172a] transition-colors"
                       onClick={() => toggleGroup(key)}
@@ -473,8 +474,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                               <th className="px-6 py-4 text-left border-r border-gray-50">Descripción del Producto</th>
                               <th className="px-4 py-4 border-r border-gray-50">Densidad</th>
                               <th className="px-4 py-4 border-r border-gray-50">Tipo</th>
-                              <th className="px-4 py-4 border-r border-gray-50">Ancho</th>
-                              <th className="px-4 py-4 border-r border-gray-50">Esp.</th>
                               <th className="px-4 py-4 border-r border-gray-50 font-black text-slate-900 bg-slate-50/30">Cant. (UN)</th>
                               <th className="px-5 py-4 border-r border-gray-50 text-indigo-700 bg-indigo-50/30">Total Kg</th>
                               <th className="px-5 py-4 border-r border-gray-50 text-red-700 bg-red-50/30 font-black">Nro. Bloques</th>
@@ -483,14 +482,12 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-50 font-bold">
-                            {group.items.map((item, idx) => (
+                            {group.items.map((item: any, idx: number) => (
                               <tr key={idx} className="hover:bg-slate-50 transition-colors">
                                 <td className="px-6 py-3 text-left font-mono font-black text-indigo-600 border-r border-gray-50">{item.material}</td>
                                 <td className="px-6 py-3 text-left uppercase text-slate-400 italic text-[9px] border-r border-gray-50 truncate max-w-[200px]" title={item.descripcion}>{item.descripcion}</td>
                                 <td className="px-4 py-3 border-r border-gray-50 font-mono">{item.dens}</td>
                                 <td className="px-4 py-3 border-r border-gray-50 uppercase text-slate-400">{item.tipo}</td>
-                                <td className="px-4 py-3 border-r border-gray-50 font-mono">{item.ancho}</td>
-                                <td className="px-4 py-3 border-r border-gray-50 font-mono">{item.esp}</td>
                                 <td className="px-4 py-3 border-r border-gray-50 font-mono font-black text-slate-900 bg-slate-50/10">{item.unidades.toLocaleString()}</td>
                                 <td className="px-5 py-3 border-r border-gray-50 font-mono font-black text-indigo-600 bg-indigo-50/10">{item.kgTotal.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
                                 <td className="px-5 py-3 border-r border-gray-50 font-mono font-black text-red-600 bg-red-50/10">{item.planReposicion}</td>
@@ -509,7 +506,71 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           </div>
         </TabsContent>
 
-        <TabsContent value="ordenes" className="animate-in fade-in duration-300">
+        <TabsContent value="curado" className="animate-in fade-in duration-300 text-left">
+           <div className="space-y-6">
+             <div className="bg-white p-5 rounded-3xl border border-gray-100 shadow-xl">
+               <div className="flex items-center gap-3 mb-6">
+                 <div className="p-3 bg-blue-600/10 rounded-2xl text-blue-600">
+                    <Timer className="w-6 h-6" />
+                 </div>
+                 <div>
+                   <h3 className="text-lg font-black text-gray-800 uppercase tracking-tight">Audit de Curado y Maduración Química</h3>
+                   <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Lógica: 194.5 (2D) | 206/219/228 (3D) | Tiempo de Estabilización Térmica</p>
+                 </div>
+               </div>
+
+               <div className="border border-gray-50 rounded-2xl overflow-hidden shadow-inner bg-white">
+                 <div className="overflow-x-auto max-h-[600px]">
+                   <table className="w-full text-[10px] text-center border-collapse">
+                     <thead className="bg-[#0f172a] text-white uppercase font-black tracking-widest text-[8px] sticky top-0 z-10">
+                       <tr>
+                         <th className="px-6 py-5 text-left border-r border-white/5">Código Bloque</th>
+                         <th className="px-6 py-5 text-left border-r border-white/5">Descripción Técnica</th>
+                         <th className="px-4 py-5 border-r border-white/5">Apertura</th>
+                         <th className="px-4 py-5 border-r border-white/5">Dens.</th>
+                         <th className="px-6 py-5 border-r border-white/5 bg-white/5">Fecha Fabricación</th>
+                         <th className="px-4 py-5 border-r border-white/5">Días Trans.</th>
+                         <th className="px-4 py-5 border-r border-white/5">Min. Req.</th>
+                         <th className="px-6 py-5">Estatus de Uso</th>
+                       </tr>
+                     </thead>
+                     <tbody className="divide-y divide-gray-50 font-bold">
+                        {curadoAudit.length === 0 ? (
+                          <tr><td colSpan={8} className="py-24 text-slate-200 uppercase font-black tracking-widest italic opacity-40">Consultando datos de fabricación en SAP...</td></tr>
+                        ) : (
+                          curadoAudit.map((row, idx) => {
+                            const isReady = row.estatus === 'DISPONIBLE';
+                            return (
+                              <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                                <td className="px-6 py-4 text-left font-mono font-black text-indigo-600 border-r border-gray-50">{row.code}</td>
+                                <td className="px-6 py-4 text-left uppercase text-slate-400 italic text-[9px] border-r border-gray-50 truncate max-w-[250px]" title={row.desc}>{row.desc}</td>
+                                <td className="px-4 py-4 border-r border-gray-50 font-black text-blue-700 bg-blue-50/20">{row.apertura}</td>
+                                <td className="px-4 py-4 border-r border-gray-50 font-mono">{row.dens}</td>
+                                <td className="px-6 py-4 border-r border-gray-50 font-mono text-slate-400 bg-slate-50/30">{row.fabDate}</td>
+                                <td className="px-4 py-4 border-r border-gray-50 font-black text-slate-700">{row.diasTranscurridos}</td>
+                                <td className="px-4 py-4 border-r border-gray-50 font-black text-slate-400">{row.diasRequeridos}D</td>
+                                <td className="px-6 py-4">
+                                  <Badge className={cn(
+                                    "px-4 py-1 rounded-full text-[9px] font-black tracking-tighter uppercase",
+                                    isReady ? "bg-green-100 text-green-700 border-green-200" : "bg-amber-100 text-amber-700 border-amber-200"
+                                  )} variant="outline">
+                                    {isReady ? <CheckCircle2 className="w-3 h-3 mr-1.5" /> : <Activity className="w-3 h-3 mr-1.5" />}
+                                    {row.estatus}
+                                  </Badge>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                     </tbody>
+                   </table>
+                 </div>
+               </div>
+             </div>
+           </div>
+        </TabsContent>
+
+        <TabsContent value="ordenes" className="animate-in fade-in duration-300 text-left">
            <div className="border-2 border-gray-50 rounded-[2rem] shadow-xl overflow-hidden bg-white">
               <div className="overflow-x-auto">
                 <table className="w-full text-[10px] text-center border-collapse">
@@ -527,7 +588,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                   </thead>
                   <tbody className="divide-y divide-gray-50 font-bold text-slate-600">
                     {provFiltradas.length === 0 ? (
-                      <tr><td colSpan={8} className="py-24 text-slate-200 uppercase tracking-widest italic font-black opacity-40">Sin órdenes provisionales detectadas en Formulación (Alm. 1006)</td></tr>
+                      <tr><td colSpan={8} className="py-24 text-slate-200 uppercase tracking-widest italic font-black opacity-40">No se detectaron órdenes provisionales</td></tr>
                     ) : (
                       provFiltradas.map((o, idx) => {
                         const info = extractMaterialInfo(o);
@@ -554,11 +615,11 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
            </div>
         </TabsContent>
 
-        <TabsContent value="bom" className="animate-in fade-in duration-300">
+        <TabsContent value="bom" className="animate-in fade-in duration-300 text-left">
            <MaestroMaterialesExplosionSection ordenes={provFiltradas} />
         </TabsContent>
 
-        <TabsContent value="inventario" className="animate-in fade-in duration-300">
+        <TabsContent value="inventario" className="animate-in fade-in duration-300 text-left">
           <Card className="rounded-[2rem] border-2 border-gray-100 shadow-xl overflow-hidden bg-white">
             <div className="overflow-x-auto max-h-[600px] relative">
               <table className="w-full border-collapse text-center font-sans text-[10px]">
@@ -576,10 +637,10 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50 font-bold text-[11px]">
-                  {inventarioFiltrado.length === 0 ? (
-                    <tr><td colSpan={9} className="py-24 text-slate-200 font-black uppercase tracking-widest italic text-center">Sin inventario para el responsable 005 (Formulación)</td></tr>
+                  {inventarioSAP.length === 0 ? (
+                    <tr><td colSpan={9} className="py-24 text-slate-200 font-black uppercase tracking-widest italic text-center">Consultando stock en tiempo real...</td></tr>
                   ) : (
-                    inventarioFiltrado.map((row, i) => (
+                    inventarioSAP.map((row, i) => (
                       <tr key={i} className="hover:bg-blue-50/10 transition-colors">
                         <td className="px-6 py-3 border-r border-dashed border-gray-100 font-mono text-blue-600">{cleanCode(row.MATERIAL)}</td>
                         <td className="px-6 py-3 border-r border-dashed border-gray-100 text-left uppercase text-slate-500 truncate max-w-[300px] leading-tight" title={row.NOMBRE}>{row.NOMBRE || '—'}</td>
@@ -599,7 +660,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           </Card>
         </TabsContent>
 
-        <TabsContent value="tiempos" className="animate-in fade-in duration-300">
+        <TabsContent value="tiempos" className="animate-in fade-in duration-300 text-left">
           <Card className="rounded-[2rem] border-2 border-gray-100 shadow-xl overflow-hidden bg-white">
             <div className="overflow-x-auto max-h-[600px]">
               <table className="w-full border-collapse text-center font-sans text-[10px]">
@@ -613,7 +674,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-100 font-bold">
                   {tiemposEnsamblado.length === 0 ? (
-                    <tr><td colSpan={4} className="py-24 text-slate-200 uppercase tracking-widest text-center italic">Cargando Catálogo Maestro de Formulación...</td></tr>
+                    <tr><td colSpan={4} className="py-24 text-slate-200 uppercase tracking-widest text-center italic">Cargando catálogo maestro...</td></tr>
                   ) : (
                     tiemposEnsamblado.map((t, i) => (
                       <tr key={i} className="hover:bg-indigo-50/20 transition-colors">
@@ -632,10 +693,10 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       </Tabs>
       
       {/* NOTA TECNICA FINAL */}
-      <div className="flex items-center gap-3 p-5 bg-indigo-50 border border-indigo-100 rounded-[1.5rem] shadow-sm">
+      <div className="flex items-center gap-3 p-5 bg-indigo-50 border border-indigo-100 rounded-[1.5rem] shadow-sm text-left">
         <Info className="w-5 h-5 text-indigo-600 flex-shrink-0" />
         <p className="text-[10px] font-bold text-indigo-700 uppercase tracking-widest leading-relaxed">
-          Auditoría de Formulación: El sistema realiza una explosión multinivel sobre las órdenes 1006 para determinar el requerimiento de bloque formulado. Los bloques teóricos consideran una altura útil de 103cm (D&lt;30) y 85cm (D&ge;30).
+          Nota Técnica: Auditoría multinivel FERT->BLOQUE. Los estatus de curado se calculan automáticamente según la apertura del bloque y su estampa de tiempo de fabricación SAP.
         </p>
       </div>
     </div>
