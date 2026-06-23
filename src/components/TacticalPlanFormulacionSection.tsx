@@ -21,7 +21,8 @@ import {
   ThermometerSnowflake,
   AlertCircle,
   CheckCircle2,
-  Timer
+  Timer,
+  Info
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -116,7 +117,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   }, []);
 
   const provFiltradas = useMemo(() => {
-    // FILTROS ELIMINADOS SEGÚN SOLICITUD PARA MOSTRAR DATA INTEGRAL
+    // FILTROS ELIMINADOS PARA VISIÓN INTEGRAL SEGÚN SOLICITUD
     return ordenes.filter(o => {
       const itemDateFull = String(o.FECHAINICIO || o.FECHA || '').trim();
       const itemDate = itemDateFull.includes('T') ? itemDateFull.split('T')[0] : itemDateFull;
@@ -601,7 +602,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                             </td>
                             <td className="px-4 py-4 border-r border-gray-50 font-black text-blue-700 bg-blue-50/20">{info.apertura}</td>
                             <td className="px-4 py-4 border-r border-gray-50 font-mono text-slate-900">{info.dens}</td>
-                            <td className="px-6 py-4 text-right font-mono font-black text-slate-900 bg-slate-50/30 border-r border-gray-50">{formatNum(o.CANTIDAD || o.CANTPROGRAMADA, 0)}</td>
+                            <td className="px-6 py-4 text-right font-mono font-black text-slate-900 bg-slate-50/10 border-r border-gray-50">{formatNum(o.CANTIDAD || o.CANTPROGRAMADA, 0)}</td>
                             <td className="px-4 py-4 border-r border-gray-50 text-slate-300">UN</td>
                             <td className="px-4 py-4 border-r border-gray-50 font-black text-slate-400 uppercase text-[9px]">{o.MAQUINA || o.RECURSO || '—'}</td>
                             <td className="px-4 py-4 text-slate-200 font-bold">{o.ALMACEN || o.Almacen || '—'}</td>
