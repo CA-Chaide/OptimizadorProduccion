@@ -346,6 +346,22 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return date.toISOString().split('T')[0];
   }, []);
 
+  // Lógica de Hoy + 1 día laborable
+  const planningDate = useMemo(() => {
+    return addBusinessDays(new Date(), 1);
+  }, [addBusinessDays]);
+
+  const planningDateFormatted = useMemo(() => {
+    if (!planningDate) return '';
+    const date = new Date(planningDate + 'T00:00:00');
+    return date.toLocaleDateString('es-ES', { 
+      weekday: 'long', 
+      day: 'numeric', 
+      month: 'long', 
+      year: 'numeric' 
+    });
+  }, [planningDate]);
+
   useEffect(() => {
     if (kpiMaestroData.length > 0) {
       const newIndex: Record<string, any> = {};
@@ -969,8 +985,19 @@ export const TacticalPlanForrosSection: React.FC = () => {
           </div>
         </div>
         <div className="flex flex-wrap gap-4 items-center">
-          <div className="bg-slate-50 border border-slate-100 rounded-3xl p-5 flex items-center gap-5 min-w-[200px]">
-            <div className="bg-indigo-700 p-3 rounded-2xl text-white"><MapPin className="w-5 h-5" /></div>
+          {/* Nuevo indicador de fecha de planificación */}
+          <div className="bg-slate-50 border border-slate-100 rounded-3xl p-5 flex items-center gap-5 min-w-[240px]">
+            <div className="bg-indigo-700 p-3 rounded-2xl text-white shadow-md shadow-indigo-200"><CalendarIcon className="w-5 h-5" /></div>
+            <div>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Planificación para</p>
+              <p className="text-sm font-black text-indigo-900 capitalize">
+                {planningDateFormatted}
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-slate-50 border border-slate-100 rounded-3xl p-5 flex items-center gap-5 min-w-[180px]">
+            <div className="bg-indigo-600 p-3 rounded-2xl text-white shadow-md shadow-indigo-100"><MapPin className="w-5 h-5" /></div>
             <div>
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">GYE (2000)</p>
               <p className="text-2xl font-black text-slate-900 font-mono">
@@ -978,8 +1005,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
               </p>
             </div>
           </div>
-          <div className="bg-slate-50 border border-slate-100 rounded-3xl p-5 flex items-center gap-5 min-w-[200px]">
-            <div className="bg-slate-800 p-3 rounded-2xl text-white"><MapPin className="w-5 h-5" /></div>
+          <div className="bg-slate-50 border border-slate-100 rounded-3xl p-5 flex items-center gap-5 min-w-[180px]">
+            <div className="bg-slate-800 p-3 rounded-2xl text-white shadow-md shadow-slate-200"><MapPin className="w-5 h-5" /></div>
             <div>
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">UIO (1000)</p>
               <p className="text-2xl font-black text-slate-900 font-mono">
