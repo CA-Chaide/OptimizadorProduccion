@@ -23,7 +23,8 @@ import {
   AlertCircle,
   CheckCircle2,
   Timer,
-  Info
+  Info,
+  ShoppingCart
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -83,6 +84,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   const [grupos, setGrupos] = useState<Grupo[]>([]);
   const [restricciones, setRestricciones] = useState<Restriccion[]>([]);
   const [ordenes, setOrders] = useState<any[]>([]);
+  const [ordenesProceso, setOrdenesProceso] = useState<any[]>([]);
   const [inventarioSAP, setInventarioSAP] = useState<any[]>([]);
   const [tiemposEnsamblado, setTiemposEnsamblado] = useState<any[]>([]);
   const [curadoData, setCuradoData] = useState<any[]>([]);
@@ -126,13 +128,36 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     return { code, desc, categoria: catStr, ...dimensions };
   }, []);
 
+  // FILTRO AGIL: Órdenes Provisionales (Solo almacén 1006)
   const provFiltradas = useMemo(() => {
     return ordenes.filter(o => {
+      const alm = String(o.ALMACEN || o.Almacen || '').trim();
+      if (alm !== '1006') return false;
+
       const itemDateFull = String(o.FECHAINICIO || o.FECHA || '').trim();
       const itemDate = itemDateFull.includes('T') ? itemDateFull.split('T')[0] : itemDateFull;
       return selectedDates.size === 0 || selectedDates.has(itemDate);
     });
   }, [ordenes, selectedDates]);
+
+  // FILTRO AGIL: Órdenes de Producción (FERT) bajo eje de responsables
+  const prodFiltradas = useMemo(() => {
+    const relevantResps = restricciones
+      .filter(r => r.nombre_restriccion === 'RESPCTRLPROD')
+      .flatMap(r => r.valor_restriccion.split(/[&,]/).map(v => v.trim()))
+      .filter(v => v !== '');
+
+    return ordenesProceso.filter(o => {
+      const resp = String(o.RESP_CONTROL_PROD || o.RESPCONTROLPROD || o.RespControlProd || '').trim();
+      const matchResp = relevantResps.length === 0 || relevantResps.includes(resp);
+      
+      const itemDateFull = String(o.FECHA_INICIO || o.FECHA || o.FECHAINICIO || '').trim();
+      const itemDate = itemDateFull.includes('T') ? itemDateFull.split('T')[0] : itemDateFull;
+      const matchDate = selectedDates.size === 0 || selectedDates.has(itemDate);
+
+      return matchResp && matchDate;
+    });
+  }, [ordenesProceso, restricciones, selectedDates]);
 
   const handleProcessResumen = useCallback(async () => {
     if (provFiltradas.length === 0) {
@@ -280,11 +305,11 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       .sort((a, b) => (b.fabDate?.getTime() || 0) - (a.fabDate?.getTime() || 0));
   }, [curadoData, extractMaterialInfo]);
 
+  // FILTRO AGIL: Solo Bloque Formulado en Inventario
   const filteredInventario = useMemo(() => {
     return inventarioSAP.filter(row => {
-      const resp = String(getProp(row, ['RESP_CONTROL_PROD', 'RESPCONTROLPROD', 'RESP_CTRL_PROD', 'RESPONSABLE'])).trim();
-      // FILTRO AGIL: Mostrar solo responsable 005 en inventario
-      return resp === '005';
+      const nombre = String(row.NOMBRE || row.DESCRIPCION || '').toUpperCase();
+      return nombre.includes('BLOQUE FORMULADO');
     });
   }, [inventarioSAP]);
 
@@ -326,16 +351,18 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       setGrupos(filteredGroups);
       const groupsIds = filteredGroups.map(g => g.codigo_grupo);
 
-      const [restrsRes, provsRes, invRes, timesRes, curadoRes] = await Promise.all([
+      const [restrsRes, provsRes, invRes, timesRes, curadoRes, fertsRes] = await Promise.all([
         restriccionService.getAll(),
         serviciosService.OrdenesProvisionalesPaginados(1, 20000),
         serviciosService.getInventarioAñoActual(),
         serviciosService.getTiemposEnsamblado(1, 15000),
-        serviciosService.getTiemposCuradoBloqueFormulado(1, 3000)
+        serviciosService.getTiemposCuradoBloqueFormulado(1, 3000),
+        serviciosService.getOrdenesFert(1, 20000)
       ]);
 
       setRestricciones((restrsRes.data || []).filter((r: any) => groupsIds.includes(r.codigo_grupo)));
       setOrders(provsRes.data?.data || provsRes.data || []);
+      setOrdenesProceso(fertsRes.data?.data || fertsRes.data || []);
       setInventarioSAP(Array.isArray(invRes.data) ? invRes.data : []);
       setTiemposEnsamblado(timesRes.data?.data || timesRes.data || []);
       setCuradoData(curadoRes.data || []);
@@ -424,11 +451,12 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-4 h-11 bg-gray-100/50 p-1.5 rounded-2xl border border-gray-200 mb-8">
+        <TabsList className="grid grid-cols-5 h-11 bg-gray-100/50 p-1.5 rounded-2xl border border-gray-200 mb-8">
           {[ 
             { v: 'resumen', l: 'Salida de Datos', i: LayoutDashboard }, 
             { v: 'curado', l: 'Control Curado', i: ThermometerSnowflake },
             { v: 'ordenes', l: 'Provisionales', i: Package }, 
+            { v: 'ordenesProd', l: 'Órdenes Prod (FERT)', i: ShoppingCart },
             { v: 'inventario', l: 'Inventarios SAP', i: Database }
           ].map(tab => (
             <TabsTrigger key={tab.v} value={tab.v} className="gap-2 text-[10px] font-black uppercase transition-all data-[state=active]:bg-white data-[state=active]:shadow-lg data-[state=active]:text-primary rounded-xl">
@@ -601,7 +629,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         <TabsContent value="ordenes" className="animate-in fade-in duration-300 text-left">
            <div className="border-2 border-gray-50 rounded-[2rem] shadow-xl overflow-hidden bg-white">
               <div className="overflow-x-auto">
-                <table className="w-full text-[10px] text-center border-collapse">
+                <table className="min-w-full text-[10px] text-center border-collapse">
                   <thead className="bg-[#1e293b] text-white uppercase font-black tracking-widest text-[8px] border-b border-white/5 sticky top-0 z-10">
                     <tr>
                       <th className="px-6 py-5 text-left border-r border-white/5">Orden Previsional</th>
@@ -616,7 +644,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                   </thead>
                   <tbody className="divide-y divide-gray-50 font-bold text-slate-600">
                     {provFiltradas.length === 0 ? (
-                      <tr><td colSpan={8} className="py-24 text-slate-200 uppercase tracking-widest italic font-black opacity-40">No se detectaron órdenes provisionales</td></tr>
+                      <tr><td colSpan={8} className="py-24 text-slate-200 uppercase tracking-widest italic font-black opacity-40">No se detectaron órdenes provisionales (Almacén 1006)</td></tr>
                     ) : (
                       provFiltradas.map((o, idx) => {
                         const info = extractMaterialInfo(o);
@@ -632,7 +660,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                             <td className="px-6 py-4 text-right font-mono font-black text-slate-900 bg-slate-50/10 border-r border-gray-50">{formatNum(o.CANTIDAD || o.CANTPROGRAMADA, 0)}</td>
                             <td className="px-4 py-4 border-r border-gray-50 text-slate-300">UN</td>
                             <td className="px-4 py-4 border-r border-gray-50 font-black text-slate-400 uppercase text-[9px]">{o.MAQUINA || o.RECURSO || '—'}</td>
-                            <td className="px-4 py-4 text-slate-200 font-bold">{o.ALMACEN || o.Almacen || '—'}</td>
+                            <td className="px-4 py-4 text-indigo-700 font-black bg-indigo-50/30">{o.ALMACEN || o.Almacen || '—'}</td>
                           </tr>
                         );
                       })
@@ -643,6 +671,51 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
            </div>
         </TabsContent>
 
+        <TabsContent value="ordenesProd" className="animate-in fade-in duration-300 text-left">
+          <div className="border-2 border-gray-50 rounded-[2rem] shadow-xl overflow-hidden bg-white">
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-[10px] text-center border-collapse">
+                <thead className="bg-[#1e293b] text-white uppercase font-black tracking-widest text-[8px] border-b border-white/5 sticky top-0 z-10">
+                  <tr>
+                    <th className="px-6 py-5 text-left border-r border-white/5">Orden Prod. (FERT)</th>
+                    <th className="px-6 py-5 text-left border-r border-white/5">Fecha</th>
+                    <th className="px-6 py-5 text-left border-r border-white/5">Material / Descripción</th>
+                    <th className="px-6 py-5 border-r border-white/5 text-right font-black">Cant. Programada</th>
+                    <th className="px-4 py-5 border-r border-white/5">Responsable</th>
+                    <th className="px-4 py-5 border-r border-white/5">Máquina</th>
+                    <th className="px-4 py-5">Almacén</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50 font-bold text-slate-600">
+                  {prodFiltradas.length === 0 ? (
+                    <tr><td colSpan={7} className="py-24 text-slate-200 uppercase font-black tracking-widest italic opacity-40">No se detectaron órdenes de producción activas</td></tr>
+                  ) : (
+                    prodFiltradas.map((o, idx) => {
+                      const info = extractMaterialInfo(o);
+                      return (
+                        <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                          <td className="px-6 py-4 text-left font-mono font-black text-indigo-900 border-r border-gray-50">{o.ORDEN || o.ORDEN_PROCESO || '—'}</td>
+                          <td className="px-6 py-4 text-left font-mono text-[9px] text-slate-400 border-r border-gray-50">{o.FECHA || o.FECHA_INICIO || '—'}</td>
+                          <td className="px-6 py-4 text-left border-r border-gray-50 max-w-[350px] truncate">
+                            <span className="text-primary font-black block text-[11px]">{info.code}</span>
+                            <span className="text-slate-400 text-[9px] uppercase italic block leading-tight">{info.desc}</span>
+                          </td>
+                          <td className="px-6 py-4 text-right font-mono font-black text-slate-900 bg-slate-50/10 border-r border-gray-50">{formatNum(o.CANT_PROG || o.CANTIDAD || o.CANTPROGRAMADA, 0)}</td>
+                          <td className="px-4 py-4 border-r border-gray-50">
+                            <Badge variant="outline" className="text-[9px] font-black bg-blue-50 text-blue-700 border-blue-100">{String(o.RESP_CONTROL_PROD || o.RESPCONTROLPROD || '—')}</Badge>
+                          </td>
+                          <td className="px-4 py-4 border-r border-gray-50 font-black text-slate-400 uppercase text-[9px]">{o.MAQUINA || o.RECURSO || '—'}</td>
+                          <td className="px-4 py-4 text-slate-400 font-bold">{o.ALMACEN || o.Almacen || '—'}</td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </TabsContent>
+
         <TabsContent value="inventario" className="animate-in fade-in duration-300 text-left">
           <Card className="rounded-[2rem] border-2 border-gray-100 shadow-xl overflow-hidden bg-white">
             <div className="overflow-x-auto max-h-[600px] relative">
@@ -650,7 +723,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                 <thead className="bg-[#1e293b] text-white border-b border-gray-100 uppercase font-black tracking-widest text-[8px] sticky top-0 z-10">
                   <tr>
                     <th className="px-6 py-5 border-r border-white/5">Material</th>
-                    <th className="px-6 py-5 border-r border-white/10 text-left">Descripción del Producto (SAP)</th>
+                    <th className="px-6 py-5 border-r border-white/10 text-left">Descripción del Bloque (SAP)</th>
                     <th className="px-3 py-5 border-r border-white/5">Centro</th>
                     <th className="px-3 py-5 border-r border-white/5 text-indigo-300">ALM.</th>
                     <th className="px-3 py-5 border-r border-white/5">Año/Mes</th>
@@ -662,7 +735,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-50 font-bold text-[11px]">
                   {filteredInventario.length === 0 ? (
-                    <tr><td colSpan={9} className="py-24 text-slate-200 font-black uppercase tracking-widest italic text-center">Sin stock registrado para el responsable 005</td></tr>
+                    <tr><td colSpan={9} className="py-24 text-slate-200 font-black uppercase tracking-widest italic text-center">Sin stock registrado para materiales de BLOQUE FORMULADO</td></tr>
                   ) : (
                     filteredInventario.map((row, i) => (
                       <tr key={i} className="hover:bg-blue-50/10 transition-colors">
@@ -689,7 +762,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       <div className="flex items-center gap-3 p-5 bg-indigo-50 border border-indigo-100 rounded-[1.5rem] shadow-sm text-left">
         <Info className="w-5 h-5 text-indigo-600 flex-shrink-0" />
         <p className="text-[10px] font-bold text-indigo-700 uppercase tracking-widest leading-relaxed">
-          Nota Técnica: Auditoría multinivel FERT->BLOQUE. Los estatus de curado se calculan automáticamente según la apertura del bloque y su estampa de tiempo de fabricación SAP.
+          Nota Técnica: Auditoría multinivel FERT->BLOQUE. Los filtros de agilidad limitan la vista a Almacén 1006 y materiales específicos de Bloque Formulado para optimizar la carga.
         </p>
       </div>
     </div>
