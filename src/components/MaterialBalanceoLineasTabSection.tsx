@@ -1,12 +1,13 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Plus, 
   Trash2, 
   LayoutGrid, 
   Download, 
-  AlertCircle
+  AlertCircle,
+  Loader2
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -15,6 +16,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import * as XLSX from 'xlsx';
+import { serviciosService } from '@/services/servicios.service';
 
 interface MaterialBalanceoRow {
   id: string;
@@ -24,6 +26,12 @@ interface MaterialBalanceoRow {
   habilitado: boolean;
   minimo: number;
   maximo: number;
+}
+
+interface DisplayRow extends MaterialBalanceoRow {
+  puestoTrabajo: string;
+  tiempoMin: number;
+  esFilaTecnica: boolean;
 }
 
 const STORAGE_KEY = 'material_balanceo_lineas_data';
@@ -58,7 +66,37 @@ const INITIAL_DATA: MaterialBalanceoRow[] = [
 export const MaterialBalanceoLineasTabSection: React.FC = () => {
   const { toast } = useToast();
   const [rows, setRows] = useState<MaterialBalanceoRow[]>([]);
+  const [technicalData, setTechnicalData] = useState<any[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [isLoadingTech, setIsLoadingTech] = useState(false);
+
+  const normalizeMaterialCode = (code: string | number): string => {
+    return String(code || '').trim().slice(-8);
+  };
+
+  // Cargar datos técnicos de la API
+  const fetchTechnicalData = async () => {
+    setIsLoadingTech(true);
+    try {
+      let allTiempos: any[] = [];
+      let page = 1;
+      let hasMore = true;
+      const pageSize = 5000;
+
+      while (hasMore && page <= 10) {
+        const response = await serviciosService.getTiemposEnsamblado(page, pageSize);
+        const raw = Array.isArray(response?.data) ? response.data : [];
+        allTiempos = [...allTiempos, ...raw];
+        if (raw.length < pageSize) hasMore = false; else page++;
+      }
+      setTechnicalData(allTiempos);
+    } catch (error) {
+      console.error('Error loading technical data:', error);
+      toast({ title: "Error", description: "No se pudieron cargar los tiempos técnicos.", variant: "destructive" });
+    } finally {
+      setIsLoadingTech(false);
+    }
+  };
 
   // Cargar datos del localStorage al montar
   useEffect(() => {
@@ -66,7 +104,6 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
     if (stored) {
       try {
         const parsed = JSON.parse(stored);
-        // Migrar datos antiguos si no tienen minimo/maximo
         const migrated = parsed.map((r: any) => ({
           ...r,
           minimo: r.minimo !== undefined ? r.minimo : 0,
@@ -80,6 +117,7 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
       setRows(INITIAL_DATA);
     }
     setIsLoaded(true);
+    fetchTechnicalData();
   }, []);
 
   // Guardar datos en localStorage cuando cambian
@@ -110,11 +148,51 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
     setRows(rows.map(r => r.id === id ? { ...r, [field]: value } : r));
   };
 
+  // LÓGICA DE UNIÓN: Expandir filas por puestos de trabajo técnicos
+  const expandedRows = useMemo(() => {
+    const results: DisplayRow[] = [];
+
+    rows.forEach(baseRow => {
+      const materialNorm = normalizeMaterialCode(baseRow.material);
+      const lineaNorm = baseRow.linea.trim().toUpperCase();
+
+      // Buscar coincidencias en technicalData
+      const matches = technicalData.filter(tech => {
+        const techMaterial = normalizeMaterialCode(tech.CodMaterial);
+        const techLinea = String(tech.Linea || '').trim().toUpperCase();
+        return techMaterial === materialNorm && (techLinea === lineaNorm || techLinea.includes(lineaNorm));
+      });
+
+      if (matches.length > 0) {
+        matches.forEach(match => {
+          results.push({
+            ...baseRow,
+            puestoTrabajo: String(match.PuestoTrabajo || '-'),
+            tiempoMin: Number(match.Tiempo_Min || 0),
+            esFilaTecnica: true
+          });
+        });
+      } else {
+        // Si no hay datos técnicos, mostrar fila base con valores vacíos
+        results.push({
+          ...baseRow,
+          puestoTrabajo: '-',
+          tiempoMin: 0,
+          esFilaTecnica: false
+        });
+      }
+    });
+
+    return results;
+  }, [rows, technicalData]);
+
   const handleExport = () => {
-    const dataToExport = rows.map(r => ({
+    const dataToExport = expandedRows.map(r => ({
       'Línea': r.linea,
       'Material': r.material,
       'Descripción': r.descripcion,
+      'Puesto Trabajo': r.puestoTrabajo,
+      'Tiempo (min)': r.tiempoMin,
       'Habilitado': r.habilitado ? 'SI' : 'NO',
       'Mínimo (%)': r.minimo,
       'Máximo (%)': r.maximo
@@ -123,12 +201,9 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
     const ws = XLSX.utils.json_to_sheet(dataToExport);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Materiales Balanceo");
-    XLSX.writeFile(wb, "Material_Balanceo_Lineas.xlsx");
+    XLSX.writeFile(wb, "Material_Balanceo_Con_Puestos.xlsx");
     
-    toast({
-      title: "Éxito",
-      description: "Plan de balanceo exportado a Excel."
-    });
+    toast({ title: "Éxito", description: "Plan de balanceo exportado a Excel." });
   };
 
   return (
@@ -138,7 +213,7 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
           <LayoutGrid className="w-6 h-6 text-indigo-600" />
           <div>
             <h3 className="text-xl font-semibold text-gray-800">Material Balanceo Líneas</h3>
-            <p className="text-xs text-gray-500">Configuración de materiales y límites porcentuales para el balanceo de carga</p>
+            <p className="text-xs text-gray-500">Configuración técnica y límites porcentuales por puesto de trabajo</p>
           </div>
         </div>
         
@@ -161,6 +236,8 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
                   <th className="px-4 py-3 text-left font-bold text-gray-600 uppercase tracking-wider w-32 border-r">Línea</th>
                   <th className="px-4 py-3 text-left font-bold text-gray-600 uppercase tracking-wider w-40 border-r">Material</th>
                   <th className="px-4 py-3 text-left font-bold text-gray-600 uppercase tracking-wider border-r">Descripción</th>
+                  <th className="px-4 py-3 text-left font-bold text-indigo-700 uppercase tracking-wider border-r bg-indigo-50/20">Puesto Trabajo</th>
+                  <th className="px-4 py-3 text-right font-bold text-indigo-700 uppercase tracking-wider border-r bg-indigo-50/20">tiempo (min)</th>
                   <th className="px-4 py-3 text-center font-bold text-gray-600 uppercase tracking-wider w-24 border-r">Habilitado</th>
                   <th className="px-4 py-3 text-center font-bold text-gray-600 uppercase tracking-wider w-16 border-r">Acción</th>
                   <th className="px-4 py-3 text-center font-bold text-indigo-700 uppercase tracking-wider w-24 border-r bg-indigo-50/30">Mínimo (%)</th>
@@ -168,8 +245,17 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {rows.map((row) => (
-                  <tr key={row.id} className={cn("hover:bg-gray-50 transition-colors", !row.habilitado && "bg-gray-50/50 opacity-70")}>
+                {isLoadingTech && expandedRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} className="px-6 py-12 text-center text-gray-400">
+                      <div className="flex flex-col items-center gap-2">
+                        <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
+                        <span>Sincronizando información técnica de puestos...</span>
+                      </div>
+                    </td>
+                  </tr>
+                ) : expandedRows.map((row, idx) => (
+                  <tr key={`${row.id}-${idx}`} className={cn("hover:bg-gray-50 transition-colors", !row.habilitado && "bg-gray-50/50 opacity-70")}>
                     <td className="px-2 py-1.5 border-r">
                       <Input 
                         value={row.linea} 
@@ -193,6 +279,12 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
                         placeholder="Descripción del material"
                         className="h-8 text-xs border-none shadow-none focus-visible:ring-1 focus-visible:ring-indigo-500"
                       />
+                    </td>
+                    <td className="px-4 py-1.5 border-r font-medium text-indigo-800 bg-indigo-50/10">
+                      {row.puestoTrabajo}
+                    </td>
+                    <td className="px-4 py-1.5 border-r text-right font-mono font-bold text-indigo-700 bg-indigo-50/10">
+                      {row.tiempoMin > 0 ? row.tiempoMin.toLocaleString(undefined, { minimumFractionDigits: 3 }) : '-'}
                     </td>
                     <td className="px-2 py-1.5 border-r text-center">
                       <div className="flex items-center justify-center">
@@ -231,9 +323,9 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
                     </td>
                   </tr>
                 ))}
-                {rows.length === 0 && (
+                {expandedRows.length === 0 && !isLoadingTech && (
                   <tr>
-                    <td colSpan={7} className="px-6 py-12 text-center text-gray-400 italic">
+                    <td colSpan={9} className="px-6 py-12 text-center text-gray-400 italic">
                       No hay materiales configurados. Haga clic en "Añadir Línea" para comenzar.
                     </td>
                   </tr>
@@ -247,7 +339,7 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
       <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg text-blue-800">
         <AlertCircle className="w-4 h-4 flex-shrink-0" />
         <p className="text-xs">
-          <b>Nota:</b> Los porcentajes de <b>Mínimo</b> y <b>Máximo</b> definen los límites permitidos de ajuste para el motor de balanceo sobre las cantidades originales.
+          <b>Nota:</b> Los puestos de trabajo y tiempos se sincronizan automáticamente desde la base técnica relacionando la <b>Línea</b> y el <b>Material</b>. Si un material tiene múltiples puestos, se mostrará una fila por cada uno.
         </p>
       </div>
     </div>
