@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -20,8 +21,7 @@ import {
   ShoppingCart,
   MapPin,
   Box,
-  TrendingUp,
-  Info
+  TrendingUp
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -39,7 +39,7 @@ import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 import { cn } from '@/lib/utils';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, differenceInDays, isValid } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, differenceInDays, isValid, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 const BLOCK_LENGTH_METERS = 20;
@@ -135,8 +135,8 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     return ordenesFert.filter(o => {
       const centro = String(getProp(o, ['CENTRO', 'Centro'])).trim();
       const alm = String(getProp(o, ['ALMACEN', 'Almacen'])).trim();
-      const matchArea = alm === '1006' || centro === '1000';
-      if (!matchArea) return false;
+      // Filtro enfocado a Formulación y Almacén 1006
+      if (alm !== '1006' && centro !== '1000') return false;
       const itemDateFull = getProp(o, ['FECHA', 'FECHAINICIO', 'FECHA_INICIO']).trim();
       const itemDate = itemDateFull.includes('T') ? itemDateFull.split('T')[0] : itemDateFull;
       return selectedDates.size === 0 || selectedDates.has(itemDate);
@@ -222,14 +222,13 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     }), { unidades: 0, kilos: 0, bloques: 0 });
   }, [unifiedSummaryData]);
 
-  // Auditoria Curado: Sin filtros restrictivos, solo mapeo
   const curadoAudit = useMemo(() => {
     return curadoData.map(row => {
       const info = extractMaterialInfo(row);
       const fabDateRaw = getProp(row, ['FECHA_FABRICACION', 'FECHA', 'FECHA_FAB']);
       
       let fabDate: Date | null = null;
-      if (fabDateRaw && fabDateRaw !== 'null') {
+      if (fabDateRaw && fabDateRaw !== 'null' && fabDateRaw !== '—') {
         const d = fabDateRaw.includes('T') ? fabDateRaw.split('T')[0] : fabDateRaw;
         const parts = d.split('-');
         if (parts.length === 3) {
@@ -241,12 +240,12 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         }
       }
       
-      let estatus = 'FECHA INVÁLIDA';
+      let estatus = 'PENDIENTE';
       let diasTranscurridos = 0;
       let diasRequeridos = 3; 
       
       if (fabDate && isValid(fabDate)) {
-        diasTranscurridos = differenceInDays(new Date(), fabDate);
+        diasTranscurridos = Math.abs(differenceInDays(new Date(), fabDate));
         diasRequeridos = info.apertura === '194.5' ? 2 : 3;
         estatus = diasTranscurridos >= diasRequeridos ? 'DISPONIBLE' : 'EN CURADO';
       }
@@ -293,7 +292,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         restriccionService.getAll(),
         serviciosService.OrdenesProvisionalesPaginados(1, 20000).catch(() => ({ data: [] })),
         serviciosService.getInventarioAñoActual().catch(() => ({ data: [] })),
-        serviciosService.getTiemposCuradoBloqueFormulado(1, 3000).catch(() => ({ data: [] })),
+        serviciosService.getTiemposCuradoBloqueFormulado(1, 5000).catch(() => ({ data: [] })),
         serviciosService.getOrdenesFert(1, 20000).catch(() => ({ data: [] }))
       ]);
 
@@ -322,22 +321,13 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     return [...Array(padding).fill(null), ...days];
   }, [viewDate]);
 
-  if (!mounted) return null;
-
-  if (isLoading) {
-    return (
-      <div className="flex flex-col items-center justify-center p-20 gap-4">
-        <Loader2 className="w-10 h-10 animate-spin text-primary" />
-        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest animate-pulse">Sincronizando SAP Formulación...</p>
-      </div>
-    );
-  }
+  if (!mounted) return <div className="p-4 md:p-6 min-h-screen bg-white" />;
 
   return (
     <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
       <div className="flex items-center justify-between pb-4 border-b border-gray-100">
         <div className="flex items-center space-x-3 text-left">
-          <div className="p-2 bg-indigo-600/10 rounded-xl"><FlaskConical className="w-6 h-6 text-indigo-600" /></div>
+          <div className="p-2 bg-indigo-600/10 rounded-xl shadow-inner"><FlaskConical className="w-6 h-6 text-indigo-600" /></div>
           <h2 className="text-xl font-black text-gray-800 uppercase tracking-tighter">Programación Táctica Formulación</h2>
         </div>
 
@@ -493,12 +483,13 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                  </thead>
                  <tbody className="divide-y divide-gray-50 font-bold">
                     {curadoAudit.length === 0 ? (
-                      <tr><td colSpan={8} className="py-24 text-slate-200 uppercase font-black tracking-widest text-center italic">Sin registros en la base de datos de curado</td></tr>
+                      <tr><td colSpan={8} className="py-24 text-slate-200 uppercase font-black tracking-widest text-center italic">Sin registros detectados en curado</td></tr>
                     ) : (
                       curadoAudit.map((row, idx) => {
                         const isReady = row.estatus === 'DISPONIBLE';
+                        const uniqueKey = `curado-${row.nroBloque}-${idx}`;
                         return (
-                          <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                          <tr key={uniqueKey} className="hover:bg-slate-50 transition-colors">
                             <td className="px-6 py-4 text-left font-mono font-black text-indigo-600 border-r border-gray-100">{row.nroBloque || '—'}</td>
                             <td className="px-6 py-4 text-left uppercase text-slate-400 italic text-[9px] border-r border-gray-100 truncate max-w-[280px]" title={row.desc}>{row.desc}</td>
                             <td className="px-4 py-4 border-r border-gray-100 font-black text-blue-700 bg-blue-50/20">{row.apertura}</td>
