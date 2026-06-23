@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
@@ -29,6 +28,8 @@ import { MONTH_NAMES } from '@/constants/constants';
 import { serviciosService } from '@/services/servicios.service';
 import { useAppContext } from '@/context/AppProvider';
 import * as XLSX from 'xlsx';
+
+const STORAGE_KEY = 'presupuesto_semanal_filters_v2';
 
 // Helper para obtener el número de semana del año (ISO-8601)
 function getISOWeek(date: Date) {
@@ -68,9 +69,37 @@ export const PresupuestoProdSemanalTabSection: React.FC = () => {
 
   const [presupuestoData, setPresupuestoData] = useState<any[]>([]);
 
+  // 1. Cargar filtros guardados al montar
   useEffect(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.year) setSelectedYear(parsed.year);
+        if (parsed.month) setSelectedMonth(parsed.month);
+        if (parsed.weeks) setSelectedWeeks(parsed.weeks);
+        if (parsed.center) setSelectedCenter(parsed.center);
+        if (parsed.searchTerm) setSearchTerm(parsed.searchTerm);
+      } catch (e) {
+        console.error('Error loading saved filters:', e);
+      }
+    }
     setMounted(true);
   }, []);
+
+  // 2. Guardar filtros cada vez que cambian
+  useEffect(() => {
+    if (mounted) {
+      const filtersToSave = {
+        year: selectedYear,
+        month: selectedMonth,
+        weeks: selectedWeeks,
+        center: selectedCenter,
+        searchTerm: searchTerm
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(filtersToSave));
+    }
+  }, [selectedYear, selectedMonth, selectedWeeks, selectedCenter, searchTerm, mounted]);
 
   const years = ["2024", "2025", "2026"];
 
