@@ -218,12 +218,11 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     setIsProcessingResumen(false);
   }, [provFiltradas, inventarioSAP, extractMaterialInfo]);
 
-  const globalStats = useMemo(() => {
-    return unifiedSummaryData.reduce((acc, row) => ({
-      unidades: acc.unidades + row.unidades,
-      kilos: acc.kilos + row.kgTotal,
-      bloques: acc.bloques + row.planReposicion
-    }), { unidades: 0, kilos: 0, bloques: 0 });
+  // Segmentación de datos para los dos espacios del Resumen
+  const summarySpaces = useMemo(() => {
+    const withAperture = unifiedSummaryData.filter(row => row.apertura !== '—');
+    const withoutAperture = unifiedSummaryData.filter(row => row.apertura === '—');
+    return { withAperture, withoutAperture };
   }, [unifiedSummaryData]);
 
   const curadoAudit = useMemo(() => {
@@ -237,7 +236,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         const parts = d.split('-');
         if (parts.length === 3) {
           const tempDate = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
-          if (isValid(tempDate)) {
+          if (isValid(tempDate) && !isNaN(tempDate.getTime())) {
             fabDate = tempDate;
             fabDate.setHours(0,0,0,0);
           }
@@ -269,13 +268,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       };
     });
   }, [curadoData, extractMaterialInfo]);
-
-  const filteredInventario = useMemo(() => {
-    return inventarioSAP.filter(row => {
-      const nombre = String(getProp(row, ['NOMBRE', 'DESCRIPCION']) || '').toUpperCase();
-      return nombre.includes('BLOQUE FORMULADO');
-    });
-  }, [inventarioSAP]);
 
   useEffect(() => {
     setMounted(true);
@@ -327,6 +319,88 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     const padding = startDay === 0 ? 6 : startDay - 1;
     return [...Array(padding).fill(null), ...days];
   }, [viewDate]);
+
+  const renderSummaryTable = (data: any[], title: string, icon: any) => {
+    const tKg = data.reduce((s, r) => s + r.kgTotal, 0);
+    const tStockKg = data.reduce((s, r) => s + r.stockKg, 0);
+    const tStockUn = data.reduce((s, r) => s + r.stockUN, 0);
+    const tPlanUn = data.reduce((s, r) => s + r.planReposicion, 0);
+
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between px-2">
+          <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
+            {React.createElement(icon, { className: "w-4 h-4 text-indigo-600" })}
+            {title}
+          </h3>
+          <div className="flex gap-4">
+            <Badge variant="outline" className="text-[10px] font-black border-slate-200 bg-slate-50">T. STOCK: {formatNum(tStockKg, 0)} KG</Badge>
+            <Badge variant="outline" className="text-[10px] font-black border-slate-200 bg-slate-50">T. UNIDADES: {Math.round(tStockUn)} UN</Badge>
+          </div>
+        </div>
+
+        <div className="border-2 border-gray-100 rounded-[2rem] shadow-xl overflow-hidden bg-white text-left">
+          <div className="overflow-x-auto max-h-[500px]">
+            <table className="w-full border-collapse text-center font-sans text-[10px] text-gray-700">
+              <thead className="bg-[#1e293b] text-white uppercase font-black tracking-widest text-[8px] sticky top-0 z-20 border-b-2 border-white/10">
+                <tr>
+                  <th className="px-6 py-4 text-left border-r border-white/5 w-32">Bloque Formulado</th>
+                  <th className="px-6 py-4 text-left border-r border-white/5">Descripción Técnica SAP</th>
+                  <th className="px-3 py-4 border-r border-white/5">Dens.</th>
+                  <th className="px-3 py-4 border-r border-white/5">Apert.</th>
+                  <th className="px-4 py-4 border-r border-white/5">Total Kg</th>
+                  <th className="px-6 py-4 border-r border-white/5 text-emerald-400 bg-black/10">Stock (Kg)</th>
+                  <th className="px-4 py-4 border-r border-white/5 text-emerald-400 bg-black/10 font-black">Stock (UN)</th>
+                  <th className="px-6 py-4 text-right bg-yellow-500/20 text-yellow-300 font-black">Plan Reposición (UN)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50 font-bold">
+                {data.map((row, idx) => {
+                  const isExp = expandedGroups.has(row.blockCode);
+                  return (
+                    <React.Fragment key={idx}>
+                      <tr className="hover:bg-slate-50 transition-colors cursor-pointer" onClick={() => { const n = new Set(expandedGroups); isExp ? n.delete(row.blockCode) : n.add(row.blockCode); setExpandedGroups(n); }}>
+                        <td className="px-6 py-3 text-left font-mono font-black text-indigo-600 border-r border-gray-100 flex items-center gap-2">
+                           {isExp ? <Minus className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
+                           {row.blockCode}
+                        </td>
+                        <td className="px-6 py-3 text-left uppercase text-slate-900 font-black text-[9px] border-r border-gray-100 truncate max-w-[300px]">{row.blockDesc}</td>
+                        <td className="px-3 py-3 border-r border-gray-100 font-mono text-slate-400">{row.dens}</td>
+                        <td className="px-3 py-3 border-r border-gray-100 font-black text-blue-700 bg-blue-50/10">{row.apertura}</td>
+                        <td className="px-4 py-3 border-r border-gray-100 font-mono font-black text-indigo-600 bg-indigo-50/10">{row.kgTotal.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+                        <td className="px-6 py-3 border-r border-gray-100 text-right font-mono font-black text-emerald-600 bg-emerald-50/10">{row.stockKg.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                        <td className="px-4 py-3 border-r border-gray-100 text-right font-mono font-black text-emerald-800 bg-emerald-50/20">{row.stockUN.toFixed(1)}</td>
+                        <td className="px-6 py-3 text-right font-mono font-black text-yellow-700 bg-yellow-50/30">{row.planReposicion}</td>
+                      </tr>
+                      {isExp && row.ferts.map((f: any, fIdx: number) => (
+                        <tr key={`${idx}-${fIdx}`} className="bg-slate-50/50 text-[9px] text-slate-400 font-medium">
+                          <td className="px-6 py-1.5 text-left pl-10 italic">{f.code}</td>
+                          <td className="px-6 py-1.5 text-left uppercase italic truncate max-w-[300px]">{f.desc}</td>
+                          <td colSpan={2}></td>
+                          <td className="px-4 py-1.5 font-mono">{f.kg.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+                          <td colSpan={2}></td>
+                          <td className="px-6 py-1.5 text-right font-mono opacity-50">{f.bloques.toFixed(3)}</td>
+                        </tr>
+                      ))}
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+              <tfoot className="bg-[#0f172a] text-white font-black text-[9px] uppercase sticky bottom-0 z-20">
+                <tr>
+                  <td colSpan={4} className="px-6 py-4 text-right tracking-widest border-r border-white/5">Totales de Sección</td>
+                  <td className="px-4 py-4 border-r border-white/5 font-mono text-indigo-300">{formatNum(tKg, 1)}</td>
+                  <td className="px-6 py-4 border-r border-white/5 font-mono text-emerald-300 bg-emerald-500/10">{formatNum(tStockKg, 0)}</td>
+                  <td className="px-4 py-4 border-r border-white/5 font-mono text-emerald-300 bg-emerald-500/10">{Math.round(tStockUn)}</td>
+                  <td className="px-6 py-4 font-mono text-yellow-300 bg-yellow-500/10">{tPlanUn}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   if (!mounted) {
     return <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 font-sans text-left" />;
@@ -395,83 +469,21 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           ))}
         </TabsList>
 
-        <TabsContent value="resumen" className="space-y-8 animate-in fade-in duration-300">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-[#0f172a] p-6 rounded-[2.5rem] border border-white/5 shadow-2xl text-white">
-            <div className="flex flex-col gap-1 text-center">
-              <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Peso Total (Kg)</p>
-              <p className="text-2xl font-black font-mono text-indigo-400 tracking-tighter">{globalStats.kilos.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
-            </div>
-            <div className="flex flex-col gap-1 text-center border-l border-white/10">
-              <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Total UN (Láminas)</p>
-              <p className="text-2xl font-black font-mono text-emerald-400 tracking-tighter">{globalStats.unidades.toLocaleString()}</p>
-            </div>
-            <div className="flex flex-col gap-1 text-center border-l border-white/10">
-              <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Bloques Requeridos</p>
-              <p className="text-2xl font-black font-mono text-yellow-400 tracking-tighter">{globalStats.bloques}</p>
-            </div>
-          </div>
+        <TabsContent value="resumen" className="space-y-12 animate-in fade-in duration-300">
+           {isProcessingResumen ? (
+             <div className="py-32 text-center">
+                <Loader2 className="w-12 h-12 animate-spin mx-auto text-primary mb-6" />
+                <p className="text-[11px] font-black uppercase text-slate-400 tracking-widest">Ejecutando Explosión Técnica BOM: {resumenProgress.current} / {resumenProgress.total}</p>
+             </div>
+           ) : (
+             <>
+               {/* ESPACIO 1: BLOQUES CON APERTURA TÉCNICA */}
+               {renderSummaryTable(summarySpaces.withAperture, "Carga Operativa: Bloques con Apertura Técnica", TrendingUp)}
 
-          <div className="border-2 border-gray-100 rounded-[2.5rem] shadow-2xl overflow-hidden bg-white text-left">
-            <div className="overflow-x-auto max-h-[600px] relative">
-              <table className="w-full border-collapse text-center font-sans text-[10px] text-gray-700">
-                <thead className="bg-[#1e293b] text-white uppercase font-black tracking-widest text-[8px] sticky top-0 z-20 border-b-2 border-white/10">
-                  <tr>
-                    <th className="px-6 py-4 text-left border-r border-white/5 w-32">Bloque Formulado</th>
-                    <th className="px-6 py-4 text-left border-r border-white/5">Descripción Técnica SAP</th>
-                    <th className="px-3 py-4 border-r border-white/5">Dens.</th>
-                    <th className="px-3 py-4 border-r border-white/5">Apert.</th>
-                    <th className="px-4 py-4 border-r border-white/5 bg-white/5">Total Kg</th>
-                    <th className="px-4 py-4 border-r border-white/5">T. Unidades</th>
-                    <th className="px-6 py-4 border-r border-white/5 text-emerald-400 bg-black/10">Stock (Kg)</th>
-                    <th className="px-4 py-4 border-r border-white/5 text-emerald-400 bg-black/10 font-black">Stock (UN)</th>
-                    <th className="px-6 py-4 text-right bg-yellow-500/20 text-yellow-300 font-black">Subtotal Plan (UN)</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50 font-bold">
-                  {isProcessingResumen ? (
-                    <tr>
-                      <td colSpan={9} className="py-24 text-center">
-                        <Loader2 className="w-8 h-8 animate-spin mx-auto text-primary mb-3" />
-                        <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Ejecutando Explosión Técnica BOM: {resumenProgress.current} / {resumenProgress.total}</p>
-                      </td>
-                    </tr>
-                  ) : unifiedSummaryData.length === 0 ? (
-                    <tr><td colSpan={9} className="py-24 text-slate-200 uppercase font-black tracking-widest text-center italic">Presione el botón "ACTUALIZAR AUDITORÍA"</td></tr>
-                  ) : (
-                    unifiedSummaryData.map((row, idx) => (
-                      <React.Fragment key={idx}>
-                        <tr className="hover:bg-slate-50 transition-colors cursor-pointer" onClick={() => { const n = new Set(expandedGroups); n.has(row.blockCode) ? n.delete(row.blockCode) : n.add(row.blockCode); setExpandedGroups(n); }}>
-                          <td className="px-6 py-3 text-left font-mono font-black text-indigo-600 border-r border-gray-100 flex items-center gap-2">
-                             {expandedGroups.has(row.blockCode) ? <Minus className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
-                             {row.blockCode}
-                          </td>
-                          <td className="px-6 py-3 text-left uppercase text-slate-900 font-black text-[9px] border-r border-gray-100 truncate max-w-[250px]">{row.blockDesc}</td>
-                          <td className="px-3 py-3 border-r border-gray-100 font-mono text-slate-400">{row.dens}</td>
-                          <td className="px-3 py-3 border-r border-gray-100 font-black text-blue-700">{row.apertura}</td>
-                          <td className="px-4 py-3 border-r border-gray-100 font-mono font-black text-indigo-600 bg-indigo-50/10">{row.kgTotal.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
-                          <td className="px-4 py-3 border-r border-gray-100 font-mono text-slate-400">{row.unidades.toLocaleString()}</td>
-                          <td className="px-6 py-3 border-r border-gray-100 text-right font-mono font-black text-emerald-600 bg-emerald-50/10">{row.stockKg.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                          <td className="px-4 py-3 border-r border-gray-100 text-right font-mono font-black text-emerald-800 bg-emerald-50/20">{row.stockUN.toFixed(1)}</td>
-                          <td className="px-6 py-3 text-right font-mono font-black text-yellow-700 bg-yellow-50/30 text-sm">{row.planReposicion}</td>
-                        </tr>
-                        {expandedGroups.has(row.blockCode) && row.ferts.map((f: any, fIdx: number) => (
-                          <tr key={`${idx}-${fIdx}`} className="bg-slate-50/50 text-[9px] text-slate-400 font-medium">
-                            <td className="px-6 py-1.5 text-left pl-10 italic">{f.code}</td>
-                            <td className="px-6 py-1.5 text-left uppercase italic truncate max-w-[250px]">{f.desc}</td>
-                            <td colSpan={2}></td>
-                            <td className="px-4 py-1.5 font-mono">{f.kg.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
-                            <td className="px-4 py-1.5 font-mono">{f.qty}</td>
-                            <td colSpan={2}></td>
-                            <td className="px-6 py-1.5 text-right font-mono opacity-50">{f.bloques.toFixed(3)}</td>
-                          </tr>
-                        ))}
-                      </React.Fragment>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+               {/* ESPACIO 2: BLOQUES POR COMBINACIÓN (SIN APERTURA) */}
+               {renderSummaryTable(summarySpaces.withoutAperture, "Carga Operativa: Bloques por Combinación", Box)}
+             </>
+           )}
         </TabsContent>
 
         <TabsContent value="curado" className="animate-in fade-in duration-300 text-left">
@@ -652,7 +664,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       <div className="flex items-center gap-3 p-5 bg-indigo-50 border border-indigo-100 rounded-[1.5rem] shadow-sm text-left">
         <Info className="w-5 h-5 text-indigo-600 flex-shrink-0" />
         <p className="text-[10px] font-bold text-indigo-700 uppercase tracking-widest leading-relaxed">
-          Nota Técnica: Auditoría multinivel FERT->BLOQUE. Los estatus de curado se calculan automáticamente según la apertura del bloque y su estampa de tiempo de fabricación SAP.
+          Nota Técnica: Auditoría de carga segmentada por Apertura y Combinación. Los totales de stock reflejan la disponibilidad física traducida a unidades reales de bloque.
         </p>
       </div>
     </div>
