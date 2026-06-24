@@ -171,7 +171,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   
   const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set());
-  const [viewDate, setViewDate] = useState<Date>(new Date(2026, 0, 1)); // Fixed initial date for hydration
+  const [viewDate, setViewDate] = useState<Date>(new Date(2026, 0, 1)); 
   
   const [unifiedNeeds, setUnifiedNeeds] = useState<UnifiedNeedRow[]>([]);
   const [isProcessingResumen, setIsProcessingResumen] = useState(false);
@@ -244,7 +244,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       setOrders(provs.data?.data || provs.data || []);
       setOrdersFert(ferts.data?.data || ferts.data || []);
       setKpiLooperData(kpiLooper?.data || []);
-      setInventarioSAP(invSAP?.data || []);
+      setInventarioSAP(Array.isArray(invSAP?.data) ? invSAP.data : []);
 
     } catch (e) {
       console.error('Error init TacticalPlanCorteLaminado:', e);
@@ -454,13 +454,15 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         const totalStockUnGroup = items.reduce((s, r) => s + r.totalStockUN, 0);
         const totalConsumoUnGroup = items.reduce((s, r) => s + r.totalNroRollos, 0);
         
+        // Lógica de Corridas Técnicas (Múltiplos de 40)
         const groupDeficit = Math.max(0, totalConsumoUnGroup - totalStockUnGroup);
-        const blocksToProduce = Math.ceil(groupDeficit / 40);
-        const totalUnitsInPlan = blocksToProduce * 40;
+        const runsNeeded = Math.ceil(groupDeficit / 40);
+        const totalUnitsInPlan = runsNeeded * 40;
 
         items.forEach(row => {
           row.porcentajeNecesidad = totalKgGroup > 0 ? (row.totalConsumoKg / totalKgGroup) : 0;
           row.hasDeficit = totalConsumoUnGroup > totalStockUnGroup;
+          // Distribución proporcional del plan de corridas
           row.planUn = totalUnitsInPlan > 0 ? Math.ceil(totalUnitsInPlan * row.porcentajeNecesidad) : 0;
           row.planKg = row.planUn * row.peso;
           row.tProceso = ((row.looperTRolloMin || 0) * row.planUn) / 60;
