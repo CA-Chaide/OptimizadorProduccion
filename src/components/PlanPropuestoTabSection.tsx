@@ -97,7 +97,15 @@ export const PlanPropuestoTabSection: React.FC = () => {
 
       const centers = [...new Set((groupsRes?.data || []).map((g: any) => String(g.centro).trim()))].sort();
       setAvailableCenters(centers);
-      if (centers.length > 0 && !selectedCenter) setSelectedCenter(centers[0]);
+      
+      // Sincronizar fecha de programación desde localStorage si existe (Centro 1000)
+      const savedProgDates = localStorage.getItem('sim_prog_dates');
+      if (savedProgDates) {
+        try {
+          const parsed = JSON.parse(savedProgDates);
+          if (parsed['1000']) setProgrammingDate(parsed['1000']);
+        } catch(e) {}
+      }
 
       let allTiempos: any[] = [];
       let page = 1;
@@ -117,13 +125,23 @@ export const PlanPropuestoTabSection: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [addNotification, selectedCenter]);
+  }, [addNotification]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
-  // ALGORITMO DE BALANCEO BASADO EN TIEMPO DISPONIBLE Y MATERIALES DE BALANCEO
+  // Helper para mapear líneas según categoría (L1, L2, L3, L5)
+  const mapOrderLine = (order: any): string => {
+    const cat = String(order.CATEGORIA || order.Categoria || '').toUpperCase();
+    if (cat.includes('L1')) return 'LINEA 1';
+    if (cat.includes('L2')) return 'LINEA 2';
+    if (cat.includes('L3')) return 'LINEA 3';
+    if (cat.includes('L5') || cat.includes('B-B')) return 'LINEA 5';
+    return String(order.LINEA || order.Linea || order.linea || '').trim().toUpperCase();
+  };
+
+  // ALGORITMO DE BALANCEO MEJORADO: Filtra pedidos por línea técnica específica
   const proposedPlan = useMemo((): ProposedPlanRow[] => {
     if (!technicalData.length || !selectedCenter) return [];
 
@@ -147,10 +165,11 @@ export const PlanPropuestoTabSection: React.FC = () => {
     const targetDateISO = normalizeDateISO(programmingDate);
     const prevDateISO = normalizeDateISO(provisionalDate);
 
-    // Identificar el puesto de referencia (Armado) para determinar la capacidad de la línea
+    // Mapear órdenes con sus líneas detectadas para eficiencia
+    const mappedFertOrders = fertOrders.map(o => ({ ...o, _mappedLinea: mapOrderLine(o) }));
+    const mappedPrevOrders = provisionalOrders.map(o => ({ ...o, _mappedLinea: mapOrderLine(o) }));
+
     const centerTechnical = technicalData.filter(d => String(d.Centro || '').trim() === selectedCenter);
-    
-    // Agrupar demandas por línea
     const allLines = ['LINEA 1', 'LINEA 2', 'LINEA 3', 'LINEA 5'];
     
     allLines.forEach(lineName => {
@@ -167,20 +186,27 @@ export const PlanPropuestoTabSection: React.FC = () => {
       const puesto = String(row.PuestoTrabajo || '').trim();
       const material = normalizeMaterialCode(row.CodMaterial);
       
-      // Solo procesamos basado en el puesto de Armado para el cálculo de capacidad grupal
+      // Solo procesamos basado en el puesto de Armado para el cálculo de capacidad grupal y evitar repeticiones por puesto
       if (puesto !== 'Armado') return;
 
-      // Calcular demanda fija (FERT) y flexible (OrdPrev)
+      // Calcular demanda fija (FERT) validando que la línea del pedido coincida con la línea técnica
       let qFixed = 0;
-      fertOrders.forEach(o => {
-        if (normalizeDateISO(o.FECHA || o.fecha) === targetDateISO && normalizeMaterialCode(o.MATERIAL) === material && String(o.CENTRO).trim() === selectedCenter) {
+      mappedFertOrders.forEach(o => {
+        if (normalizeDateISO(o.FECHA || o.fecha) === targetDateISO && 
+            normalizeMaterialCode(o.MATERIAL) === material && 
+            String(o.CENTRO).trim() === selectedCenter &&
+            o._mappedLinea === linea) {
           qFixed += Number(o.CANTPENDIENTE || 0);
         }
       });
 
+      // Calcular demanda flexible (OrdPrev) validando que la línea coincida
       let qFlex = 0;
-      provisionalOrders.forEach(o => {
-        if (normalizeDateISO(o.FECHAINICIO || o.fecha_inicio) === prevDateISO && normalizeMaterialCode(o.MATERIAL || o.CodMaterial) === material && String(o.Centro).trim() === selectedCenter) {
+      mappedPrevOrders.forEach(o => {
+        if (normalizeDateISO(o.FECHAINICIO || o.fecha_inicio) === prevDateISO && 
+            normalizeMaterialCode(o.MATERIAL || o.CodMaterial) === material && 
+            String(o.Centro).trim() === selectedCenter &&
+            o._mappedLinea === linea) {
           qFlex += Number(o.CANTIDAD || 0);
         }
       });
@@ -223,27 +249,28 @@ export const PlanPropuestoTabSection: React.FC = () => {
       if (totalFlexTimeAtBase > 0) {
         scaleFactor = remainingHours / totalFlexTimeAtBase;
       } else if (flexPool.length > 0 && remainingHours > 0) {
-        // Si no hay demanda previsional pero hay materiales habilitados, repartir las horas equitativamente
         const newFlexTime = flexPool.reduce((sum, m) => sum + (1 * m.tUnit), 0);
         scaleFactor = remainingHours / newFlexTime;
       }
 
       mats.forEach(m => {
         const isAdj = enabledMaterials.has(m.material);
-        const finalQty = isAdj ? Math.round((m.flexQty || 1) * scaleFactor) : 0;
+        const finalQty = isAdj ? Math.round((m.flexQty || 0) * scaleFactor) : 0;
         const totalQty = m.fixedQty + finalQty;
 
-        results.push({
-          material: m.material,
-          descripcion: m.desc,
-          linea: linea,
-          puestoTrabajo: m.puesto,
-          cantidadOriginal: m.fixedQty + m.flexQty,
-          cantidadPropuesta: totalQty,
-          diferencia: totalQty - (m.fixedQty + m.flexQty),
-          tiempoTotalPropuesto: totalQty * m.tUnit,
-          esAjustable: isAdj
-        });
+        if (totalQty > 0 || m.flexQty > 0 || m.fixedQty > 0) {
+          results.push({
+            material: m.material,
+            descripcion: m.desc,
+            linea: linea,
+            puestoTrabajo: m.puesto,
+            cantidadOriginal: m.fixedQty + m.flexQty,
+            cantidadPropuesta: totalQty,
+            diferencia: totalQty - (m.fixedQty + m.flexQty),
+            tiempoTotalPropuesto: totalQty * m.tUnit,
+            esAjustable: isAdj
+          });
+        }
       });
     });
 
@@ -345,7 +372,6 @@ export const PlanPropuestoTabSection: React.FC = () => {
           ))}
         </TabsList>
 
-        {/* --- Toolbar de Fechas y Nota --- */}
         <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-5 gap-4 p-4 bg-gray-50 border rounded-xl shadow-sm mb-4">
           <div className="flex flex-col gap-1">
             <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Fecha FERT:</label>
@@ -368,7 +394,6 @@ export const PlanPropuestoTabSection: React.FC = () => {
           <div className="overflow-x-auto">
             <table className="min-w-full text-xs divide-y divide-gray-200 border-collapse">
               <thead className="bg-gray-50 uppercase text-[10px] font-bold text-gray-500">
-                {/* --- Cabecera de Nombres --- */}
                 <tr>
                   <th className="px-4 py-3 text-left border-b">Línea</th>
                   <th className="px-4 py-3 text-left border-b">Material</th>
@@ -380,7 +405,6 @@ export const PlanPropuestoTabSection: React.FC = () => {
                   <th className="px-4 py-3 text-right border-b">Ajuste (±)</th>
                   <th className="px-4 py-3 text-right bg-indigo-50/30 border-b">Tiempo (h)</th>
                 </tr>
-                {/* --- Fila de Filtros --- */}
                 <tr className="bg-white">
                   <th className="px-2 py-2 border-b">
                     <div className="relative">
@@ -510,7 +534,6 @@ export const PlanPropuestoTabSection: React.FC = () => {
           </div>
         </div>
 
-        {/* Controles de Paginación */}
         {totalPages > 1 && (
           <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-4 px-2 py-2 bg-gray-50 border rounded-lg">
             <div className="flex items-center gap-4 text-[10px]">
@@ -578,7 +601,8 @@ export const PlanPropuestoTabSection: React.FC = () => {
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-3 mt-4">
         <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
         <div className="text-[11px] text-blue-800 space-y-1">
-          <p><b>Nota sobre Filtros:</b> Al filtrar la tabla, los totales del pie de página se recalcularán automáticamente para mostrar la sumatoria de las filas visibles. Esto te permite auditar la carga de horas por línea o puesto de trabajo de forma independiente.</p>
+          <p><b>Asignación Técnica:</b> El sistema ahora vincula los pedidos únicamente a las líneas de fabricación definidas para cada material en el maestro de tiempos.</p>
+          <p><b>Balanceo Automático:</b> El ajuste de cantidades se aplica sobre los materiales <b>Ajustables</b> para que la carga horaria total no exceda la capacidad definida en Rev Capacidad.</p>
         </div>
       </div>
     </div>
