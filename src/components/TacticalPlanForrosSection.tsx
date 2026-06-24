@@ -25,7 +25,8 @@ import {
   Monitor,
   MapPin,
   TrendingUp,
-  Boxes
+  Boxes,
+  Table as TableIcon
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -330,6 +331,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [listaMaterialesData, setListaMaterialesData] = useState<any[]>([]);
   const [versionesFabricacionData, setVersionesFabricacionData] = useState<any[]>([]);
   const [explodedComponentsData, setExplodedComponentsData] = useState<any[]>([]);
+  const [consolidatedAcolchado, setConsolidatedAcolchado] = useState<any[]>([]);
 
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingFert, setIsLoadingFert] = useState(false);
@@ -914,6 +916,32 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
   };
 
+  const handleConsolidateAcolchado = useCallback(() => {
+    const achOrders = techFilteredOrdenes.filter(o => {
+      const puesto = getResolvedPuesto(o);
+      const hr = mapToHojaRuta(puesto);
+      return hr.startsWith('HR-ACH');
+    });
+
+    const materialMap = new Map<string, { code: string, name: string, total: number, unit: string }>();
+    
+    achOrders.forEach(o => {
+      const rawCode = o['CodMaterial'] || o['MATERIAL'] || '';
+      const code = normalizeMaterialCode(rawCode);
+      const name = o['NOMBRE'] || o['TEXTOMATERIAL'] || o['Material'] || '—';
+      const qty = Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0);
+      const unit = String(o['UNIDAD'] || o['Unidad'] || 'UN').trim();
+
+      if (!materialMap.has(code)) {
+        materialMap.set(code, { code, name, total: 0, unit });
+      }
+      materialMap.get(code)!.total += qty;
+    });
+
+    setConsolidatedAcolchado(Array.from(materialMap.values()).sort((a, b) => a.code.localeCompare(b.code)));
+    addNotification('info', 'Consolidación de acolchado completada.');
+  }, [techFilteredOrdenes, getResolvedPuesto, mapToHojaRuta, normalizeMaterialCode, addNotification]);
+
   const { consolidatedInsumos, resumenPorResponsableExplosion } = useMemo(() => {
     const materialMap = new Map<string, { code: string, name: string, total: number, unit: string }>();
     const respMap = new Map<string, { resp: string, totalForros: number, totalInsumos: number }>();
@@ -1419,6 +1447,52 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
         <TabsContent value="acolchado-tapas" className="space-y-6 pb-20">
           {renderDateFilterHeader()}
+
+          {/* Botón de Consolidación ACH */}
+          <div className="flex justify-end mb-6">
+            <Button 
+              onClick={handleConsolidateAcolchado}
+              className="bg-indigo-900 hover:bg-slate-900 text-sky-400 font-black uppercase tracking-widest text-[10px] px-8 py-6 rounded-3xl shadow-xl border-2 border-indigo-500/30 flex items-center gap-3 transition-all"
+            >
+              <Layers className="w-5 h-5" />
+              Consolidar Carga de Acolchado
+            </Button>
+          </div>
+
+          {/* Tabla de Consolidación ACH */}
+          {consolidatedAcolchado.length > 0 && (
+            <Card className="rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden shadow-xl border-none mb-10">
+              <div className="px-8 py-5 bg-indigo-950 text-white font-black text-xs uppercase tracking-[0.3em] flex items-center gap-3">
+                <TableIcon className="w-5 h-5 text-sky-400" /> Resumen Consolidado de Materiales (ACH)
+              </div>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto max-h-[400px]">
+                  <table className="w-full text-[11px] border-collapse">
+                    <thead className="bg-slate-50 text-slate-500 uppercase font-black tracking-widest border-b sticky top-0 z-10">
+                      <tr>
+                        <th className="px-8 py-4 text-left">MATERIAL</th>
+                        <th className="px-8 py-4 text-left">DESCRIPCIÓN</th>
+                        <th className="px-8 py-4 text-right">TOTAL ACUMULADO</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {consolidatedAcolchado.map((item, i) => (
+                        <tr key={i} className="hover:bg-indigo-50/30 transition-colors">
+                          <td className="px-8 py-4 font-mono font-bold text-indigo-900">{item.code}</td>
+                          <td className="px-8 py-4 font-medium text-slate-600">{item.name}</td>
+                          <td className="px-8 py-4 text-right font-mono font-black text-indigo-700 bg-indigo-50/10">
+                            {item.total.toLocaleString()}
+                            <span className="ml-1 text-[8px] text-slate-400 uppercase">{item.unit}</span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {['02', '06', '07', '08', '09', '10', '13'].map(suffix => {
             const achNames = uniquePuestos.filter(p => p.includes(`ACH${suffix}`) || p.includes(`ACOLCHADORA${suffix}`));
             const pefNames = uniquePuestos.filter(p => p.includes(`PEF${suffix}`) || p.includes(`COSEDORA-ACH${suffix}`) || p.includes(`PEGADORA${suffix}`));
