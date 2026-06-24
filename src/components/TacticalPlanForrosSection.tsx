@@ -319,7 +319,7 @@ const MachineCard = React.memo(({
 });
 
 export const TacticalPlanForrosSection: React.FC = () => {
-  const { addNotification } = useAppContext();
+  const { addNotification, apiCuboInventariosData } = useAppContext();
   const [isMounted, setIsMounted] = useState(false);
   const [grupos, setGrupos] = useState<Grupo[]>([]);
   const [restricciones, setRestricciones] = useState<Restriccion[]>([]);
@@ -996,7 +996,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
             className="text-xs font-bold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 focus:ring-indigo-500 outline-none"
           />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-4">
           <span className="text-[9px] font-black text-slate-400 uppercase">Hasta:</span>
           <input 
             type="date" 
@@ -1008,6 +1008,100 @@ export const TacticalPlanForrosSection: React.FC = () => {
       </div>
     </div>
   );
+
+  const renderForrosSummaryTables = () => {
+    // 1. Programados (From Provisional Orders for component production)
+    const progColchones = techFilteredOrdenes
+      .filter(o => getResolvedPuesto(o) === 'FORRO-COLCHONES')
+      .reduce((sum, o) => sum + Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0), 0);
+      
+    const progBases = techFilteredOrdenes
+      .filter(o => {
+        const p = getResolvedPuesto(o);
+        return p === 'FBASE-01' || p === 'FBASE-02' || p === 'FORRO-BASE-BCAMAS';
+      })
+      .reduce((sum, o) => sum + Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0), 0);
+
+    // 2. Necesidades (From FERT orders)
+    // 1000
+    const necColchones1000 = fert1000
+      .filter(o => String(o['RESPCTRLPROD'] || '').trim().replace(/^0+/, '') === '3')
+      .reduce((sum, o) => sum + Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0), 0);
+    const necBases1000 = fert1000
+      .filter(o => String(o['RESPCTRLPROD'] || '').trim().replace(/^0+/, '') === '4')
+      .reduce((sum, o) => sum + Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0), 0);
+      
+    // 2000
+    const necColchones2000 = fert2000
+      .filter(o => String(o['RESPCTRLPROD'] || '').trim().replace(/^0+/, '') === '3')
+      .reduce((sum, o) => sum + Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0), 0);
+    const necBases2000 = fert2000
+      .filter(o => String(o['RESPCTRLPROD'] || '').trim().replace(/^0+/, '') === '6')
+      .reduce((sum, o) => sum + Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0), 0);
+
+    // Stock heuristic - using apiCuboInventariosData
+    const stockColchones = apiCuboInventariosData
+      .filter(i => (i.Descripcion || '').toUpperCase().includes('FORRO') && !(i.Descripcion || '').toUpperCase().includes('BASE'))
+      .reduce((sum, i) => sum + (i.StockActual || 0), 0);
+    const stockBases = apiCuboInventariosData
+      .filter(i => (i.Descripcion || '').toUpperCase().includes('FORRO') && (i.Descripcion || '').toUpperCase().includes('BASE'))
+      .reduce((sum, i) => sum + (i.StockActual || 0), 0);
+
+    const totalNecColchones = necColchones1000 + necColchones2000;
+    const totalNecBases = necBases1000 + necBases2000;
+
+    return (
+      <div className="mb-10 space-y-6">
+        <div className="grid grid-cols-1 lg:grid-cols-5 border border-slate-200 rounded-[2.5rem] overflow-hidden bg-white shadow-sm text-[10px] font-black uppercase tracking-wider">
+          {/* Header row 1 */}
+          <div className="lg:col-span-2 p-3 bg-slate-100 border-b border-r text-center text-slate-400 font-black">Programados</div>
+          <div className="p-3 bg-slate-100 border-b border-r"></div>
+          <div className="lg:col-span-2 p-3 bg-slate-100 border-b text-center text-slate-400 font-black">Necesidades Colchones</div>
+          
+          {/* Header row 2 */}
+          <div className="p-3 border-b border-r text-center text-indigo-900 bg-slate-50/50">FORRO-BASE-BCAMAS</div>
+          <div className="p-3 border-b border-r text-center text-indigo-900 bg-slate-50/50">FORRO-COLCHONES</div>
+          <div className="p-3 border-b border-r text-center text-slate-400 bg-slate-100/50">Centro</div>
+          <div className="p-3 border-b border-r text-center text-indigo-900 bg-slate-50/50">FORRO-BASE-BCAMAS</div>
+          <div className="p-3 border-b text-center text-indigo-900 bg-slate-50/50">FORRO-COLCHONES</div>
+          
+          {/* Data row 1000 */}
+          <div className="p-4 border-b border-r text-center font-mono text-2xl text-slate-900">{Math.round(progBases).toLocaleString()}</div>
+          <div className="p-4 border-b border-r text-center font-mono text-2xl text-slate-900">{Math.round(progColchones).toLocaleString()}</div>
+          <div className="p-4 border-b border-r text-center font-black bg-slate-50 text-slate-600">1000</div>
+          <div className="p-4 border-b border-r text-center font-mono text-2xl text-emerald-600">{Math.round(necBases1000).toLocaleString()}</div>
+          <div className="p-4 border-b text-center font-mono text-2xl text-emerald-600">{Math.round(necColchones1000).toLocaleString()}</div>
+          
+          {/* Data row 2000 */}
+          <div className="p-4 border-r"></div>
+          <div className="p-4 border-r"></div>
+          <div className="p-4 border-r text-center font-black bg-slate-50 text-slate-600">2000</div>
+          <div className="p-4 border-r text-center font-mono text-2xl text-emerald-600">{Math.round(necBases2000).toLocaleString()}</div>
+          <div className="p-4 text-center font-mono text-2xl text-emerald-600">{Math.round(necColchones2000).toLocaleString()}</div>
+        </div>
+
+        {/* Diferencia Table - Centered with specific styling */}
+        <div className="flex justify-center">
+          <div className="w-full max-w-3xl border border-slate-200 rounded-[2.5rem] overflow-hidden bg-white shadow-md text-[10px] font-black uppercase">
+            <div className="p-4 bg-slate-900 text-white text-center font-black tracking-[0.4em] text-xs">Diferencia Operativa</div>
+            <div className="grid grid-cols-3">
+              <div className="p-3 bg-slate-100 border-b border-r"></div>
+              <div className="p-3 bg-slate-100 border-b border-r text-center text-indigo-900">FORRO-BASE-BCAMAS</div>
+              <div className="p-3 bg-slate-100 border-b text-center text-indigo-900">FORRO-COLCHONES</div>
+              
+              <div className="p-5 border-b border-r font-black text-slate-400 text-center flex items-center justify-center bg-slate-50/50">Necesidad</div>
+              <div className="p-5 border-b border-r text-center font-mono text-2xl text-red-600">{Math.round(totalNecBases).toLocaleString()}</div>
+              <div className="p-5 border-b text-center font-mono text-2xl text-red-600">{Math.round(totalNecColchones).toLocaleString()}</div>
+              
+              <div className="p-5 border-r font-black text-slate-400 text-center flex items-center justify-center bg-slate-50/50">Stock</div>
+              <div className="p-5 border-r text-center font-mono text-2xl text-blue-600">{Math.round(stockBases).toLocaleString()}</div>
+              <div className="p-5 text-center font-mono text-2xl text-blue-600">{Math.round(stockColchones).toLocaleString()}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   const renderFertTable = (orders: any[], summary: any[], title: string, date: string, setDate: (d: string) => void, color: string) => {
     const fertCols = [
@@ -1146,7 +1240,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
             const newLoaded = new Set(loadedTabs);
             newLoaded.add(tabValue);
             setLoadedTabs(newLoaded);
-            if (tabValue === 'ordenes-fert' && ordenesFert.length === 0) fetchOrdenesFert();
+            if ((tabValue === 'ordenes-fert' || tabValue === 'forros') && ordenesFert.length === 0) fetchOrdenesFert();
             else if (tabValue === 'lista-materiales' && listaMaterialesData.length === 0) fetchListaMateriales();
             else if (tabValue === 'versiones-fabricacion' && versionesFabricacionData.length === 0) fetchVersionesFabricacion();
           }
@@ -1417,6 +1511,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
         <TabsContent value="forros" className="space-y-6 pb-20">
           {renderDateFilterHeader()}
+          {renderForrosSummaryTables()}
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-10">
             {uniquePuestos.filter(p => p.includes('FORRO') || p.includes('FBASE')).map((pName) => (
               <MachineCard 
