@@ -208,17 +208,35 @@ const MachineCard = React.memo(({
           <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
             <div className="flex items-center justify-between mb-2">
               <p className="text-[10px] font-black uppercase text-slate-500">Ocupación</p>
-              <Badge className={cn("text-[8px] font-black px-1.5 py-0.5 rounded-md border-none", isOverloaded ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700")}>
-                {isOverloaded ? "Saturado" : "Estable"}
+              <Badge className={cn(
+                "text-[8px] font-black px-1.5 py-0.5 rounded-md border-none", 
+                utilization > 100 ? "bg-red-100 text-red-700" : 
+                utilization >= 90 ? "bg-green-100 text-green-700" : 
+                "bg-yellow-100 text-yellow-700"
+              )}>
+                {utilization > 100 ? "Saturado" : utilization >= 90 ? "Óptimo" : "Debajo"}
               </Badge>
             </div>
             <div className="flex items-baseline gap-1 mb-2">
-              <span className={cn("text-4xl font-black font-mono tracking-tighter", isOverloaded ? "text-red-600" : "text-indigo-800")}>
+              <span className={cn(
+                "text-4xl font-black font-mono tracking-tighter", 
+                utilization > 100 ? "text-red-600" : 
+                utilization >= 90 ? "text-green-600" : 
+                "text-yellow-600"
+              )}>
                 {utilization.toFixed(0)}
               </span>
               <span className="text-[10px] font-black text-slate-400">%</span>
             </div>
-            <Progress value={utilization} className={cn("h-2 bg-slate-100 rounded-full", isOverloaded ? "[&>div]:bg-red-500" : "[&>div]:bg-indigo-600")} />
+            <Progress 
+              value={utilization} 
+              className={cn(
+                "h-2 bg-slate-100 rounded-full", 
+                utilization > 100 ? "[&>div]:bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.3)]" : 
+                utilization >= 90 ? "[&>div]:bg-green-500" : 
+                "[&>div]:bg-yellow-500"
+              )} 
+            />
             
             <div className="mt-4 grid grid-cols-2 gap-2 text-[9px] font-black uppercase tracking-widest">
               <div className="bg-slate-50 p-2 rounded-xl border border-slate-100 text-center">
@@ -1070,7 +1088,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       <th className="px-8 py-5 text-right">Cant. Total</th>
                       <th className="px-8 py-5 text-right bg-indigo-950/20">T. Requerido (h)</th>
                       <th className="px-8 py-5 text-right">Capacidad (h)</th>
-                      <th className="px-8 py-5 text-center">% Ocupación</th>
+                      <th className="px-8 py-5 text-center min-w-[200px]">% Ocupación</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -1120,11 +1138,33 @@ export const TacticalPlanForrosSection: React.FC = () => {
                             <td className="px-8 py-5 text-right font-mono font-black text-indigo-700 bg-indigo-50/40">{totalTimeHours.toFixed(2)}h</td>
                             <td className="px-8 py-5 text-right font-mono font-bold text-slate-900">{totalCapacityHours.toFixed(2)}h</td>
                             <td className="px-8 py-5 text-center">
-                               <div className="flex items-center justify-center gap-4">
-                                 <div className="flex-1 bg-slate-100 h-2 rounded-full overflow-hidden max-w-[100px] border border-slate-200">
-                                   <div className={cn("h-full", utilization > 100 ? "bg-red-500" : "bg-indigo-600")} style={{ width: `${Math.min(utilization, 100)}%` }} />
+                               <div className="flex flex-col items-center justify-center gap-1">
+                                 <div className="flex items-center justify-center gap-3 w-full">
+                                   <div className="flex-1 bg-slate-100 h-2.5 rounded-full overflow-hidden border border-slate-200 shadow-inner">
+                                     <div 
+                                       className={cn(
+                                         "h-full transition-all duration-500", 
+                                         utilization > 100 ? "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.3)]" : 
+                                         utilization >= 90 ? "bg-green-500" : 
+                                         "bg-yellow-400"
+                                       )} 
+                                       style={{ width: `${Math.min(utilization, 100)}%` }} 
+                                     />
+                                   </div>
+                                   <span className={cn(
+                                     "font-mono font-black text-[10px] min-w-[35px] text-right", 
+                                     utilization > 100 ? "text-red-600" : 
+                                     utilization >= 90 ? "text-green-700" : 
+                                     "text-yellow-600"
+                                   )}>
+                                     {utilization.toFixed(0)}%
+                                   </span>
                                  </div>
-                                 <span className={cn("font-mono font-black text-[10px]", utilization > 100 ? "text-red-600" : "text-slate-900")}>{utilization.toFixed(0)}%</span>
+                                 {utilization < 90 && (
+                                   <span className="text-[8px] font-black uppercase text-yellow-600 tracking-tighter animate-pulse">
+                                     Debajo de capacidad
+                                   </span>
+                                 )}
                                </div>
                             </td>
                           </tr>
