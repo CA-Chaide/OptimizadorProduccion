@@ -262,7 +262,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return ordenesFert.filter(o => {
       const centro = String(o.CENTRO || o.Centro || '').trim();
       if (centro === '2000') return false; 
-      const responsable = String(o.RESP_CONTROL_PROD || o.RESPCONTROLPROD || o.RespControlProd || '').trim();
+      // Usar RESPCTRLPROD según nueva estructura
+      const responsable = String(o.RESPCTRLPROD || o.RESP_CONTROL_PROD || o.RespControlProd || '').trim();
       if (allowedResps.length > 0 && !allowedResps.includes(responsable)) return false;
       
       // Filtro de Selección Múltiple de Fechas
@@ -815,7 +816,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   ) : (
                     filteredFertOrders.map((o, i) => {
                       const matCode = cleanCode(String(o.MATERIAL || '').match(/^(\d+)/)?.[1]);
-                      const description = String(o.MATERIAL || '').replace(/^\d+\s*/, '') || o.NOMBRE || '—';
+                      const description = String(o.NOMBRE || o.MATERIAL || '').replace(/^\d+\s*/, '') || '—';
                       return (
                         <tr key={i} className="hover:bg-slate-50/50 transition-colors">
                           <td className="px-6 py-4 font-black text-slate-800 border-r border-gray-50">{o.ORDEN || '—'}</td>
@@ -825,10 +826,10 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                             {description}
                           </td>
                           <td className="px-6 py-4 font-black text-slate-900 border-r border-gray-50 font-mono text-sm">
-                            {Number(o.CANTIDAD || o.CANTPROGRAMADA || o.CANT_PROG || 0).toLocaleString()}
+                            {Number(o.CANTPROGRAMADA || o.CANTIDAD || o.CANT_PROG || 0).toLocaleString()}
                           </td>
                           <td className="px-6 py-4 border-r border-gray-50">
-                            <Badge variant="outline" className="text-[10px] font-black bg-blue-50 text-blue-700 border-blue-100">{String(o.RESP_CONTROL_PROD || o.RESPCONTROLPROD || '—')}</Badge>
+                            <Badge variant="outline" className="text-[10px] font-black bg-blue-50 text-blue-700 border-blue-100">{String(o.RESPCTRLPROD || o.RESP_CONTROL_PROD || o.RESPCONTROLPROD || '—')}</Badge>
                           </td>
                           <td className="px-6 py-4 font-bold text-slate-400 border-r border-gray-50 text-[10px] uppercase">
                             {String(o.MAQUINA || o.RECURSO || '—')}
