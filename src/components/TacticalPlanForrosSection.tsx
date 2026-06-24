@@ -212,7 +212,7 @@ const MachineCard = React.memo(({
                 utilization >= 90 ? "bg-green-100 text-green-700" : 
                 "bg-yellow-100 text-yellow-700"
               )}>
-                {utilization > 100 ? "Saturado" : utilization >= 90 ? "Estable" : "Debajo"}
+                {utilization > 100 ? "Sobrecapacidad" : utilization >= 90 ? "Estable" : "Debajo de capacidad"}
               </Badge>
             </div>
             <div className="flex items-baseline gap-1 mb-2">
@@ -226,15 +226,17 @@ const MachineCard = React.memo(({
               </span>
               <span className="text-[10px] font-black text-slate-400">%</span>
             </div>
-            <Progress 
-              value={utilization} 
-              className={cn(
-                "h-2 bg-slate-100 rounded-full", 
-                utilization > 100 ? "[&>div]:bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.3)]" : 
-                utilization >= 90 ? "[&>div]:bg-green-500" : 
-                "[&>div]:bg-yellow-500"
-              )} 
-            />
+            <div className="relative h-2 bg-slate-100 rounded-full overflow-hidden shadow-inner border border-slate-200 mb-2">
+               <div 
+                 className={cn(
+                   "h-full transition-all duration-700 ease-out", 
+                   utilization > 100 ? "bg-red-500" : 
+                   utilization >= 90 ? "bg-green-500" : 
+                   "bg-yellow-400"
+                 )} 
+                 style={{ width: `${Math.min(utilization, 100)}%` }} 
+               />
+            </div>
             
             <div className="mt-3 text-center h-4">
               {utilization > 100 ? (
@@ -868,7 +870,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
         setExplosionProgress(Math.round((i / uniqueMaterials.length) * 100));
         
         const ordersForMaterial = allFerts.filter(o => String(o['CodMaterial'] || o['MATERIAL'] || o['Material'] || '').trim() === fertCode);
-        const totalFertQty = ordersForMaterial.reduce((sum, o) => sum + Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0), 0);
 
         const response = await serviciosService.getMaestroMaterialesExplosion('1000', fertCode, 1, 5000);
         const components = response.data || [];
@@ -925,15 +926,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
       const forroQty = Number(item.orderQuantity || 0);
       
       if (!respMap.has(resp)) {
-        // Para no duplicar el conteo de forros si un forro tiene varios componentes, 
-        // necesitamos trackear forros únicos o usar una lógica de suma controlada.
-        // Pero el usuario pidió "cuantos forros por cada responsable" en el contexto de la explosión.
-        // Asumiremos la suma de las cantidades programadas procesadas.
         respMap.set(resp, { resp, totalForros: 0, totalInsumos: 0 });
       }
       
-      // Como el item se repite por componente, necesitamos sumar el forroQty solo una vez por combinación (Responsable-MaterialPadre)
-      // Pero para simplificar y dado que 'explodedComponentsData' ya está aplanado, calcularemos un set único para forros.
       respMap.get(resp)!.totalInsumos += total;
     });
 
@@ -1105,6 +1100,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       <tr key={i} className="hover:bg-indigo-50 transition-colors">
                         {fertCols.map((col) => {
                           let val = order[col.key] || order[col.id] || order[col.id.toLowerCase()];
+                          if (col.id === 'MATERIAL' && val) {
+                            val = String(val).trim().slice(-8); // Extraer 8 dígitos desde el final
+                          }
                           if (col.id === 'FECHA' && val) val = String(val).split('T')[0];
                           if (col.id === 'CANTPROGRAMADA' && val) val = Math.round(Number(val)).toLocaleString();
                           return (
@@ -1132,32 +1130,34 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   return (
     <div className="p-6 md:p-8 space-y-6 bg-slate-50/40 min-h-screen font-body">
-      <div className="flex flex-col gap-6 bg-white p-8 rounded-[3rem] border border-slate-100 shadow-xl max-w-7xl mx-auto">
+      <div className="flex flex-col gap-4 bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-xl max-w-7xl mx-auto overflow-hidden">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-6">
-            <div className="bg-slate-950 p-6 rounded-[2rem] text-white shadow-2xl ring-8 ring-slate-50 shrink-0">
-              <CalendarClock className="w-10 h-10 text-sky-400" />
+          <div className="flex items-center gap-4">
+            <div className="bg-slate-950 p-4 rounded-[1.5rem] text-white shadow-2xl ring-4 ring-slate-50 shrink-0">
+              <CalendarClock className="w-7 h-7 text-sky-400" />
             </div>
             <div className="flex-1">
-              <div className="flex items-center gap-4 mb-1">
-                <h1 className="text-3xl font-black text-slate-900 uppercase tracking-tighter leading-none">Programación Táctica</h1>
-                <Badge className="bg-indigo-600 text-white font-black px-4 py-1.5 rounded-xl text-[10px] uppercase tracking-widest border-none shadow-md">Forros</Badge>
+              <div className="flex items-center gap-3 mb-0.5">
+                <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tighter leading-none text-nowrap">Programación Táctica</h1>
+                <Badge className="bg-indigo-600 text-white font-black px-3 py-1 rounded-lg text-[9px] uppercase tracking-widest border-none shadow-md">Forros</Badge>
               </div>
-              <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-[0.25em]">
-                <Users className="w-3.5 h-3.5 text-indigo-500" /> Eficiencia Operativa: 84%
+              <div className="flex items-center gap-2 text-[9px] font-black text-slate-400 uppercase tracking-[0.25em]">
+                <Users className="w-3 h-3 text-indigo-500" /> Eficiencia Operativa: 84%
               </div>
             </div>
           </div>
 
-          <div className="bg-slate-50 border border-slate-200/60 rounded-[2rem] p-5 flex items-center gap-5 shadow-sm hover:shadow-md transition-all">
-            <div className="bg-indigo-600 p-3.5 rounded-2xl text-white shadow-lg shadow-indigo-100 shrink-0">
-              <CalendarIcon className="w-6 h-6" />
-            </div>
-            <div>
-              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Planificación para</p>
-              <p className="text-sm font-black text-indigo-900 capitalize leading-tight">
-                {planningDateFormatted}
-              </p>
+          <div className="flex gap-4">
+            <div className="bg-slate-50 border border-slate-200/60 rounded-[1.5rem] p-4 flex items-center gap-4 shadow-sm hover:shadow-md transition-all">
+              <div className="bg-indigo-600 p-2.5 rounded-xl text-white shadow-lg shadow-indigo-100 shrink-0">
+                <CalendarIcon className="w-4 h-4" />
+              </div>
+              <div>
+                <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Planificación para</p>
+                <p className="text-xs font-black text-indigo-900 capitalize leading-tight">
+                  {planningDateFormatted}
+                </p>
+              </div>
             </div>
           </div>
         </div>
