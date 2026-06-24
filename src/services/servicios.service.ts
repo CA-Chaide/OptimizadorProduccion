@@ -255,7 +255,7 @@ export const serviciosService = {
     const response = await fetch(API_URL + "/ProduccionEstimadaPorAnioMesSemana", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ Anio: anio, Mes: mes, Semana: semana }),
+      body: JSON.stringify({ anio: anio, mes: mes, semana: semana }),
     });
     if (!response.ok) {
       throw new Error(`Error ${response.status}: Failed to fetch Produccion Estimada`);

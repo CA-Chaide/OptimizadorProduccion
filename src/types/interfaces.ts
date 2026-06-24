@@ -74,6 +74,7 @@ export interface DetalleTactico {
     codigo_detalle_tactico: number;
     codigo_plan_grupo: number;
     codigo_material: number;
+    linea_produccion: string;
     cantidad_produccion_neta: string;
     resp_ctrl_prod: string;
     clase_aprovisionamiento: string;

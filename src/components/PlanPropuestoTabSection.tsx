@@ -344,7 +344,7 @@ export const PlanPropuestoTabSection: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 relative">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center space-x-3">
           <Scale className="w-6 h-6 text-green-600" />
@@ -492,7 +492,7 @@ export const PlanPropuestoTabSection: React.FC = () => {
                         <td className="px-4 py-2.5 text-center">
                           {row.esAjustable ? 
                             <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 text-[9px] uppercase font-bold px-1.5">Ajustable</Badge> : 
-                            <Badge variant="outline" className="text-[9px] uppercase font-bold opacity-30 border-gray-300">Fijo</Badge>
+                            <Badge variant="outline" className="text-[9px] uppercase font-bold px-1.5 opacity-30 border-gray-300">Fijo</Badge>
                           }
                         </td>
                         <td className="px-4 py-2.5 text-right text-gray-400 font-mono">{row.cantidadOriginal.toLocaleString()}</td>
@@ -587,8 +587,8 @@ export const PlanPropuestoTabSection: React.FC = () => {
               <Button 
                 variant="outline" 
                 size="sm" 
-                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} 
-                disabled={currentPage === totalPages}
+                onClick={() => setCurrentPage(p => Math.min(totalPagesLocal, p + 1))} 
+                disabled={currentPage === totalPagesLocal}
                 className="h-8 w-8 p-0"
               >
                 <ChevronRight className="h-4 w-4" />
@@ -597,6 +597,18 @@ export const PlanPropuestoTabSection: React.FC = () => {
           </div>
         )}
       </Tabs>
+
+      {/* Botón Flotante para Aplicar Plan */}
+      <div className="fixed bottom-10 right-10 z-[100]">
+        <Button 
+          size="lg" 
+          className="bg-green-600 hover:bg-green-700 text-white rounded-full h-16 w-16 shadow-2xl flex items-center justify-center border-2 border-white transition-all hover:scale-110 active:scale-95"
+          onClick={() => addNotification('success', 'Plan propuesto aplicado correctamente (simulado).')}
+          title="Aplicar Plan Propuesto"
+        >
+          <CheckCircle2 className="w-8 h-8" />
+        </Button>
+      </div>
 
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-3 mt-4">
         <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
