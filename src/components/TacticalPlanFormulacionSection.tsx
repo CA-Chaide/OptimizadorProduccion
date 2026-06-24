@@ -20,7 +20,8 @@ import {
   MapPin,
   Box,
   TrendingUp,
-  Table as TableIcon
+  Table as TableIcon,
+  Info
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -247,7 +248,14 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       setOrders(provsRes.data?.data || provsRes.data || []);
       setOrdersFert(fertsRes.data?.data || fertsRes.data || []);
       setInventarioSAP(Array.isArray(invRes.data) ? invRes.data : []);
-      setCuradoData(curadoRes.data || []);
+      
+      const rawCurado = curadoRes.data || [];
+      setCuradoData(rawCurado);
+
+      // SILENT ACTION: Capturar estatus únicos de estadoTras para inspección
+      const uniqueStatuses = [...new Set(rawCurado.map((r: any) => String(getProp(r, ['estadoTras', 'ESTADOTRAS']) || 'EMPTY').trim()))];
+      inspector.captureVariable('unique_estadoTras_statuses', uniqueStatuses, { description: 'Lista global de estatus detectados en columna estadoTras' });
+
     } catch (error) {
       console.error('Error sincronizando datos formulacion');
     } finally {
@@ -428,15 +436,13 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       );
       case 'curado': return (
         <div className="animate-in fade-in duration-300 text-left space-y-4">
-           {renderCuradoSpace(curadoData, "Auditoría Planta: CALLE & F_BLOQ / F_BLOQ_M", (row) => {
-             const c = String(getProp(row, ['estadoTras', 'ESTADOTRAS']) || '').toUpperCase();
+           {renderCuradoSpace(curadoData, "Auditoría Planta: BLOQUE FORMULADO LEADER (F_BLOQ)", (row) => {
              const m = String(getProp(row, ['Maquina', 'MAQUINA']) || '').toUpperCase();
-             return c.includes('CALLE') && (m === 'F_BLOQ' || m === 'F_BLOQ_M');
+             return m === 'F_BLOQ';
            })}
-           {renderCuradoSpace(curadoData, "Auditoría Planta: BCLL & F_BLOQ_M", (row) => {
-             const c = String(getProp(row, ['estadoTras', 'ESTADOTRAS']) || '').toUpperCase();
+           {renderCuradoSpace(curadoData, "Auditoría Planta: BLOQUE FORMULADO COFAMA (F_BLOQ_M)", (row) => {
              const m = String(getProp(row, ['Maquina', 'MAQUINA']) || '').toUpperCase();
-             return c.includes('BCLL') && m === 'F_BLOQ_M';
+             return m === 'F_BLOQ_M';
            })}
            {(!curadoData || curadoData.length === 0) && (
              <div className="py-24 text-center bg-gray-50/30 rounded-3xl border-2 border-dashed border-gray-100">
