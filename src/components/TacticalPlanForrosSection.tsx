@@ -965,48 +965,48 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   return (
     <div className="p-6 md:p-8 space-y-6 bg-slate-50/40 min-h-screen font-body">
-      <div className="flex flex-col gap-8 bg-white p-10 rounded-[3rem] border border-slate-100 shadow-xl">
+      <div className="flex flex-col gap-6 bg-white p-8 rounded-[3rem] border border-slate-100 shadow-xl">
         <div className="flex items-center gap-8">
-          <div className="bg-slate-950 p-6 rounded-[2rem] text-white shadow-2xl ring-8 ring-slate-50">
-            <CalendarClock className="w-12 h-12 text-sky-400" />
+          <div className="bg-slate-950 p-6 rounded-[2rem] text-white shadow-2xl ring-8 ring-slate-50 shrink-0">
+            <CalendarClock className="w-10 h-10 text-sky-400" />
           </div>
           <div className="flex-1">
-            <div className="flex items-center gap-4 mb-2">
-              <h1 className="text-4xl font-black text-slate-900 uppercase tracking-tighter leading-none">Programación Táctica</h1>
-              <Badge className="bg-indigo-600 text-white font-black px-4 py-1.5 rounded-xl text-xs uppercase tracking-widest border-none shadow-md">Forros</Badge>
+            <div className="flex items-center gap-4 mb-1">
+              <h1 className="text-3xl font-black text-slate-900 uppercase tracking-tighter leading-none">Programación Táctica</h1>
+              <Badge className="bg-indigo-600 text-white font-black px-4 py-1 rounded-xl text-[10px] uppercase tracking-widest border-none shadow-md">Forros</Badge>
             </div>
-            <div className="flex items-center gap-3 text-xs font-black text-slate-400 uppercase tracking-[0.3em]">
-              <Users className="w-4 h-4 text-indigo-500" /> Eficiencia Operativa: 84%
+            <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
+              <Users className="w-3.5 h-3.5 text-indigo-500" /> Eficiencia Operativa: 84%
             </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-          <div className="bg-slate-50 border border-slate-200/60 rounded-[2.5rem] p-7 flex items-center gap-6 shadow-sm hover:shadow-md transition-all">
-            <div className="bg-indigo-600 p-4 rounded-2xl text-white shadow-lg shadow-indigo-200"><CalendarIcon className="w-7 h-7" /></div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="bg-slate-50 border border-slate-200/60 rounded-[2rem] p-5 flex items-center gap-5 shadow-sm hover:shadow-md transition-all">
+            <div className="bg-indigo-600 p-3.5 rounded-2xl text-white shadow-lg shadow-indigo-100"><CalendarIcon className="w-6 h-6" /></div>
             <div>
-              <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Planificación para</p>
-              <p className="text-lg font-black text-indigo-900 capitalize leading-tight">
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Planificación para</p>
+              <p className="text-sm font-black text-indigo-900 capitalize leading-tight">
                 {planningDateFormatted}
               </p>
             </div>
           </div>
 
-          <div className="bg-slate-50 border border-slate-200/60 rounded-[2.5rem] p-7 flex items-center gap-6 shadow-sm hover:shadow-md transition-all">
-            <div className="bg-indigo-500 p-4 rounded-2xl text-white shadow-lg shadow-indigo-100"><MapPin className="w-7 h-7" /></div>
+          <div className="bg-slate-50 border border-slate-200/60 rounded-[2rem] p-5 flex items-center gap-5 shadow-sm hover:shadow-md transition-all">
+            <div className="bg-indigo-500 p-3.5 rounded-2xl text-white shadow-lg shadow-indigo-50"><MapPin className="w-6 h-6" /></div>
             <div>
-              <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-1.5">GYE (2000)</p>
-              <p className="text-4xl font-black text-slate-900 font-mono leading-none tracking-tighter">
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">GYE (2000)</p>
+              <p className="text-3xl font-black text-slate-900 font-mono leading-none tracking-tighter">
                 {ordenesPrevisionalesData.filter(o => String(o.Centro).trim() === '2000').length.toLocaleString()}
               </p>
             </div>
           </div>
 
-          <div className="bg-slate-50 border border-slate-200/60 rounded-[2.5rem] p-7 flex items-center gap-6 shadow-sm hover:shadow-md transition-all">
-            <div className="bg-slate-800 p-4 rounded-2xl text-white shadow-lg shadow-slate-300"><MapPin className="w-7 h-7" /></div>
+          <div className="bg-slate-50 border border-slate-200/60 rounded-[2rem] p-5 flex items-center gap-5 shadow-sm hover:shadow-md transition-all">
+            <div className="bg-slate-800 p-3.5 rounded-2xl text-white shadow-lg shadow-slate-200"><MapPin className="w-6 h-6" /></div>
             <div>
-              <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-1.5">UIO (1000)</p>
-              <p className="text-4xl font-black text-slate-900 font-mono leading-none tracking-tighter">
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">UIO (1000)</p>
+              <p className="text-3xl font-black text-slate-900 font-mono leading-none tracking-tighter">
                 {filteredOrdenesPrevisionales.length.toLocaleString()}
               </p>
             </div>
@@ -1028,38 +1028,38 @@ export const TacticalPlanForrosSection: React.FC = () => {
           }
         }}
       >
-        <TabsList className="flex w-full h-auto bg-white border border-slate-200 p-2.5 mb-10 rounded-[2rem] shadow-sm overflow-x-auto justify-start">
-          <TabsTrigger value="resumen-produccion" className="px-7 py-4 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[11px] font-black uppercase tracking-widest text-slate-500">
+        <TabsList className="flex w-full h-auto bg-white border border-slate-200 p-2 rounded-[2rem] mb-10 shadow-sm overflow-x-auto justify-start">
+          <TabsTrigger value="resumen-produccion" className="px-6 py-3 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[10px] font-black uppercase tracking-widest text-slate-500">
             <BarChart3 className="w-4 h-4 mr-2" /> Resumen
           </TabsTrigger>
-          <TabsTrigger value="acolchado-tapas" className="px-7 py-4 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[11px] font-black uppercase tracking-widest text-slate-500">
+          <TabsTrigger value="acolchado-tapas" className="px-6 py-3 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[10px] font-black uppercase tracking-widest text-slate-500">
             <Cpu className="w-4 h-4 mr-2" /> 1. Acolchado & Tapas
           </TabsTrigger>
-          <TabsTrigger value="bandas" className="px-7 py-4 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[11px] font-black uppercase tracking-widest text-slate-500">
+          <TabsTrigger value="bandas" className="px-6 py-3 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[10px] font-black uppercase tracking-widest text-slate-500">
             <Layers className="w-4 h-4 mr-2" /> 2. Proceso Bandas
           </TabsTrigger>
-          <TabsTrigger value="interiores-corte" className="px-7 py-4 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[11px] font-black uppercase tracking-widest text-slate-500">
+          <TabsTrigger value="interiores-corte" className="px-6 py-3 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[10px] font-black uppercase tracking-widest text-slate-500">
             <Settings2 className="w-4 h-4 mr-2" /> 3. Interiores & Corte
           </TabsTrigger>
-          <TabsTrigger value="forros" className="px-7 py-4 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[11px] font-black uppercase tracking-widest text-slate-500">
+          <TabsTrigger value="forros" className="px-6 py-3 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[10px] font-black uppercase tracking-widest text-slate-500">
             <LayoutGrid className="w-4 h-4 mr-2" /> 4. Forros Finales
           </TabsTrigger>
-          <TabsTrigger value="ordenes-fert" className="px-7 py-4 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[11px] font-black uppercase tracking-widest text-slate-500">
+          <TabsTrigger value="ordenes-fert" className="px-6 py-3 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[10px] font-black uppercase tracking-widest text-slate-500">
             <PackageSearch className="w-4 h-4 mr-2" /> Órdenes FERT
           </TabsTrigger>
-          <TabsTrigger value="ordenes-previsionales" className="px-7 py-4 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[11px] font-black uppercase tracking-widest text-slate-500">
+          <TabsTrigger value="ordenes-previsionales" className="px-6 py-3 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[10px] font-black uppercase tracking-widest text-slate-500">
             <SearchCode className="w-4 h-4 mr-2" /> Órdenes Previsionales
           </TabsTrigger>
-          <TabsTrigger value="lista-materiales" className="px-7 py-4 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[11px] font-black uppercase tracking-widest text-slate-500">
+          <TabsTrigger value="lista-materiales" className="px-6 py-3 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[10px] font-black uppercase tracking-widest text-slate-500">
             <ListTree className="w-4 h-4 mr-2" /> LISTA DE MATERIALES
           </TabsTrigger>
-          <TabsTrigger value="versiones-fabricacion" className="px-7 py-4 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[11px] font-black uppercase tracking-widest text-slate-500">
+          <TabsTrigger value="versiones-fabricacion" className="px-6 py-3 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[10px] font-black uppercase tracking-widest text-slate-500">
             <Cog className="w-4 h-4 mr-2" /> Versiones de fabricación
           </TabsTrigger>
-          <TabsTrigger value="personal-turnos" className="px-7 py-4 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[11px] font-black uppercase tracking-widest text-slate-500">
+          <TabsTrigger value="personal-turnos" className="px-6 py-3 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[10px] font-black uppercase tracking-widest text-slate-500">
             <UserPlus className="w-4 h-4 mr-2" /> Personal & Turnos
           </TabsTrigger>
-          <TabsTrigger value="kpi-tiempos" className="px-7 py-4 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[11px] font-black uppercase tracking-widest text-slate-500">
+          <TabsTrigger value="kpi-tiempos" className="px-6 py-3 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[10px] font-black uppercase tracking-widest text-slate-500">
             <ClipboardList className="w-4 h-4 mr-2" /> KPI TIEMPOS
           </TabsTrigger>
         </TabsList>
