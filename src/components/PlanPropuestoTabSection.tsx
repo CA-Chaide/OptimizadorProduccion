@@ -1,9 +1,10 @@
-
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { serviciosService } from '@/services/servicios.service';
 import { grupoService } from '@/services/grupo.service';
+import { planGrupoService } from '@/services/plangrupo.service';
+import { detalleTacticoService } from '@/services/detalletactico.service';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
 import { 
@@ -26,6 +27,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import * as XLSX from 'xlsx';
+import { Grupo, PlanGrupo, DetalleTactico } from '@/types/interfaces';
 
 interface ProposedPlanRow {
   material: string;
@@ -37,6 +39,10 @@ interface ProposedPlanRow {
   diferencia: number;
   tiempoTotalPropuesto: number;
   esAjustable: boolean;
+}
+
+interface PlanPropuestoTabSectionProps {
+  groups?: Grupo[];
 }
 
 const normalizeDateISO = (dateStr: any): string | null => {
@@ -53,7 +59,7 @@ const normalizeMaterialCode = (code: string | number): string => {
   return String(code || '').trim().slice(-8);
 };
 
-export const PlanPropuestoTabSection: React.FC = () => {
+export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = ({ groups = [] }) => {
   const inspector = useRuntimeInspector('PlanPropuestoTab');
   const { addNotification } = useAppContext();
 
@@ -64,6 +70,7 @@ export const PlanPropuestoTabSection: React.FC = () => {
   const [availableCenters, setAvailableCenters] = useState<string[]>([]);
   const [selectedCenter, setSelectedCenter] = useState<string>("1000");
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isSaving, setIsSaving] = useState<boolean>(false);
   
   // Paginación
   const [currentPage, setCurrentPage] = useState(1);
@@ -141,11 +148,10 @@ export const PlanPropuestoTabSection: React.FC = () => {
     return String(order.LINEA || order.Linea || order.linea || '').trim().toUpperCase();
   };
 
-  // ALGORITMO DE BALANCEO MEJORADO: Filtra pedidos por línea técnica específica
+  // ALGORITMO DE BALANCEO MEJORADO
   const proposedPlan = useMemo((): ProposedPlanRow[] => {
     if (!technicalData.length || !selectedCenter) return [];
 
-    // 1. Cargar Configuración de Balanceo y Puestos Editados
     const matBalanceoRaw = typeof window !== 'undefined' ? localStorage.getItem('material_balanceo_lineas_data') : null;
     const matBalanceoPool = matBalanceoRaw ? JSON.parse(matBalanceoRaw) : [];
     const enabledMaterials = new Set(matBalanceoPool.filter((m: any) => m.habilitado).map((m: any) => normalizeMaterialCode(m.material)));
@@ -165,7 +171,6 @@ export const PlanPropuestoTabSection: React.FC = () => {
     const targetDateISO = normalizeDateISO(programmingDate);
     const prevDateISO = normalizeDateISO(provisionalDate);
 
-    // Mapear órdenes con sus líneas detectadas para eficiencia
     const mappedFertOrders = fertOrders.map(o => ({ ...o, _mappedLinea: mapOrderLine(o) }));
     const mappedPrevOrders = provisionalOrders.map(o => ({ ...o, _mappedLinea: mapOrderLine(o) }));
 
@@ -180,16 +185,13 @@ export const PlanPropuestoTabSection: React.FC = () => {
       lineTargetHours.set(lineName, available);
     });
 
-    // 2. Procesar todos los materiales técnicos para el centro
     centerTechnical.forEach(row => {
       const linea = String(row.Linea || '').trim().toUpperCase();
       const puesto = String(row.PuestoTrabajo || '').trim();
       const material = normalizeMaterialCode(row.CodMaterial);
       
-      // Solo procesamos basado en el puesto de Armado para el cálculo de capacidad grupal y evitar repeticiones por puesto
       if (puesto !== 'Armado') return;
 
-      // Calcular demanda fija (FERT) validando que la línea del pedido coincida con la línea técnica
       let qFixed = 0;
       mappedFertOrders.forEach(o => {
         if (normalizeDateISO(o.FECHA || o.fecha) === targetDateISO && 
@@ -200,7 +202,6 @@ export const PlanPropuestoTabSection: React.FC = () => {
         }
       });
 
-      // Calcular demanda flexible (OrdPrev) validando que la línea coincida
       let qFlex = 0;
       mappedPrevOrders.forEach(o => {
         if (normalizeDateISO(o.FECHAINICIO || o.fecha_inicio) === prevDateISO && 
@@ -233,7 +234,6 @@ export const PlanPropuestoTabSection: React.FC = () => {
       lineCurrentFixedHours.set(linea, (lineCurrentFixedHours.get(linea) || 0) + (qFixed * effectiveTUnit));
     });
 
-    // 3. Ejecutar Iteración de Balanceo
     const results: ProposedPlanRow[] = [];
 
     lineMaterials.forEach((mats, linea) => {
@@ -241,7 +241,6 @@ export const PlanPropuestoTabSection: React.FC = () => {
       const fixedHours = lineCurrentFixedHours.get(linea) || 0;
       const remainingHours = target - fixedHours;
 
-      // Filtrar materiales de la línea que están en el pool de balanceo habilitado
       const flexPool = mats.filter(m => enabledMaterials.has(m.material));
       const totalFlexTimeAtBase = flexPool.reduce((sum, m) => sum + (m.flexQty * m.tUnit), 0);
 
@@ -341,6 +340,101 @@ export const PlanPropuestoTabSection: React.FC = () => {
       puesto: '',
       tipo: 'ALL'
     });
+  };
+
+  /**
+   * Proceso de guardado encadenado:
+   * 1. Crear PlanGrupo para el centro actual.
+   * 2. Crear un DetalleTactico por cada material en el plan propuesto filtrado.
+   */
+  const handleSavePlan = async () => {
+    if (filteredResults.length === 0) {
+      addNotification('warning', 'No hay datos en el plan para guardar.');
+      return;
+    }
+
+    // Encontrar el grupo correspondiente al centro seleccionado (buscando grupo de Ensamblado)
+    const grupoEncontrado = groups.find(g => 
+      String(g.centro).trim() === selectedCenter && 
+      g.nombre_grupo.toLowerCase().includes('ensamblado')
+    );
+
+    if (!grupoEncontrado) {
+      addNotification('error', `No se encontró un grupo de Ensamblado configurado para el Centro ${selectedCenter} en la pestaña Grupos.`);
+      return;
+    }
+
+    setIsSaving(true);
+    addNotification('info', 'Iniciando proceso de guardado del plan...');
+
+    try {
+      const now = new Date();
+      
+      // 1. Crear el objeto PlanGrupo
+      const planGrupoPayload: any = {
+        codigo_plan_grupo: 0,
+        codigo_plan: 0, // Vacío por ahora
+        codigo_grupo: grupoEncontrado.codigo_grupo,
+        codigo_familia_grupo: 0, // Vacío por ahora
+        valor: 'Plan Inicial',
+        fecha_inicio_plan: now,
+        fecha_fin_plan: now,
+        estado: 'A',
+        fecha_creacion: now,
+        usuario_creacion: 'Admin'
+      };
+
+      console.log('[PlanPropuesto] Guardando PlanGrupo:', planGrupoPayload);
+      const resPlanGrupo = await planGrupoService.save(planGrupoPayload);
+      
+      if (!resPlanGrupo?.data?.codigo_plan_grupo) {
+        throw new Error('El servidor no devolvió el código del plan de grupo creado.');
+      }
+
+      const newCodigoPlanGrupo = resPlanGrupo.data.codigo_plan_grupo;
+      console.log('[PlanPropuesto] PlanGrupo creado con ID:', newCodigoPlanGrupo);
+
+      // 2. Crear registros de DetalleTactico
+      let successCount = 0;
+      let failCount = 0;
+
+      // Iteramos sobre los resultados actuales (filtrados)
+      for (const item of filteredResults) {
+        const detallePayload: any = {
+          codigo_detalle_tactico: 0,
+          codigo_plan_grupo: newCodigoPlanGrupo,
+          codigo_material: parseInt(item.material) || 0,
+          linea_produccion: item.linea,
+          cantidad_produccion_neta: String(item.cantidadPropuesta),
+          resp_ctrl_prod: '', // Vacio por ahora
+          clase_aprovisionamiento: selectedCenter,
+          cantidad_aprovisionamiento: 'E',
+          estado: 'A',
+          fecha_modificacion: null,
+          usuario_modificacion: null
+        };
+
+        try {
+          await detalleTacticoService.save(detallePayload);
+          successCount++;
+        } catch (e) {
+          console.error(`Error guardando detalle para material ${item.material}:`, e);
+          failCount++;
+        }
+      }
+
+      if (failCount === 0) {
+        addNotification('success', `Plan guardado exitosamente. Se crearon ${successCount} registros tácticos.`);
+      } else {
+        addNotification('warning', `Plan guardado con observaciones. ${successCount} registros creados, ${failCount} fallidos.`);
+      }
+
+    } catch (error) {
+      console.error('[PlanPropuesto] Error en proceso de guardado:', error);
+      addNotification('error', `Error crítico al guardar el plan: ${(error as Error).message}`);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -587,8 +681,8 @@ export const PlanPropuestoTabSection: React.FC = () => {
               <Button 
                 variant="outline" 
                 size="sm" 
-                onClick={() => setCurrentPage(p => Math.min(totalPagesLocal, p + 1))} 
-                disabled={currentPage === totalPagesLocal}
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} 
+                disabled={currentPage === totalPages}
                 className="h-8 w-8 p-0"
               >
                 <ChevronRight className="h-4 w-4" />
@@ -598,15 +692,16 @@ export const PlanPropuestoTabSection: React.FC = () => {
         )}
       </Tabs>
 
-      {/* Botón Flotante para Aplicar Plan */}
+      {/* Botón Flotante para Aplicar Plan con Guardado Encadenado */}
       <div className="fixed bottom-10 right-10 z-[100]">
         <Button 
           size="lg" 
-          className="bg-green-600 hover:bg-green-700 text-white rounded-full h-16 w-16 shadow-2xl flex items-center justify-center border-2 border-white transition-all hover:scale-110 active:scale-95"
-          onClick={() => addNotification('success', 'Plan propuesto aplicado correctamente (simulado).')}
-          title="Aplicar Plan Propuesto"
+          disabled={isSaving || filteredResults.length === 0}
+          className="bg-green-600 hover:bg-green-700 text-white rounded-full h-16 w-16 shadow-2xl flex items-center justify-center border-2 border-white transition-all hover:scale-110 active:scale-95 disabled:bg-gray-400"
+          onClick={handleSavePlan}
+          title="Guardar Plan Propuesto"
         >
-          <CheckCircle2 className="w-8 h-8" />
+          {isSaving ? <Loader2 className="w-8 h-8 animate-spin" /> : <CheckCircle2 className="w-8 h-8" />}
         </Button>
       </div>
 

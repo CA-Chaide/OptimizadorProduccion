@@ -341,7 +341,7 @@ export const TacticalPlan2Section: React.FC = () => {
               <CardDescription>Cantidades ajustadas para cumplir con los puestos objetivo por línea.</CardDescription>
             </CardHeader>
             <CardContent>
-              <PlanPropuestoTabSection />
+              <PlanPropuestoTabSection groups={grupos} />
             </CardContent>
           </Card>
         </TabsContent>
