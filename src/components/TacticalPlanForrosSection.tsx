@@ -622,6 +622,26 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return Array.from(codes);
   }, [restricciones, forrosGruposList]);
 
+  // Nueva restricción para explosión de insumos
+  const allowedComponentsCHN = useMemo(() => {
+    const codes = new Set<string>();
+    const forroGroupCodes = new Set(forrosGruposList.map(g => g.codigo_grupo));
+    restricciones.forEach(r => {
+      // Aplicar a los grupos de forros
+      if (forroGroupCodes.has(r.codigo_grupo)) {
+        const normName = r.nombre_restriccion.toUpperCase().trim();
+        if (normName === 'COMPONENTES_CHN') {
+          const values = r.valor_restriccion.split('&');
+          values.forEach(v => {
+            const clean = v.trim().replace(/^0+/, '');
+            if (clean) codes.add(clean);
+          });
+        }
+      }
+    });
+    return Array.from(codes);
+  }, [restricciones, forrosGruposList]);
+
   const { fert1000, fert2000, summary1000, summary2000 } = useMemo(() => {
     const filter1000 = ordenesFert.filter(order => {
       const centro = String(order['Centro'] || order['CENTRO'] || '').trim();
@@ -835,6 +855,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
       return;
     }
 
+    if (allowedComponentsCHN.length === 0) {
+      addNotification('warning', 'No se ha configurado la restricción COMPONENTES_CHN. Se mostrarán todos los materiales.');
+    }
+
     const uniqueMaterials = Array.from(new Set(allFerts.map(o => 
       String(o['CodMaterial'] || o['MATERIAL'] || o['Material'] || '').trim()
     ))).filter(m => m !== '');
@@ -855,7 +879,15 @@ export const TacticalPlanForrosSection: React.FC = () => {
         const response = await serviciosService.getMaestroMaterialesExplosion('1000', fertCode, 1, 5000);
         const components = response.data || [];
 
-        components.forEach((comp: any) => {
+        // Filtrar componentes según la restricción COMPONENTES_CHN si existe
+        const filteredComponents = allowedComponentsCHN.length > 0
+          ? components.filter((comp: any) => {
+              const compCode = String(comp.COMPONENTE || comp.Componente || comp.Material || '').trim().replace(/^0+/, '');
+              return allowedComponentsCHN.includes(compCode);
+            })
+          : components;
+
+        filteredComponents.forEach((comp: any) => {
           allComponents.push({
             ...comp,
             fertParent: fertCode,
@@ -866,7 +898,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
       }
       setExplodedComponentsData(allComponents);
       setExplosionProgress(100);
-      addNotification('success', `Explosión completada para ${uniqueMaterials.length} materiales.`);
+      addNotification('success', `Explosión completada. Se identificaron ${allComponents.length} insumos requeridos de la categoría CHN.`);
     } catch (error: any) {
       addNotification('error', `Error en explosión: ${error.message}`);
     } finally {
@@ -1417,7 +1449,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
               {renderFertTable(fert1000, summary1000, "Órdenes FERT - Centro 1000 (UIO)", targetDate1000, setTargetDate1000, "bg-slate-900")}
               {renderFertTable(fert2000, summary2000, "Órdenes FERT - Centro 2000 (GYE)", targetDate2000, setTargetDate2000, "bg-indigo-700")}
 
-              {/* Nueva Subsección: Explosión de Insumos */}
               {(isLoadingExplosion || explodedComponentsData.length > 0) && (
                 <Card className="rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden shadow-sm border-none mt-12">
                   <CardHeader className="bg-emerald-900 text-white p-8">
@@ -1429,7 +1460,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                         <div>
                           <CardTitle className="text-2xl font-black uppercase tracking-tight">Explosión Consolidada de Insumos</CardTitle>
                           <CardDescription className="text-white/60 font-bold uppercase text-[10px] tracking-widest mt-1">
-                            Necesidad total de materiales basada en órdenes FERT (Centro 1000)
+                            Necesidad total de materiales basada en órdenes FERT (Centro 1000) • Filtro: {allowedComponentsCHN.length} materiales CHN
                           </CardDescription>
                         </div>
                       </div>
@@ -1468,7 +1499,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                           )) : (
                             <tr>
                               <td colSpan={4} className="py-20 text-center text-slate-400 uppercase font-black tracking-widest text-xs opacity-40">
-                                {isLoadingExplosion ? 'Procesando explosión de materiales...' : 'Haz clic en "Procesar Explosión" para ver los insumos'}
+                                {isLoadingExplosion ? 'Procesando explosión de materiales...' : 'Haz clic en "Procesar Explosión" para ver los insumos filtrados'}
                               </td>
                             </tr>
                           )}
