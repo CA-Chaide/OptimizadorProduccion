@@ -1,4 +1,3 @@
-
 import type { ApiQuery, PresupuestoItem, TiempoEnsambleItem } from '@/types/types';
 
 // --- Configuración Central de API ---
@@ -66,12 +65,13 @@ export const queryApi = async (query: ApiQuery): Promise<any> => {
     let body: any = query;
 
     if (query.operation === 'get_documentation') {
-        // Redirigir a la fuente oficial de documentación en serviciosService si es posible
+        // Redirigir a la fuente oficial de documentación en serviciosService
         endpoint = '/Aplicativos/ApiOptimizadorProduccion/api/servicios/diccionarioDeDatos';
         method = 'GET';
         body = undefined;
     } else {
-        endpoint = '/Aplicativos/ApiOptimizadorProduccion/query/';
+        // Corregido: Las consultas de datos ahora apuntan al endpoint bajo /api/servicios/
+        endpoint = '/Aplicativos/ApiOptimizadorProduccion/api/servicios/query';
     }
 
     const fullUrl = endpoint;

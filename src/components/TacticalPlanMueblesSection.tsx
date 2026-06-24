@@ -78,7 +78,6 @@ export const TacticalPlanMueblesSection: React.FC = () => {
     // Filtrar órdenes basadas en las restricciones de responsables de Muebles/Corte y Laminado
     const filteredOrders = useMemo(() => {
         // Extraer los códigos de responsables permitidos desde las restricciones
-        // Buscamos específicamente el patrón de la imagen: Hojas_Rutas_Materiales o RESPCTRLPROD
         const respCodes = restricciones
             .filter(r => (r.nombre_restriccion === 'Hojas_Rutas_Materiales' || r.nombre_restriccion === 'RESPCTRLPROD'))
             .flatMap(r => r.valor_restriccion.split(/[&,]/).map((v: string) => v.trim()))
