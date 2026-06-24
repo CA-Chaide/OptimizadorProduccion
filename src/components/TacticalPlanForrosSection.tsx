@@ -119,7 +119,8 @@ const MachineCard = React.memo(({
   horasNetasDiurnas, 
   horasNetasNocturnas,
   mapToHojaRuta,
-  normalizeMaterialCode
+  normalizeMaterialCode,
+  isConsolidated = false
 }: { 
   puestoName: string;
   small?: boolean;
@@ -130,11 +131,12 @@ const MachineCard = React.memo(({
   horasNetasNocturnas: number;
   mapToHojaRuta: (name: string) => string;
   normalizeMaterialCode: (code: string | number) => string;
+  isConsolidated?: boolean;
 }) => {
   const hrCode = mapToHojaRuta(puestoName).trim().toUpperCase();
   
   const { filteredOrders, totalTimeHours, utilization, capacityHours } = useMemo(() => {
-    const filtered = orders.filter(o => {
+    let filtered = orders.filter(o => {
       const orderHR = String(o['MAQUINA'] || o['Maquina'] || '').trim().toUpperCase();
       if (hrCode.includes(' / ')) {
         const codes = hrCode.split(' / ').map(c => c.trim().toUpperCase());
@@ -143,12 +145,33 @@ const MachineCard = React.memo(({
       return orderHR === hrCode;
     });
 
-    const totalSeconds = filtered.reduce((sum, o) => sum + calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0), o), 0);
-    const totalHours = totalSeconds / 3600;
+    if (isConsolidated) {
+      const grouped = new Map<string, any>();
+      filtered.forEach(o => {
+        const materialCode = o['CodMaterial'] || normalizeMaterialCode(o['MATERIAL'] || '');
+        const qty = Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0);
+        if (grouped.has(materialCode)) {
+          const existing = grouped.get(materialCode);
+          existing._totalQty += qty;
+        } else {
+          grouped.set(materialCode, { 
+            ...o, 
+            _isConsolidated: true, 
+            _totalQty: qty 
+          });
+        }
+      });
+      filtered = Array.from(grouped.values());
+    }
+
+    const totalSeconds = filtered.reduce((sum, o) => {
+      const qty = isConsolidated ? o._totalQty : Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0);
+      return sum + calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', qty, o);
+    }, 0);
     
+    const totalHours = totalSeconds / 3600;
     const numMachines = config.machines || 1;
     const capacity = ((config.isDayActive ? horasNetasDiurnas : 0) + (config.isNightActive ? horasNetasNocturnas : 0)) * numMachines;
-    
     const util = capacity > 0 ? (totalHours / capacity) * 100 : 0;
     
     return {
@@ -157,7 +180,7 @@ const MachineCard = React.memo(({
       utilization: util,
       capacityHours: capacity
     };
-  }, [orders, hrCode, calculateProductionTime, config.isDayActive, config.isNightActive, config.machines, horasNetasDiurnas, horasNetasNocturnas]);
+  }, [orders, hrCode, calculateProductionTime, config, horasNetasDiurnas, horasNetasNocturnas, isConsolidated, normalizeMaterialCode]);
 
   return (
     <div className={cn(
@@ -198,7 +221,7 @@ const MachineCard = React.memo(({
                 <span className={cn("text-[8px] font-black uppercase", config.isDayActive ? "text-amber-700" : "text-slate-400")}>Día</span>
               </div>
               <div className={cn("rounded-xl p-2 border flex flex-col items-center", config.isNightActive ? "bg-indigo-50 border-indigo-200" : "bg-slate-50 border-slate-100 opacity-40")}>
-                <Moon className={cn("w-3.5 h-3.5 mb-0.5", config.isNightActive ? "text-indigo-500" : "text-slate-400")} />
+                 Moon className={cn("w-3.5 h-3.5 mb-0.5", config.isNightActive ? "text-indigo-500" : "text-slate-400")} />
                 <span className={cn("text-[8px] font-black uppercase", config.isNightActive ? "text-indigo-700" : "text-slate-400")}>Noche</span>
               </div>
             </div>
@@ -248,17 +271,6 @@ const MachineCard = React.memo(({
                 <span className="text-[9px] font-black uppercase text-yellow-600 tracking-tighter animate-pulse">Debajo de capacidad</span>
               )}
             </div>
-            
-            <div className="mt-4 grid grid-cols-2 gap-2 text-[9px] font-black uppercase tracking-widest">
-              <div className="bg-slate-50 p-2 rounded-xl border border-slate-100 text-center">
-                <span className="text-slate-400 block mb-0.5">Carga</span>
-                <span className="text-slate-900 font-mono">{totalTimeHours.toFixed(2)}H</span>
-              </div>
-              <div className={cn("p-2 rounded-xl border border-slate-100 text-center", utilization > 100 ? "bg-red-50 text-red-700" : "bg-sky-50 text-sky-700")}>
-                <span className="text-slate-400 block mb-0.5">Cap. Total</span>
-                <span className="font-mono">{capacityHours.toFixed(2)}H</span>
-              </div>
-            </div>
           </div>
         </div>
       </div>
@@ -266,9 +278,9 @@ const MachineCard = React.memo(({
       <div className="flex-1 p-6 flex flex-col bg-slate-50/20">
         <div className="flex items-center justify-between mb-4">
           <h4 className="text-[10px] font-black text-slate-800 uppercase tracking-[0.2em] flex items-center gap-2">
-            <ClipboardList className="w-4 h-4 text-indigo-600" /> Plan Operativo
+            <ClipboardList className="w-4 h-4 text-indigo-600" /> {isConsolidated ? 'Plan Consolidado' : 'Plan Operativo'}
           </h4>
-          <Badge className="bg-white text-slate-900 border-slate-200 font-mono font-black text-[10px] px-3 py-0.5 rounded-full shadow-sm">{filteredOrders.length} ORD</Badge>
+          <Badge className="bg-white text-slate-900 border-slate-200 font-mono font-black text-[10px] px-3 py-0.5 rounded-full shadow-sm">{filteredOrders.length} {isConsolidated ? 'MAT' : 'ORD'}</Badge>
         </div>
         <div className="flex-1 overflow-auto rounded-2xl border border-slate-200 bg-white shadow-inner text-[10px]">
           <table className="w-full border-collapse">
@@ -282,7 +294,7 @@ const MachineCard = React.memo(({
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredOrders.length > 0 ? filteredOrders.map((o, i) => {
-                const qty = Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0);
+                const qty = isConsolidated ? o._totalQty : Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0);
                 const tSeconds = calculateProductionTime(o['MATERIAL'] || o['CodMaterial'] || '', qty, o);
                 const tHours = tSeconds / 3600;
                 const materialCode = o['CodMaterial'] || normalizeMaterialCode(o['MATERIAL'] || '');
@@ -310,6 +322,7 @@ const MachineCard = React.memo(({
 }, (prevProps, nextProps) => {
   return prevProps.puestoName === nextProps.puestoName &&
     prevProps.small === nextProps.small &&
+    prevProps.isConsolidated === nextProps.isConsolidated &&
     prevProps.config.machines === nextProps.config.machines &&
     prevProps.config.isDayActive === nextProps.config.isDayActive &&
     prevProps.config.isNightActive === nextProps.config.isNightActive &&
@@ -331,7 +344,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [listaMaterialesData, setListaMaterialesData] = useState<any[]>([]);
   const [versionesFabricacionData, setVersionesFabricacionData] = useState<any[]>([]);
   const [explodedComponentsData, setExplodedComponentsData] = useState<any[]>([]);
-  const [consolidatedAcolchado, setConsolidatedAcolchado] = useState<any[]>([]);
+  const [isAchConsolidated, setIsAchConsolidated] = useState(false);
 
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingFert, setIsLoadingFert] = useState(false);
@@ -626,7 +639,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return Array.from(codes);
   }, [restricciones, forrosGruposList]);
 
-  // Restricción para explosión de insumos (Match por nombre)
   const allowedComponentsCHN = useMemo(() => {
     const keywords = new Set<string>();
     const forroGroupCodes = new Set(forrosGruposList.map(g => g.codigo_grupo));
@@ -876,14 +888,12 @@ export const TacticalPlanForrosSection: React.FC = () => {
         const response = await serviciosService.getMaestroMaterialesExplosion('1000', fertCode, 1, 5000);
         const components = response.data || [];
 
-        // FILTRADO POR NOMBRE BASADO EN REGLA COMPONENTES_CHN
         const filteredComponents = components.filter((comp: any) => {
           const compName = String(comp.NOMBRE_COMPONENTE || comp.Descripcion || '').toUpperCase();
           const compCode = String(comp.COMPONENTE || comp.Componente || comp.Material || '').trim().toUpperCase();
           
           if (allowedComponentsCHN.length === 0) return true;
           
-          // MATCH POR CONTENIDO EN EL NOMBRE O CÓDIGO (SEGÚN REGLA SOLICITADA)
           return allowedComponentsCHN.some(keyword => {
             const k = keyword.toUpperCase().trim();
             return compName.includes(k) || compCode.includes(k);
@@ -916,31 +926,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
   };
 
-  const handleConsolidateAcolchado = useCallback(() => {
-    const achOrders = techFilteredOrdenes.filter(o => {
-      const puesto = getResolvedPuesto(o);
-      const hr = mapToHojaRuta(puesto);
-      return hr.startsWith('HR-ACH');
-    });
-
-    const materialMap = new Map<string, { code: string, name: string, total: number, unit: string }>();
-    
-    achOrders.forEach(o => {
-      const rawCode = o['CodMaterial'] || o['MATERIAL'] || '';
-      const code = normalizeMaterialCode(rawCode);
-      const name = o['NOMBRE'] || o['TEXTOMATERIAL'] || o['Material'] || '—';
-      const qty = Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0);
-      const unit = String(o['UNIDAD'] || o['Unidad'] || 'UN').trim();
-
-      if (!materialMap.has(code)) {
-        materialMap.set(code, { code, name, total: 0, unit });
-      }
-      materialMap.get(code)!.total += qty;
-    });
-
-    setConsolidatedAcolchado(Array.from(materialMap.values()).sort((a, b) => a.code.localeCompare(b.code)));
-    addNotification('info', 'Consolidación de acolchado completada.');
-  }, [techFilteredOrdenes, getResolvedPuesto, mapToHojaRuta, normalizeMaterialCode, addNotification]);
+  const handleConsolidateAcolchado = () => {
+    setIsAchConsolidated(prev => !prev);
+    addNotification('info', isAchConsolidated ? 'Vista detallada de acolchado activada.' : 'Vista consolidada de acolchado activada.');
+  };
 
   const { consolidatedInsumos, resumenPorResponsableExplosion } = useMemo(() => {
     const materialMap = new Map<string, { code: string, name: string, total: number, unit: string }>();
@@ -1040,19 +1029,23 @@ export const TacticalPlanForrosSection: React.FC = () => {
   );
 
   const renderForrosSummaryTables = () => {
-    // 1. Programados (From Provisional Orders for component production)
-    const progColchones = techFilteredOrdenes
-      .filter(o => getResolvedPuesto(o) === 'FORRO-COLCHONES')
-      .reduce((sum, o) => sum + Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0), 0);
-      
-    const progBases = techFilteredOrdenes
-      .filter(o => {
-        const p = getResolvedPuesto(o);
-        return p === 'FBASE-01' || p === 'FBASE-02' || p === 'FORRO-BASE-BCAMAS';
-      })
-      .reduce((sum, o) => sum + Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0), 0);
+    const calculateSumCant = (puestoKey: string) => {
+      const hr = mapToHojaRutaInternal(puestoKey);
+      return techFilteredOrdenes
+        .filter(o => {
+          const orderHR = String(o['MAQUINA'] || o['Maquina'] || '').trim().toUpperCase();
+          if (hr.includes(' / ')) {
+            const codes = hr.split(' / ').map(c => c.trim().toUpperCase());
+            return codes.includes(orderHR);
+          }
+          return orderHR === hr.toUpperCase().trim();
+        })
+        .reduce((sum, o) => sum + Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0), 0);
+    };
 
-    // 2. Necesidades (From Explosion if available, or FERT orders as fallback)
+    const progColchones = calculateSumCant('FORRO-COLCHONES');
+    const progBases = calculateSumCant('FBASE-01') + calculateSumCant('FBASE-02') + calculateSumCant('FORRO-BASE-BCAMAS');
+
     let necColchones1000 = 0, necBases1000 = 0, necColchones2000 = 0, necBases2000 = 0;
 
     if (explodedComponentsData.length > 0) {
@@ -1070,14 +1063,12 @@ export const TacticalPlanForrosSection: React.FC = () => {
         }
       });
     } else {
-      // Fallback a unidades FERT
       necColchones1000 = fert1000.filter(o => String(o['RESPCTRLPROD'] || '').trim().replace(/^0+/, '') === '3').reduce((sum, o) => sum + Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0), 0);
       necBases1000 = fert1000.filter(o => String(o['RESPCTRLPROD'] || '').trim().replace(/^0+/, '') === '4').reduce((sum, o) => sum + Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0), 0);
       necColchones2000 = fert2000.filter(o => String(o['RESPCTRLPROD'] || '').trim().replace(/^0+/, '') === '3').reduce((sum, o) => sum + Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0), 0);
       necBases2000 = fert2000.filter(o => String(o['RESPCTRLPROD'] || '').trim().replace(/^0+/, '') === '6').reduce((sum, o) => sum + Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0), 0);
     }
 
-    // Stock heuristic
     const stockColchones = apiCuboInventariosData.filter(i => (i.Descripcion || '').toUpperCase().includes('FORRO') && !(i.Descripcion || '').toUpperCase().includes('BASE')).reduce((sum, i) => sum + (i.StockActual || 0), 0);
     const stockBases = apiCuboInventariosData.filter(i => (i.Descripcion || '').toUpperCase().includes('FORRO') && (i.Descripcion || '').toUpperCase().includes('BASE')).reduce((sum, i) => sum + (i.StockActual || 0), 0);
 
@@ -1086,35 +1077,33 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
     return (
       <div className="mb-10 space-y-6">
-        {/* TABLA PRINCIPAL DE CONTROL - REDISEÑADA PARA EVITAR APILAMIENTO */}
-        <div className="overflow-x-auto rounded-[2rem] border border-slate-200 bg-white shadow-md">
-          <table className="w-full text-center border-collapse">
-            <thead>
-              <tr className="bg-slate-100 text-[10px] font-black uppercase tracking-widest text-slate-500">
-                <th className="p-4 border-r border-b" colSpan={2}>Programados (Carga Actual)</th>
-                <th className="p-4 border-r border-b"></th>
-                <th className="p-4 border-b" colSpan={2}>Necesidades (Órdenes Fert)</th>
+        <div className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-md">
+          <table className="w-full border-collapse">
+            <thead className="bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest text-center">
+              <tr>
+                <th className="p-4 border-r border-slate-800" rowSpan={2}>Centro</th>
+                <th className="p-4 border-r border-slate-800" colSpan={2}>Programados (Carga Operativa)</th>
+                <th className="p-4 border-slate-800" colSpan={2}>Necesidades (Cálculo Insumos)</th>
               </tr>
-              <tr className="bg-slate-50 text-[10px] font-black uppercase tracking-wider text-indigo-900 border-b border-slate-200">
-                <th className="p-3 border-r">Bases</th>
-                <th className="p-3 border-r">Colchones</th>
-                <th className="p-3 border-r text-slate-400 bg-slate-100/50">Centro</th>
-                <th className="p-3 border-r">Bases</th>
+              <tr className="bg-slate-800 text-sky-400">
+                <th className="p-3 border-r border-slate-700">Bases</th>
+                <th className="p-3 border-r border-slate-700">Colchones</th>
+                <th className="p-3 border-r border-slate-700">Bases</th>
                 <th className="p-3">Colchones</th>
               </tr>
             </thead>
-            <tbody className="text-2xl font-mono font-black">
+            <tbody className="text-2xl font-mono font-black text-center">
               <tr className="border-b border-slate-100">
-                <td className="p-5 border-r text-slate-900">{Math.round(progBases).toLocaleString()}</td>
-                <td className="p-5 border-r text-slate-900">{Math.round(progColchones).toLocaleString()}</td>
-                <td className="p-5 border-r text-sm font-black bg-slate-50 text-slate-600">1000</td>
+                <td className="p-5 border-r text-sm font-black bg-slate-50 text-slate-600 uppercase">1000</td>
+                <td className="p-5 border-r text-indigo-600">—</td>
+                <td className="p-5 border-r text-indigo-600">{Math.round(progColchones).toLocaleString()}</td>
                 <td className="p-5 border-r text-emerald-600">{Math.round(necBases1000).toLocaleString()}</td>
                 <td className="p-5 text-emerald-600">{Math.round(necColchones1000).toLocaleString()}</td>
               </tr>
               <tr>
-                <td className="p-5 border-r"></td>
-                <td className="p-5 border-r"></td>
-                <td className="p-5 border-r text-sm font-black bg-slate-50 text-slate-600">2000</td>
+                <td className="p-5 border-r text-sm font-black bg-slate-50 text-slate-600 uppercase">2000</td>
+                <td className="p-5 border-r text-indigo-600">{Math.round(progBases).toLocaleString()}</td>
+                <td className="p-5 border-r text-indigo-600">—</td>
                 <td className="p-5 border-r text-emerald-600">{Math.round(necBases2000).toLocaleString()}</td>
                 <td className="p-5 text-emerald-600">{Math.round(necColchones2000).toLocaleString()}</td>
               </tr>
@@ -1122,7 +1111,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
           </table>
         </div>
 
-        {/* Diferencia Operativa */}
         <div className="flex justify-center">
           <div className="w-full max-w-4xl border border-slate-200 rounded-[2.5rem] overflow-hidden bg-white shadow-md text-[10px] font-black uppercase">
             <div className="p-4 bg-slate-950 text-sky-400 text-center font-black tracking-[0.4em] text-xs">Análisis Diferencial Operativo</div>
@@ -1419,19 +1407,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
                                      {utilization.toFixed(0)}%
                                    </span>
                                  </div>
-                                 {utilization > 100 ? (
-                                   <span className="text-[8px] font-black uppercase text-red-600 tracking-tighter animate-pulse">
-                                     Sobrecapacidad
-                                   </span>
-                                 ) : utilization >= 90 ? (
-                                   <span className="text-[8px] font-black uppercase text-green-600 tracking-tighter">
-                                     Estable
-                                   </span>
-                                 ) : (
-                                   <span className="text-[8px] font-black uppercase text-yellow-600 tracking-tighter animate-pulse">
-                                     Debajo de capacidad
-                                   </span>
-                                 )}
                                </div>
                             </td>
                           </tr>
@@ -1452,46 +1427,17 @@ export const TacticalPlanForrosSection: React.FC = () => {
           <div className="flex justify-end mb-6">
             <Button 
               onClick={handleConsolidateAcolchado}
-              className="bg-indigo-900 hover:bg-slate-900 text-sky-400 font-black uppercase tracking-widest text-[10px] px-8 py-6 rounded-3xl shadow-xl border-2 border-indigo-500/30 flex items-center gap-3 transition-all"
+              className={cn(
+                "font-black uppercase tracking-widest text-[10px] px-8 py-6 rounded-3xl shadow-xl border-2 flex items-center gap-3 transition-all",
+                isAchConsolidated 
+                  ? "bg-indigo-600 text-white border-indigo-700" 
+                  : "bg-indigo-900 hover:bg-slate-900 text-sky-400 border-indigo-500/30"
+              )}
             >
               <Layers className="w-5 h-5" />
-              Consolidar Carga de Acolchado
+              {isAchConsolidated ? 'Ver Detalle Acolchado' : 'Consolidar Carga de Acolchado'}
             </Button>
           </div>
-
-          {/* Tabla de Consolidación ACH */}
-          {consolidatedAcolchado.length > 0 && (
-            <Card className="rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden shadow-xl border-none mb-10">
-              <div className="px-8 py-5 bg-indigo-950 text-white font-black text-xs uppercase tracking-[0.3em] flex items-center gap-3">
-                <TableIcon className="w-5 h-5 text-sky-400" /> Resumen Consolidado de Materiales (ACH)
-              </div>
-              <CardContent className="p-0">
-                <div className="overflow-x-auto max-h-[400px]">
-                  <table className="w-full text-[11px] border-collapse">
-                    <thead className="bg-slate-50 text-slate-500 uppercase font-black tracking-widest border-b sticky top-0 z-10">
-                      <tr>
-                        <th className="px-8 py-4 text-left">MATERIAL</th>
-                        <th className="px-8 py-4 text-left">DESCRIPCIÓN</th>
-                        <th className="px-8 py-4 text-right">TOTAL ACUMULADO</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {consolidatedAcolchado.map((item, i) => (
-                        <tr key={i} className="hover:bg-indigo-50/30 transition-colors">
-                          <td className="px-8 py-4 font-mono font-bold text-indigo-900">{item.code}</td>
-                          <td className="px-8 py-4 font-medium text-slate-600">{item.name}</td>
-                          <td className="px-8 py-4 text-right font-mono font-black text-indigo-700 bg-indigo-50/10">
-                            {item.total.toLocaleString()}
-                            <span className="ml-1 text-[8px] text-slate-400 uppercase">{item.unit}</span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </CardContent>
-            </Card>
-          )}
 
           {['02', '06', '07', '08', '09', '10', '13'].map(suffix => {
             const achNames = uniquePuestos.filter(p => p.includes(`ACH${suffix}`) || p.includes(`ACOLCHADORA${suffix}`));
@@ -1514,6 +1460,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       horasNetasNocturnas={horasNetasNocturnasVal}
                       mapToHojaRuta={mapToHojaRutaInternal}
                       normalizeMaterialCode={normalizeMaterialCode}
+                      isConsolidated={isAchConsolidated}
                     />
                   )}
                   {pefNames.length > 0 && (
