@@ -1,10 +1,9 @@
-
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { queryApi } from '@/hooks/useApiData';
 import { TacticalSchedulingIcon } from '@/constants/constants';
-import { Package, Users, Loader2, ClipboardList, Search, Filter, Info, MapPin } from 'lucide-react';
+import { Package, Users, Loader2, ClipboardList, Search, Filter, Info, MapPin, Box } from 'lucide-react';
 import { useAppContext } from '@/context/AppProvider';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TacticalPlanSection } from './TacticalPlanSection';
