@@ -85,8 +85,9 @@ const cleanCode = (code: any): string => {
 
 const parseDimensionsEnhanced = (desc: string) => {
   const d = desc.toUpperCase();
-  const densMatch = d.match(/D(\d+)/);
-  const densidad = densMatch ? densMatch[1] : '—';
+  // Captura densidad incluyendo letras (ej: 15 AM, 23 AF)
+  const densMatch = d.match(/D-?\s*(\d+(?:\s*[A-Z]+)*)/);
+  const densidad = densMatch ? densMatch[1].trim() : '—';
 
   if (d.includes('CV')) {
     return { densidad, distancia: 60, altura: 206, espesor: 3.5 };
@@ -111,8 +112,8 @@ const parseDimensionsEnhanced = (desc: string) => {
 
 const extractAperture = (desc: string): string => {
   const d = String(desc || '').toUpperCase();
-  // Regex ampliado para incluir 214 y ser más flexible
-  const match = d.match(/(194\.5|206|214|219|228|244)/);
+  // Regex ampliado para incluir 200, 214 y ser más flexible
+  const match = d.match(/(194\.5|200|206|214|219|228|244)/);
   if (match) return match[0];
   
   // Fallback: Capturar el primer número de las dimensiones si tiene formato XXX * YYY o XXX X YYY
@@ -123,18 +124,16 @@ const extractAperture = (desc: string): string => {
 };
 
 const getDensityColor = (dens: string) => {
-  const d = dens.toLowerCase().replace('d', '');
-  switch (d) {
-    case '15': return 'border-l-blue-600 bg-blue-50/50 text-blue-900';
-    case '18': return 'border-l-emerald-600 bg-emerald-50/50 text-emerald-900';
-    case '20': return 'border-l-purple-600 bg-purple-50/50 text-purple-900';
-    case '23': return 'border-l-amber-600 bg-amber-50/50 text-amber-900';
-    case '25': return 'border-l-pink-600 bg-pink-50/50 text-pink-900';
-    case '26': return 'border-l-teal-600 bg-teal-50/50 text-teal-900';
-    case '30': return 'border-l-orange-600 bg-orange-50/50 text-orange-900';
-    case '40': return 'border-l-indigo-600 bg-indigo-50/50 text-indigo-900';
-    default: return 'border-l-slate-400 bg-slate-50/50 text-slate-900';
-  }
+  const d = dens.toLowerCase();
+  if (d.includes('15')) return 'border-l-blue-600 bg-blue-50/50 text-blue-900';
+  if (d.includes('18')) return 'border-l-emerald-600 bg-emerald-50/50 text-emerald-900';
+  if (d.includes('20')) return 'border-l-purple-600 bg-purple-50/50 text-purple-900';
+  if (d.includes('23')) return 'border-l-amber-600 bg-amber-50/50 text-amber-900';
+  if (d.includes('25')) return 'border-l-pink-600 bg-pink-50/50 text-pink-900';
+  if (d.includes('26')) return 'border-l-teal-600 bg-teal-50/50 text-teal-900';
+  if (d.includes('30')) return 'border-l-orange-600 bg-orange-50/50 text-orange-900';
+  if (d.includes('40')) return 'border-l-indigo-600 bg-indigo-50/50 text-indigo-900';
+  return 'border-l-slate-400 bg-slate-50/50 text-slate-900';
 };
 
 const formatNum = (val: any, decimals: number = 2): string => {
@@ -326,8 +325,24 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             laminaRows.forEach(comp => {
               const compCode = cleanCode(comp.COMPONENTE);
               const desc = String(comp.DESCRIPCION_COMPONENTE || '').toUpperCase();
-              const cantAcum = safeNum(comp.CANTIDAD_ACUMULADA || comp.CANTIDAD_UNITARIA || 0);
               
+              // PREMISA: Buscar bloque formulado dependiente para heredar apertura y densidad
+              const blockComp = rawData.find(r => 
+                cleanCode(r.MATERIAL_PADRE) === compCode && 
+                (r.DESCRIPCION_COMPONENTE || '').toUpperCase().includes('BLOQUE FORMULADO')
+              );
+              
+              const blockDesc = blockComp ? String(blockComp.DESCRIPCION_COMPONENTE).toUpperCase() : '';
+              
+              // Extraer info de bloque (prioridad) o de la lámina
+              const dims = parseDimensionsEnhanced(desc);
+              const blockDims = blockDesc ? parseDimensionsEnhanced(blockDesc) : null;
+              
+              const finalDens = blockDims && blockDims.densidad !== '—' ? blockDims.densidad : dims.densidad;
+              const finalAperture = blockDesc ? extractAperture(blockDesc) : extractAperture(desc);
+              const finalDistancia = blockDims && blockDims.distancia > 0 ? blockDims.distancia : dims.distancia;
+
+              const cantAcum = safeNum(comp.CANTIDAD_ACUMULADA || comp.CANTIDAD_UNITARIA || 0);
               const kgProv = qtyProv * cantAcum;
               const kgHalb = qtyHalb * cantAcum;
 
@@ -336,8 +351,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 existingRow.consumoKg += kgProv;
                 existingRow.consumoKgHalb += kgHalb;
               } else {
-                const dims = parseDimensionsEnhanced(desc);
-                const pesoTeorico = (dims.distancia * dims.altura * dims.espesor * safeNum(dims.densidad)) / 10000;
+                const pesoTeorico = (finalDistancia * dims.altura * dims.espesor * safeNum(finalDens)) / 10000;
                 
                 const looperMatch = kpiLooperData.find(k => cleanCode(k.Material) === compCode);
                 const finalPeso = looperMatch ? safeNum(looperMatch.PesoUN) : pesoTeorico;
@@ -355,10 +369,10 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 consolidatedMap.set(compCode, {
                   material: compCode,
                   descripcion: desc,
-                  densidad: looperMatch?.Densidad || dims.densidad,
+                  densidad: finalDens,
                   altura: dims.altura,
                   espesor: dims.espesor,
-                  distancia: dims.distancia,
+                  distancia: finalDistancia,
                   peso: finalPeso,
                   consumoKg: kgProv,
                   consumoUn: 0,
@@ -375,7 +389,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   looperDensidad: looperMatch ? String(looperMatch.Densidad) : '—',
                   looperEspesor: looperMatch ? safeNum(looperMatch.Espesor) : 0,
                   looperTRolloMin: looperMatch ? safeNum(looperMatch.TiempoRolloMin) : 0,
-                  apertura: extractAperture(desc),
+                  apertura: finalAperture,
                   porcentajeNecesidad: 0,
                   planUn: 0,
                   planKg: 0,
