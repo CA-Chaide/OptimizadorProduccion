@@ -40,7 +40,7 @@ import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 import { cn } from '@/lib/utils';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 const BLOCK_LENGTH_METERS = 20;
@@ -349,23 +349,27 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   };
 
   const renderCuradoTable = () => {
-    // Filtro estricto solicitado: estadoTras (CALLE) y Maquina (F_BLOQ) deben tener valor
+    // Filtro operativo solicitado: CALLE (estadoTras) y F_BLOQ/F_BLOQ_M (Maquina)
     const filteredCurado = curadoData.filter(row => {
-      const calle = getProp(row, ['estadoTras', 'ESTADOTRAS', 'ESTADO_TRAS']);
-      const fBloq = getProp(row, ['Maquina', 'MAQUINA', 'RECURSO']);
-      return calle && fBloq && calle !== '—' && fBloq !== '—';
+      const calleValue = String(getProp(row, ['estadoTras', 'ESTADOTRAS', 'ESTADO_TRAS']) || '').toUpperCase();
+      const maquinaValue = String(getProp(row, ['Maquina', 'MAQUINA', 'RECURSO']) || '').toUpperCase();
+      
+      const matchCalle = calleValue.includes('CALLE');
+      const matchMaquina = maquinaValue === 'F_BLOQ' || maquinaValue === 'F_BLOQ_M' || maquinaValue.includes('F_BLOQ');
+      
+      return matchCalle && matchMaquina;
     });
 
     if (filteredCurado.length === 0) {
       return (
         <div className="py-24 text-center bg-gray-50/30 rounded-3xl border-2 border-dashed border-gray-100">
           <TableIcon className="w-16 h-16 text-indigo-100 mx-auto" />
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-4">Sin datos operativos para CALLE / F_BLOQ</p>
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-4">Sin datos para CALLE y F_BLOQ / F_BLOQ_M</p>
         </div>
       );
     }
+
     const keys = Object.keys(filteredCurado[0] || {});
-    // Mapeo operativo solicitado
     const headerMapping: Record<string, string> = {
       'ESTADOTRAS': 'CALLE',
       'ESTADO_TRAS': 'CALLE',
@@ -529,7 +533,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="ordenesProd" className="animate-in fade-in duration-300 text-left">
-          <Card className="border-2 border-gray-50 rounded-[2.5rem] shadow-xl overflow-hidden bg-white">
+          <Card className="border-2 border-gray-100 rounded-[2.5rem] shadow-xl overflow-hidden bg-white">
             <div className="overflow-x-auto">
               <table className="min-w-full text-[10px] text-center border-collapse">
                 <thead className="bg-[#1e293b] text-white uppercase font-black tracking-widest text-[8px] border-b border-white/5 sticky top-0 z-10">
@@ -612,7 +616,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       <div className="flex items-center gap-3 p-5 bg-indigo-50 border border-indigo-100 rounded-[1.5rem] shadow-sm text-left">
         <Info className="w-5 h-5 text-indigo-600 flex-shrink-0" />
         <p className="text-[10px] font-bold text-indigo-700 uppercase tracking-widest leading-relaxed">
-          Nota Técnica: Auditoría multinivel FERT -> BLOQUE. Mapeo de columnas: estadoTras = CALLE | Maquina = F_BLOQ. Estructura de datos cruda íntegra de SAP.
+          Nota Técnica: Auditoría multinivel FERT -> BLOQUE. Mapeo de columnas: estadoTras = CALLE | Maquina = F_BLOQ / F_BLOQ_M. Filtro activo por centro de transformación.
         </p>
       </div>
     </div>
