@@ -20,7 +20,6 @@ import {
   MapPin,
   Box,
   TrendingUp,
-  Info,
   Table as TableIcon
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
@@ -347,76 +346,55 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     );
   };
 
-  const renderCuradoTable = () => {
-    // Filtro operativo: CALLE (estadoTras) y F_BLOQ/F_BLOQ_M (Maquina)
-    const filteredCurado = curadoData.filter(row => {
-      const calleValue = String(getProp(row, ['estadoTras', 'ESTADOTRAS', 'ESTADO_TRAS']) || '').toUpperCase();
-      const maquinaValue = String(getProp(row, ['Maquina', 'MAQUINA', 'RECURSO']) || '').toUpperCase();
-      
-      const matchCalle = calleValue.includes('CALLE');
-      // Updated filter: F_BLOQ or F_BLOQ_M
-      const matchMaquina = maquinaValue === 'F_BLOQ' || maquinaValue === 'F_BLOQ_M';
-      
-      return matchCalle && matchMaquina;
-    });
-
-    // Ordenación Cronológica: Desde la más antigua (Ascendente)
-    const sortedCurado = [...filteredCurado].sort((a, b) => {
+  const renderCuradoSpace = (data: any[], title: string, filterFn: (row: any) => boolean) => {
+    const filtered = data.filter(filterFn).sort((a, b) => {
       const dateAStr = getProp(a, ['FECHA', 'FECHA_INICIO', 'FECHA_FABRICACION', 'FECHA_OT_PRG_INI']);
       const dateBStr = getProp(b, ['FECHA', 'FECHA_INICIO', 'FECHA_FABRICACION', 'FECHA_OT_PRG_INI']);
-      
       const dateA = new Date(dateAStr);
       const dateB = new Date(dateBStr);
-      
-      const valA = isValid(dateA) ? dateA.getTime() : 0;
-      const valB = isValid(dateB) ? dateB.getTime() : 0;
-      
+      const valA = isValid(dateA) && !isNaN(dateA.getTime()) ? dateA.getTime() : 0;
+      const valB = isValid(dateB) && !isNaN(dateB.getTime()) ? dateB.getTime() : 0;
       return valA - valB;
     });
 
-    if (sortedCurado.length === 0) {
-      return (
-        <div className="py-24 text-center bg-gray-50/30 rounded-3xl border-2 border-dashed border-gray-100">
-          <TableIcon className="w-16 h-16 text-indigo-100 mx-auto" />
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-4">Sin datos para CALLE y F_BLOQ / F_BLOQ_M</p>
-        </div>
-      );
-    }
+    if (filtered.length === 0) return null;
 
-    const keys = Object.keys(sortedCurado[0] || {});
+    const keys = Object.keys(filtered[0] || {});
     const headerMapping: Record<string, string> = {
       'ESTADOTRAS': 'CALLE',
       'ESTADO_TRAS': 'CALLE',
-      'ESTADOTRAS_DESC': 'CALLE',
       'MAQUINA': 'F_BLOQ',
       'RECURSO': 'F_BLOQ'
     };
 
     return (
-      <div className="border-2 border-gray-100 rounded-[2.5rem] shadow-xl overflow-hidden bg-white text-left">
-        <div className="overflow-x-auto max-h-[600px]">
-          <table className="w-full border-collapse text-center font-sans text-[10px] text-gray-700">
-            <thead className="bg-[#0f172a] text-white uppercase font-black tracking-widest text-[8px] sticky top-0 z-10 border-b-2 border-white/10">
-              <tr>
-                {keys.map((k, i) => (
-                  <th key={i} className="px-4 py-4 border-r border-white/5 whitespace-nowrap uppercase">
-                    {headerMapping[k.toUpperCase()] || k}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50 font-bold">
-              {sortedCurado.map((row, idx) => (
-                <tr key={idx} className="hover:bg-slate-50 transition-colors">
+      <div className="space-y-4">
+        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">{title} ({filtered.length})</h4>
+        <div className="border-2 border-gray-100 rounded-[2rem] shadow-xl overflow-hidden bg-white text-left mb-8">
+          <div className="overflow-x-auto max-h-[500px]">
+            <table className="w-full border-collapse text-center font-sans text-[10px] text-gray-700">
+              <thead className="bg-[#0f172a] text-white uppercase font-black tracking-widest text-[8px] sticky top-0 z-10 border-b-2 border-white/10">
+                <tr>
                   {keys.map((k, i) => (
-                    <td key={i} className="px-4 py-3 border-r border-gray-100 font-mono text-slate-500 whitespace-nowrap text-center">
-                      {String(row[k] ?? '—')}
-                    </td>
+                    <th key={i} className="px-4 py-4 border-r border-white/5 whitespace-nowrap uppercase">
+                      {headerMapping[k.toUpperCase()] || k}
+                    </th>
                   ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-gray-50 font-bold">
+                {filtered.map((row, idx) => (
+                  <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                    {keys.map((k, i) => (
+                      <td key={i} className="px-4 py-3 border-r border-gray-100 font-mono text-slate-500 whitespace-nowrap text-center">
+                        {String(row[k] ?? '—')}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     );
@@ -449,8 +427,23 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         </div>
       );
       case 'curado': return (
-        <div className="animate-in fade-in duration-300 text-left">
-           {renderCuradoTable()}
+        <div className="animate-in fade-in duration-300 text-left space-y-4">
+           {renderCuradoSpace(curadoData, "Auditoría Planta: CALLE & F_BLOQ / F_BLOQ_M", (row) => {
+             const c = String(getProp(row, ['estadoTras', 'ESTADOTRAS']) || '').toUpperCase();
+             const m = String(getProp(row, ['Maquina', 'MAQUINA']) || '').toUpperCase();
+             return c.includes('CALLE') && (m === 'F_BLOQ' || m === 'F_BLOQ_M');
+           })}
+           {renderCuradoSpace(curadoData, "Auditoría Planta: BCLL & F_BLOQ_M", (row) => {
+             const c = String(getProp(row, ['estadoTras', 'ESTADOTRAS']) || '').toUpperCase();
+             const m = String(getProp(row, ['Maquina', 'MAQUINA']) || '').toUpperCase();
+             return c.includes('BCLL') && m === 'F_BLOQ_M';
+           })}
+           {(!curadoData || curadoData.length === 0) && (
+             <div className="py-24 text-center bg-gray-50/30 rounded-3xl border-2 border-dashed border-gray-100">
+               <TableIcon className="w-16 h-16 text-indigo-100 mx-auto" />
+               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-4">Sin datos técnicos de curado en SAP</p>
+             </div>
+           )}
         </div>
       );
       case 'ordenes': return (
@@ -651,12 +644,12 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         </div>
       </Tabs>
 
-      <div className="flex items-center gap-3 p-5 bg-indigo-50 border border-indigo-100 rounded-[1.5rem] shadow-sm text-left">
-        <Info className="w-5 h-5 text-indigo-600 flex-shrink-0" />
-        <p className="text-[10px] font-bold text-indigo-700 uppercase tracking-widest leading-relaxed">
-          Nota Técnica: Auditoría multinivel FERT -> BLOQUE. Mapeo de columnas: estadoTras = CALLE | Maquina = F_BLOQ / F_BLOQ_M. Ordenación: Fecha Antigua → Nueva.
-        </p>
-      </div>
+      <style jsx global>{`
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+      `}</style>
     </div>
   );
 };
