@@ -1,7 +1,6 @@
-
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   FlaskConical, 
   Package, 
@@ -40,7 +39,7 @@ import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 import { cn } from '@/lib/utils';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, parseISO } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, parseISO, isValid } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 const BLOCK_LENGTH_METERS = 20;
@@ -349,18 +348,33 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   };
 
   const renderCuradoTable = () => {
-    // Filtro operativo solicitado: CALLE (estadoTras) y F_BLOQ/F_BLOQ_M (Maquina)
+    // Filtro operativo: CALLE (estadoTras) y F_BLOQ/F_BLOQ_M (Maquina)
     const filteredCurado = curadoData.filter(row => {
       const calleValue = String(getProp(row, ['estadoTras', 'ESTADOTRAS', 'ESTADO_TRAS']) || '').toUpperCase();
       const maquinaValue = String(getProp(row, ['Maquina', 'MAQUINA', 'RECURSO']) || '').toUpperCase();
       
       const matchCalle = calleValue.includes('CALLE');
-      const matchMaquina = maquinaValue === 'F_BLOQ' || maquinaValue === 'F_BLOQ_M' || maquinaValue.includes('F_BLOQ');
+      // Updated filter: F_BLOQ or F_BLOQ_M
+      const matchMaquina = maquinaValue === 'F_BLOQ' || maquinaValue === 'F_BLOQ_M';
       
       return matchCalle && matchMaquina;
     });
 
-    if (filteredCurado.length === 0) {
+    // Ordenación Cronológica: Desde la más antigua (Ascendente)
+    const sortedCurado = [...filteredCurado].sort((a, b) => {
+      const dateAStr = getProp(a, ['FECHA', 'FECHA_INICIO', 'FECHA_FABRICACION', 'FECHA_OT_PRG_INI']);
+      const dateBStr = getProp(b, ['FECHA', 'FECHA_INICIO', 'FECHA_FABRICACION', 'FECHA_OT_PRG_INI']);
+      
+      const dateA = new Date(dateAStr);
+      const dateB = new Date(dateBStr);
+      
+      const valA = isValid(dateA) ? dateA.getTime() : 0;
+      const valB = isValid(dateB) ? dateB.getTime() : 0;
+      
+      return valA - valB;
+    });
+
+    if (sortedCurado.length === 0) {
       return (
         <div className="py-24 text-center bg-gray-50/30 rounded-3xl border-2 border-dashed border-gray-100">
           <TableIcon className="w-16 h-16 text-indigo-100 mx-auto" />
@@ -369,7 +383,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       );
     }
 
-    const keys = Object.keys(filteredCurado[0] || {});
+    const keys = Object.keys(sortedCurado[0] || {});
     const headerMapping: Record<string, string> = {
       'ESTADOTRAS': 'CALLE',
       'ESTADO_TRAS': 'CALLE',
@@ -392,10 +406,10 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50 font-bold">
-              {filteredCurado.map((row, idx) => (
+              {sortedCurado.map((row, idx) => (
                 <tr key={idx} className="hover:bg-slate-50 transition-colors">
                   {keys.map((k, i) => (
-                    <td key={i} className="px-4 py-3 border-r border-gray-100 font-mono text-slate-500 whitespace-nowrap">
+                    <td key={i} className="px-4 py-3 border-r border-gray-100 font-mono text-slate-500 whitespace-nowrap text-center">
                       {String(row[k] ?? '—')}
                     </td>
                   ))}
@@ -406,6 +420,167 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         </div>
       </div>
     );
+  };
+
+  const renderContent = () => {
+    if (isLoading) {
+      return (
+        <div className="flex flex-col items-center justify-center p-20 gap-4">
+          <Loader2 className="w-10 h-10 animate-spin text-primary" />
+          <p className="text-xs font-bold text-gray-400 uppercase tracking-widest animate-pulse">Sincronizando SAP...</p>
+        </div>
+      );
+    }
+
+    switch (activeTab) {
+      case 'resumen': return (
+        <div className="space-y-12 animate-in fade-in duration-300">
+           {isProcessingResumen ? (
+             <div className="py-32 text-center">
+                <Loader2 className="w-12 h-12 animate-spin mx-auto text-primary mb-6" />
+                <p className="text-[11px] font-black uppercase text-slate-400 tracking-widest">Ejecutando Explosión Técnica BOM: {resumenProgress.current} / {resumenProgress.total}</p>
+             </div>
+           ) : (
+             <>
+               {renderSummaryTable(summarySpaces.withAperture, "Carga Operativa: Bloques con Apertura Técnica", TrendingUp)}
+               {renderSummaryTable(summarySpaces.withoutAperture, "Carga Operativa: Bloques por Combinación", Box)}
+             </>
+           )}
+        </div>
+      );
+      case 'curado': return (
+        <div className="animate-in fade-in duration-300 text-left">
+           {renderCuradoTable()}
+        </div>
+      );
+      case 'ordenes': return (
+        <div className="animate-in fade-in duration-300 text-left">
+           <Card className="border-2 border-gray-100 rounded-[2.5rem] shadow-xl overflow-hidden bg-white">
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-[10px] text-center border-collapse">
+                  <thead className="bg-[#1e293b] text-white uppercase font-black tracking-widest text-[8px] border-b border-white/5 sticky top-0 z-10">
+                    <tr>
+                      <th className="px-6 py-5 text-left border-r border-white/5">Orden</th>
+                      <th className="px-6 py-5 text-left border-r border-white/5">Material / Descripción</th>
+                      <th className="px-4 py-5 border-r border-white/5">Apertura</th>
+                      <th className="px-4 py-5 border-r border-white/5 bg-black/10">Dens.</th>
+                      <th className="px-6 py-5 border-r border-white/5 text-right font-black">Cant. Prog.</th>
+                      <th className="px-4 py-5 border-r border-white/5">Máquina</th>
+                      <th className="px-4 py-5">Almacén</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50 font-bold text-slate-600">
+                    {provFiltradas.length === 0 ? (
+                      <tr><td colSpan={7} className="py-20 text-center text-slate-200 uppercase font-black">Sin órdenes para el Almacén 1006</td></tr>
+                    ) : (
+                      provFiltradas.map((o, idx) => {
+                        const info = extractMaterialInfo(o);
+                        return (
+                          <tr key={idx} className="hover:bg-slate-50">
+                            <td className="px-6 py-4 text-left font-mono font-black text-slate-900 border-r border-gray-50">{getProp(o, ['ORDENPREVISIONAL', 'ORDEN'])}</td>
+                            <td className="px-6 py-4 text-left border-r border-gray-50 truncate max-w-[400px]">
+                              <span className="text-indigo-600 font-black block text-[11px]">{info.code}</span>
+                              <span className="text-slate-400 text-[9px] uppercase italic block leading-tight">{info.desc}</span>
+                            </td>
+                            <td className="px-4 py-4 border-r border-gray-50 font-black text-blue-700 bg-blue-50/20">{info.apertura}</td>
+                            <td className="px-4 py-4 border-r border-gray-50 font-mono text-slate-900">{info.dens}</td>
+                            <td className="px-6 py-4 text-right font-mono font-black text-slate-900 bg-slate-50/10 border-r border-gray-50">{formatNum(o.CANT_PROG || o.CANTIDAD || o.CANTPROGRAMADA, 0)}</td>
+                            <td className="px-4 py-4 border-r border-gray-50 font-black text-slate-400 uppercase text-[9px]">{getProp(o, ['MAQUINA', 'RECURSO'])}</td>
+                            <td className="px-4 py-4 text-indigo-700 font-black bg-indigo-50/30">{getProp(o, ['ALMACEN', 'Almacen'])}</td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+           </Card>
+        </div>
+      );
+      case 'ordenesProd': return (
+        <div className="animate-in fade-in duration-300 text-left">
+          <Card className="border-2 border-gray-100 rounded-[2.5rem] shadow-xl overflow-hidden bg-white">
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-[10px] text-center border-collapse">
+                <thead className="bg-[#1e293b] text-white uppercase font-black tracking-widest text-[8px] border-b border-white/5 sticky top-0 z-10">
+                  <tr>
+                    <th className="px-6 py-5 text-left border-r border-white/5">Orden FERT</th>
+                    <th className="px-6 py-5 text-left border-r border-white/5">Material / Descripción</th>
+                    <th className="px-6 py-5 border-r border-white/5 text-right font-black">Cant.</th>
+                    <th className="px-4 py-5 border-r border-white/5">Responsable</th>
+                    <th className="px-4 py-5 border-r border-white/5">Máquina</th>
+                    <th className="px-4 py-5">Almacén</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50 font-bold text-slate-600">
+                  {prodFiltradas.length === 0 ? (
+                    <tr><td colSpan={6} className="py-20 text-center text-slate-200 uppercase font-black">Sin órdenes de producción detectadas</td></tr>
+                  ) : (
+                    prodFiltradas.map((o, idx) => {
+                      const info = extractMaterialInfo(o);
+                      return (
+                        <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                          <td className="px-6 py-4 text-left font-mono font-black text-indigo-900 border-r border-gray-50">{getProp(o, ['ORDEN', 'ORDEN_PROCESO'])}</td>
+                          <td className="px-6 py-4 text-left border-r border-gray-50 truncate max-w-[400px]">
+                            <span className="text-primary font-black block text-[11px]">{info.code}</span>
+                            <span className="text-slate-400 text-[9px] uppercase italic block leading-tight">{info.desc}</span>
+                          </td>
+                          <td className="px-6 py-4 text-right font-mono font-black text-slate-900 bg-slate-50/10 border-r border-gray-50">{formatNum(o.CANT_PROG || o.CANTIDAD || o.CANTPROGRAMADA, 0)}</td>
+                          <td className="px-4 py-4 border-r border-gray-50">
+                            <Badge variant="outline" className="text-[10px] font-black bg-blue-50 text-blue-700 border-blue-100">{getProp(o, ['RESP_CONTROL_PROD', 'RESPCONTROLPROD'])}</Badge>
+                          </td>
+                          <td className="px-4 py-4 border-r border-gray-50 font-black text-slate-400 uppercase text-[9px]">{getProp(o, ['MAQUINA', 'RECURSO'])}</td>
+                          <td className="px-4 py-4 text-slate-400 font-bold">{getProp(o, ['ALMACEN', 'Almacen'])}</td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </div>
+      );
+      case 'inventario': return (
+        <div className="animate-in fade-in duration-300 text-left">
+          <Card className="rounded-[2.5rem] border-2 border-gray-100 shadow-xl overflow-hidden bg-white">
+            <div className="overflow-x-auto max-h-[600px] relative">
+              <table className="w-full border-collapse text-center font-sans text-[10px]">
+                <thead className="bg-[#1e293b] text-white border-b border-gray-100 uppercase font-black tracking-widest text-[8px] sticky top-0 z-10">
+                  <tr>
+                    <th className="px-6 py-5 border-r border-white/5">Material</th>
+                    <th className="px-6 py-5 border-r border-white/10 text-left">Descripción del Bloque (SAP)</th>
+                    <th className="px-3 py-5 border-r border-white/5">Centro</th>
+                    <th className="px-3 py-5 border-r border-white/5 text-indigo-300">ALM.</th>
+                    <th className="px-3 py-5 border-r border-white/5 bg-green-500/30 text-green-300">Libre Utiliz.</th>
+                    <th className="px-3 py-5 border-r border-white/5 bg-blue-500/30 text-blue-200">En Traslado</th>
+                    <th className="px-3 py-5">Responsable</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50 font-bold text-[11px]">
+                  {filteredInventario.length === 0 ? (
+                    <tr><td colSpan={7} className="py-20 text-center text-slate-200 uppercase font-black">No hay stock de "BLOQUE FORMULADO" registrado</td></tr>
+                  ) : (
+                    filteredInventario.map((row, i) => (
+                      <tr key={i} className="hover:bg-blue-50/10 transition-colors">
+                        <td className="px-6 py-3 border-r border-dashed border-gray-100 font-mono text-blue-600">{cleanCode(row.MATERIAL)}</td>
+                        <td className="px-6 py-3 border-r border-dashed border-gray-100 text-left uppercase text-slate-500 truncate max-w-[350px] leading-tight">{row.NOMBRE || '—'}</td>
+                        <td className="px-3 py-3 border-r border-dashed border-gray-100">{row.CENTRO}</td>
+                        <td className="px-3 py-3 border-r border-dashed border-gray-100 text-indigo-700 font-black bg-indigo-50/30">{row.ALMACEN}</td>
+                        <td className="px-3 py-3 border-r border-dashed border-gray-100 font-mono text-green-700 bg-green-50/30">{Number(row.LIBREUTILIZACION || 0).toLocaleString()}</td>
+                        <td className="px-3 py-3 border-r border-dashed border-gray-100 font-mono text-blue-500 bg-blue-50/30">{Number(row.ENTRASLADO || 0).toLocaleString()}</td>
+                        <td className="px-3 py-3 text-[9px] text-blue-600 uppercase font-black">{getProp(row, ['RESP_CONTROL_PROD', 'RESPCONTROLPROD'])}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </div>
+      );
+      default: return null;
+    }
   };
 
   if (!mounted) return <div className="p-4 md:p-6 min-h-screen bg-white" />;
@@ -471,152 +646,15 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           ))}
         </TabsList>
 
-        <TabsContent value="resumen" className="space-y-12 animate-in fade-in duration-300">
-           {isProcessingResumen ? (
-             <div className="py-32 text-center">
-                <Loader2 className="w-12 h-12 animate-spin mx-auto text-primary mb-6" />
-                <p className="text-[11px] font-black uppercase text-slate-400 tracking-widest">Ejecutando Explosión Técnica BOM: {resumenProgress.current} / {resumenProgress.total}</p>
-             </div>
-           ) : (
-             <>
-               {renderSummaryTable(summarySpaces.withAperture, "Carga Operativa: Bloques con Apertura Técnica", TrendingUp)}
-               {renderSummaryTable(summarySpaces.withoutAperture, "Carga Operativa: Bloques por Combinación", Box)}
-             </>
-           )}
-        </TabsContent>
-
-        <TabsContent value="curado" className="animate-in fade-in duration-300 text-left">
-           {renderCuradoTable()}
-        </TabsContent>
-
-        <TabsContent value="ordenes" className="animate-in fade-in duration-300 text-left">
-           <Card className="border-2 border-gray-100 rounded-[2.5rem] shadow-xl overflow-hidden bg-white">
-              <div className="overflow-x-auto">
-                <table className="min-w-full text-[10px] text-center border-collapse">
-                  <thead className="bg-[#1e293b] text-white uppercase font-black tracking-widest text-[8px] border-b border-white/5 sticky top-0 z-10">
-                    <tr>
-                      <th className="px-6 py-5 text-left border-r border-white/5">Orden</th>
-                      <th className="px-6 py-5 text-left border-r border-white/5">Material / Descripción</th>
-                      <th className="px-4 py-5 border-r border-white/5">Apertura</th>
-                      <th className="px-4 py-5 border-r border-white/5 bg-black/10">Dens.</th>
-                      <th className="px-6 py-5 border-r border-white/5 text-right font-black">Cant. Prog.</th>
-                      <th className="px-4 py-5 border-r border-white/5">Máquina</th>
-                      <th className="px-4 py-5">Almacén</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50 font-bold text-slate-600">
-                    {provFiltradas.length === 0 ? (
-                      <tr><td colSpan={7} className="py-20 text-center text-slate-200 uppercase font-black">Sin órdenes para el Almacén 1006</td></tr>
-                    ) : (
-                      provFiltradas.map((o, idx) => {
-                        const info = extractMaterialInfo(o);
-                        return (
-                          <tr key={idx} className="hover:bg-slate-50">
-                            <td className="px-6 py-4 text-left font-mono font-black text-slate-900 border-r border-gray-50">{getProp(o, ['ORDENPREVISIONAL', 'ORDEN'])}</td>
-                            <td className="px-6 py-4 text-left border-r border-gray-50 truncate max-w-[400px]">
-                              <span className="text-indigo-600 font-black block text-[11px]">{info.code}</span>
-                              <span className="text-slate-400 text-[9px] uppercase italic block leading-tight">{info.desc}</span>
-                            </td>
-                            <td className="px-4 py-4 border-r border-gray-50 font-black text-blue-700 bg-blue-50/20">{info.apertura}</td>
-                            <td className="px-4 py-4 border-r border-gray-50 font-mono text-slate-900">{info.dens}</td>
-                            <td className="px-6 py-4 text-right font-mono font-black text-slate-900 bg-slate-50/10 border-r border-gray-50">{formatNum(o.CANT_PROG || o.CANTIDAD || o.CANTPROGRAMADA, 0)}</td>
-                            <td className="px-4 py-4 border-r border-gray-50 font-black text-slate-400 uppercase text-[9px]">{getProp(o, ['MAQUINA', 'RECURSO'])}</td>
-                            <td className="px-4 py-4 text-indigo-700 font-black bg-indigo-50/30">{getProp(o, ['ALMACEN', 'Almacen'])}</td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
-           </Card>
-        </TabsContent>
-
-        <TabsContent value="ordenesProd" className="animate-in fade-in duration-300 text-left">
-          <Card className="border-2 border-gray-100 rounded-[2.5rem] shadow-xl overflow-hidden bg-white">
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-[10px] text-center border-collapse">
-                <thead className="bg-[#1e293b] text-white uppercase font-black tracking-widest text-[8px] border-b border-white/5 sticky top-0 z-10">
-                  <tr>
-                    <th className="px-6 py-5 text-left border-r border-white/5">Orden FERT</th>
-                    <th className="px-6 py-5 text-left border-r border-white/5">Material / Descripción</th>
-                    <th className="px-6 py-5 border-r border-white/5 text-right font-black">Cant.</th>
-                    <th className="px-4 py-5 border-r border-white/5">Responsable</th>
-                    <th className="px-4 py-5 border-r border-white/5">Máquina</th>
-                    <th className="px-4 py-5">Almacén</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50 font-bold text-slate-600">
-                  {prodFiltradas.length === 0 ? (
-                    <tr><td colSpan={6} className="py-20 text-center text-slate-200 uppercase font-black">Sin órdenes de producción detectadas</td></tr>
-                  ) : (
-                    prodFiltradas.map((o, idx) => {
-                      const info = extractMaterialInfo(o);
-                      return (
-                        <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                          <td className="px-6 py-4 text-left font-mono font-black text-indigo-900 border-r border-gray-50">{getProp(o, ['ORDEN', 'ORDEN_PROCESO'])}</td>
-                          <td className="px-6 py-4 text-left border-r border-gray-50 truncate max-w-[400px]">
-                            <span className="text-primary font-black block text-[11px]">{info.code}</span>
-                            <span className="text-slate-400 text-[9px] uppercase italic block leading-tight">{info.desc}</span>
-                          </td>
-                          <td className="px-6 py-4 text-right font-mono font-black text-slate-900 bg-slate-50/10 border-r border-gray-50">{formatNum(o.CANT_PROG || o.CANTIDAD || o.CANTPROGRAMADA, 0)}</td>
-                          <td className="px-4 py-4 border-r border-gray-50">
-                            <Badge variant="outline" className="text-[10px] font-black bg-blue-50 text-blue-700 border-blue-100">{getProp(o, ['RESP_CONTROL_PROD', 'RESPCONTROLPROD'])}</Badge>
-                          </td>
-                          <td className="px-4 py-4 border-r border-gray-50 font-black text-slate-400 uppercase text-[9px]">{getProp(o, ['MAQUINA', 'RECURSO'])}</td>
-                          <td className="px-4 py-4 text-slate-400 font-bold">{getProp(o, ['ALMACEN', 'Almacen'])}</td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="inventario" className="animate-in fade-in duration-300 text-left">
-          <Card className="rounded-[2.5rem] border-2 border-gray-100 shadow-xl overflow-hidden bg-white">
-            <div className="overflow-x-auto max-h-[600px] relative">
-              <table className="w-full border-collapse text-center font-sans text-[10px]">
-                <thead className="bg-[#1e293b] text-white border-b border-gray-100 uppercase font-black tracking-widest text-[8px] sticky top-0 z-10">
-                  <tr>
-                    <th className="px-6 py-5 border-r border-white/5">Material</th>
-                    <th className="px-6 py-5 border-r border-white/10 text-left">Descripción del Bloque (SAP)</th>
-                    <th className="px-3 py-5 border-r border-white/5">Centro</th>
-                    <th className="px-3 py-5 border-r border-white/5 text-indigo-300">ALM.</th>
-                    <th className="px-3 py-5 border-r border-white/5 bg-green-500/30 text-green-300">Libre Utiliz.</th>
-                    <th className="px-3 py-5 border-r border-white/5 bg-blue-500/30 text-blue-200">En Traslado</th>
-                    <th className="px-3 py-5">Responsable</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50 font-bold text-[11px]">
-                  {filteredInventario.length === 0 ? (
-                    <tr><td colSpan={7} className="py-20 text-center text-slate-200 uppercase font-black">No hay stock de "BLOQUE FORMULADO" registrado</td></tr>
-                  ) : (
-                    filteredInventario.map((row, i) => (
-                      <tr key={i} className="hover:bg-blue-50/10 transition-colors">
-                        <td className="px-6 py-3 border-r border-dashed border-gray-100 font-mono text-blue-600">{cleanCode(row.MATERIAL)}</td>
-                        <td className="px-6 py-3 border-r border-dashed border-gray-100 text-left uppercase text-slate-500 truncate max-w-[350px] leading-tight">{row.NOMBRE || '—'}</td>
-                        <td className="px-3 py-3 border-r border-dashed border-gray-100">{row.CENTRO}</td>
-                        <td className="px-3 py-3 border-r border-dashed border-gray-100 text-indigo-700 font-black bg-indigo-50/30">{row.ALMACEN}</td>
-                        <td className="px-3 py-3 border-r border-dashed border-gray-100 font-mono text-green-700 bg-green-50/30">{Number(row.LIBREUTILIZACION || 0).toLocaleString()}</td>
-                        <td className="px-3 py-3 border-r border-dashed border-gray-100 font-mono text-blue-500 bg-blue-50/30">{Number(row.ENTRASLADO || 0).toLocaleString()}</td>
-                        <td className="px-3 py-3 text-[9px] text-blue-600 uppercase font-black">{getProp(row, ['RESP_CONTROL_PROD', 'RESPCONTROLPROD'])}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-        </TabsContent>
+        <div className="mt-6">
+          {renderContent()}
+        </div>
       </Tabs>
 
       <div className="flex items-center gap-3 p-5 bg-indigo-50 border border-indigo-100 rounded-[1.5rem] shadow-sm text-left">
         <Info className="w-5 h-5 text-indigo-600 flex-shrink-0" />
         <p className="text-[10px] font-bold text-indigo-700 uppercase tracking-widest leading-relaxed">
-          Nota Técnica: Auditoría multinivel FERT -> BLOQUE. Mapeo de columnas: estadoTras = CALLE | Maquina = F_BLOQ / F_BLOQ_M. Filtro activo por centro de transformación.
+          Nota Técnica: Auditoría multinivel FERT -> BLOQUE. Mapeo de columnas: estadoTras = CALLE | Maquina = F_BLOQ / F_BLOQ_M. Ordenación: Fecha Antigua → Nueva.
         </p>
       </div>
     </div>
