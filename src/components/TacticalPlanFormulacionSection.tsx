@@ -252,7 +252,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       const rawCurado = curadoRes.data || [];
       setCuradoData(rawCurado);
 
-      // SILENT ACTION: Capturar estatus únicos de estadoTras para inspección
       const uniqueStatuses = [...new Set(rawCurado.map((r: any) => String(getProp(r, ['estadoTras', 'ESTADOTRAS']) || 'EMPTY').trim()))];
       inspector.captureVariable('unique_estadoTras_statuses', uniqueStatuses, { description: 'Lista global de estatus detectados en columna estadoTras' });
 
@@ -436,11 +435,12 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       );
       case 'curado': return (
         <div className="animate-in fade-in duration-300 text-left space-y-4">
-           {renderCuradoSpace(curadoData, "Auditoría Planta: BLOQUE FORMULADO LEADER (F_BLOQ)", (row) => {
+           {renderCuradoSpace(curadoData, "BLOQUE FORMULADO LEADER (F_BLOQ)", (row) => {
              const m = String(getProp(row, ['Maquina', 'MAQUINA']) || '').toUpperCase();
-             return m === 'F_BLOQ';
+             const et = String(getProp(row, ['estadoTras', 'ESTADOTRAS']) || '').trim().toUpperCase();
+             return m === 'F_BLOQ' && et === 'CALLE';
            })}
-           {renderCuradoSpace(curadoData, "Auditoría Planta: BLOQUE FORMULADO COFAMA (F_BLOQ_M)", (row) => {
+           {renderCuradoSpace(curadoData, "BLOQUE FORMULADO COFAMA (F_BLOQ_M)", (row) => {
              const m = String(getProp(row, ['Maquina', 'MAQUINA']) || '').toUpperCase();
              return m === 'F_BLOQ_M';
            })}
