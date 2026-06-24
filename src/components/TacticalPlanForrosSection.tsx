@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { 
   CalendarClock, 
   Loader2, 
@@ -414,7 +414,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const normalizeMaterialCode = useCallback((code: string | number): string => {
     if (!code) return '';
     const codeStr = String(code).trim();
-    return codeStr.replace(/^0+/, '');
+    return codeStr.replace(/^0+/, '').slice(-8);
   }, []);
 
   const mapToHojaRuta = useCallback((puestoName: string): string => {
@@ -977,6 +977,41 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const horasNetasDiurnasVal = parseFloat(jornadaDiurnaSel || "0") * 0.84;
   const horasNetasNocturnasVal = parseFloat(jornadaNocturnaSel || "0") * 0.84;
 
+  const renderDateFilterHeader = () => (
+    <div className="flex items-center justify-between p-6 bg-white border border-slate-200 rounded-[2rem] shadow-sm mb-6">
+      <div className="flex items-center gap-3">
+        <div className="bg-indigo-600 p-2 rounded-xl text-white shadow-lg shadow-indigo-100">
+          <CalendarIcon className="w-4 h-4" />
+        </div>
+        <div>
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Rango de Carga Técnica</p>
+          <p className="text-xs font-black text-indigo-900">Filtrado por Fecha de Inicio de Órdenes</p>
+        </div>
+      </div>
+      
+      <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2">
+          <span className="text-[9px] font-black text-slate-400 uppercase">Desde:</span>
+          <input 
+            type="date" 
+            value={techStartDate} 
+            onChange={(e) => setTechStartDate(e.target.value)}
+            className="text-xs font-bold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 focus:ring-indigo-500 outline-none"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[9px] font-black text-slate-400 uppercase">Hasta:</span>
+          <input 
+            type="date" 
+            value={techEndDate} 
+            onChange={(e) => setTechEndDate(e.target.value)}
+            className="text-xs font-bold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 focus:ring-indigo-500 outline-none"
+          />
+        </div>
+      </div>
+    </div>
+  );
+
   if (!isMounted) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-slate-50">
@@ -1045,7 +1080,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       {fertCols.map((col) => {
                         let val = order[col.key] || order[col.id] || order[col.id.toLowerCase()];
                         if (col.id === 'MATERIAL' && val) {
-                          val = String(val).trim().slice(-8); // Extraer 8 dígitos desde el final
+                          val = String(val).trim().slice(-8); 
                         }
                         if (col.id === 'FECHA' && val) val = String(val).split('T')[0];
                         if (col.id === 'CANTPROGRAMADA' && val) val = Math.round(Number(val)).toLocaleString();
@@ -1427,7 +1462,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   </Button>
                 </div>
 
-                {/* Summaries Grid requested in image */}
+                {/* Resumen Panel requested with Table Forros in the middle */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {/* Card 1: Resumen por Responsable (Fert Parents) */}
                   <Card className="rounded-3xl border-none shadow-sm ring-1 ring-slate-100 overflow-hidden bg-white">
@@ -1456,7 +1491,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     </CardContent>
                   </Card>
 
-                  {/* Card 2: Tabla Forros (Consolidated Components) - AS REQUESTED IN IMAGE */}
+                  {/* Card 2: TABLA FORROS (Insumos Result) - MIDDLE COLUMN AS REQUESTED */}
                   <Card className="rounded-3xl border-none shadow-sm ring-1 ring-slate-100 overflow-hidden bg-white">
                     <div className="px-6 py-3 bg-indigo-900 text-white font-black text-[10px] uppercase tracking-widest flex items-center gap-2">
                       <ListTree className="w-4 h-4" /> TABLA FORROS (INSUMOS)
