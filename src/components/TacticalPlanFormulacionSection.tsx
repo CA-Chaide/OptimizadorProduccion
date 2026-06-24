@@ -17,12 +17,12 @@ import {
   RefreshCw,
   Minus,
   Plus,
-  ThermometerSnowflake,
   ShoppingCart,
   MapPin,
   Box,
   TrendingUp,
-  Info
+  Info,
+  Table as TableIcon
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -40,7 +40,7 @@ import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 import { cn } from '@/lib/utils';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, isValid, parseISO } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, isValid } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 const BLOCK_LENGTH_METERS = 20;
@@ -93,6 +93,13 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set());
   const [viewDate, setViewDate] = useState(new Date());
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    setMounted(true);
+    const today = new Date();
+    setViewDate(today);
+    setSelectedDates(new Set([format(today, 'yyyy-MM-dd')]));
+  }, []);
 
   const extractMaterialInfo = useCallback((item: any) => {
     const matStr = getProp(item, ['MATERIAL', 'Material', 'CodMaterial', 'MATERIAL_ID', 'CODIGO']);
@@ -231,58 +238,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     return { withAperture, withoutAperture };
   }, [unifiedSummaryData]);
 
-  const curadoAudit = useMemo(() => {
-    // VISUALIZACIÓN GLOBAL: No se aplican filtros de fecha ni responsabilidad
-    return curadoData.map(row => {
-      const info = extractMaterialInfo(row);
-      const fabDateRaw = getProp(row, ['FECHA_FABRICACION', 'FECHA', 'FECHA_FAB']);
-      
-      let fabDate: Date | null = null;
-      if (fabDateRaw && fabDateRaw !== 'null' && fabDateRaw !== '—') {
-        const d = fabDateRaw.includes('T') ? fabDateRaw.split('T')[0] : fabDateRaw;
-        const parts = d.split('-');
-        if (parts.length === 3) {
-          const tempDate = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
-          if (isValid(tempDate)) {
-            fabDate = tempDate;
-            fabDate.setHours(0,0,0,0);
-          }
-        }
-      }
-      
-      let estatus = 'PENDIENTE';
-      let diasTranscurridos = 0;
-      let diasRequeridos = 3; 
-      
-      if (fabDate && isValid(fabDate)) {
-        const today = new Date();
-        today.setHours(0,0,0,0);
-        const diffTime = Math.abs(today.getTime() - fabDate.getTime());
-        diasTranscurridos = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-        diasRequeridos = info.apertura === '194.5' ? 2 : 3;
-        estatus = diasTranscurridos >= diasRequeridos ? 'DISPONIBLE' : 'EN CURADO';
-      }
-
-      return {
-        ...row,
-        ...info,
-        fabDate,
-        fabDateStr: (fabDate && isValid(fabDate)) ? format(fabDate, 'yyyy-MM-dd') : '—',
-        diasTranscurridos,
-        diasRequeridos,
-        estatus,
-        nroBloque: getProp(row, ['NRO_BLOQUE', 'BLOQUE', 'ID'])
-      };
-    });
-  }, [curadoData, extractMaterialInfo]);
-
-  useEffect(() => {
-    setMounted(true);
-    const today = new Date();
-    setViewDate(today);
-    setSelectedDates(new Set([format(today, 'yyyy-MM-dd')]));
-  }, []);
-
   const fetchDataAsync = useCallback(async () => {
     setIsLoading(true);
     try {
@@ -406,6 +361,46 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     );
   };
 
+  const renderCuradoTable = () => {
+    if (curadoData.length === 0) {
+      return (
+        <div className="py-24 text-center bg-gray-50/30 rounded-3xl border-2 border-dashed border-gray-100">
+          <TableIcon className="w-16 h-16 text-indigo-100 mx-auto" />
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-4">Sin datos de curado disponibles</p>
+        </div>
+      );
+    }
+
+    const keys = Object.keys(curadoData[0] || {});
+    
+    return (
+      <div className="border-2 border-gray-100 rounded-[2.5rem] shadow-xl overflow-hidden bg-white text-left">
+        <div className="overflow-x-auto max-h-[600px]">
+          <table className="w-full border-collapse text-center font-sans text-[10px] text-gray-700">
+            <thead className="bg-[#0f172a] text-white uppercase font-black tracking-widest text-[8px] sticky top-0 z-10 border-b-2 border-white/10">
+              <tr>
+                {keys.map((k, i) => (
+                  <th key={i} className="px-4 py-4 border-r border-white/5">{k}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50 font-bold">
+              {curadoData.map((row, idx) => (
+                <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                  {keys.map((k, i) => (
+                    <td key={i} className="px-4 py-3 border-r border-gray-100 font-mono text-slate-500">
+                      {String(row[k] ?? '—')}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
+
   if (!mounted) {
     return <div className="p-4 md:p-6 min-h-screen bg-white" />;
   }
@@ -462,7 +457,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         <TabsList className="grid grid-cols-5 h-11 bg-gray-100/50 p-1.5 rounded-2xl border border-gray-200 mb-8">
           {[ 
             { v: 'resumen', l: 'Salida de Datos', i: LayoutDashboard }, 
-            { v: 'curado', l: 'Control Curado', i: ThermometerSnowflake },
+            { v: 'curado', l: 'Control Curado', i: TableIcon },
             { v: 'ordenes', l: 'Provisionales', i: Package }, 
             { v: 'ordenesProd', l: 'FERT', i: ShoppingCart },
             { v: 'inventario', l: 'Inventarios SAP', i: Database }
@@ -488,52 +483,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="curado" className="animate-in fade-in duration-300 text-left">
-           <Card className="rounded-[2.5rem] border-2 border-gray-100 shadow-xl overflow-hidden bg-white">
-             <div className="overflow-x-auto max-h-[650px]">
-               <table className="w-full text-[10px] text-center border-collapse">
-                 <thead className="bg-[#0f172a] text-white uppercase font-black tracking-widest text-[8px] sticky top-0 z-10">
-                   <tr>
-                     <th className="px-6 py-5 text-left border-r border-white/5">Nro. Bloque</th>
-                     <th className="px-6 py-5 text-left border-r border-white/5">Mezcla Química</th>
-                     <th className="px-4 py-5 border-r border-white/5">Apert.</th>
-                     <th className="px-4 py-5 border-r border-white/5 bg-white/5">Dens.</th>
-                     <th className="px-6 py-5 border-r border-white/5">Fabricación SAP</th>
-                     <th className="px-4 py-5 border-r border-white/5">D. Trans.</th>
-                     <th className="px-4 py-5 border-r border-white/5">Ciclo</th>
-                     <th className="px-6 py-5">Maduración</th>
-                   </tr>
-                 </thead>
-                 <tbody className="divide-y divide-gray-50 font-bold">
-                    {curadoAudit.length === 0 ? (
-                      <tr><td colSpan={8} className="py-24 text-slate-200 uppercase font-black tracking-widest text-center italic">Sin registros detectados en curado</td></tr>
-                    ) : (
-                      curadoAudit.map((row, idx) => {
-                        const isReady = row.estatus === 'DISPONIBLE';
-                        return (
-                          <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                            <td className="px-6 py-4 text-left font-mono font-black text-indigo-600 border-r border-gray-100">{row.nroBloque || '—'}</td>
-                            <td className="px-6 py-4 text-left uppercase text-slate-400 italic text-[9px] border-r border-gray-100 truncate max-w-[280px]" title={row.desc}>{row.desc}</td>
-                            <td className="px-4 py-4 border-r border-gray-100 font-black text-blue-700 bg-blue-50/20">{row.apertura}</td>
-                            <td className="px-4 py-4 border-r border-gray-100 font-mono text-slate-400">{row.dens}</td>
-                            <td className="px-6 py-4 border-r border-gray-100 font-mono text-slate-400 bg-slate-50/30">{row.fabDateStr}</td>
-                            <td className="px-4 py-4 border-r border-gray-100 font-black text-slate-700">{row.diasTranscurridos}d</td>
-                            <td className="px-4 py-4 border-r border-gray-100 font-black text-slate-400">{row.diasRequeridos}d</td>
-                            <td className="px-6 py-4">
-                              <Badge className={cn(
-                                "px-4 py-1 rounded-full text-[9px] font-black tracking-tighter uppercase",
-                                isReady ? "bg-green-100 text-green-700 border-green-200" : "bg-amber-100 text-amber-700 border-amber-200"
-                              )} variant="outline">
-                                {row.estatus}
-                              </Badge>
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                 </tbody>
-               </table>
-             </div>
-           </Card>
+           {renderCuradoTable()}
         </TabsContent>
 
         <TabsContent value="ordenes" className="animate-in fade-in duration-300 text-left">
