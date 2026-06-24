@@ -349,19 +349,27 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   };
 
   const renderCuradoTable = () => {
-    if (curadoData.length === 0) {
+    // Filtro estricto solicitado: estadoTras (CALLE) y Maquina (F_BLOQ) deben tener valor
+    const filteredCurado = curadoData.filter(row => {
+      const calle = getProp(row, ['estadoTras', 'ESTADOTRAS', 'ESTADO_TRAS']);
+      const fBloq = getProp(row, ['Maquina', 'MAQUINA', 'RECURSO']);
+      return calle && fBloq && calle !== '—' && fBloq !== '—';
+    });
+
+    if (filteredCurado.length === 0) {
       return (
         <div className="py-24 text-center bg-gray-50/30 rounded-3xl border-2 border-dashed border-gray-100">
           <TableIcon className="w-16 h-16 text-indigo-100 mx-auto" />
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-4">Sin datos de curado disponibles</p>
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-4">Sin datos operativos para CALLE / F_BLOQ</p>
         </div>
       );
     }
-    const keys = Object.keys(curadoData[0] || {});
-    // Mapeo solicitado por el usuario para cabeceras específicas
+    const keys = Object.keys(filteredCurado[0] || {});
+    // Mapeo operativo solicitado
     const headerMapping: Record<string, string> = {
       'ESTADOTRAS': 'CALLE',
       'ESTADO_TRAS': 'CALLE',
+      'ESTADOTRAS_DESC': 'CALLE',
       'MAQUINA': 'F_BLOQ',
       'RECURSO': 'F_BLOQ'
     };
@@ -380,7 +388,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50 font-bold">
-              {curadoData.map((row, idx) => (
+              {filteredCurado.map((row, idx) => (
                 <tr key={idx} className="hover:bg-slate-50 transition-colors">
                   {keys.map((k, i) => (
                     <td key={i} className="px-4 py-3 border-r border-gray-100 font-mono text-slate-500 whitespace-nowrap">
@@ -478,7 +486,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="ordenes" className="animate-in fade-in duration-300 text-left">
-           <Card className="border-2 border-gray-50 rounded-[2.5rem] shadow-xl overflow-hidden bg-white">
+           <Card className="border-2 border-gray-100 rounded-[2.5rem] shadow-xl overflow-hidden bg-white">
               <div className="overflow-x-auto">
                 <table className="min-w-full text-[10px] text-center border-collapse">
                   <thead className="bg-[#1e293b] text-white uppercase font-black tracking-widest text-[8px] border-b border-white/5 sticky top-0 z-10">
