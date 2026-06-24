@@ -23,7 +23,9 @@ import {
   Cog,
   Calendar as CalendarIcon,
   Monitor,
-  MapPin
+  MapPin,
+  TrendingUp,
+  Boxes
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -166,15 +168,13 @@ const MachineCard = React.memo(({
         small ? "w-[45%]" : "w-[40%]"
       )}>
         <div className="mb-4 relative">
-          <div className="flex flex-col gap-1.5">
-            <Badge className="w-fit bg-indigo-600 text-white font-black text-[9px] uppercase tracking-widest px-2.5 py-0.5 rounded-lg border-none shadow-sm mb-1">
-              {hrCode || 'S/HR'}
-            </Badge>
-            <h3 className="text-xl font-black uppercase tracking-tighter text-indigo-950 flex items-center gap-2 break-words leading-tight pr-14">
-              <Cpu className="w-5 h-5 text-indigo-600 shrink-0" />
-              <span>{puestoName}</span>
-            </h3>
-          </div>
+          <Badge className="bg-indigo-600 text-white font-black text-[9px] uppercase tracking-widest px-2.5 py-0.5 rounded-lg border-none shadow-sm mb-2 inline-block">
+            {hrCode || 'S/HR'}
+          </Badge>
+          <h3 className="text-xl font-black uppercase tracking-tighter text-indigo-950 flex items-center gap-2 break-words leading-tight pr-14">
+            <Cpu className="w-5 h-5 text-indigo-600 shrink-0" />
+            <span>{puestoName}</span>
+          </h3>
 
           <div className="absolute top-0 right-0 flex flex-col gap-1.5">
             <div className="flex flex-col items-center justify-center bg-white border-2 border-dashed border-sky-300 w-12 h-12 rounded-xl shadow-sm">
@@ -236,13 +236,13 @@ const MachineCard = React.memo(({
               )} 
             />
             
-            <div className="mt-3 text-center">
+            <div className="mt-3 text-center h-4">
               {utilization > 100 ? (
                 <span className="text-[9px] font-black uppercase text-red-600 tracking-tighter animate-pulse">Sobrecapacidad</span>
               ) : utilization >= 90 ? (
                 <span className="text-[9px] font-black uppercase text-green-600 tracking-tighter">Estable</span>
               ) : (
-                <span className="text-[9px] font-black uppercase text-yellow-600 tracking-tighter">Debajo de capacidad</span>
+                <span className="text-[9px] font-black uppercase text-yellow-600 tracking-tighter animate-pulse">Debajo de capacidad</span>
               )}
             </div>
             
@@ -627,7 +627,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     const codes = new Set<string>();
     const forroGroupCodes = new Set(forrosGruposList.map(g => g.codigo_grupo));
     restricciones.forEach(r => {
-      // Aplicar a los grupos de forros
       if (forroGroupCodes.has(r.codigo_grupo)) {
         const normName = r.nombre_restriccion.toUpperCase().trim();
         if (normName === 'COMPONENTES_CHN') {
@@ -770,7 +769,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
         uniquePuestos.forEach(p => {
           const normP = p.toUpperCase().trim();
-          
           const relevantRestrictions = restricciones.filter(r => 
             r.nombre_restriccion.toUpperCase().trim().includes('PERSONAL') &&
             r.nombre_restriccion.toUpperCase().trim().includes(normP)
@@ -795,16 +793,13 @@ export const TacticalPlanForrosSection: React.FC = () => {
             });
 
             if (!isDay && !isNight && relevantRestrictions.length > 0) isDay = true;
-
             const current = next[p] || { machine: p, isDayActive: true, isNightActive: false, people: 0, machines: 1 };
-            
             if (current.isDayActive !== isDay || current.isNightActive !== isNight || current.people !== peopleCount) {
               next[p] = { ...current, isDayActive: isDay, isNightActive: isNight, people: peopleCount };
               updated = true;
             }
           }
         });
-
         return updated ? next : prev;
       });
     }
@@ -872,14 +867,12 @@ export const TacticalPlanForrosSection: React.FC = () => {
         const fertCode = uniqueMaterials[i];
         setExplosionProgress(Math.round((i / uniqueMaterials.length) * 100));
         
-        const totalFertQty = allFerts
-          .filter(o => String(o['CodMaterial'] || o['MATERIAL'] || o['Material'] || '').trim() === fertCode)
-          .reduce((sum, o) => sum + Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0), 0);
+        const ordersForMaterial = allFerts.filter(o => String(o['CodMaterial'] || o['MATERIAL'] || o['Material'] || '').trim() === fertCode);
+        const totalFertQty = ordersForMaterial.reduce((sum, o) => sum + Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0), 0);
 
         const response = await serviciosService.getMaestroMaterialesExplosion('1000', fertCode, 1, 5000);
         const components = response.data || [];
 
-        // Filtrar componentes según la restricción COMPONENTES_CHN si existe
         const filteredComponents = allowedComponentsCHN.length > 0
           ? components.filter((comp: any) => {
               const compCode = String(comp.COMPONENTE || comp.Componente || comp.Material || '').trim().replace(/^0+/, '');
@@ -888,17 +881,22 @@ export const TacticalPlanForrosSection: React.FC = () => {
           : components;
 
         filteredComponents.forEach((comp: any) => {
-          allComponents.push({
-            ...comp,
-            fertParent: fertCode,
-            orderQuantity: totalFertQty,
-            totalNeeded: (Number(comp.CANTIDAD_UNITARIA || comp.Cantidad || 0)) * totalFertQty
+          ordersForMaterial.forEach(order => {
+             const resp = String(order['RESPCTRLPROD'] || order['RESP_CTRL_PROD'] || 'S/R').trim().replace(/^0+/, '');
+             const orderQty = Number(order['CANTIDAD'] || order['CANTPROGRAMADA'] || 0);
+             allComponents.push({
+               ...comp,
+               fertParent: fertCode,
+               orderQuantity: orderQty,
+               responsable: resp,
+               totalNeeded: (Number(comp.CANTIDAD_UNITARIA || comp.Cantidad || 0)) * orderQty
+             });
           });
         });
       }
       setExplodedComponentsData(allComponents);
       setExplosionProgress(100);
-      addNotification('success', `Explosión completada. Se identificaron ${allComponents.length} insumos requeridos de la categoría CHN.`);
+      addNotification('success', `Explosión completada. Se identificaron ${allComponents.length} insumos requeridos filtrados por CHN.`);
     } catch (error: any) {
       addNotification('error', `Error en explosión: ${error.message}`);
     } finally {
@@ -906,20 +904,61 @@ export const TacticalPlanForrosSection: React.FC = () => {
     }
   };
 
-  const consolidatedInsumos = useMemo(() => {
-    const map = new Map<string, { code: string, name: string, total: number, unit: string }>();
+  const { consolidatedInsumos, resumenPorResponsableExplosion } = useMemo(() => {
+    const materialMap = new Map<string, { code: string, name: string, total: number, unit: string }>();
+    const respMap = new Map<string, { resp: string, totalForros: number, totalInsumos: number }>();
+
     explodedComponentsData.forEach(item => {
+      // Agrupación por Material
       const code = String(item.COMPONENTE || item.Componente || item.Material || '').trim();
       const name = String(item.NOMBRE_COMPONENTE || item.Descripcion || '').trim();
       const total = Number(item.totalNeeded || 0);
       const unit = String(item.UNIDAD || item.Unidad || 'ST').trim();
 
-      if (!map.has(code)) {
-        map.set(code, { code, name, total: 0, unit });
+      if (!materialMap.has(code)) {
+        materialMap.set(code, { code, name, total: 0, unit });
       }
-      map.get(code)!.total += total;
+      materialMap.get(code)!.total += total;
+
+      // Agrupación por Responsable (Resumen solicitado)
+      const resp = item.responsable;
+      const forroQty = Number(item.orderQuantity || 0);
+      
+      if (!respMap.has(resp)) {
+        // Para no duplicar el conteo de forros si un forro tiene varios componentes, 
+        // necesitamos trackear forros únicos o usar una lógica de suma controlada.
+        // Pero el usuario pidió "cuantos forros por cada responsable" en el contexto de la explosión.
+        // Asumiremos la suma de las cantidades programadas procesadas.
+        respMap.set(resp, { resp, totalForros: 0, totalInsumos: 0 });
+      }
+      
+      // Como el item se repite por componente, necesitamos sumar el forroQty solo una vez por combinación (Responsable-MaterialPadre)
+      // Pero para simplificar y dado que 'explodedComponentsData' ya está aplanado, calcularemos un set único para forros.
+      respMap.get(resp)!.totalInsumos += total;
     });
-    return Array.from(map.values()).sort((a, b) => a.code.localeCompare(b.code));
+
+    // Recalcular forros totales por responsable de forma limpia
+    const uniqueForrosPerResp = new Map<string, number>();
+    const processedForros = new Set<string>();
+    
+    explodedComponentsData.forEach(item => {
+      const key = `${item.responsable}|${item.fertParent}`;
+      if (!processedForros.has(key)) {
+        processedForros.add(key);
+        uniqueForrosPerResp.set(item.responsable, (uniqueForrosPerResp.get(item.responsable) || 0) + Number(item.orderQuantity));
+      }
+    });
+
+    uniqueForrosPerResp.forEach((total, resp) => {
+      if (respMap.has(resp)) {
+        respMap.get(resp)!.totalForros = total;
+      }
+    });
+
+    return {
+      consolidatedInsumos: Array.from(materialMap.values()).sort((a, b) => a.code.localeCompare(b.code)),
+      resumenPorResponsableExplosion: Array.from(respMap.values()).sort((a, b) => a.resp.localeCompare(b.resp))
+    };
   }, [explodedComponentsData]);
 
   const toggleWorkstationShift = (p: string, shift: 'day' | 'night') => {
@@ -936,7 +975,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
   };
 
   const mapToHojaRutaInternal = useCallback((puestoName: string): string => mapToHojaRuta(puestoName), [mapToHojaRuta]);
-
   const horasNetasDiurnasVal = parseFloat(jornadaDiurnaSel || "0") * 0.84;
   const horasNetasNocturnasVal = parseFloat(jornadaNocturnaSel || "0") * 0.84;
 
@@ -1111,17 +1149,15 @@ export const TacticalPlanForrosSection: React.FC = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <div className="bg-slate-50 border border-slate-200/60 rounded-[2rem] p-5 flex items-center gap-5 shadow-sm hover:shadow-md transition-all">
-              <div className="bg-indigo-600 p-3.5 rounded-2xl text-white shadow-lg shadow-indigo-100 shrink-0">
-                <CalendarIcon className="w-6 h-6" />
-              </div>
-              <div>
-                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Planificación para</p>
-                <p className="text-sm font-black text-indigo-900 capitalize leading-tight">
-                  {planningDateFormatted}
-                </p>
-              </div>
+          <div className="bg-slate-50 border border-slate-200/60 rounded-[2rem] p-5 flex items-center gap-5 shadow-sm hover:shadow-md transition-all">
+            <div className="bg-indigo-600 p-3.5 rounded-2xl text-white shadow-lg shadow-indigo-100 shrink-0">
+              <CalendarIcon className="w-6 h-6" />
+            </div>
+            <div>
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Planificación para</p>
+              <p className="text-sm font-black text-indigo-900 capitalize leading-tight">
+                {planningDateFormatted}
+              </p>
             </div>
           </div>
         </div>
@@ -1450,64 +1486,145 @@ export const TacticalPlanForrosSection: React.FC = () => {
               {renderFertTable(fert2000, summary2000, "Órdenes FERT - Centro 2000 (GYE)", targetDate2000, setTargetDate2000, "bg-indigo-700")}
 
               {(isLoadingExplosion || explodedComponentsData.length > 0) && (
-                <Card className="rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden shadow-sm border-none mt-12">
-                  <CardHeader className="bg-emerald-900 text-white p-8">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <div className="bg-white/10 p-3 rounded-2xl text-white backdrop-blur-sm border border-white/10">
-                          <Database className="w-6 h-6" />
+                <div className="space-y-8 mt-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+                     <Card className="rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden shadow-sm border-none">
+                        <CardHeader className="bg-indigo-900 text-white p-8">
+                           <div className="flex items-center gap-4">
+                              <div className="bg-white/10 p-3 rounded-2xl text-white backdrop-blur-sm border border-white/10">
+                                <TrendingUp className="w-6 h-6" />
+                              </div>
+                              <div>
+                                <CardTitle className="text-2xl font-black uppercase tracking-tight">Resumen Insumos por Responsable</CardTitle>
+                                <CardDescription className="text-white/60 font-bold uppercase text-[10px] tracking-widest mt-1">Impacto de explosión de materiales CHN</CardDescription>
+                              </div>
+                           </div>
+                        </CardHeader>
+                        <CardContent className="p-0">
+                           <table className="w-full text-[11px] border-collapse">
+                              <thead className="bg-slate-50 text-slate-500 uppercase font-black tracking-widest border-b">
+                                 <tr>
+                                    <th className="px-8 py-4 text-left">RESPONSABLE</th>
+                                    <th className="px-8 py-4 text-right">FORROS PROCESADOS</th>
+                                    <th className="px-8 py-4 text-right bg-indigo-50/50">VOLUMEN INSUMOS (CHN)</th>
+                                 </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                 {resumenPorResponsableExplosion.map((s, i) => (
+                                    <tr key={i} className="hover:bg-slate-50 transition-colors">
+                                       <td className="px-8 py-5 font-black text-slate-900 uppercase">Responsable {s.resp}</td>
+                                       <td className="px-8 py-5 text-right font-mono font-black text-slate-800">{s.totalForros.toLocaleString()}</td>
+                                       <td className="px-8 py-5 text-right font-mono font-black text-indigo-700 bg-indigo-50/20">
+                                          {s.totalInsumos.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                       </td>
+                                    </tr>
+                                 ))}
+                              </tbody>
+                              <tfoot className="bg-slate-900 text-white font-black uppercase">
+                                 <tr>
+                                    <td className="px-8 py-4">Total Consolidado</td>
+                                    <td className="px-8 py-4 text-right font-mono">
+                                       {resumenPorResponsableExplosion.reduce((sum, s) => sum + s.totalForros, 0).toLocaleString()}
+                                    </td>
+                                    <td className="px-8 py-4 text-right font-mono text-sky-400">
+                                       {resumenPorResponsableExplosion.reduce((sum, s) => sum + s.totalInsumos, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </td>
+                                 </tr>
+                              </tfoot>
+                           </table>
+                        </CardContent>
+                     </Card>
+
+                     <Card className="rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden shadow-sm border-none flex flex-col justify-center p-8 bg-slate-950 text-white text-center relative overflow-hidden">
+                        <div className="absolute top-0 right-0 opacity-10 -rotate-12 translate-x-1/4 -translate-y-1/4">
+                           <Boxes size={300} />
                         </div>
-                        <div>
-                          <CardTitle className="text-2xl font-black uppercase tracking-tight">Explosión Consolidada de Insumos</CardTitle>
-                          <CardDescription className="text-white/60 font-bold uppercase text-[10px] tracking-widest mt-1">
-                            Necesidad total de materiales basada en órdenes FERT (Centro 1000) • Filtro: {allowedComponentsCHN.length} materiales CHN
-                          </CardDescription>
+                        <div className="relative z-10 space-y-4">
+                           <div className="flex justify-center mb-6">
+                              <div className="bg-sky-500/20 p-6 rounded-[2rem] border border-sky-500/30">
+                                 <Database className="w-12 h-12 text-sky-400" />
+                              </div>
+                           </div>
+                           <h4 className="text-3xl font-black uppercase tracking-tighter">Explosión Finalizada</h4>
+                           <p className="text-slate-400 font-bold uppercase text-[10px] tracking-widest max-w-[300px] mx-auto leading-relaxed">
+                              Se han procesado todas las órdenes FERT utilizando el filtro de componentes CHN configurado en las restricciones.
+                           </p>
+                           <div className="mt-8 flex items-center justify-center gap-6">
+                              <div className="flex flex-col">
+                                 <span className="text-4xl font-black font-mono text-sky-400">{consolidatedInsumos.length}</span>
+                                 <span className="text-[8px] font-black uppercase text-slate-500 tracking-[0.2em] mt-1">Mat. Únicos</span>
+                              </div>
+                              <div className="w-px h-12 bg-slate-800" />
+                              <div className="flex flex-col">
+                                 <span className="text-4xl font-black font-mono text-indigo-400">
+                                    {Math.round(consolidatedInsumos.reduce((sum, i) => sum + i.total, 0)).toLocaleString()}
+                                 </span>
+                                 <span className="text-[8px] font-black uppercase text-slate-500 tracking-[0.2em] mt-1">Uni. Totales</span>
+                              </div>
+                           </div>
                         </div>
-                      </div>
-                      {isLoadingExplosion && (
-                        <div className="w-48 space-y-2">
-                          <div className="flex justify-between text-[10px] font-black uppercase tracking-widest">
-                            <span>Explosionando...</span>
-                            <span>{explosionProgress}%</span>
+                     </Card>
+                  </div>
+
+                  <Card className="rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden shadow-sm border-none">
+                    <CardHeader className="bg-emerald-900 text-white p-8">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                          <div className="bg-white/10 p-3 rounded-2xl text-white backdrop-blur-sm border border-white/10">
+                            <Database className="w-6 h-6" />
                           </div>
-                          <Progress value={explosionProgress} className="h-1.5 bg-white/20 [&>div]:bg-sky-400" />
+                          <div>
+                            <CardTitle className="text-2xl font-black uppercase tracking-tight">Detalle Consolidado de Insumos (CHN)</CardTitle>
+                            <CardDescription className="text-white/60 font-bold uppercase text-[10px] tracking-widest mt-1">
+                              Necesidad neta basada en órdenes FERT de UIO y GYE • Filtro: {allowedComponentsCHN.length} materiales CHN
+                            </CardDescription>
+                          </div>
                         </div>
-                      )}
-                    </div>
-                  </CardHeader>
-                  <CardContent className="p-0">
-                    <div className="overflow-x-auto max-h-[60vh]">
-                      <table className="w-full text-[11px] border-collapse">
-                        <thead className="bg-slate-100 sticky top-0 z-10 text-slate-600 text-left uppercase tracking-widest font-black">
-                          <tr>
-                            <th className="px-6 py-4">COMPONENTE</th>
-                            <th className="px-6 py-4">DESCRIPCIÓN</th>
-                            <th className="px-6 py-4 text-right">CANTIDAD TOTAL</th>
-                            <th className="px-6 py-4 text-center">UNIDAD</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {consolidatedInsumos.length > 0 ? consolidatedInsumos.map((item, i) => (
-                            <tr key={i} className="hover:bg-emerald-50/30 transition-colors">
-                              <td className="px-6 py-4 font-mono font-bold text-emerald-900">{item.code}</td>
-                              <td className="px-6 py-4 font-medium text-slate-600 whitespace-normal break-words leading-tight">{item.name}</td>
-                              <td className="px-6 py-4 text-right font-mono font-black text-slate-900 bg-emerald-50/10">
-                                {item.total.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
-                              </td>
-                              <td className="px-6 py-4 text-center font-bold text-slate-400 uppercase tracking-widest">{item.unit}</td>
-                            </tr>
-                          )) : (
+                        {isLoadingExplosion && (
+                          <div className="w-48 space-y-2">
+                            <div className="flex justify-between text-[10px] font-black uppercase tracking-widest">
+                              <span>Explosionando...</span>
+                              <span>{explosionProgress}%</span>
+                            </div>
+                            <Progress value={explosionProgress} className="h-1.5 bg-white/20 [&>div]:bg-sky-400" />
+                          </div>
+                        )}
+                      </div>
+                    </CardHeader>
+                    <CardContent className="p-0">
+                      <div className="overflow-x-auto max-h-[60vh]">
+                        <table className="w-full text-[11px] border-collapse">
+                          <thead className="bg-slate-100 sticky top-0 z-10 text-slate-600 text-left uppercase tracking-widest font-black">
                             <tr>
-                              <td colSpan={4} className="py-20 text-center text-slate-400 uppercase font-black tracking-widest text-xs opacity-40">
-                                {isLoadingExplosion ? 'Procesando explosión de materiales...' : 'Haz clic en "Procesar Explosión" para ver los insumos filtrados'}
-                              </td>
+                              <th className="px-6 py-4">COMPONENTE</th>
+                              <th className="px-6 py-4">DESCRIPCIÓN</th>
+                              <th className="px-6 py-4 text-right">CANTIDAD TOTAL</th>
+                              <th className="px-6 py-4 text-center">UNIDAD</th>
                             </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </CardContent>
-                </Card>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {consolidatedInsumos.length > 0 ? consolidatedInsumos.map((item, i) => (
+                              <tr key={i} className="hover:bg-emerald-50/30 transition-colors">
+                                <td className="px-6 py-4 font-mono font-bold text-emerald-900">{item.code}</td>
+                                <td className="px-6 py-4 font-medium text-slate-600 whitespace-normal break-words leading-tight">{item.name}</td>
+                                <td className="px-6 py-4 text-right font-mono font-black text-slate-900 bg-emerald-50/10">
+                                  {item.total.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
+                                </td>
+                                <td className="px-6 py-4 text-center font-bold text-slate-400 uppercase tracking-widest">{item.unit}</td>
+                              </tr>
+                            )) : (
+                              <tr>
+                                <td colSpan={4} className="py-20 text-center text-slate-400 uppercase font-black tracking-widest text-xs opacity-40">
+                                  {isLoadingExplosion ? 'Procesando explosión de materiales...' : 'Haz clic en "Procesar Explosión" para ver los insumos filtrados'}
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
               )}
             </div>
           )}
