@@ -624,7 +624,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return Array.from(codes);
   }, [restricciones, forrosGruposList]);
 
-  // Restricción para explosión de insumos (AHORA COMPARAMOS POR NOMBRE/CONTENIDO)
+  // Restricción para explosión de insumos (Match por nombre)
   const allowedComponentsCHN = useMemo(() => {
     const codes = new Set<string>();
     const forroGroupCodes = new Set(forrosGruposList.map(g => g.codigo_grupo));
@@ -852,10 +852,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
       return;
     }
 
-    if (allowedComponentsCHN.length === 0) {
-      addNotification('warning', 'No se ha configurado la restricción COMPONENTES_CHN. Se mostrarán todos los materiales.');
-    }
-
     const uniqueMaterials = Array.from(new Set(allFerts.map(o => {
       const rawCode = String(o['CodMaterial'] || o['MATERIAL'] || o['Material'] || '').trim();
       return rawCode.slice(-8); 
@@ -1012,17 +1008,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     </div>
   );
 
-  if (!isMounted) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-slate-50">
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="w-12 h-12 animate-spin text-indigo-600" />
-          <p className="text-slate-500 font-black uppercase tracking-widest text-xs">Inicializando Sistema Táctico...</p>
-        </div>
-      </div>
-    );
-  }
-
   const renderFertTable = (orders: any[], summary: any[], title: string, date: string, setDate: (d: string) => void, color: string) => {
     const fertCols = [
       { id: 'CENTRO', key: 'Centro' },
@@ -1105,6 +1090,17 @@ export const TacticalPlanForrosSection: React.FC = () => {
       </Card>
     );
   };
+
+  if (!isMounted) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-slate-50">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="w-12 h-12 animate-spin text-indigo-600" />
+          <p className="text-slate-500 font-black uppercase tracking-widest text-xs">Inicializando Sistema Táctico...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 md:p-8 space-y-6 bg-slate-50/40 min-h-screen font-body">
