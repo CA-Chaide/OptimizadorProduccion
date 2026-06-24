@@ -40,7 +40,7 @@ import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 import { cn } from '@/lib/utils';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, isValid } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, isValid, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 const BLOCK_LENGTH_METERS = 20;
@@ -232,6 +232,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   }, [unifiedSummaryData]);
 
   const curadoAudit = useMemo(() => {
+    // VISUALIZACIÓN GLOBAL: No se aplican filtros de fecha ni responsabilidad
     return curadoData.map(row => {
       const info = extractMaterialInfo(row);
       const fabDateRaw = getProp(row, ['FECHA_FABRICACION', 'FECHA', 'FECHA_FAB']);
@@ -257,7 +258,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         const today = new Date();
         today.setHours(0,0,0,0);
         const diffTime = Math.abs(today.getTime() - fabDate.getTime());
-        diasTranscurridos = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        diasTranscurridos = Math.floor(diffTime / (1000 * 60 * 60 * 24));
         diasRequeridos = info.apertura === '194.5' ? 2 : 3;
         estatus = diasTranscurridos >= diasRequeridos ? 'DISPONIBLE' : 'EN CURADO';
       }
@@ -565,7 +566,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                             </td>
                             <td className="px-4 py-4 border-r border-gray-50 font-black text-blue-700 bg-blue-50/20">{info.apertura}</td>
                             <td className="px-4 py-4 border-r border-gray-50 font-mono text-slate-900">{info.dens}</td>
-                            <td className="px-6 py-4 text-right font-mono font-black text-slate-900 bg-slate-50/10 border-r border-gray-50">{formatNum(o.CANTIDAD || o.CANTPROGRAMADA, 0)}</td>
+                            <td className="px-6 py-4 text-right font-mono font-black text-slate-900 bg-slate-50/10 border-r border-gray-50">{formatNum(o.CANT_PROG || o.CANTIDAD || o.CANTPROGRAMADA, 0)}</td>
                             <td className="px-4 py-4 border-r border-gray-50 font-black text-slate-400 uppercase text-[9px]">{getProp(o, ['MAQUINA', 'RECURSO'])}</td>
                             <td className="px-4 py-4 text-indigo-700 font-black bg-indigo-50/30">{getProp(o, ['ALMACEN', 'Almacen'])}</td>
                           </tr>
