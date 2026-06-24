@@ -33,6 +33,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { Input } from '@/components/ui/input';
 import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
 import { serviciosService } from '@/services/servicios.service';
@@ -40,7 +41,7 @@ import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 import { cn } from '@/lib/utils';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, parseISO, addMonths, subMonths } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { MaestroMaterialesExplosionSection } from './MaestroMaterialesExplosionSection';
 
@@ -57,6 +58,8 @@ interface UnifiedNeedRow {
   nroRollos: number;
   consumoKgHalb: number;
   nroRollosHalb: number;
+  totalConsumoKg: number; // Suma Prov + Halb
+  totalNroRollos: number; // Suma Prov + Halb
   stock1006: number;
   stock1008: number;
   stock1015: number;
@@ -85,8 +88,7 @@ const cleanCode = (code: any): string => {
 
 const parseDimensionsEnhanced = (desc: string) => {
   const d = desc.toUpperCase();
-  // Captura densidad incluyendo letras (ej: 15 AM, 23 AF)
-  const densMatch = d.match(/D-?\s*(\d+(?:\s*[A-Z]+)*)/);
+  const densMatch = d.match(/D-?\s*(\d+(?:\.\d+)?(?:\s*[A-Z]+)*)/);
   const densidad = densMatch ? densMatch[1].trim() : '—';
 
   if (d.includes('CV')) {
@@ -112,14 +114,10 @@ const parseDimensionsEnhanced = (desc: string) => {
 
 const extractAperture = (desc: string): string => {
   const d = String(desc || '').toUpperCase();
-  // Regex ampliado para incluir 200, 214 y ser más flexible
   const match = d.match(/(194\.5|200|206|214|219|228|244)/);
   if (match) return match[0];
-  
-  // Fallback: Capturar el primer número de las dimensiones si tiene formato XXX * YYY o XXX X YYY
   const fallbackMatch = d.match(/(\d{3}(?:\.\d)?)\s*[X*]/);
   if (fallbackMatch) return fallbackMatch[1];
-  
   return '—';
 };
 
@@ -301,7 +299,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       const match = matRaw.match(/^(\d+)/);
       const matCode = match ? match[1] : matRaw;
       if (!matCode) return;
-      const orderQty = safeNum(order.CANTPROGRAMADA || order.CANTIDAD || o.CANTPENDIENTE || 0);
+      const orderQty = safeNum(order.CANTPENDIENTE || order.CANTPROGRAMADA || order.CANTIDAD || 0);
       materialGroupsHalb.set(matCode, (materialGroupsHalb.get(matCode) || 0) + orderQty);
     });
 
@@ -326,7 +324,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               const compCode = cleanCode(comp.COMPONENTE);
               const desc = String(comp.DESCRIPCION_COMPONENTE || '').toUpperCase();
               
-              // PREMISA: Buscar bloque formulado dependiente para heredar apertura y densidad
               const blockComp = rawData.find(r => 
                 cleanCode(r.MATERIAL_PADRE) === compCode && 
                 (r.DESCRIPCION_COMPONENTE || '').toUpperCase().includes('BLOQUE FORMULADO')
@@ -334,7 +331,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               
               const blockDesc = blockComp ? String(blockComp.DESCRIPCION_COMPONENTE).toUpperCase() : '';
               
-              // Extraer info de bloque (prioridad) o de la lámina
               const dims = parseDimensionsEnhanced(desc);
               const blockDims = blockDesc ? parseDimensionsEnhanced(blockDesc) : null;
               
@@ -350,9 +346,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 const existingRow = consolidatedMap.get(compCode)!;
                 existingRow.consumoKg += kgProv;
                 existingRow.consumoKgHalb += kgHalb;
+                existingRow.totalConsumoKg = existingRow.consumoKg + existingRow.consumoKgHalb;
               } else {
                 const pesoTeorico = (finalDistancia * dims.altura * dims.espesor * safeNum(finalDens)) / 10000;
-                
                 const looperMatch = kpiLooperData.find(k => cleanCode(k.Material) === compCode);
                 const finalPeso = looperMatch ? safeNum(looperMatch.PesoUN) : pesoTeorico;
 
@@ -379,6 +375,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   nroRollos: 0,
                   consumoKgHalb: kgHalb,
                   nroRollosHalb: 0,
+                  totalConsumoKg: kgProv + kgHalb,
+                  totalNroRollos: 0,
                   stock1006: s1006,
                   stock1008: s1008,
                   stock1015: s1015,
@@ -411,45 +409,66 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           ...row,
           consumoUn: cUn,
           nroRollos: cUn,
-          nroRollosHalb: cUnHalb
+          nroRollosHalb: cUnHalb,
+          totalNroRollos: cUn + cUnHalb
         };
       });
       
       const groupMap = new Map<string, UnifiedNeedRow[]>();
       finalArray.forEach(row => {
-        const k = `${row.apertura}|${row.densidad}`;
+        const k = `${row.apertura}|${row.dens}`;
         if(!groupMap.has(k)) groupMap.set(k, []);
         groupMap.get(k)!.push(row);
       });
       
       groupMap.forEach(items => {
-        const totalKgGroup = items.reduce((s, r) => s + r.consumoKg + r.consumoKgHalb, 0);
+        const totalKgGroup = items.reduce((s, r) => s + r.totalConsumoKg, 0);
         const totalStockUnGroup = items.reduce((s, r) => s + r.stockUN1006 + r.stockUN1008 + r.stockUN1015, 0);
-        const totalConsumoUnGroup = items.reduce((s, r) => s + r.consumoUn + r.nroRollosHalb, 0);
+        const totalConsumoUnGroup = items.reduce((s, r) => s + r.totalNroRollos, 0);
         
         const groupDeficit = Math.max(0, totalConsumoUnGroup - totalStockUnGroup);
 
         items.forEach(row => {
-          row.porcentajeNecesidad = totalKgGroup > 0 ? ((row.consumoKg + row.consumoKgHalb) / totalKgGroup) : 0;
+          row.porcentajeNecesidad = totalKgGroup > 0 ? (row.totalConsumoKg / totalKgGroup) : 0;
           row.planUn = groupDeficit > 0 ? Math.ceil(groupDeficit * row.porcentajeNecesidad) : 0;
           row.planKg = row.planUn * row.peso;
           row.tProceso = ((row.looperTRolloMin || 0) * row.planUn) / 60;
         });
       });
 
-      setUnifiedNeeds(finalArray.sort((a, b) => (b.consumoKg + b.consumoKgHalb) - (a.consumoKg + a.consumoKgHalb)));
+      setUnifiedNeeds(finalArray.sort((a, b) => b.totalConsumoKg - a.totalConsumoKg));
       addNotification('success', 'Actualización técnica completada con éxito.');
     } finally { 
       setIsProcessingResumen(false); 
     }
-  }, [filteredOrders, filteredFertOrders, kpiLooperData, inventarioSAP, addNotification]);
+  }, [filteredOrders, filteredFertOrders, kpiLooperData, inventarioSAP, addNotification, extractMaterialInfo]);
+
+  const handlePlanUnChange = (material: string, newValue: string) => {
+    const newPlanUn = Math.max(0, parseInt(newValue) || 0);
+    setUnifiedNeeds(prev => {
+      const updated = prev.map(row => {
+        if (row.material === material) {
+          const updatedPlanKg = newPlanUn * row.peso;
+          const updatedTProceso = ((row.looperTRolloMin || 0) * newPlanUn) / 60;
+          return {
+            ...row,
+            planUn: newPlanUn,
+            planKg: updatedPlanKg,
+            tProceso: updatedTProceso
+          };
+        }
+        return row;
+      });
+      return updated;
+    });
+  };
 
   const groupedNeeds = useMemo(() => {
     const map = new Map<string, { 
       densidad: string; apertura: string; items: UnifiedNeedRow[]; totalKg: number; totalUn: number;
       total1006: number; total1008: number; total1015: number; totalPlanUn: number; totalPlanKg: number;
       totalUN1006: number; totalUN1008: number; totalUN1015: number; totalTProceso: number;
-      totalRollos: number; totalKgHalb: number; totalRollosHalb: number;
+      totalRollos: number; totalKgHalb: number; totalRollosHalb: number; totalConsumoKg: number; totalNroRollos: number;
     }>();
     unifiedNeeds.forEach(item => {
       const key = `${item.apertura}|${item.densidad}`;
@@ -458,16 +477,18 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           densidad: item.densidad, apertura: item.apertura, items: [], totalKg: 0, totalUn: 0,
           total1006: 0, total1008: 0, total1015: 0, totalPlanUn: 0, totalPlanKg: 0,
           totalUN1006: 0, totalUN1008: 0, totalUN1015: 0, totalTProceso: 0, totalRollos: 0,
-          totalKgHalb: 0, totalRollosHalb: 0
+          totalKgHalb: 0, totalRollosHalb: 0, totalConsumoKg: 0, totalNroRollos: 0
         });
       }
       const group = map.get(key)!;
       group.items.push(item);
       group.totalKg += item.consumoKg;
       group.totalKgHalb += item.consumoKgHalb;
+      group.totalConsumoKg += item.totalConsumoKg;
       group.totalUn += item.consumoUn;
       group.totalRollos += item.nroRollos;
       group.totalRollosHalb += item.nroRollosHalb;
+      group.totalNroRollos += item.totalNroRollos;
       group.total1006 += item.stock1006;
       group.total1008 += item.stock1008;
       group.total1015 += item.stock1015;
@@ -478,16 +499,18 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       group.totalPlanKg += item.planKg;
       group.totalTProceso += item.tProceso;
     });
-    return Array.from(map.values()).sort((a, b) => (b.totalKg + b.totalKgHalb) - (a.totalKg + a.totalKgHalb));
+    return Array.from(map.values()).sort((a, b) => b.totalConsumoKg - a.totalConsumoKg);
   }, [unifiedNeeds]);
 
   const totalsUnified = useMemo(() => {
     return unifiedNeeds.reduce((acc, row) => ({
       kg: acc.kg + row.consumoKg,
       kgHalb: acc.kgHalb + row.consumoKgHalb,
+      totalKg: acc.totalKg + row.totalConsumoKg,
       un: acc.un + row.consumoUn,
       rollos: acc.rollos + row.nroRollos,
       rollosHalb: acc.rollosHalb + row.nroRollosHalb,
+      totalRollos: acc.totalRollos + row.totalNroRollos,
       planUn: acc.planUn + row.planUn,
       planKg: acc.planKg + row.planKg,
       stock1006: acc.stock1006 + row.stock1006,
@@ -497,7 +520,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       stockUN1008: acc.stockUN1008 + row.stockUN1008,
       stockUN1015: acc.stockUN1015 + row.stockUN1015,
       tProceso: acc.tProceso + row.tProceso
-    }), { kg: 0, kgHalb: 0, un: 0, rollos: 0, rollosHalb: 0, planUn: 0, planKg: 0, stock1006: 0, stock1008: 0, stock1015: 0, stockUN1006: 0, stockUN1008: 0, stockUN1015: 0, tProceso: 0 });
+    }), { kg: 0, kgHalb: 0, totalKg: 0, un: 0, rollos: 0, rollosHalb: 0, totalRollos: 0, planUn: 0, planKg: 0, stock1006: 0, stock1008: 0, stock1015: 0, stockUN1006: 0, stockUN1008: 0, stockUN1015: 0, tProceso: 0 });
   }, [unifiedNeeds]);
 
   const toggleGroup = (key: string) => {
@@ -600,6 +623,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                    <div className="flex flex-col gap-1 mt-2">
                      <p className="text-xl font-black font-mono text-[#f87171] tracking-tighter">Prov: {totalsUnified.kg.toLocaleString()}</p>
                      <p className="text-xl font-black font-mono text-indigo-400 tracking-tighter">Halb: {totalsUnified.kgHalb.toLocaleString()}</p>
+                     <p className="text-sm font-black font-mono text-slate-300 border-t border-white/10 mt-1 pt-1">Total: {totalsUnified.totalKg.toLocaleString()}</p>
                    </div>
                 </div>
 
@@ -640,9 +664,11 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     <th className="px-3 py-4 border-r border-black/5 bg-blue-50/50">Stock 1015 (Kg)</th>
                     <th className="px-2 py-4 border-r border-black/5 bg-cyan-50/50 text-cyan-800">UN 1015</th>
                     <th className="px-4 py-4 border-r border-black/5 text-right bg-orange-100/30">Consumo OF [Kg]</th>
-                    <th className="px-3 py-4 border-r border-black/5 bg-[#cfe2f3] text-indigo-900 font-black">Nro. Rollos</th>
                     <th className="px-4 py-4 border-r border-black/5 text-right bg-indigo-100/30">Consumo OF_halb [Kg]</th>
+                    <th className="px-4 py-4 border-r border-black/10 text-right bg-slate-900 text-white font-black">T CONSUMO OF.</th>
+                    <th className="px-3 py-4 border-r border-black/5 bg-[#cfe2f3] text-indigo-900 font-black">Nro. Rollos</th>
                     <th className="px-3 py-4 border-r border-black/5 bg-[#d1d5db] text-indigo-900 font-black">Nro. Rollos Halb</th>
+                    <th className="px-3 py-4 border-r border-black/10 bg-[#1e293b] text-[#facc15] font-black">T. NRO ROLLOS</th>
                     <th className="px-3 py-4 border-r border-black/5 text-center">% Nec.</th>
                     <th className="px-4 py-4 border-r border-black/5 text-right font-black bg-[#fee2e2] text-red-900">PLAN (UN)</th>
                     <th className="px-4 py-4 border-r border-black/5 text-right font-black bg-[#fee2e2] text-red-900">PLAN (KG)</th>
@@ -652,13 +678,13 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 <tbody className="divide-y divide-gray-100 font-bold">
                   {isProcessingResumen ? (
                     <tr>
-                      <td colSpan={19} className="py-20 text-center">
+                      <td colSpan={21} className="py-20 text-center">
                         <Loader2 className="w-8 h-8 animate-spin mx-auto text-indigo-500 mb-3" />
                         <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Ejecutando Explosión Técnica BOM: {resumenProgress.current} / {resumenProgress.total}</p>
                       </td>
                     </tr>
                   ) : groupedNeeds.length === 0 ? (
-                    <tr><td colSpan={19} className="py-24 text-slate-200 font-black uppercase tracking-widest italic text-center">Presione el botón "ACTUALIZAR DATOS" para iniciar la auditoría</td></tr>
+                    <tr><td colSpan={21} className="py-24 text-slate-200 font-black uppercase tracking-widest italic text-center">Presione el botón "ACTUALIZAR DATOS" para iniciar la auditoría</td></tr>
                   ) : (
                     groupedNeeds.map((group) => {
                       const groupKey = `${group.apertura}|${group.densidad}`;
@@ -684,10 +710,12 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                             <td className="px-2 py-4 text-cyan-600/50 font-mono">{(group.totalUN1008).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
                             <td className="px-3 py-4 text-slate-400 font-mono">{(group.total1015).toLocaleString()}</td>
                             <td className="px-2 py-4 text-cyan-600/50 font-mono">{(group.totalUN1015).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                            <td className="px-4 py-4 text-right font-mono font-black text-indigo-900 bg-indigo-50/50">{group.totalKg.toLocaleString()}</td>
-                            <td className="px-3 py-4 bg-[#cfe2f3]/50 font-mono text-indigo-800">{Math.round(group.totalRollos).toLocaleString()}</td>
-                            <td className="px-4 py-4 text-right font-mono font-black text-indigo-400 bg-indigo-50/50">{group.totalKgHalb.toLocaleString()}</td>
-                            <td className="px-3 py-4 bg-[#d1d5db]/50 font-mono text-slate-600">{Math.round(group.totalRollosHalb).toLocaleString()}</td>
+                            <td className="px-4 py-4 text-right font-mono font-black text-indigo-900 bg-indigo-50/50 opacity-40">{group.totalKg.toLocaleString()}</td>
+                            <td className="px-4 py-4 text-right font-mono font-black text-indigo-400 bg-indigo-50/50 opacity-40">{group.totalKgHalb.toLocaleString()}</td>
+                            <td className="px-4 py-4 text-right font-mono font-black text-white bg-slate-800">{group.totalConsumoKg.toLocaleString()}</td>
+                            <td className="px-3 py-4 bg-[#cfe2f3]/30 font-mono text-indigo-800 opacity-40">{Math.round(group.totalRollos).toLocaleString()}</td>
+                            <td className="px-3 py-4 bg-[#d1d5db]/30 font-mono text-slate-600 opacity-40">{Math.round(group.totalRollosHalb).toLocaleString()}</td>
+                            <td className="px-3 py-4 bg-[#1e293b] font-mono text-[#facc15]">{Math.round(group.totalNroRollos).toLocaleString()}</td>
                             <td className="px-4 py-4 text-center font-black text-indigo-300">100%</td>
                             <td className="px-4 py-4 text-right font-mono font-black text-red-900 bg-[#fee2e2]/50">{group.totalPlanUn.toLocaleString()}</td>
                             <td className="px-4 py-4 text-right font-mono font-black text-red-900 bg-[#fee2e2]/50">{group.totalPlanKg.toLocaleString()}</td>
@@ -698,7 +726,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                               <td className="px-4 py-3 border-r border-gray-100 font-mono text-indigo-600 text-left pl-8">{item.material}</td>
                               <td className="px-6 py-3 border-r border-gray-100 text-left text-gray-400 uppercase leading-tight italic text-[10px] truncate max-w-[250px]">{item.descripcion}</td>
                               <td className="px-2 py-3 border-r border-gray-100 font-mono text-indigo-900 bg-indigo-50/10">{item.peso.toFixed(2)}</td>
-                              <td className="px-2 py-3 border-r border-gray-100 font-bold text-indigo-900 bg-indigo-50/10">{item.densidad}</td>
+                              <td className="px-2 py-3 border-r border-gray-100 font-bold text-indigo-900 bg-indigo-50/10">{item.dens}</td>
                               <td className="px-2 py-3 border-r border-gray-100 font-mono font-black text-indigo-900 bg-indigo-50/10">{item.looperTRolloMin || '—'}</td>
                               <td className="px-3 py-3 border-r border-gray-100 font-mono text-slate-400">{item.stock1006 > 0 ? item.stock1006.toLocaleString() : '—'}</td>
                               <td className="px-2 py-3 border-r border-gray-100 font-mono text-cyan-600 bg-cyan-50/10">{item.stockUN1006 > 0 ? Math.round(item.stockUN1006).toLocaleString() : '—'}</td>
@@ -706,13 +734,22 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                               <td className="px-2 py-3 border-r border-gray-100 font-mono text-cyan-600 bg-cyan-50/10">{item.stockUN1008 > 0 ? Math.round(item.stockUN1008).toLocaleString() : '—'}</td>
                               <td className="px-3 py-3 border-r border-gray-100 font-mono text-slate-400">{item.stock1015 > 0 ? item.stock1015.toLocaleString() : '—'}</td>
                               <td className="px-2 py-3 border-r border-gray-100 font-mono text-cyan-600 bg-cyan-50/10">{item.stockUN1015 > 0 ? Math.round(item.stockUN1015).toLocaleString() : '—'}</td>
-                              <td className="px-4 py-3 border-r border-gray-100 text-right font-mono font-bold text-orange-400">{item.consumoKg.toLocaleString()}</td>
-                              <td className="px-3 py-3 border-r border-gray-100 bg-[#cfe2f3]/20 font-mono font-black text-indigo-600">{Math.round(item.nroRollos).toLocaleString()}</td>
-                              <td className="px-4 py-3 border-r border-gray-100 text-right font-mono font-bold text-indigo-300">{item.consumoKgHalb.toLocaleString()}</td>
-                              <td className="px-3 py-3 border-r border-gray-100 bg-[#d1d5db]/20 font-mono font-black text-slate-400">{Math.round(item.nroRollosHalb).toLocaleString()}</td>
+                              <td className="px-4 py-3 border-r border-gray-100 text-right font-mono font-bold text-orange-400/40">{item.consumoKg.toLocaleString()}</td>
+                              <td className="px-4 py-3 border-r border-gray-100 text-right font-mono font-bold text-indigo-300/40">{item.consumoKgHalb.toLocaleString()}</td>
+                              <td className="px-4 py-3 border-r border-gray-100 text-right font-mono font-bold text-slate-400 bg-slate-50/10">{item.totalConsumoKg.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+                              <td className="px-3 py-3 border-r border-gray-100 bg-[#cfe2f3]/10 font-mono font-black text-indigo-600/40">{Math.round(item.nroRollos).toLocaleString()}</td>
+                              <td className="px-3 py-3 border-r border-gray-100 bg-[#d1d5db]/10 font-mono font-black text-slate-400/40">{Math.round(item.nroRollosHalb).toLocaleString()}</td>
+                              <td className="px-3 py-3 border-r border-gray-100 bg-slate-100/30 font-mono font-black text-slate-900">{Math.round(item.totalNroRollos).toLocaleString()}</td>
                               <td className="px-4 py-3 border-r border-gray-100 text-center font-black text-slate-300">{(item.porcentajeNecesidad * 100).toFixed(0)}%</td>
-                              <td className="px-4 py-3 border-r border-black/10 text-right font-mono font-black text-red-500 bg-[#fee2e2]/20">{item.planUn.toLocaleString()}</td>
-                              <td className="px-4 py-3 border-r border-black/10 text-right font-mono font-black text-red-500 bg-[#fee2e2]/20">{item.planKg.toLocaleString()}</td>
+                              <td className="px-4 py-3 border-r border-black/10 text-right font-mono font-black text-red-500 bg-[#fee2e2]/20">
+                                 <input 
+                                   type="number" 
+                                   value={item.planUn} 
+                                   onChange={(e) => handlePlanUnChange(item.material, e.target.value)}
+                                   className="w-16 bg-white border border-red-200 rounded text-center h-7 text-xs focus:ring-2 focus:ring-red-500 outline-none"
+                                 />
+                              </td>
+                              <td className="px-4 py-3 border-r border-black/10 text-right font-mono font-black text-red-500 bg-[#fee2e2]/20">{item.planKg.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
                               <td className="px-4 py-3 text-right font-mono font-black text-indigo-600 bg-indigo-50/30">{formatNum(item.tProceso, 1)}</td>
                             </tr>
                           ))}
@@ -884,7 +921,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 <thead className="bg-[#1e293b] text-white border-b border-gray-100 uppercase font-black tracking-widest text-[8px] sticky top-0 z-10">
                   <tr>
                     <th className="px-4 py-5 border-r border-white/5">Material</th>
-                    <th className="px-6 py-5 border-r border-white/5 text-left">Nombre</th>
+                    <th className="px-6 py-5 border-r border-white/10 text-left">Nombre</th>
                     <th className="px-3 py-5 border-r border-white/5">Centro</th>
                     <th className="px-3 py-5 border-r border-white/5 text-indigo-300">ALM.</th>
                     <th className="px-3 py-5 border-r border-white/5 bg-green-500/30 text-green-300">Libre Utiliz.</th>
