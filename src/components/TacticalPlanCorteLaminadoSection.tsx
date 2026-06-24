@@ -111,8 +111,15 @@ const parseDimensionsEnhanced = (desc: string) => {
 
 const extractAperture = (desc: string): string => {
   const d = String(desc || '').toUpperCase();
-  const match = d.match(/(194\.5|206|219|228)/);
-  return match ? match[0] : '—';
+  // Regex ampliado para incluir 214 y ser más flexible
+  const match = d.match(/(194\.5|206|214|219|228|244)/);
+  if (match) return match[0];
+  
+  // Fallback: Capturar el primer número de las dimensiones si tiene formato XXX * YYY o XXX X YYY
+  const fallbackMatch = d.match(/(\d{3}(?:\.\d)?)\s*[X*]/);
+  if (fallbackMatch) return fallbackMatch[1];
+  
+  return '—';
 };
 
 const getDensityColor = (dens: string) => {
@@ -295,7 +302,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       const match = matRaw.match(/^(\d+)/);
       const matCode = match ? match[1] : matRaw;
       if (!matCode) return;
-      const orderQty = safeNum(order.CANTPROGRAMADA || order.CANTIDAD || 0);
+      const orderQty = safeNum(order.CANTPROGRAMADA || order.CANTIDAD || o.CANTPENDIENTE || 0);
       materialGroupsHalb.set(matCode, (materialGroupsHalb.get(matCode) || 0) + orderQty);
     });
 
@@ -637,7 +644,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                       </td>
                     </tr>
                   ) : groupedNeeds.length === 0 ? (
-                    <tr><td colSpan={19} className="py-24 text-slate-200 font-black uppercase tracking-widest text-center italic">Presione el botón "ACTUALIZAR DATOS" para iniciar la auditoría</td></tr>
+                    <tr><td colSpan={19} className="py-24 text-slate-200 font-black uppercase tracking-widest italic text-center">Presione el botón "ACTUALIZAR DATOS" para iniciar la auditoría</td></tr>
                   ) : (
                     groupedNeeds.map((group) => {
                       const groupKey = `${group.apertura}|${group.densidad}`;
@@ -653,7 +660,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                           >
                             <td className="px-4 py-4 flex items-center gap-2 text-left">
                                {isExpanded ? <Minus className="w-3 h-3 text-red-500" /> : <Plus className="w-3 h-3 text-indigo-500" />}
-                               <span className="font-black text-[10px] uppercase tracking-widest opacity-70">Corrida {group.apertura} - {group.densidad}</span>
+                               <span className="font-black text-[10px] uppercase tracking-widest opacity-70">Corrida {group.apertura} - D{group.densidad}</span>
                             </td>
                             <td className="px-6 py-4 text-left text-indigo-900 font-black uppercase">Subtotal Corrida</td>
                             <td colSpan={3} className="bg-indigo-50/10"></td>
