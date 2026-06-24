@@ -367,7 +367,6 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
           MAQUINA: o.Maquina,
           PUESTOTRABAJO: o.PUESTOTRABAJO || o.Maquina,
           RESPCTRLPROD: o.RESPCONTROLPROD,
-          CATEGORIA: o.CATEGORIA,
           _isPrevisional: true,
           _displayId: o.ORDENPREVISIONAL
         }));
@@ -470,6 +469,10 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
 
   const filteredOrders = useMemo(() => {
     return orders.filter(order => {
+        // Exclusión estricta de LAMIN-01 solicitada por el usuario para la pestaña PLAN
+        const puesto = String(order.PUESTOTRABAJO || '').trim().toUpperCase();
+        if (puesto === 'LAMIN-01') return false;
+
         if (selectedDates.length === 0) return true;
         return selectedDates.includes(order.FECHA);
       });
