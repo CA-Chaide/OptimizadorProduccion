@@ -624,7 +624,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return Array.from(codes);
   }, [restricciones, forrosGruposList]);
 
-  // Nueva restricción para explosión de insumos
+  // Restricción para explosión de insumos (AHORA COMPARAMOS POR NOMBRE/CONTENIDO)
   const allowedComponentsCHN = useMemo(() => {
     const codes = new Set<string>();
     const forroGroupCodes = new Set(forrosGruposList.map(g => g.codigo_grupo));
@@ -634,7 +634,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
         if (normName === 'COMPONENTES_CHN') {
           const values = r.valor_restriccion.split('&');
           values.forEach(v => {
-            const clean = v.trim().replace(/^0+/, '');
+            const clean = v.trim();
             if (clean) codes.add(clean);
           });
         }
@@ -858,7 +858,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
     const uniqueMaterials = Array.from(new Set(allFerts.map(o => {
       const rawCode = String(o['CodMaterial'] || o['MATERIAL'] || o['Material'] || '').trim();
-      return rawCode.slice(-8); // Match the 8-digit requirement for the Fert parameter
+      return rawCode.slice(-8); 
     }))).filter(m => m !== '');
 
     setIsLoadingExplosion(true);
@@ -878,12 +878,18 @@ export const TacticalPlanForrosSection: React.FC = () => {
         const response = await serviciosService.getMaestroMaterialesExplosion('1000', fertCode, 1, 5000);
         const components = response.data || [];
 
-        const filteredComponents = allowedComponentsCHN.length > 0
-          ? components.filter((comp: any) => {
-              const compCode = String(comp.COMPONENTE || comp.Componente || comp.Material || '').trim().replace(/^0+/, '');
-              return allowedComponentsCHN.includes(compCode);
-            })
-          : components;
+        const filteredComponents = components.filter((comp: any) => {
+          const compName = String(comp.NOMBRE_COMPONENTE || comp.Descripcion || '').toUpperCase();
+          const compCode = String(comp.COMPONENTE || comp.Componente || comp.Material || '').trim().replace(/^0+/, '');
+          
+          if (allowedComponentsCHN.length === 0) return true;
+          
+          // MATCH POR CONTENIDO EN EL NOMBRE O CÓDIGO (SEGÚN REGLA)
+          return allowedComponentsCHN.some(val => {
+            const v = val.toUpperCase().trim();
+            return compName.includes(v) || compCode === v;
+          });
+        });
 
         filteredComponents.forEach((comp: any) => {
           ordersForMaterial.forEach(order => {
@@ -914,7 +920,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     const respMap = new Map<string, { resp: string, totalForros: number, totalInsumos: number }>();
 
     explodedComponentsData.forEach(item => {
-      // Agrupación por Material
       const code = String(item.COMPONENTE || item.Componente || item.Material || '').trim();
       const name = String(item.NOMBRE_COMPONENTE || item.Descripcion || '').trim();
       const total = Number(item.totalNeeded || 0);
@@ -925,18 +930,13 @@ export const TacticalPlanForrosSection: React.FC = () => {
       }
       materialMap.get(code)!.total += total;
 
-      // Agrupación por Responsable (Resumen solicitado)
       const resp = item.responsable;
-      const forroQty = Number(item.orderQuantity || 0);
-      
       if (!respMap.has(resp)) {
         respMap.set(resp, { resp, totalForros: 0, totalInsumos: 0 });
       }
-      
       respMap.get(resp)!.totalInsumos += total;
     });
 
-    // Recalcular forros totales por responsable de forma limpia
     const uniqueForrosPerResp = new Map<string, number>();
     const processedForros = new Set<string>();
     
@@ -1462,9 +1462,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   </Button>
                 </div>
 
-                {/* Resumen Panel requested with Table Forros in the middle */}
+                {/* Panel de Resúmenes en 3 Columnas */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {/* Card 1: Resumen por Responsable (Fert Parents) */}
+                  {/* Card 1: Resumen por Responsable (Unidades FERT) */}
                   <Card className="rounded-3xl border-none shadow-sm ring-1 ring-slate-100 overflow-hidden bg-white">
                     <div className="px-6 py-3 bg-slate-900 text-white font-black text-[10px] uppercase tracking-widest flex items-center gap-2">
                       <BarChart3 className="w-4 h-4" /> RESUMEN POR RESPONSABLE
@@ -1473,15 +1473,15 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       <table className="w-full text-[11px] border-collapse">
                         <thead className="bg-slate-50 text-slate-500 uppercase font-black tracking-widest border-b">
                           <tr>
-                            <th className="px-6 py-3 text-left">RESPCTRLPROD</th>
-                            <th className="px-6 py-3 text-right">TOTAL CANTIDAD</th>
+                            <th className="px-6 py-3 text-left">RESPONSABLE</th>
+                            <th className="px-6 py-3 text-right">TOTAL FORROS</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                          {[...summary1000, ...summary2000].length > 0 ? [...summary1000, ...summary2000].map((s, i) => (
+                          {resumenPorResponsableExplosion.length > 0 ? resumenPorResponsableExplosion.map((s, i) => (
                             <tr key={i} className="hover:bg-slate-50/50">
                               <td className="px-6 py-3 font-bold text-slate-700">Responsable {s.resp}</td>
-                              <td className="px-6 py-3 text-right font-mono font-black text-indigo-600">{Math.round(s.total).toLocaleString()}</td>
+                              <td className="px-6 py-3 text-right font-mono font-black text-indigo-600">{Math.round(s.totalForros).toLocaleString()}</td>
                             </tr>
                           )) : (
                             <tr><td colSpan={2} className="py-8 text-center text-slate-400 italic text-[10px] uppercase font-black">Sin datos</td></tr>
@@ -1491,10 +1491,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     </CardContent>
                   </Card>
 
-                  {/* Card 2: TABLA FORROS (Insumos Result) - MIDDLE COLUMN AS REQUESTED */}
-                  <Card className="rounded-3xl border-none shadow-sm ring-1 ring-slate-100 overflow-hidden bg-white">
+                  {/* Card 2: TABLA FORROS (RESULTADO EXPLOSIÓN INSUMOS) - CENTRAL PIECE */}
+                  <Card className="rounded-3xl border-none shadow-sm ring-1 ring-slate-100 overflow-hidden bg-white ring-2 ring-indigo-500/20">
                     <div className="px-6 py-3 bg-indigo-900 text-white font-black text-[10px] uppercase tracking-widest flex items-center gap-2">
-                      <ListTree className="w-4 h-4" /> TABLA FORROS (INSUMOS)
+                      <Boxes className="w-4 h-4" /> TABLA FORROS (INSUMOS CHN)
                     </div>
                     <CardContent className="p-0">
                       <div className="overflow-y-auto max-h-[300px]">
@@ -1507,12 +1507,12 @@ export const TacticalPlanForrosSection: React.FC = () => {
                           </thead>
                           <tbody className="divide-y divide-slate-100">
                             {consolidatedInsumos.length > 0 ? consolidatedInsumos.map((item, i) => (
-                              <tr key={i} className="hover:bg-emerald-50/30">
+                              <tr key={i} className="hover:bg-indigo-50/30">
                                 <td className="px-6 py-3">
                                   <div className="font-mono font-bold text-indigo-950 truncate max-w-[120px]">{item.code}</div>
                                   <div className="text-[9px] text-slate-400 font-medium truncate max-w-[150px]">{item.name}</div>
                                 </td>
-                                <td className="px-6 py-3 text-right font-mono font-black text-emerald-600 bg-emerald-50/10">
+                                <td className="px-6 py-3 text-right font-mono font-black text-indigo-600 bg-indigo-50/10">
                                   {item.total.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
                                   <span className="ml-1 text-[8px] text-slate-400 font-black">{item.unit}</span>
                                 </td>
@@ -1523,7 +1523,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                                   {isLoadingExplosion ? (
                                     <div className="flex flex-col items-center gap-2">
                                       <Loader2 className="w-6 h-6 animate-spin text-indigo-600" />
-                                      <span className="text-[10px] font-black uppercase text-slate-400">Calculando...</span>
+                                      <span className="text-[10px] font-black uppercase text-slate-400">Explotando {explosionProgress}%...</span>
                                     </div>
                                   ) : (
                                     <span className="text-slate-400 uppercase font-black tracking-widest text-[9px] opacity-40">Procesar explosión</span>
@@ -1537,7 +1537,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                     </CardContent>
                   </Card>
 
-                  {/* Card 3: Resumen Insumos por Responsable */}
+                  {/* Card 3: Resumen Volumen Insumos por Responsable */}
                   <Card className="rounded-3xl border-none shadow-sm ring-1 ring-slate-100 overflow-hidden bg-white">
                     <div className="px-6 py-3 bg-emerald-900 text-white font-black text-[10px] uppercase tracking-widest flex items-center gap-2">
                       <TrendingUp className="w-4 h-4" /> INSUMOS POR RESPONSABLE
