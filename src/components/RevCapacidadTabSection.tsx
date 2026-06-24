@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { serviciosService } from '@/services/servicios.service';
 import { grupoService } from '@/services/grupo.service';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
@@ -363,7 +363,14 @@ export const RevCapacidadTabSection: React.FC = () => {
               value={programmingDate} 
               onChange={e => {
                 const val = e.target.value;
-                setProgDates(prev => ({ ...prev, [selectedCenter]: val }));
+                setProgDates(prev => {
+                  const next = { ...prev, [selectedCenter]: val };
+                  // Sincronización: Si se cambia en Centro 1000, actualizar también el 2000
+                  if (selectedCenter === '1000') {
+                    next['2000'] = val;
+                  }
+                  return next;
+                });
               }} 
               className="text-xs border rounded-md px-2 py-2 text-indigo-700 font-medium h-9 outline-none focus:ring-2 focus:ring-indigo-500" 
             />
@@ -523,7 +530,8 @@ export const RevCapacidadTabSection: React.FC = () => {
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-3">
         <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
         <div className="text-xs text-blue-800 space-y-1">
-          <p><b>Filtros Independientes:</b> El "Día Prog", "Horas T1" y "Horas T2" son únicos para cada centro.</p>
+          <p><b>Sincronización Día Prog:</b> Al cambiar la fecha en el <b>Centro 1000</b>, esta se replicará automáticamente en el <b>Centro 2000</b>.</p>
+          <p><b>Filtros Independientes:</b> "Horas T1" y "Horas T2" siguen siendo únicos para cada centro.</p>
           <p><b>Validación de Puestos:</b> Los valores ingresados no pueden exceder los <b>Puestos Objetivo</b>.</p>
           <p><b>Persistencia:</b> Todos los ajustes se guardan automáticamente en el navegador.</p>
         </div>

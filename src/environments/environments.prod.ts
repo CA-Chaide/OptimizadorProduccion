@@ -5,7 +5,7 @@ export const environment = {
     
     // Se cambian las URLs absolutas por rutas relativas que coinciden con los rewrites de next.config.ts
     // Esto soluciona los errores de CORS al usar el servidor de Next.js como proxy.
-    apiURL : '/ProductionOptimizer',
+    apiURL : 'https://apps.chaide.com/ProductionOptimizer/api',
     apiURLSeguridades : '/seguridades',
 
     tituloSistema: 'SISTEMA INTEGRADO DE Optimalidad Operativa',
