@@ -181,12 +181,10 @@ const MachineCard = React.memo(({
               <span className="text-lg font-black text-sky-700 leading-none">{config.machines || 1}</span>
               <span className="text-[6px] font-black uppercase text-sky-400 mt-0.5 tracking-tighter">Máquinas</span>
             </div>
-            {config.people > 0 && (
-              <div className="flex flex-col items-center justify-center bg-white border-2 border-dashed border-indigo-300 w-12 h-12 rounded-xl shadow-sm">
-                <span className="text-lg font-black text-indigo-700 leading-none">{config.people}</span>
-                <span className="text-[6px] font-black uppercase text-indigo-400 mt-0.5 tracking-tighter">Personas</span>
-              </div>
-            )}
+            <div className="flex flex-col items-center justify-center bg-white border-2 border-dashed border-indigo-300 w-12 h-12 rounded-xl shadow-sm">
+              <span className="text-lg font-black text-indigo-700 leading-none">{config.people || 0}</span>
+              <span className="text-[6px] font-black uppercase text-indigo-400 mt-0.5 tracking-tighter">Personas</span>
+            </div>
           </div>
         </div>
 
@@ -214,7 +212,7 @@ const MachineCard = React.memo(({
                 utilization >= 90 ? "bg-green-100 text-green-700" : 
                 "bg-yellow-100 text-yellow-700"
               )}>
-                {utilization > 100 ? "Saturado" : utilization >= 90 ? "Óptimo" : "Debajo"}
+                {utilization > 100 ? "Saturado" : utilization >= 90 ? "Estable" : "Debajo"}
               </Badge>
             </div>
             <div className="flex items-baseline gap-1 mb-2">
@@ -237,6 +235,16 @@ const MachineCard = React.memo(({
                 "[&>div]:bg-yellow-500"
               )} 
             />
+            
+            <div className="mt-3 text-center">
+              {utilization > 100 ? (
+                <span className="text-[9px] font-black uppercase text-red-600 tracking-tighter animate-pulse">Sobrecapacidad</span>
+              ) : utilization >= 90 ? (
+                <span className="text-[9px] font-black uppercase text-green-600 tracking-tighter">Capacidad Estable</span>
+              ) : (
+                <span className="text-[9px] font-black uppercase text-yellow-600 tracking-tighter">Debajo de capacidad</span>
+              )}
+            </div>
             
             <div className="mt-4 grid grid-cols-2 gap-2 text-[9px] font-black uppercase tracking-widest">
               <div className="bg-slate-50 p-2 rounded-xl border border-slate-100 text-center">
@@ -992,30 +1000,30 @@ export const TacticalPlanForrosSection: React.FC = () => {
   return (
     <div className="p-6 md:p-8 space-y-6 bg-slate-50/40 min-h-screen font-body">
       {/* CABECERA COMPACTA Y ESTÉTICA */}
-      <div className="flex flex-col gap-4 bg-white p-5 rounded-[2.5rem] border border-slate-100 shadow-xl max-w-7xl mx-auto">
-        <div className="flex items-center gap-5">
-          <div className="bg-slate-950 p-4 rounded-[1.2rem] text-white shadow-2xl ring-4 ring-slate-50 shrink-0">
-            <CalendarClock className="w-7 h-7 text-sky-400" />
-          </div>
-          <div className="flex-1">
-            <div className="flex items-center gap-3 mb-0.5">
-              <h1 className="text-xl font-black text-slate-900 uppercase tracking-tighter leading-none">Programación Táctica</h1>
-              <Badge className="bg-indigo-600 text-white font-black px-2 py-0.5 rounded-lg text-[8px] uppercase tracking-widest border-none shadow-sm">Forros</Badge>
+      <div className="flex flex-col gap-3 bg-white p-4 rounded-[2.5rem] border border-slate-100 shadow-lg max-w-7xl mx-auto">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="bg-slate-950 p-3 rounded-[1rem] text-white shadow-xl ring-4 ring-slate-50 shrink-0">
+              <CalendarClock className="w-6 h-6 text-sky-400" />
             </div>
-            <div className="flex items-center gap-2 text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">
-              <Users className="w-3 h-3 text-indigo-500" /> Eficiencia Operativa: 84%
+            <div>
+              <div className="flex items-center gap-2 mb-0.5">
+                <h1 className="text-lg font-black text-slate-900 uppercase tracking-tighter leading-none">Programación Táctica</h1>
+                <Badge className="bg-indigo-600 text-white font-black px-2 py-0.5 rounded-lg text-[8px] uppercase tracking-widest border-none">Forros</Badge>
+              </div>
+              <div className="flex items-center gap-2 text-[8px] font-black text-slate-400 uppercase tracking-[0.2em]">
+                <Users className="w-2.5 h-2.5 text-indigo-500" /> Eficiencia Operativa: 84%
+              </div>
             </div>
           </div>
-        </div>
 
-        <div className="flex">
-          <div className="bg-slate-50 border border-slate-200/60 rounded-[1.2rem] p-3 flex items-center gap-3 shadow-sm hover:shadow-md transition-all">
-            <div className="bg-indigo-600 p-2 rounded-xl text-white shadow-md shadow-indigo-100 shrink-0">
-              <CalendarIcon className="w-4 h-4" />
+          <div className="flex items-center bg-slate-50 border border-slate-200/60 rounded-[1rem] p-2.5 gap-3 shadow-sm">
+            <div className="bg-indigo-600 p-1.5 rounded-lg text-white shrink-0">
+              <CalendarIcon className="w-3.5 h-3.5" />
             </div>
-            <div className="flex flex-col">
+            <div className="flex flex-col pr-2">
               <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest mb-0.5 leading-none">Planificación para</p>
-              <p className="text-[11px] font-black text-indigo-900 capitalize leading-tight">
+              <p className="text-[10px] font-black text-indigo-900 capitalize leading-tight">
                 {planningDateFormatted}
               </p>
             </div>
@@ -1160,7 +1168,15 @@ export const TacticalPlanForrosSection: React.FC = () => {
                                      {utilization.toFixed(0)}%
                                    </span>
                                  </div>
-                                 {utilization < 90 && (
+                                 {utilization > 100 ? (
+                                   <span className="text-[8px] font-black uppercase text-red-600 tracking-tighter animate-pulse">
+                                     Sobrecapacidad
+                                   </span>
+                                 ) : utilization >= 90 ? (
+                                   <span className="text-[8px] font-black uppercase text-green-600 tracking-tighter">
+                                     Estable
+                                   </span>
+                                 ) : (
                                    <span className="text-[8px] font-black uppercase text-yellow-600 tracking-tighter animate-pulse">
                                      Debajo de capacidad
                                    </span>
@@ -1589,12 +1605,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
                                   <span className="text-2xl font-black text-sky-700 leading-none">{config.machines || 1}</span>
                                   <span className="text-[7px] font-black uppercase text-sky-400 mt-0.5 tracking-tighter">Máquinas</span>
                                 </div>
-                                {config.people > 0 && (
-                                  <div className="flex flex-col items-center justify-center bg-indigo-50 border-2 border-dashed border-indigo-300 w-16 h-16 rounded-2xl shadow-inner group-hover:bg-indigo-100 transition-colors">
-                                    <span className="text-2xl font-black text-indigo-700 leading-none">{config.people}</span>
-                                    <span className="text-[7px] font-black uppercase text-indigo-400 mt-0.5 tracking-tighter">Personas</span>
-                                  </div>
-                                )}
+                                <div className="flex flex-col items-center justify-center bg-indigo-50 border-2 border-dashed border-indigo-300 w-16 h-16 rounded-2xl shadow-inner group-hover:bg-indigo-100 transition-colors">
+                                  <span className="text-2xl font-black text-indigo-700 leading-none">{config.people || 0}</span>
+                                  <span className="text-[7px] font-black uppercase text-indigo-400 mt-0.5 tracking-tighter">Personas</span>
+                                </div>
                               </div>
                             </div>
 
