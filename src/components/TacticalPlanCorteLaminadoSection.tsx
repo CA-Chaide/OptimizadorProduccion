@@ -162,9 +162,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
   useEffect(() => {
     setMounted(true);
-    setViewDate(new Date());
-    const todayStr = format(new Date(), 'yyyy-MM-dd');
-    setSelectedDates(new Set([todayStr]));
+    const today = new Date();
+    setViewDate(today);
+    setSelectedDates(new Set([format(today, 'yyyy-MM-dd')]));
   }, []);
 
   const datesWithOrders = useMemo(() => {
@@ -478,21 +478,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       tProceso: acc.tProceso + row.tProceso
     }), { kg: 0, kgHalb: 0, un: 0, rollos: 0, rollosHalb: 0, planUn: 0, planKg: 0, stock1006: 0, stock1008: 0, stock1015: 0, stockUN1006: 0, stockUN1008: 0, stockUN1015: 0, tProceso: 0 });
   }, [unifiedNeeds]);
-
-  const filteredInventario = useMemo(() => {
-    const allowedAlmacenes = restriccionesArray
-      .filter(r => r.nombre_restriccion === 'ALmacen_Consumo')
-      .flatMap(r => r.valor_restriccion.split(/[&,]/).map(v => v.trim()))
-      .filter(v => v !== '');
-
-    return inventarioSAP.filter(row => {
-      const alm = String(row.ALMACEN || '').trim();
-      const matchAlm = allowedAlmacenes.length === 0 || allowedAlmacenes.includes(alm);
-      const nombre = String(row.NOMBRE || row.DESCRIPCION || '').toUpperCase();
-      const matchTipo = nombre.includes('LAMINA CILINDRICA');
-      return matchAlm && matchTipo;
-    });
-  }, [inventarioSAP, restriccionesArray]);
 
   const toggleGroup = (key: string) => {
     const next = new Set(expandedGroups);
@@ -808,9 +793,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                           <td className="px-6 py-4 border-r border-gray-50">
                             <Badge variant="outline" className="text-[10px] font-black bg-blue-50 text-blue-700 border-blue-100">{String(o.RESPCTRLPROD || o.RESP_CONTROL_PROD || o.RESPCONTROLPROD || '—')}</Badge>
                           </td>
-                          <td className="px-6 py-4 font-bold text-slate-400 border-r border-gray-50 text-[10px] uppercase">
-                            {String(o.MAQUINA || o.RECURSO || '—')}
-                          </td>
+                          <td className="px-6 py-4 font-bold text-slate-400 border-r border-gray-50 text-[10px] uppercase">{o.MAQUINA || o.RECURSO || '—'}</td>
                           <td className="px-6 py-4 font-bold text-slate-200 text-[10px]">{o.Almacen || o.ALMACEN || '—'}</td>
                         </tr>
                       );
@@ -892,10 +875,10 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 text-[11px] font-black">
-                  {filteredInventario.length === 0 ? (
-                    <tr><td colSpan={11} className="py-24 text-slate-200 font-black uppercase tracking-widest text-center italic">No hay inventario registrado en los almacenes configurados</td></tr>
+                  {inventarioSAP.filter(row => String(row.NOMBRE || row.DESCRIPCION || '').toUpperCase().includes('LAMINA CILINDRICA')).length === 0 ? (
+                    <tr><td colSpan={11} className="py-24 text-slate-200 font-black uppercase tracking-widest italic text-center">No hay inventario registrado en los almacenes configurados</td></tr>
                   ) : (
-                    filteredInventario.map((row, i) => (
+                    inventarioSAP.filter(row => String(row.NOMBRE || row.DESCRIPCION || '').toUpperCase().includes('LAMINA CILINDRICA')).map((row, i) => (
                       <tr key={i} className="hover:bg-blue-50/10 transition-colors">
                         <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-blue-600">{cleanCode(row.MATERIAL)}</td>
                         <td className="px-6 py-3 border-r border-dashed border-gray-100 text-left uppercase text-slate-500 truncate max-w-[200px]" title={row.NOMBRE}>{row.NOMBRE || '—'}</td>
@@ -906,7 +889,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                         <td className="px-3 py-3 border-r border-dashed border-gray-100 font-mono">{Number(row.INSPECCCALIDAD || 0).toLocaleString()}</td>
                         <td className="px-3 py-3 border-r border-dashed border-gray-100 font-mono text-red-600">{Number(row.BLOQUEADO || 0).toLocaleString()}</td>
                         <td className="px-3 py-3 border-r border-dashed border-gray-100 font-mono text-indigo-400">{Number(row.PUNTOPEDIDO || 0).toLocaleString()}</td>
-                        <td className="px-3 py-3 text-[10px] text-slate-400">{row.TIPO_MATERIAL} {row.PETICIONBORRADO === 'X' && <span className="text-red-500 font-black">[B]</span>}</td>
+                        <td className="px-3 py-3 text-[10px] text-slate-400">{row.TIPO_MATERIAL}</td>
                       </tr>
                     ))
                   )}
@@ -916,13 +899,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           </Card>
         </TabsContent>
       </Tabs>
-
-      <style jsx global>{`
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
-      `}</style>
     </div>
   );
 };
