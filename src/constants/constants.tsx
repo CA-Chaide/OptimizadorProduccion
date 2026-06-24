@@ -50,6 +50,12 @@ export enum ActiveView {
   PARAMETROS_CONEXIONES = 'PARAMETROS_CONEXIONES',
   CONFIGURACIONES_CALENDARIO_AREA = 'CONFIGURACIONES_CALENDARIO_AREA',
   CONFIGURACIONES_GRUPO_OPERADORES = 'CONFIGURACIONES_GRUPO_OPERADORES',
+<<<<<<< Updated upstream
+=======
+  PLAN_SEMANAL = 'PLAN_SEMANAL',
+  PLANES_MEDIANO_PLAZO = 'PLANES_MEDIANO_PLAZO',
+  GESTION_TURNO_OPERADORES = 'GESTION_TURNO_OPERADORES',
+>>>>>>> Stashed changes
 }
 
 // SVG Icons are now imported from lucide-react for consistency
@@ -116,6 +122,7 @@ const NAVIGATION_ITEMS = [
   { id: ActiveView.TACTICAL_SCHEDULING_2, label: 'Programación Táctica colchones', icon: <CalendarClock className="w-5 h-5" />, href: '/dashboard/opciones/programacion-tactica-2' },
   { id: ActiveView.TACTICAL_SCHEDULING_MUEBLES, label: 'Programación Táctica Muebles', icon: <TacticalSchedulingIcon />, href: '/dashboard/opciones/programacion-tactica-muebles' },
   { id: ActiveView.WORK_SHIFT_PLANNING, label: 'Planificación de Turnos', icon: <WorkShiftIcon />, href: '/dashboard/opciones/planificacion-turnos' },
+  { id: ActiveView.GESTION_TURNO_OPERADORES, label: 'Gestión Turno - Operadores', icon: <PersonnelIcon />, href: '/dashboard/opciones/gestion-turno-operadores' },
   { id: ActiveView.DICTIONARY, label: 'Diccionario de Datos', icon: <RealDataIcon />, href: '/dashboard/opciones/diccionario-datos' },
   { id: ActiveView.PARAMETROS, label: 'Parámetros', icon: <ClipboardList />, href: '/dashboard/parametros' },
   { id: ActiveView.PARAMETROS_TURNOS, label: 'Turnos', icon: <WorkShiftIcon />, href: '/dashboard/parametros/turnos' },
@@ -139,6 +146,7 @@ export const OPCIONES_ITEMS: ActiveView[] = [
   ActiveView.TACTICAL_SCHEDULING_2,
   ActiveView.TACTICAL_SCHEDULING_MUEBLES,
   ActiveView.WORK_SHIFT_PLANNING,
+  ActiveView.GESTION_TURNO_OPERADORES,
   ActiveView.DICTIONARY,
 ];
 
