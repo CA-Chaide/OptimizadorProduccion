@@ -22,7 +22,9 @@ import {
   TrendingUp,
   MapPin,
   Info,
-  ShoppingCart
+  ShoppingCart,
+  ChevronsLeft,
+  ChevronsRight
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -42,7 +44,6 @@ import type { Grupo, Restriccion } from '@/types/interfaces';
 import { cn } from '@/lib/utils';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { MaestroMaterialesExplosionSection } from './MaestroMaterialesExplosionSection';
 
 interface UnifiedNeedRow {
   material: string;
@@ -206,7 +207,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return dates;
   }, [ordenes, ordenesFert, mounted]);
 
-  const calendarDays = useMemo(() => {
+  const calendarDaysList = useMemo(() => {
     if (!mounted || !viewDate) return [];
     const start = startOfMonth(viewDate);
     const end = endOfMonth(viewDate);
@@ -704,8 +705,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                         <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Ejecutando Explosión Técnica BOM: {resumenProgress.current} / {resumenProgress.total}</p>
                       </td>
                     </tr>
-                  ) : groupedNeeds.length === 0 ? (
-                    <tr><td colSpan={21} className="py-24 text-slate-200 font-black uppercase tracking-widest italic text-center">Presione el botón "ACTUALIZAR DATOS" para iniciar la auditoría</td></tr>
                   ) : (
                     groupedNeeds.map((group) => {
                       const groupKey = `${group.apertura}|${group.densidad}`;
