@@ -171,7 +171,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   
   const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set());
-  const [viewDate, setViewDate] = useState<Date>(new Date());
+  const [viewDate, setViewDate] = useState<Date>(new Date(2026, 0, 1)); // Fixed initial date for hydration
   
   const [unifiedNeeds, setUnifiedNeeds] = useState<UnifiedNeedRow[]>([]);
   const [isProcessingResumen, setIsProcessingResumen] = useState(false);
@@ -575,7 +575,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     setSelectedDates(next);
   };
 
-  if (!mounted) return null;
+  if (!mounted) {
+    return <div className="p-4 md:p-6 min-h-screen bg-white" />;
+  }
 
   return (
     <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
@@ -766,7 +768,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                               <td className="px-4 py-3 border-r border-gray-100 font-mono text-indigo-600 text-left pl-8">{item.material}</td>
                               <td className="px-6 py-3 border-r border-gray-100 text-left text-gray-400 uppercase leading-tight italic text-[10px] truncate max-w-[250px]">{item.descripcion}</td>
                               <td className="px-2 py-3 border-r border-gray-100 font-mono text-indigo-900 bg-indigo-50/10">{item.peso.toFixed(2)}</td>
-                              <td className="px-2 py-3 border-r border-gray-100 font-bold text-indigo-900 bg-indigo-50/10">{item.dens}</td>
+                              <td className="px-2 py-3 border-r border-gray-100 font-bold text-indigo-900 bg-indigo-50/10">{item.densidad}</td>
                               <td className="px-2 py-3 border-r border-gray-100 font-mono font-black text-indigo-900 bg-indigo-50/10">{item.looperTRolloMin || '—'}</td>
                               <td className="px-3 py-3 border-r border-gray-100 font-mono text-slate-400">{item.stock1006 > 0 ? item.stock1006.toLocaleString() : '—'}</td>
                               <td className="px-2 py-3 border-r border-gray-100 font-mono text-cyan-600 bg-cyan-50/10">{item.stockUN1006 > 0 ? Math.round(item.stockUN1006).toLocaleString() : '—'}</td>
@@ -979,7 +981,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-100 text-[11px] font-black">
                   {inventarioSAP.filter(row => String(row.NOMBRE || row.DESCRIPCION || '').toUpperCase().includes('LAMINA CILINDRICA')).length === 0 ? (
-                    <tr><td colSpan={11} className="py-24 text-slate-200 font-black uppercase tracking-widest italic text-center text-center">No hay inventario registrado en los almacenes configurados</td></tr>
+                    <tr><td colSpan={11} className="py-24 text-slate-200 font-black uppercase tracking-widest italic text-center">No hay inventario registrado en los almacenes configurados</td></tr>
                   ) : (
                     inventarioSAP.filter(row => String(row.NOMBRE || row.DESCRIPCION || '').toUpperCase().includes('LAMINA CILINDRICA')).map((row, i) => (
                       <tr key={i} className="hover:bg-blue-50/10 transition-colors">
