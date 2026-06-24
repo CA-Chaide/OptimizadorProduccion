@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -129,7 +130,7 @@ const MachineCard = React.memo(({
 }) => {
   const hrCode = mapToHojaRuta(puestoName).trim().toUpperCase();
   
-  const { filteredOrders, totalTimeHours, utilization, isOverloaded, capacityHours } = useMemo(() => {
+  const { filteredOrders, totalTimeHours, utilization, capacityHours } = useMemo(() => {
     const filtered = orders.filter(o => {
       const orderHR = String(o['MAQUINA'] || o['Maquina'] || '').trim().toUpperCase();
       if (hrCode.includes(' / ')) {
@@ -151,7 +152,6 @@ const MachineCard = React.memo(({
       filteredOrders: filtered,
       totalTimeHours: totalHours,
       utilization: util,
-      isOverloaded: util > 100,
       capacityHours: capacity
     };
   }, [orders, hrCode, calculateProductionTime, config.isDayActive, config.isNightActive, config.machines, horasNetasDiurnas, horasNetasNocturnas]);
@@ -240,7 +240,7 @@ const MachineCard = React.memo(({
               {utilization > 100 ? (
                 <span className="text-[9px] font-black uppercase text-red-600 tracking-tighter animate-pulse">Sobrecapacidad</span>
               ) : utilization >= 90 ? (
-                <span className="text-[9px] font-black uppercase text-green-600 tracking-tighter">Capacidad Estable</span>
+                <span className="text-[9px] font-black uppercase text-green-600 tracking-tighter">Estable</span>
               ) : (
                 <span className="text-[9px] font-black uppercase text-yellow-600 tracking-tighter">Debajo de capacidad</span>
               )}
@@ -251,7 +251,7 @@ const MachineCard = React.memo(({
                 <span className="text-slate-400 block mb-0.5">Carga</span>
                 <span className="text-slate-900 font-mono">{totalTimeHours.toFixed(2)}H</span>
               </div>
-              <div className={cn("p-2 rounded-xl border border-slate-100 text-center", isOverloaded ? "bg-red-50 text-red-700" : "bg-sky-50 text-sky-700")}>
+              <div className={cn("p-2 rounded-xl border border-slate-100 text-center", utilization > 100 ? "bg-red-50 text-red-700" : "bg-sky-50 text-sky-700")}>
                 <span className="text-slate-400 block mb-0.5">Cap. Total</span>
                 <span className="font-mono">{capacityHours.toFixed(2)}H</span>
               </div>
@@ -327,6 +327,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [ordenesPrevisionalesData, setOrdenesPrevisionalesData] = useState<any[]>([]);
   const [listaMaterialesData, setListaMaterialesData] = useState<any[]>([]);
   const [versionesFabricacionData, setVersionesFabricacionData] = useState<any[]>([]);
+  const [explodedComponentsData, setExplodedComponentsData] = useState<any[]>([]);
 
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingFert, setIsLoadingFert] = useState(false);
@@ -335,7 +336,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const [isLoadingListaMateriales, setIsLoadingListaMateriales] = useState(false);
   const [isLoadingVersiones, setIsLoadingVersiones] = useState(false);
   const [isLoadingTiempos, setIsLoadingTiempos] = useState(false);
+  const [isLoadingExplosion, setIsLoadingExplosion] = useState(false);
   const [bomDownloadProgress, setBomDownloadProgress] = useState(0);
+  const [explosionProgress, setExplosionProgress] = useState(0);
   
   const [loadedTabs, setLoadedTabs] = useState<Set<string>>(new Set(['acolchado-tapas']));
   const hojaRutaCacheRef = React.useRef<Record<string, string>>({});
@@ -368,7 +371,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   useEffect(() => {
     setIsMounted(true);
-    // PLANIFICACIÓN PARA HOY + 1 LABORABLE
     const nextWorkDay = addBusinessDays(new Date(), 1);
     setPlanningDate(nextWorkDay);
   }, [addBusinessDays]);
@@ -418,7 +420,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     if (!pn || pn === '—' || pn === 'NULL') return '';
     if (hojaRutaCacheRef.current[pn]) return hojaRutaCacheRef.current[pn];
     
-    // UNIFICACIONES TÉCNICAS MANDATORIAS
     if (pn === 'CORTE-ESPUMA') {
       const res = 'HR-CTESP';
       hojaRutaCacheRef.current[pn] = res;
@@ -827,6 +828,68 @@ export const TacticalPlanForrosSection: React.FC = () => {
     return 0;
   }, [normalizeMaterialCode, getResolvedPuesto, getKPITimeSecondsForOrder]);
 
+  const handleExplodeFerts = async () => {
+    const allFerts = [...fert1000, ...fert2000];
+    if (allFerts.length === 0) {
+      addNotification('warning', 'No hay órdenes FERT para explosionar.');
+      return;
+    }
+
+    const uniqueMaterials = Array.from(new Set(allFerts.map(o => 
+      String(o['CodMaterial'] || o['MATERIAL'] || o['Material'] || '').trim()
+    ))).filter(m => m !== '');
+
+    setIsLoadingExplosion(true);
+    setExplosionProgress(0);
+    const allComponents: any[] = [];
+
+    try {
+      for (let i = 0; i < uniqueMaterials.length; i++) {
+        const fertCode = uniqueMaterials[i];
+        setExplosionProgress(Math.round((i / uniqueMaterials.length) * 100));
+        
+        const totalFertQty = allFerts
+          .filter(o => String(o['CodMaterial'] || o['MATERIAL'] || o['Material'] || '').trim() === fertCode)
+          .reduce((sum, o) => sum + Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0), 0);
+
+        const response = await serviciosService.getMaestroMaterialesExplosion('1000', fertCode, 1, 5000);
+        const components = response.data || [];
+
+        components.forEach((comp: any) => {
+          allComponents.push({
+            ...comp,
+            fertParent: fertCode,
+            orderQuantity: totalFertQty,
+            totalNeeded: (Number(comp.CANTIDAD_UNITARIA || comp.Cantidad || 0)) * totalFertQty
+          });
+        });
+      }
+      setExplodedComponentsData(allComponents);
+      setExplosionProgress(100);
+      addNotification('success', `Explosión completada para ${uniqueMaterials.length} materiales.`);
+    } catch (error: any) {
+      addNotification('error', `Error en explosión: ${error.message}`);
+    } finally {
+      setIsLoadingExplosion(false);
+    }
+  };
+
+  const consolidatedInsumos = useMemo(() => {
+    const map = new Map<string, { code: string, name: string, total: number, unit: string }>();
+    explodedComponentsData.forEach(item => {
+      const code = String(item.COMPONENTE || item.Componente || item.Material || '').trim();
+      const name = String(item.NOMBRE_COMPONENTE || item.Descripcion || '').trim();
+      const total = Number(item.totalNeeded || 0);
+      const unit = String(item.UNIDAD || item.Unidad || 'ST').trim();
+
+      if (!map.has(code)) {
+        map.set(code, { code, name, total: 0, unit });
+      }
+      map.get(code)!.total += total;
+    });
+    return Array.from(map.values()).sort((a, b) => a.code.localeCompare(b.code));
+  }, [explodedComponentsData]);
+
   const toggleWorkstationShift = (p: string, shift: 'day' | 'night') => {
     setWorkstationConfigs(prev => {
       const current = prev[p] || { machine: p, isDayActive: true, isNightActive: false, people: 0, machines: 1 };
@@ -999,7 +1062,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   return (
     <div className="p-6 md:p-8 space-y-6 bg-slate-50/40 min-h-screen font-body">
-      {/* CABECERA COMPACTA Y ESTÉTICA */}
       <div className="flex flex-col gap-3 bg-white p-4 rounded-[2.5rem] border border-slate-100 shadow-lg max-w-7xl mx-auto">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
@@ -1336,12 +1398,84 @@ export const TacticalPlanForrosSection: React.FC = () => {
             </div>
           ) : (
             <div className="space-y-16">
-              <div className="space-y-6">
-                {renderFertTable(fert1000, summary1000, "Órdenes FERT - Centro 1000 (UIO)", targetDate1000, setTargetDate1000, "bg-slate-900")}
+              <div className="flex justify-end">
+                <Button 
+                  onClick={handleExplodeFerts} 
+                  disabled={isLoadingExplosion || (fert1000.length === 0 && fert2000.length === 0)}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-black uppercase tracking-widest text-xs px-6 py-3 rounded-2xl shadow-lg"
+                >
+                  {isLoadingExplosion ? (
+                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Procesando {explosionProgress}%</>
+                  ) : (
+                    <><Database className="w-4 h-4 mr-2" /> Procesar Explosión de Insumos</>
+                  )}
+                </Button>
               </div>
-              <div className="space-y-6">
-                {renderFertTable(fert2000, summary2000, "Órdenes FERT - Centro 2000 (GYE)", targetDate2000, setTargetDate2000, "bg-indigo-700")}
-              </div>
+
+              {renderFertTable(fert1000, summary1000, "Órdenes FERT - Centro 1000 (UIO)", targetDate1000, setTargetDate1000, "bg-slate-900")}
+              {renderFertTable(fert2000, summary2000, "Órdenes FERT - Centro 2000 (GYE)", targetDate2000, setTargetDate2000, "bg-indigo-700")}
+
+              {/* Nueva Subsección: Explosión de Insumos */}
+              {(isLoadingExplosion || explodedComponentsData.length > 0) && (
+                <Card className="rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden shadow-sm border-none mt-12">
+                  <CardHeader className="bg-emerald-900 text-white p-8">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <div className="bg-white/10 p-3 rounded-2xl text-white backdrop-blur-sm border border-white/10">
+                          <Database className="w-6 h-6" />
+                        </div>
+                        <div>
+                          <CardTitle className="text-2xl font-black uppercase tracking-tight">Explosión Consolidada de Insumos</CardTitle>
+                          <CardDescription className="text-white/60 font-bold uppercase text-[10px] tracking-widest mt-1">
+                            Necesidad total de materiales basada en órdenes FERT (Centro 1000)
+                          </CardDescription>
+                        </div>
+                      </div>
+                      {isLoadingExplosion && (
+                        <div className="w-48 space-y-2">
+                          <div className="flex justify-between text-[10px] font-black uppercase tracking-widest">
+                            <span>Explosionando...</span>
+                            <span>{explosionProgress}%</span>
+                          </div>
+                          <Progress value={explosionProgress} className="h-1.5 bg-white/20 [&>div]:bg-sky-400" />
+                        </div>
+                      )}
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    <div className="overflow-x-auto max-h-[60vh]">
+                      <table className="w-full text-[11px] border-collapse">
+                        <thead className="bg-slate-100 sticky top-0 z-10 text-slate-600 text-left uppercase tracking-widest font-black">
+                          <tr>
+                            <th className="px-6 py-4">COMPONENTE</th>
+                            <th className="px-6 py-4">DESCRIPCIÓN</th>
+                            <th className="px-6 py-4 text-right">CANTIDAD TOTAL</th>
+                            <th className="px-6 py-4 text-center">UNIDAD</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {consolidatedInsumos.length > 0 ? consolidatedInsumos.map((item, i) => (
+                            <tr key={i} className="hover:bg-emerald-50/30 transition-colors">
+                              <td className="px-6 py-4 font-mono font-bold text-emerald-900">{item.code}</td>
+                              <td className="px-6 py-4 font-medium text-slate-600 whitespace-normal break-words leading-tight">{item.name}</td>
+                              <td className="px-6 py-4 text-right font-mono font-black text-slate-900 bg-emerald-50/10">
+                                {item.total.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
+                              </td>
+                              <td className="px-6 py-4 text-center font-bold text-slate-400 uppercase tracking-widest">{item.unit}</td>
+                            </tr>
+                          )) : (
+                            <tr>
+                              <td colSpan={4} className="py-20 text-center text-slate-400 uppercase font-black tracking-widest text-xs opacity-40">
+                                {isLoadingExplosion ? 'Procesando explosión de materiales...' : 'Haz clic en "Procesar Explosión" para ver los insumos'}
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
             </div>
           )}
         </TabsContent>
