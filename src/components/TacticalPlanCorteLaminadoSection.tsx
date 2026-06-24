@@ -21,7 +21,8 @@ import {
   Box,
   TrendingUp,
   MapPin,
-  Info
+  Info,
+  ShoppingCart
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -146,6 +147,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [grupos, setGrupos] = useState<Grupo[]>([]);
   const [restriccionesArray, setRestriccionesArray] = useState<Restriccion[]>([]);
   const [ordenes, setOrders] = useState<any[]>([]);
+  const [ordenesFert, setOrdersFert] = useState<any[]>([]);
   const [kpiLooperData, setKpiLooperData] = useState<any[]>([]);
   const [inventarioSAP, setInventarioSAP] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -170,7 +172,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const datesWithOrders = useMemo(() => {
     if (!mounted) return new Set<string>();
     const dates = new Set<string>();
-    ordenes.forEach(o => {
+    const allOrders = [...ordenes, ...ordenesFert];
+    allOrders.forEach(o => {
       const d = String(o.FECHAINICIO || o.FECHA || o.fecha_inicio || '').trim();
       if (d && d !== 'null') {
         const normalized = d.includes('T') ? d.split('T')[0] : d;
@@ -178,7 +181,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       }
     });
     return dates;
-  }, [ordenes, mounted]);
+  }, [ordenes, ordenesFert, mounted]);
 
   const calendarDays = useMemo(() => {
     if (!mounted || !viewDate) return [];
@@ -201,15 +204,17 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       setGrupos(filteredGroups);
       const ids = filteredGroups.map(g => g.codigo_grupo);
       
-      const [restrs, provs, kpiLooper, invSAP] = await Promise.all([
+      const [restrs, provs, kpiLooper, invSAP, ferts] = await Promise.all([
         restriccionService.getAll(),
         serviciosService.OrdenesProvisionalesPaginados(1, 20000).catch(() => ({ data: [] })),
         serviciosService.getKPIMAestroLooper().catch(() => ({ data: [] })),
-        serviciosService.getInventarioAñoActual().catch(() => ({ data: [] }))
+        serviciosService.getInventarioAñoActual().catch(() => ({ data: [] })),
+        serviciosService.getOrdenesFert(1, 20000).catch(() => ({ data: [] }))
       ]);
       
       setRestriccionesArray((restrs.data || []).filter((r: any) => ids.includes(r.codigo_grupo)));
       setOrders(provs.data?.data || provs.data || []);
+      setOrdersFert(ferts.data?.data || ferts.data || []);
       setKpiLooperData(kpiLooper?.data || []);
       setInventarioSAP(invSAP?.data || []);
 
@@ -246,6 +251,29 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       return true;
     });
   }, [ordenes, selectedDates, grupos, restriccionesArray]);
+
+  const filteredFertOrders = useMemo(() => {
+    const relevantGroups = grupos.map(g => g.codigo_grupo);
+    const allowedResps = restriccionesArray
+      .filter(r => (r.nombre_restriccion === 'RESPCTRLPROD' || r.nombre_restriccion === 'Hojas_Rutas_Materiales') && relevantGroups.includes(r.codigo_grupo))
+      .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
+      .filter(v => v !== '');
+
+    return ordenesFert.filter(o => {
+      const centro = String(o.CENTRO || o.Centro || '').trim();
+      if (centro === '2000') return false; 
+      const responsable = String(o.RESP_CONTROL_PROD || o.RESPCONTROLPROD || o.RespControlProd || '').trim();
+      if (allowedResps.length > 0 && !allowedResps.includes(responsable)) return false;
+      
+      // Filtro de Selección Múltiple de Fechas
+      if (selectedDates.size > 0) {
+        const dateRaw = String(o.FECHA || o.FECHAINICIO || '').trim();
+        const date = dateRaw.includes('T') ? dateRaw.split('T')[0] : dateRaw;
+        if (!selectedDates.has(date)) return false;
+      }
+      return true;
+    });
+  }, [ordenesFert, selectedDates, grupos, restriccionesArray]);
 
   const handleProcessResumen = useCallback(async () => {
     if (filteredOrders.length === 0) {
@@ -508,12 +536,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             </Button>
 
            <Popover>
-            <PopoverTrigger asChild>
-              <button className="h-10 px-5 rounded-2xl border border-gray-200 bg-white hover:border-red-500/50 flex items-center gap-3 font-black text-[11px] uppercase shadow-sm transition-all">
-                <Filter className="w-4 h-4 text-red-500" /> 
-                {selectedDates.size === 0 ? 'Plan Maestro' : `${selectedDates.size} días seleccionados`}
-              </button>
-            </PopoverTrigger>
             <PopoverContent className="w-[260px] p-0 border-none shadow-2xl rounded-2xl overflow-hidden mt-3" align="end">
               <div className="bg-white p-5 font-sans text-left">
                 <div className="flex items-center justify-between mb-5">
@@ -540,15 +562,22 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 <Button variant="ghost" size="sm" className="w-full text-[10px] font-black uppercase text-red-600 h-9 mt-1 rounded-xl hover:bg-red-50 tracking-widest" onClick={() => setSelectedDates(new Set())}>Ver Todo el Plan</Button>
               </div>
             </PopoverContent>
+            <PopoverTrigger asChild>
+              <button className="h-10 px-5 rounded-2xl border border-gray-200 bg-white hover:border-red-500/50 flex items-center gap-3 font-black text-[11px] uppercase shadow-sm transition-all">
+                <Filter className="w-4 h-4 text-red-500" /> 
+                {selectedDates.size === 0 ? 'Plan Maestro' : `${selectedDates.size} días seleccionados`}
+              </button>
+            </PopoverTrigger>
           </Popover>
         </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-5 h-11 bg-gray-100/50 p-1.5 rounded-2xl border border-gray-200 mb-8">
+        <TabsList className="grid grid-cols-6 h-11 bg-gray-100/50 p-1.5 rounded-2xl border border-gray-200 mb-8">
           {[ 
             { v: 'resumen', l: 'Resumen Necesidades', i: LayoutDashboard },
             { v: 'ordenes', l: 'Órdenes Provisionales', i: Package }, 
+            { v: 'ordenesFert', l: 'Órdenes FERT', i: ShoppingCart },
             { v: 'listaMateriales', l: 'Auditoría BOM', i: ClipboardList },
             { v: 'tiempos', l: 'Procesos Looper', i: Clock },
             { v: 'inventario', l: 'Inventarios SAP', i: Database }
@@ -764,6 +793,57 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           </div>
         </TabsContent>
 
+        <TabsContent value="ordenesFert" className="space-y-6 animate-in fade-in duration-300 text-left">
+          <div className="border border-gray-100 rounded-3xl shadow-xl overflow-hidden bg-white">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200 border-collapse font-sans text-[11px] text-center">
+                <thead className="bg-[#1e293b] text-white border-b border-gray-100 uppercase font-black tracking-widest text-[9px] sticky top-0 z-10">
+                  <tr>
+                    <th className="px-6 py-5 border-r border-white/5">Orden</th>
+                    <th className="px-6 py-5 border-r border-white/5">Fecha</th>
+                    <th className="px-6 py-5 border-r border-white/5">Código FERT</th>
+                    <th className="px-6 py-5 border-r border-white/10 text-left">Descripción del Producto</th>
+                    <th className="px-6 py-5 border-r border-white/5">Cantidad</th>
+                    <th className="px-6 py-5 border-r border-white/5">Responsable</th>
+                    <th className="px-6 py-5 border-r border-white/5">Máquina</th>
+                    <th className="px-6 py-5">Almacén</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50 font-bold">
+                  {filteredFertOrders.length === 0 ? (
+                    <tr><td colSpan={8} className="py-24 text-slate-300 font-black uppercase tracking-widest italic">No se detectaron órdenes FERT para los criterios aplicados</td></tr>
+                  ) : (
+                    filteredFertOrders.map((o, i) => {
+                      const matCode = cleanCode(String(o.MATERIAL || '').match(/^(\d+)/)?.[1]);
+                      const description = String(o.MATERIAL || '').replace(/^\d+\s*/, '') || o.NOMBRE || '—';
+                      return (
+                        <tr key={i} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="px-6 py-4 font-black text-slate-800 border-r border-gray-50">{o.ORDEN || '—'}</td>
+                          <td className="px-6 py-4 border-r border-gray-50 font-mono text-[9px] text-slate-400">{o.FECHA || o.FECHAINICIO || '—'}</td>
+                          <td className="px-6 py-4 font-mono font-black text-red-600 border-r border-gray-50 tracking-tighter text-sm">{matCode}</td>
+                          <td className="px-6 py-4 text-left border-r border-gray-100 text-slate-600 font-black uppercase leading-tight max-w-[450px]">
+                            {description}
+                          </td>
+                          <td className="px-6 py-4 font-black text-slate-900 border-r border-gray-50 font-mono text-sm">
+                            {Number(o.CANTIDAD || o.CANTPROGRAMADA || o.CANT_PROG || 0).toLocaleString()}
+                          </td>
+                          <td className="px-6 py-4 border-r border-gray-50">
+                            <Badge variant="outline" className="text-[10px] font-black bg-blue-50 text-blue-700 border-blue-100">{String(o.RESP_CONTROL_PROD || o.RESPCONTROLPROD || '—')}</Badge>
+                          </td>
+                          <td className="px-6 py-4 font-bold text-slate-400 border-r border-gray-50 text-[10px] uppercase">
+                            {String(o.MAQUINA || o.RECURSO || '—')}
+                          </td>
+                          <td className="px-6 py-4 font-bold text-slate-200 text-[10px]">{o.Almacen || o.ALMACEN || '—'}</td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </TabsContent>
+
         <TabsContent value="listaMateriales" className="animate-in fade-in duration-300 text-left">
            <MaestroMaterialesExplosionSection ordenes={filteredOrders} />
         </TabsContent>
@@ -825,7 +905,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     <th className="px-6 py-5 border-r border-white/5 text-left">Nombre</th>
                     <th className="px-3 py-5 border-r border-white/5">Centro</th>
                     <th className="px-3 py-5 border-r border-white/5 text-indigo-300">ALM.</th>
-                    <th className="px-3 py-5 border-r border-white/5">Año/Mes</th>
                     <th className="px-3 py-5 border-r border-white/5 bg-green-500/30 text-green-300">Libre Utiliz.</th>
                     <th className="px-3 py-5 border-r border-white/5 bg-blue-500/30 text-blue-200">En Traslado</th>
                     <th className="px-3 py-5 border-r border-white/5">Insp. Calidad</th>
@@ -844,7 +923,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                         <td className="px-6 py-3 border-r border-dashed border-gray-100 text-left uppercase text-slate-600 truncate max-w-[200px]" title={row.NOMBRE}>{row.NOMBRE || '—'}</td>
                         <td className="px-3 py-3 border-r border-dashed border-gray-100">{row.CENTRO}</td>
                         <td className="px-3 py-3 border-r border-dashed border-gray-100 text-indigo-700 font-black bg-indigo-50/30">{row.ALMACEN}</td>
-                        <td className="px-3 py-3 border-r border-dashed border-gray-100 font-mono text-slate-400">{row.ANIO}/{row.MES}</td>
                         <td className="px-3 py-3 border-r border-dashed border-gray-100 font-mono text-green-700 bg-green-50/30">{Number(row.LIBREUTILIZACION || 0).toLocaleString()}</td>
                         <td className="px-3 py-3 border-r border-dashed border-gray-100 font-mono text-blue-700 bg-blue-50/30">{Number(row.ENTRASLADO || 0).toLocaleString()}</td>
                         <td className="px-3 py-3 border-r border-dashed border-gray-100 font-mono">{Number(row.INSPECCCALIDAD || 0).toLocaleString()}</td>
