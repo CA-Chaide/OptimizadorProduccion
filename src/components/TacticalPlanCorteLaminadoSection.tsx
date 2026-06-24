@@ -55,8 +55,8 @@ interface UnifiedNeedRow {
   consumoKg: number;
   consumoUn: number;
   nroRollos: number;
-  consumoKgHalb: number; // Nueva
-  nroRollosHalb: number; // Nueva
+  consumoKgHalb: number;
+  nroRollosHalb: number;
   stock1006: number;
   stock1008: number;
   stock1015: number;
@@ -88,7 +88,6 @@ const parseDimensionsEnhanced = (desc: string) => {
   const densMatch = d.match(/D(\d+)/);
   const densidad = densMatch ? densMatch[1] : '—';
 
-  // Manejo especial de materiales CV solicitado: Espesor 3.5
   if (d.includes('CV')) {
     return { densidad, distancia: 60, altura: 206, espesor: 3.5 };
   }
@@ -112,7 +111,6 @@ const parseDimensionsEnhanced = (desc: string) => {
 
 const extractAperture = (desc: string): string => {
   const d = String(desc || '').toUpperCase();
-  // Buscamos específicamente los patrones técnicos solicitados: 194.5, 206, 219, 228
   const match = d.match(/(194\.5|206|219|228)/);
   return match ? match[0] : '—';
 };
@@ -154,7 +152,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [inventarioSAP, setInventarioSAP] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
-  // Selección múltiple de fechas
   const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set());
   const [viewDate, setViewDate] = useState<Date | null>(null);
   
@@ -282,7 +279,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     
     setIsProcessingResumen(true);
     
-    // Agrupación de materiales por fuente
     const materialGroupsProv = new Map<string, number>();
     filteredOrders.forEach(order => {
       const matRaw = String(order.MATERIAL || order.CodMaterial || '').trim();
@@ -339,14 +335,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 const looperMatch = kpiLooperData.find(k => cleanCode(k.Material) === compCode);
                 const finalPeso = looperMatch ? safeNum(looperMatch.PesoUN) : pesoTeorico;
 
-                const sourceBlock = rawData.find(row => 
-                  cleanCode(row.MATERIAL_PADRE) === compCode && 
-                  (row.DESCRIPCION_COMPONENTE || '').toUpperCase().includes('BLOQUE FORMULADO')
-                );
-                
-                const descBloque = sourceBlock ? String(sourceBlock.DESCRIPCION_COMPONENTE).toUpperCase() : '—';
-                const aperturaId = extractAperture(descBloque);
-
                 const getStockKg = (alm: string) => {
                   return inventarioSAP
                     .filter(inv => cleanCode(inv.MATERIAL) === compCode && String(inv.ALMACEN).trim() === alm)
@@ -380,7 +368,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   looperDensidad: looperMatch ? String(looperMatch.Densidad) : '—',
                   looperEspesor: looperMatch ? safeNum(looperMatch.Espesor) : 0,
                   looperTRolloMin: looperMatch ? safeNum(looperMatch.TiempoRolloMin) : 0,
-                  apertura: aperturaId,
+                  apertura: extractAperture(desc),
                   porcentajeNecesidad: 0,
                   planUn: 0,
                   planKg: 0,
@@ -500,10 +488,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return inventarioSAP.filter(row => {
       const alm = String(row.ALMACEN || '').trim();
       const matchAlm = allowedAlmacenes.length === 0 || allowedAlmacenes.includes(alm);
-      
       const nombre = String(row.NOMBRE || row.DESCRIPCION || '').toUpperCase();
       const matchTipo = nombre.includes('LAMINA CILINDRICA');
-      
       return matchAlm && matchTipo;
     });
   }, [inventarioSAP, restriccionesArray]);
@@ -601,7 +587,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         </TabsList>
 
         <TabsContent value="resumen" className="space-y-6 animate-in fade-in duration-300">
-           {/* DASHBOARD SUPERIOR */}
            <div className="flex items-center gap-8 bg-[#1e293b] p-6 rounded-[2.5rem] border border-white/5 shadow-2xl text-white">
              <div className="flex items-start gap-8 flex-1">
                 <div className="flex flex-col gap-1 border-r border-white/10 pr-8 text-left min-w-[200px]">
@@ -767,7 +752,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                             {description}
                           </td>
                           <td className="px-6 py-4 font-black text-slate-900 border-r border-gray-50 font-mono text-sm">
-                            {Number(o.CANTIDAD || o.CANTPROGRAMADA || 0).toLocaleString()}
+                            {Number(o.CANTPROGRAMADA || o.CANTIDAD || o.CANT_PROG || 0).toLocaleString()}
                           </td>
                           <td className="px-6 py-4 border-r border-gray-50">
                             <Badge variant="outline" className="text-[10px] font-black bg-blue-50 text-blue-700 border-blue-100">{String(o.RESPCONTROLPROD || '—')}</Badge>
@@ -775,7 +760,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                           <td className="px-6 py-4 font-bold text-slate-400 border-r border-gray-50 text-[10px] uppercase">
                             {String(o.MAQUINA || o.RECURSO || '—')}
                           </td>
-                          <td className="px-6 py-4 font-bold text-slate-200 text-[10px]">{o.Almacen || '—'}</td>
+                          <td className="px-6 py-4 font-bold text-slate-200 text-[10px]">{o.Almacen || o.ALMACEN || '—'}</td>
                         </tr>
                       );
                     })
@@ -796,7 +781,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     <th className="px-6 py-5 border-r border-white/5">Fecha</th>
                     <th className="px-6 py-5 border-r border-white/5">Código FERT</th>
                     <th className="px-6 py-5 border-r border-white/10 text-left">Descripción del Producto</th>
-                    <th className="px-6 py-5 border-r border-white/5">Cantidad</th>
+                    <th className="px-6 py-5 border-r border-white/5">Cant. Pendiente</th>
                     <th className="px-6 py-5 border-r border-white/5">Responsable</th>
                     <th className="px-6 py-5 border-r border-white/5">Máquina</th>
                     <th className="px-6 py-5">Almacén</th>
@@ -818,7 +803,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                             {description}
                           </td>
                           <td className="px-6 py-4 font-black text-slate-900 border-r border-gray-50 font-mono text-sm">
-                            {Number(o.CANTPROGRAMADA || o.CANTIDAD || o.CANT_PROG || 0).toLocaleString()}
+                            {Number(o.CANTPENDIENTE || 0).toLocaleString()}
                           </td>
                           <td className="px-6 py-4 border-r border-gray-50">
                             <Badge variant="outline" className="text-[10px] font-black bg-blue-50 text-blue-700 border-blue-100">{String(o.RESPCTRLPROD || o.RESP_CONTROL_PROD || o.RESPCONTROLPROD || '—')}</Badge>
