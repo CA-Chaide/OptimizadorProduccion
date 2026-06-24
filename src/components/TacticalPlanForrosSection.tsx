@@ -965,50 +965,61 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   return (
     <div className="p-6 md:p-8 space-y-6 bg-slate-50/40 min-h-screen font-body">
-      <div className="flex flex-col gap-6 bg-white p-8 rounded-[3rem] border border-slate-100 shadow-xl">
+      {/* HEADER COMPACTO Y ESTÉTICO SEGÚN IMAGEN */}
+      <div className="flex flex-col gap-6 bg-white p-8 rounded-[3rem] border border-slate-100 shadow-xl max-w-7xl mx-auto">
         <div className="flex items-center gap-8">
-          <div className="bg-slate-950 p-6 rounded-[2rem] text-white shadow-2xl ring-8 ring-slate-50 shrink-0">
-            <CalendarClock className="w-10 h-10 text-sky-400" />
+          <div className="bg-[#0f111a] p-5 rounded-[1.8rem] text-sky-400 shadow-2xl ring-4 ring-slate-50 shrink-0">
+            <CalendarClock className="w-9 h-9" />
           </div>
           <div className="flex-1">
-            <div className="flex items-center gap-4 mb-1">
-              <h1 className="text-3xl font-black text-slate-900 uppercase tracking-tighter leading-none">Programación Táctica</h1>
-              <Badge className="bg-indigo-600 text-white font-black px-4 py-1 rounded-xl text-[10px] uppercase tracking-widest border-none shadow-md">Forros</Badge>
+            <div className="flex items-center gap-3 mb-0.5">
+              <h1 className="text-3xl font-black text-[#1e1e2d] uppercase tracking-tighter leading-none">PROGRAMACIÓN TÁCTICA</h1>
+              <Badge className="bg-indigo-600 text-white font-black px-3 py-1 rounded-xl text-[10px] uppercase tracking-widest border-none shadow-md">FORROS</Badge>
             </div>
             <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
-              <Users className="w-3.5 h-3.5 text-indigo-500" /> Eficiencia Operativa: 84%
+              <Users className="w-3.5 h-3.5 text-indigo-400" /> EFICIENCIA OPERATIVA: 84%
             </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          <div className="bg-slate-50 border border-slate-200/60 rounded-[2rem] p-5 flex items-center gap-5 shadow-sm hover:shadow-md transition-all">
-            <div className="bg-indigo-600 p-3.5 rounded-2xl text-white shadow-lg shadow-indigo-100"><CalendarIcon className="w-6 h-6" /></div>
-            <div>
-              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Planificación para</p>
-              <p className="text-sm font-black text-indigo-900 capitalize leading-tight">
-                {planningDateFormatted}
-              </p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
+          <div className="flex gap-4">
+            <div className="bg-white border border-slate-100 rounded-[2.2rem] p-3 flex items-center gap-4 shadow-sm hover:shadow-md transition-all flex-1">
+              <div className="bg-indigo-600 p-3 rounded-[1.2rem] text-white shadow-lg shadow-indigo-100 shrink-0">
+                <CalendarIcon className="w-5 h-5" />
+              </div>
+              <div className="flex flex-col">
+                <p className="text-[9px] font-black text-slate-300 uppercase tracking-widest mb-0.5">PLANIFICACIÓN PARA</p>
+                <p className="text-sm font-black text-indigo-900 leading-tight">
+                  {planningDateFormatted}
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-white border border-slate-100 rounded-[2.2rem] p-3 flex items-center gap-4 shadow-sm hover:shadow-md transition-all flex-1">
+              <div className="bg-indigo-500 p-3 rounded-[1.2rem] text-white shadow-lg shadow-indigo-100 shrink-0">
+                <MapPin className="w-5 h-5" />
+              </div>
+              <div className="flex flex-col">
+                <p className="text-[9px] font-black text-slate-300 uppercase tracking-widest mb-0.5">GYE (2000)</p>
+                <p className="text-2xl font-black text-slate-900 font-mono leading-none tracking-tighter">
+                  {ordenesPrevisionalesData.filter(o => String(o.Centro).trim() === '2000').length.toLocaleString()}
+                </p>
+              </div>
             </div>
           </div>
 
-          <div className="bg-slate-50 border border-slate-200/60 rounded-[2rem] p-5 flex items-center gap-5 shadow-sm hover:shadow-md transition-all">
-            <div className="bg-indigo-500 p-3.5 rounded-2xl text-white shadow-lg shadow-indigo-50"><MapPin className="w-6 h-6" /></div>
-            <div>
-              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">GYE (2000)</p>
-              <p className="text-3xl font-black text-slate-900 font-mono leading-none tracking-tighter">
-                {ordenesPrevisionalesData.filter(o => String(o.Centro).trim() === '2000').length.toLocaleString()}
-              </p>
-            </div>
-          </div>
-
-          <div className="bg-slate-50 border border-slate-200/60 rounded-[2rem] p-5 flex items-center gap-5 shadow-sm hover:shadow-md transition-all">
-            <div className="bg-slate-800 p-3.5 rounded-2xl text-white shadow-lg shadow-slate-200"><MapPin className="w-6 h-6" /></div>
-            <div>
-              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">UIO (1000)</p>
-              <p className="text-3xl font-black text-slate-900 font-mono leading-none tracking-tighter">
-                {filteredOrdenesPrevisionales.length.toLocaleString()}
-              </p>
+          <div className="flex">
+            <div className="bg-white border border-slate-100 rounded-[2.2rem] p-3 flex items-center gap-4 shadow-sm hover:shadow-md transition-all w-full md:w-1/2">
+              <div className="bg-[#1e1e2d] p-3 rounded-[1.2rem] text-white shadow-lg shadow-slate-200 shrink-0">
+                <MapPin className="w-5 h-5" />
+              </div>
+              <div className="flex flex-col">
+                <p className="text-[9px] font-black text-slate-300 uppercase tracking-widest mb-0.5">UIO (1000)</p>
+                <p className="text-2xl font-black text-slate-900 font-mono leading-none tracking-tighter">
+                  {filteredOrdenesPrevisionales.length.toLocaleString()}
+                </p>
+              </div>
             </div>
           </div>
         </div>
@@ -1654,7 +1665,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
               <div className="overflow-x-auto max-h-[70vh] relative">
                 {isLoadingKPI ? (
                   <div className="flex items-center justify-center py-24">
-                    <Loader2 className="w-10 h-10 animate-spin text-indigo-500" />
+                    <Loader2 className="w-10 h-10 animate-spin text-indigo-50" />
                   </div>
                 ) : (
                   <table className="w-full text-[11px] border-collapse">
