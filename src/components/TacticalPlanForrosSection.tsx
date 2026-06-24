@@ -856,9 +856,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
       addNotification('warning', 'No se ha configurado la restricción COMPONENTES_CHN. Se mostrarán todos los materiales.');
     }
 
-    const uniqueMaterials = Array.from(new Set(allFerts.map(o => 
-      String(o['CodMaterial'] || o['MATERIAL'] || o['Material'] || '').trim()
-    ))).filter(m => m !== '');
+    const uniqueMaterials = Array.from(new Set(allFerts.map(o => {
+      const rawCode = String(o['CodMaterial'] || o['MATERIAL'] || o['Material'] || '').trim();
+      return rawCode.slice(-8); // Match the 8-digit requirement for the Fert parameter
+    }))).filter(m => m !== '');
 
     setIsLoadingExplosion(true);
     setExplosionProgress(0);
@@ -869,7 +870,10 @@ export const TacticalPlanForrosSection: React.FC = () => {
         const fertCode = uniqueMaterials[i];
         setExplosionProgress(Math.round((i / uniqueMaterials.length) * 100));
         
-        const ordersForMaterial = allFerts.filter(o => String(o['CodMaterial'] || o['MATERIAL'] || o['Material'] || '').trim() === fertCode);
+        const ordersForMaterial = allFerts.filter(o => {
+          const raw = String(o['CodMaterial'] || o['MATERIAL'] || o['Material'] || '').trim();
+          return raw.slice(-8) === fertCode;
+        });
 
         const response = await serviciosService.getMaestroMaterialesExplosion('1000', fertCode, 1, 5000);
         const components = response.data || [];
@@ -984,37 +988,6 @@ export const TacticalPlanForrosSection: React.FC = () => {
     );
   }
 
-  const renderDateFilterHeader = () => (
-    <div className="flex flex-col md:flex-row items-center gap-4 p-5 bg-white border border-slate-200 rounded-[1.5rem] shadow-sm mb-6">
-      <div className="flex items-center gap-2 text-indigo-600 font-black uppercase tracking-widest text-[10px]">
-        <CalendarIcon className="w-4 h-4" /> Filtro de Producción Técnica
-      </div>
-      <div className="flex items-center gap-3">
-        <div className="flex items-center bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 gap-2">
-          <span className="text-[9px] font-black text-slate-400 uppercase">Desde</span>
-          <input 
-            type="date" 
-            value={techStartDate} 
-            onChange={(e) => setTechStartDate(e.target.value)}
-            className="bg-transparent border-none text-slate-700 text-xs font-bold focus:ring-0 outline-none p-0 cursor-pointer"
-          />
-        </div>
-        <div className="flex items-center bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 gap-2">
-          <span className="text-[9px] font-black text-slate-400 uppercase">Hasta</span>
-          <input 
-            type="date" 
-            value={techEndDate} 
-            onChange={(e) => setTechEndDate(e.target.value)}
-            className="bg-transparent border-none text-slate-700 text-xs font-bold focus:ring-0 outline-none p-0 cursor-pointer"
-          />
-        </div>
-        <div className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">
-          {techFilteredOrdenes.length} órdenes en período
-        </div>
-      </div>
-    </div>
-  );
-
   const renderFertTable = (orders: any[], summary: any[], title: string, date: string, setDate: (d: string) => void, color: string) => {
     const fertCols = [
       { id: 'CENTRO', key: 'Centro' },
@@ -1027,118 +1000,88 @@ export const TacticalPlanForrosSection: React.FC = () => {
     ];
 
     return (
-      <div className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card className="md:col-span-1 rounded-3xl border-none shadow-sm ring-1 ring-slate-100 overflow-hidden">
-            <div className={cn("px-6 py-3 text-white font-black text-xs uppercase tracking-widest flex items-center gap-2", color)}>
-              <BarChart3 className="w-4 h-4" /> Resumen por Responsable
+      <Card className="rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden shadow-sm border-none">
+        <CardHeader className={cn("text-white p-8", color)}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="bg-white/10 p-3 rounded-2xl text-white backdrop-blur-sm border border-white/10">
+                <PackageSearch className="w-6 h-6" />
+              </div>
+              <div>
+                <CardTitle className="text-2xl font-black uppercase tracking-tight">{title}</CardTitle>
+                <CardDescription className="text-white/60 font-bold uppercase text-[10px] tracking-widest mt-1">
+                  Visualización de carga operativa segmentada
+                </CardDescription>
+              </div>
             </div>
-            <CardContent className="p-0">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center bg-white/10 border border-white/20 rounded-lg px-3 py-1 gap-2">
+                <CalendarIcon className="w-3.5 h-3.5 text-white" />
+                <input 
+                  type="date" 
+                  value={date} 
+                  onChange={(e) => setDate(e.target.value)}
+                  className="bg-transparent border-none text-white text-[10px] font-bold focus:ring-0 outline-none p-0 cursor-pointer"
+                />
+              </div>
+              <Badge className="bg-white text-slate-900 border-none font-mono font-black text-sm px-4 py-1.5 rounded-xl">{orders.length} REG</Badge>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto max-h-[50vh]">
+            {orders.length > 0 ? (
               <table className="w-full text-[11px] border-collapse">
-                <thead className="bg-slate-50 text-slate-500 uppercase font-black tracking-widest border-b">
+                <thead className="bg-slate-100 sticky top-0 z-10 text-slate-600 text-left uppercase tracking-widest font-black">
                   <tr>
-                    <th className="px-4 py-3 text-left">RESPCTRLPROD</th>
-                    <th className="px-4 py-3 text-right">TOTAL CANTIDAD</th>
+                    {fertCols.map((col) => (
+                      <th key={col.id} className="px-6 py-4 whitespace-nowrap text-[10px] uppercase font-bold">{col.id}</th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {summary.length > 0 ? summary.map((s, i) => (
-                    <tr key={i} className="hover:bg-slate-50/50">
-                      <td className="px-4 py-3 font-bold text-slate-700">Responsable {s.resp}</td>
-                      <td className="px-4 py-3 text-right font-mono font-black text-indigo-600">{Math.round(s.total).toLocaleString()}</td>
+                  {orders.map((order, i) => (
+                    <tr key={i} className="hover:bg-indigo-50 transition-colors">
+                      {fertCols.map((col) => {
+                        let val = order[col.key] || order[col.id] || order[col.id.toLowerCase()];
+                        if (col.id === 'MATERIAL' && val) {
+                          val = String(val).trim().slice(-8); // Extraer 8 dígitos desde el final
+                        }
+                        if (col.id === 'FECHA' && val) val = String(val).split('T')[0];
+                        if (col.id === 'CANTPROGRAMADA' && val) val = Math.round(Number(val)).toLocaleString();
+                        return (
+                          <td key={col.id} className={cn(
+                            "px-6 py-4 font-medium text-slate-600 whitespace-nowrap",
+                            col.id === 'MATERIAL' && "font-mono font-bold",
+                            col.id === 'CANTPROGRAMADA' && "text-right font-black text-slate-900",
+                            col.id === 'NOMBRE' && "whitespace-normal break-words min-w-[250px]"
+                          )}>{val ?? '—'}</td>
+                        );
+                      })}
                     </tr>
-                  )) : (
-                    <tr><td colSpan={2} className="py-8 text-center text-slate-400 italic">Sin datos</td></tr>
-                  )}
+                    ))}
                 </tbody>
               </table>
-            </CardContent>
-          </Card>
-        </div>
-
-        <Card className="rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden shadow-sm border-none">
-          <CardHeader className={cn("text-white p-8", color)}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="bg-white/10 p-3 rounded-2xl text-white backdrop-blur-sm border border-white/10">
-                  <PackageSearch className="w-6 h-6" />
-                </div>
-                <div>
-                  <CardTitle className="text-2xl font-black uppercase tracking-tight">{title}</CardTitle>
-                  <CardDescription className="text-white/60 font-bold uppercase text-[10px] tracking-widest mt-1">
-                    Visualización de carga operativa segmentada
-                  </CardDescription>
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="flex items-center bg-white/10 border border-white/20 rounded-lg px-3 py-1 gap-2">
-                  <CalendarIcon className="w-3.5 h-3.5 text-white" />
-                  <input 
-                    type="date" 
-                    value={date} 
-                    onChange={(e) => setDate(e.target.value)}
-                    className="bg-transparent border-none text-white text-[10px] font-bold focus:ring-0 outline-none p-0 cursor-pointer"
-                  />
-                </div>
-                <Badge className="bg-white text-slate-900 border-none font-mono font-black text-sm px-4 py-1.5 rounded-xl">{orders.length} REG</Badge>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto max-h-[50vh]">
-              {orders.length > 0 ? (
-                <table className="w-full text-[11px] border-collapse">
-                  <thead className="bg-slate-100 sticky top-0 z-10 text-slate-600 text-left uppercase tracking-widest font-black">
-                    <tr>
-                      {fertCols.map((col) => (
-                        <th key={col.id} className="px-6 py-4 whitespace-nowrap text-[10px] uppercase font-bold">{col.id}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {orders.map((order, i) => (
-                      <tr key={i} className="hover:bg-indigo-50 transition-colors">
-                        {fertCols.map((col) => {
-                          let val = order[col.key] || order[col.id] || order[col.id.toLowerCase()];
-                          if (col.id === 'MATERIAL' && val) {
-                            val = String(val).trim().slice(-8); // Extraer 8 dígitos desde el final
-                          }
-                          if (col.id === 'FECHA' && val) val = String(val).split('T')[0];
-                          if (col.id === 'CANTPROGRAMADA' && val) val = Math.round(Number(val)).toLocaleString();
-                          return (
-                            <td key={col.id} className={cn(
-                              "px-6 py-4 font-medium text-slate-600 whitespace-nowrap",
-                              col.id === 'MATERIAL' && "font-mono font-bold",
-                              col.id === 'CANTPROGRAMADA' && "text-right font-black text-slate-900",
-                              col.id === 'NOMBRE' && "whitespace-normal break-words min-w-[250px]"
-                            )}>{val ?? '—'}</td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              ) : (
-                <div className="py-20 text-center text-slate-400 uppercase font-black tracking-widest text-xs opacity-40">No hay registros para este centro en la fecha seleccionada</div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+            ) : (
+              <div className="py-20 text-center text-slate-400 uppercase font-black tracking-widest text-xs opacity-40">No hay registros para este centro en la fecha seleccionada</div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
     );
   };
 
   return (
     <div className="p-6 md:p-8 space-y-6 bg-slate-50/40 min-h-screen font-body">
-      <div className="flex flex-col gap-4 bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-xl max-w-7xl mx-auto overflow-hidden">
+      <div className="flex flex-col gap-4 bg-white p-5 rounded-[2.5rem] border border-slate-100 shadow-xl max-w-7xl mx-auto overflow-hidden">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div className="bg-slate-950 p-4 rounded-[1.5rem] text-white shadow-2xl ring-4 ring-slate-50 shrink-0">
-              <CalendarClock className="w-7 h-7 text-sky-400" />
+              <CalendarClock className="w-6 h-6 text-sky-400" />
             </div>
             <div className="flex-1">
               <div className="flex items-center gap-3 mb-0.5">
-                <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tighter leading-none text-nowrap">Programación Táctica</h1>
+                <h1 className="text-xl font-black text-slate-900 uppercase tracking-tighter leading-none text-nowrap">Programación Táctica</h1>
                 <Badge className="bg-indigo-600 text-white font-black px-3 py-1 rounded-lg text-[9px] uppercase tracking-widest border-none shadow-md">Forros</Badge>
               </div>
               <div className="flex items-center gap-2 text-[9px] font-black text-slate-400 uppercase tracking-[0.25em]">
@@ -1148,9 +1091,9 @@ export const TacticalPlanForrosSection: React.FC = () => {
           </div>
 
           <div className="flex gap-4">
-            <div className="bg-slate-50 border border-slate-200/60 rounded-[1.5rem] p-4 flex items-center gap-4 shadow-sm hover:shadow-md transition-all">
-              <div className="bg-indigo-600 p-2.5 rounded-xl text-white shadow-lg shadow-indigo-100 shrink-0">
-                <CalendarIcon className="w-4 h-4" />
+            <div className="bg-slate-50 border border-slate-200/60 rounded-[1.5rem] p-3 flex items-center gap-3 shadow-sm hover:shadow-md transition-all">
+              <div className="bg-indigo-600 p-2 rounded-xl text-white shadow-lg shadow-indigo-100 shrink-0">
+                <CalendarIcon className="w-3.5 h-3.5" />
               </div>
               <div>
                 <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Planificación para</p>
@@ -1467,155 +1410,89 @@ export const TacticalPlanForrosSection: React.FC = () => {
               <span className="ml-4 text-slate-500 font-black uppercase tracking-widest text-xs">Cargando órdenes FERT...</span>
             </div>
           ) : (
-            <div className="space-y-16">
-              <div className="flex justify-end">
-                <Button 
-                  onClick={handleExplodeFerts} 
-                  disabled={isLoadingExplosion || (fert1000.length === 0 && fert2000.length === 0)}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-black uppercase tracking-widest text-xs px-6 py-3 rounded-2xl shadow-lg"
-                >
-                  {isLoadingExplosion ? (
-                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Procesando {explosionProgress}%</>
-                  ) : (
-                    <><Database className="w-4 h-4 mr-2" /> Procesar Explosión de Insumos</>
-                  )}
-                </Button>
-              </div>
+            <div className="space-y-8">
+              {/* Top Row with Summaries and Button */}
+              <div className="flex flex-col space-y-6">
+                <div className="flex justify-end">
+                  <Button 
+                    onClick={handleExplodeFerts} 
+                    disabled={isLoadingExplosion || (fert1000.length === 0 && fert2000.length === 0)}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white font-black uppercase tracking-widest text-xs px-6 py-3 rounded-2xl shadow-lg"
+                  >
+                    {isLoadingExplosion ? (
+                      <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Procesando {explosionProgress}%</>
+                    ) : (
+                      <><Database className="w-4 h-4 mr-2" /> Procesar Explosión de Insumos</>
+                    )}
+                  </Button>
+                </div>
 
-              {renderFertTable(fert1000, summary1000, "Órdenes FERT - Centro 1000 (UIO)", targetDate1000, setTargetDate1000, "bg-slate-900")}
-              {renderFertTable(fert2000, summary2000, "Órdenes FERT - Centro 2000 (GYE)", targetDate2000, setTargetDate2000, "bg-indigo-700")}
-
-              {(isLoadingExplosion || explodedComponentsData.length > 0) && (
-                <div className="space-y-8 mt-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-                     <Card className="rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden shadow-sm border-none">
-                        <CardHeader className="bg-indigo-900 text-white p-8">
-                           <div className="flex items-center gap-4">
-                              <div className="bg-white/10 p-3 rounded-2xl text-white backdrop-blur-sm border border-white/10">
-                                <TrendingUp className="w-6 h-6" />
-                              </div>
-                              <div>
-                                <CardTitle className="text-2xl font-black uppercase tracking-tight">Resumen Insumos por Responsable</CardTitle>
-                                <CardDescription className="text-white/60 font-bold uppercase text-[10px] tracking-widest mt-1">Impacto de explosión de materiales CHN</CardDescription>
-                              </div>
-                           </div>
-                        </CardHeader>
-                        <CardContent className="p-0">
-                           <table className="w-full text-[11px] border-collapse">
-                              <thead className="bg-slate-50 text-slate-500 uppercase font-black tracking-widest border-b">
-                                 <tr>
-                                    <th className="px-8 py-4 text-left">RESPONSABLE</th>
-                                    <th className="px-8 py-4 text-right">FORROS PROCESADOS</th>
-                                    <th className="px-8 py-4 text-right bg-indigo-50/50">VOLUMEN INSUMOS (CHN)</th>
-                                 </tr>
-                              </thead>
-                              <tbody className="divide-y divide-slate-100">
-                                 {resumenPorResponsableExplosion.map((s, i) => (
-                                    <tr key={i} className="hover:bg-slate-50 transition-colors">
-                                       <td className="px-8 py-5 font-black text-slate-900 uppercase">Responsable {s.resp}</td>
-                                       <td className="px-8 py-5 text-right font-mono font-black text-slate-800">{s.totalForros.toLocaleString()}</td>
-                                       <td className="px-8 py-5 text-right font-mono font-black text-indigo-700 bg-indigo-50/20">
-                                          {s.totalInsumos.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                       </td>
-                                    </tr>
-                                 ))}
-                              </tbody>
-                              <tfoot className="bg-slate-900 text-white font-black uppercase">
-                                 <tr>
-                                    <td className="px-8 py-4">Total Consolidado</td>
-                                    <td className="px-8 py-4 text-right font-mono">
-                                       {resumenPorResponsableExplosion.reduce((sum, s) => sum + s.totalForros, 0).toLocaleString()}
-                                    </td>
-                                    <td className="px-8 py-4 text-right font-mono text-sky-400">
-                                       {resumenPorResponsableExplosion.reduce((sum, s) => sum + s.totalInsumos, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                    </td>
-                                 </tr>
-                              </tfoot>
-                           </table>
-                        </CardContent>
-                     </Card>
-
-                     <Card className="rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden shadow-sm border-none flex flex-col justify-center p-8 bg-slate-950 text-white text-center relative overflow-hidden">
-                        <div className="absolute top-0 right-0 opacity-10 -rotate-12 translate-x-1/4 -translate-y-1/4">
-                           <Boxes size={300} />
-                        </div>
-                        <div className="relative z-10 space-y-4">
-                           <div className="flex justify-center mb-6">
-                              <div className="bg-sky-500/20 p-6 rounded-[2rem] border border-sky-500/30">
-                                 <Database className="w-12 h-12 text-sky-400" />
-                              </div>
-                           </div>
-                           <h4 className="text-3xl font-black uppercase tracking-tighter">Explosión Finalizada</h4>
-                           <p className="text-slate-400 font-bold uppercase text-[10px] tracking-widest max-w-[300px] mx-auto leading-relaxed">
-                              Se han procesado todas las órdenes FERT utilizando el filtro de componentes CHN configurado en las restricciones.
-                           </p>
-                           <div className="mt-8 flex items-center justify-center gap-6">
-                              <div className="flex flex-col">
-                                 <span className="text-4xl font-black font-mono text-sky-400">{consolidatedInsumos.length}</span>
-                                 <span className="text-[8px] font-black uppercase text-slate-500 tracking-[0.2em] mt-1">Mat. Únicos</span>
-                              </div>
-                              <div className="w-px h-12 bg-slate-800" />
-                              <div className="flex flex-col">
-                                 <span className="text-4xl font-black font-mono text-indigo-400">
-                                    {Math.round(consolidatedInsumos.reduce((sum, i) => sum + i.total, 0)).toLocaleString()}
-                                 </span>
-                                 <span className="text-[8px] font-black uppercase text-slate-500 tracking-[0.2em] mt-1">Uni. Totales</span>
-                              </div>
-                           </div>
-                        </div>
-                     </Card>
-                  </div>
-
-                  <Card className="rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden shadow-sm border-none">
-                    <CardHeader className="bg-emerald-900 text-white p-8">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                          <div className="bg-white/10 p-3 rounded-2xl text-white backdrop-blur-sm border border-white/10">
-                            <Database className="w-6 h-6" />
-                          </div>
-                          <div>
-                            <CardTitle className="text-2xl font-black uppercase tracking-tight">Detalle Consolidado de Insumos (CHN)</CardTitle>
-                            <CardDescription className="text-white/60 font-bold uppercase text-[10px] tracking-widest mt-1">
-                              Necesidad neta basada en órdenes FERT de UIO y GYE • Filtro: {allowedComponentsCHN.length} materiales CHN
-                            </CardDescription>
-                          </div>
-                        </div>
-                        {isLoadingExplosion && (
-                          <div className="w-48 space-y-2">
-                            <div className="flex justify-between text-[10px] font-black uppercase tracking-widest">
-                              <span>Explosionando...</span>
-                              <span>{explosionProgress}%</span>
-                            </div>
-                            <Progress value={explosionProgress} className="h-1.5 bg-white/20 [&>div]:bg-sky-400" />
-                          </div>
-                        )}
-                      </div>
-                    </CardHeader>
+                {/* Summaries Grid requested in image */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {/* Card 1: Resumen por Responsable (Fert Parents) */}
+                  <Card className="rounded-3xl border-none shadow-sm ring-1 ring-slate-100 overflow-hidden bg-white">
+                    <div className="px-6 py-3 bg-slate-900 text-white font-black text-[10px] uppercase tracking-widest flex items-center gap-2">
+                      <BarChart3 className="w-4 h-4" /> RESUMEN POR RESPONSABLE
+                    </div>
                     <CardContent className="p-0">
-                      <div className="overflow-x-auto max-h-[60vh]">
+                      <table className="w-full text-[11px] border-collapse">
+                        <thead className="bg-slate-50 text-slate-500 uppercase font-black tracking-widest border-b">
+                          <tr>
+                            <th className="px-6 py-3 text-left">RESPCTRLPROD</th>
+                            <th className="px-6 py-3 text-right">TOTAL CANTIDAD</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {[...summary1000, ...summary2000].length > 0 ? [...summary1000, ...summary2000].map((s, i) => (
+                            <tr key={i} className="hover:bg-slate-50/50">
+                              <td className="px-6 py-3 font-bold text-slate-700">Responsable {s.resp}</td>
+                              <td className="px-6 py-3 text-right font-mono font-black text-indigo-600">{Math.round(s.total).toLocaleString()}</td>
+                            </tr>
+                          )) : (
+                            <tr><td colSpan={2} className="py-8 text-center text-slate-400 italic text-[10px] uppercase font-black">Sin datos</td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </CardContent>
+                  </Card>
+
+                  {/* Card 2: Tabla Forros (Consolidated Components) - AS REQUESTED IN IMAGE */}
+                  <Card className="rounded-3xl border-none shadow-sm ring-1 ring-slate-100 overflow-hidden bg-white">
+                    <div className="px-6 py-3 bg-indigo-900 text-white font-black text-[10px] uppercase tracking-widest flex items-center gap-2">
+                      <ListTree className="w-4 h-4" /> TABLA FORROS (INSUMOS)
+                    </div>
+                    <CardContent className="p-0">
+                      <div className="overflow-y-auto max-h-[300px]">
                         <table className="w-full text-[11px] border-collapse">
-                          <thead className="bg-slate-100 sticky top-0 z-10 text-slate-600 text-left uppercase tracking-widest font-black">
+                          <thead className="bg-slate-50 text-slate-500 uppercase font-black tracking-widest border-b sticky top-0">
                             <tr>
-                              <th className="px-6 py-4">COMPONENTE</th>
-                              <th className="px-6 py-4">DESCRIPCIÓN</th>
-                              <th className="px-6 py-4 text-right">CANTIDAD TOTAL</th>
-                              <th className="px-6 py-4 text-center">UNIDAD</th>
+                              <th className="px-6 py-3 text-left">MATERIAL</th>
+                              <th className="px-6 py-3 text-right">NECESIDAD</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
                             {consolidatedInsumos.length > 0 ? consolidatedInsumos.map((item, i) => (
-                              <tr key={i} className="hover:bg-emerald-50/30 transition-colors">
-                                <td className="px-6 py-4 font-mono font-bold text-emerald-900">{item.code}</td>
-                                <td className="px-6 py-4 font-medium text-slate-600 whitespace-normal break-words leading-tight">{item.name}</td>
-                                <td className="px-6 py-4 text-right font-mono font-black text-slate-900 bg-emerald-50/10">
-                                  {item.total.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}
+                              <tr key={i} className="hover:bg-emerald-50/30">
+                                <td className="px-6 py-3">
+                                  <div className="font-mono font-bold text-indigo-950 truncate max-w-[120px]">{item.code}</div>
+                                  <div className="text-[9px] text-slate-400 font-medium truncate max-w-[150px]">{item.name}</div>
                                 </td>
-                                <td className="px-6 py-4 text-center font-bold text-slate-400 uppercase tracking-widest">{item.unit}</td>
+                                <td className="px-6 py-3 text-right font-mono font-black text-emerald-600 bg-emerald-50/10">
+                                  {item.total.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+                                  <span className="ml-1 text-[8px] text-slate-400 font-black">{item.unit}</span>
+                                </td>
                               </tr>
                             )) : (
                               <tr>
-                                <td colSpan={4} className="py-20 text-center text-slate-400 uppercase font-black tracking-widest text-xs opacity-40">
-                                  {isLoadingExplosion ? 'Procesando explosión de materiales...' : 'Haz clic en "Procesar Explosión" para ver los insumos filtrados'}
+                                <td colSpan={2} className="py-20 text-center">
+                                  {isLoadingExplosion ? (
+                                    <div className="flex flex-col items-center gap-2">
+                                      <Loader2 className="w-6 h-6 animate-spin text-indigo-600" />
+                                      <span className="text-[10px] font-black uppercase text-slate-400">Calculando...</span>
+                                    </div>
+                                  ) : (
+                                    <span className="text-slate-400 uppercase font-black tracking-widest text-[9px] opacity-40">Procesar explosión</span>
+                                  )}
                                 </td>
                               </tr>
                             )}
@@ -1624,8 +1501,41 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       </div>
                     </CardContent>
                   </Card>
+
+                  {/* Card 3: Resumen Insumos por Responsable */}
+                  <Card className="rounded-3xl border-none shadow-sm ring-1 ring-slate-100 overflow-hidden bg-white">
+                    <div className="px-6 py-3 bg-emerald-900 text-white font-black text-[10px] uppercase tracking-widest flex items-center gap-2">
+                      <TrendingUp className="w-4 h-4" /> INSUMOS POR RESPONSABLE
+                    </div>
+                    <CardContent className="p-0">
+                      <table className="w-full text-[11px] border-collapse">
+                        <thead className="bg-slate-50 text-slate-500 uppercase font-black tracking-widest border-b">
+                          <tr>
+                            <th className="px-6 py-3 text-left">RESPONSABLE</th>
+                            <th className="px-6 py-3 text-right">VOLUMEN CHN</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {resumenPorResponsableExplosion.length > 0 ? resumenPorResponsableExplosion.map((s, i) => (
+                            <tr key={i} className="hover:bg-slate-50/50">
+                              <td className="px-6 py-3 font-bold text-slate-700">Responsable {s.resp}</td>
+                              <td className="px-6 py-3 text-right font-mono font-black text-emerald-700 bg-emerald-50/10">
+                                {s.totalInsumos.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+                              </td>
+                            </tr>
+                          )) : (
+                            <tr><td colSpan={2} className="py-8 text-center text-slate-400 italic text-[10px] uppercase font-black">Sin explosión</td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </CardContent>
+                  </Card>
                 </div>
-              )}
+              </div>
+
+              {/* Fert Tables */}
+              {renderFertTable(fert1000, summary1000, "Órdenes FERT - Centro 1000 (UIO)", targetDate1000, setTargetDate1000, "bg-slate-900")}
+              {renderFertTable(fert2000, summary2000, "Órdenes FERT - Centro 2000 (GYE)", targetDate2000, setTargetDate2000, "bg-indigo-700")}
             </div>
           )}
         </TabsContent>
