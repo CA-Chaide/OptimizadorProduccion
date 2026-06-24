@@ -33,7 +33,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Input } from '@/components/ui/input';
 import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
 import { serviciosService } from '@/services/servicios.service';
@@ -41,7 +40,7 @@ import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 import { cn } from '@/lib/utils';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { MaestroMaterialesExplosionSection } from './MaestroMaterialesExplosionSection';
 
@@ -58,8 +57,8 @@ interface UnifiedNeedRow {
   nroRollos: number;
   consumoKgHalb: number;
   nroRollosHalb: number;
-  totalConsumoKg: number; // Suma Prov + Halb
-  totalNroRollos: number; // Suma Prov + Halb
+  totalConsumoKg: number; // T CONSUMO OF.
+  totalNroRollos: number; // T. NRO ROLLOS
   stock1006: number;
   stock1008: number;
   stock1015: number;
@@ -84,6 +83,16 @@ const safeNum = (val: any): number => {
 
 const cleanCode = (code: any): string => {
   return String(code || '').replace(/^0+/, '').trim();
+};
+
+const getProp = (obj: any, keys: string[]): string => {
+  if (!obj) return '';
+  const rowKeys = Object.keys(obj);
+  for (const k of keys) {
+    const found = rowKeys.find(rk => rk.toLowerCase().trim() === k.toLowerCase().trim());
+    if (found) return String(obj[found]).trim();
+  }
+  return '';
 };
 
 const parseDimensionsEnhanced = (desc: string) => {
@@ -169,6 +178,18 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     const today = new Date();
     setViewDate(today);
     setSelectedDates(new Set([format(today, 'yyyy-MM-dd')]));
+  }, []);
+
+  const extractMaterialInfo = useCallback((item: any) => {
+    const matStr = getProp(item, ['MATERIAL', 'Material', 'CodMaterial', 'MATERIAL_ID', 'CODIGO']);
+    const nameStr = getProp(item, ['NOMBRE', 'NombreMaterial', 'Descripcion', 'NomMaterial', 'DESCRIPCION']);
+    const catStr = getProp(item, ['CATEGORIA', 'Categoria', 'CATEGORIA_DESC']);
+    
+    const match = matStr.match(/^(\d+)/);
+    const code = match ? match[1].slice(-8) : matStr.slice(-8);
+    const desc = nameStr || matStr.replace(/^\d+\s*/, '') || '—';
+
+    return { code, desc, categoria: catStr };
   }, []);
 
   const datesWithOrders = useMemo(() => {
@@ -416,7 +437,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       
       const groupMap = new Map<string, UnifiedNeedRow[]>();
       finalArray.forEach(row => {
-        const k = `${row.apertura}|${row.dens}`;
+        const k = `${row.apertura}|${row.densidad}`;
         if(!groupMap.has(k)) groupMap.set(k, []);
         groupMap.get(k)!.push(row);
       });
@@ -574,7 +595,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 </div>
                 <div className="grid grid-cols-7 gap-y-1.5 text-center mb-4">
                   {['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO'].map(d => <div key={d} className="text-[10px] font-black text-slate-300 py-1">{d}</div>)}
-                  {calendarDays.map((day, idx) => {
+                  {calendarDaysList.map((day, idx) => {
                     if (!day) return <div key={idx} />;
                     const dStr = format(day, 'yyyy-MM-dd');
                     const isSelected = selectedDates.has(dStr);
@@ -726,7 +747,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                               <td className="px-4 py-3 border-r border-gray-100 font-mono text-indigo-600 text-left pl-8">{item.material}</td>
                               <td className="px-6 py-3 border-r border-gray-100 text-left text-gray-400 uppercase leading-tight italic text-[10px] truncate max-w-[250px]">{item.descripcion}</td>
                               <td className="px-2 py-3 border-r border-gray-100 font-mono text-indigo-900 bg-indigo-50/10">{item.peso.toFixed(2)}</td>
-                              <td className="px-2 py-3 border-r border-gray-100 font-bold text-indigo-900 bg-indigo-50/10">{item.dens}</td>
+                              <td className="px-2 py-3 border-r border-gray-100 font-bold text-indigo-900 bg-indigo-50/10">{item.densidad}</td>
                               <td className="px-2 py-3 border-r border-gray-100 font-mono font-black text-indigo-900 bg-indigo-50/10">{item.looperTRolloMin || '—'}</td>
                               <td className="px-3 py-3 border-r border-gray-100 font-mono text-slate-400">{item.stock1006 > 0 ? item.stock1006.toLocaleString() : '—'}</td>
                               <td className="px-2 py-3 border-r border-gray-100 font-mono text-cyan-600 bg-cyan-50/10">{item.stockUN1006 > 0 ? Math.round(item.stockUN1006).toLocaleString() : '—'}</td>
@@ -737,7 +758,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                               <td className="px-4 py-3 border-r border-gray-100 text-right font-mono font-bold text-orange-400/40">{item.consumoKg.toLocaleString()}</td>
                               <td className="px-4 py-3 border-r border-gray-100 text-right font-mono font-bold text-indigo-300/40">{item.consumoKgHalb.toLocaleString()}</td>
                               <td className="px-4 py-3 border-r border-gray-100 text-right font-mono font-bold text-slate-400 bg-slate-50/10">{item.totalConsumoKg.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
-                              <td className="px-3 py-3 border-r border-gray-100 bg-[#cfe2f3]/10 font-mono font-black text-indigo-600/40">{Math.round(item.nroRollos).toLocaleString()}</td>
+                              <td className="px-3 py-3 border-r border-gray-100 bg-[#cfe2f3]/10 font-mono font-black text-indigo-600/40">{Math.round(item.consumoUn).toLocaleString()}</td>
                               <td className="px-3 py-3 border-r border-gray-100 bg-[#d1d5db]/10 font-mono font-black text-slate-400/40">{Math.round(item.nroRollosHalb).toLocaleString()}</td>
                               <td className="px-3 py-3 border-r border-gray-100 bg-slate-100/30 font-mono font-black text-slate-900">{Math.round(item.totalNroRollos).toLocaleString()}</td>
                               <td className="px-4 py-3 border-r border-gray-100 text-center font-black text-slate-300">{(item.porcentajeNecesidad * 100).toFixed(0)}%</td>
@@ -784,13 +805,13 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     <tr><td colSpan={8} className="py-24 text-slate-300 font-black uppercase tracking-widest italic">No se detectaron órdenes para los criterios aplicados</td></tr>
                   ) : (
                     filteredOrders.map((o, i) => {
-                      const matCode = cleanCode(String(o.MATERIAL || '').match(/^(\d+)/)?.[1]);
+                      const info = extractMaterialInfo(o);
                       const description = String(o.MATERIAL || '').replace(/^\d+\s*/, '') || o.NOMBRE || '—';
                       return (
                         <tr key={i} className="hover:bg-slate-50/50 transition-colors">
                           <td className="px-6 py-4 font-black text-slate-800 border-r border-gray-50">{o.ORDENPREVISIONAL || '—'}</td>
                           <td className="px-6 py-4 border-r border-gray-50 font-mono text-[9px] text-slate-400">{o.FECHAINICIO || o.FECHA || '—'}</td>
-                          <td className="px-6 py-4 font-mono font-black text-red-600 border-r border-gray-50 tracking-tighter text-sm">{matCode}</td>
+                          <td className="px-6 py-4 font-mono font-black text-red-600 border-r border-gray-50 tracking-tighter text-sm">{info.code}</td>
                           <td className="px-6 py-4 text-left border-r border-gray-100 text-slate-600 font-black uppercase leading-tight max-w-[450px]">
                             {description}
                           </td>
@@ -835,13 +856,13 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     <tr><td colSpan={8} className="py-24 text-slate-300 font-black uppercase tracking-widest italic">No se detectaron órdenes FERT para los criterios aplicados</td></tr>
                   ) : (
                     filteredFertOrders.map((o, i) => {
-                      const matCode = cleanCode(String(o.MATERIAL || '').match(/^(\d+)/)?.[1]);
+                      const info = extractMaterialInfo(o);
                       const description = String(o.NOMBRE || o.MATERIAL || '').replace(/^\d+\s*/, '') || '—';
                       return (
                         <tr key={i} className="hover:bg-slate-50/50 transition-colors">
                           <td className="px-6 py-4 font-black text-slate-800 border-r border-gray-50">{o.ORDEN || '—'}</td>
                           <td className="px-6 py-4 border-r border-gray-50 font-mono text-[9px] text-slate-400">{o.FECHA || o.FECHAINICIO || '—'}</td>
-                          <td className="px-6 py-4 font-mono font-black text-red-600 border-r border-gray-50 tracking-tighter text-sm">{matCode}</td>
+                          <td className="px-6 py-4 font-mono font-black text-red-600 border-r border-gray-50 tracking-tighter text-sm">{info.code}</td>
                           <td className="px-6 py-4 text-left border-r border-gray-100 text-slate-600 font-black uppercase leading-tight max-w-[450px]">
                             {description}
                           </td>
