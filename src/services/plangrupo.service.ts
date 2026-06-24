@@ -3,7 +3,7 @@ import type { BodyResponse } from "@/types/body-response";
 import { environment } from "@/environments/environments.prod";
 import { PlanGrupo } from "../types/interfaces";
 
-const API_URL = `${environment.apiURL}/api/plan_grupo`;
+const API_URL = `${environment.apiURL}/PlanGrupo`;
 
 export const planGrupoService = {
   async getAll(): Promise<BodyListResponse<PlanGrupo>> {

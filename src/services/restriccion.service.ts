@@ -3,7 +3,7 @@ import type { BodyResponse } from "@/types/body-response";
 import { environment } from "@/environments/environments.prod";
 import { Restriccion } from "../types/interfaces";
 
-const API_URL = `${environment.apiURL}/api/Restriccion`;
+const API_URL = `${environment.apiURL}/Restriccion`;
 
 export const restriccionService = {
   async getAll(): Promise<BodyListResponse<Restriccion>> {
@@ -84,7 +84,7 @@ export const restriccionService = {
   },
 
   async replicarRestriccion(restriccion: string): Promise<BodyListResponse<Restriccion>> {
-    const response = await fetch(`${API_URL}/replicar`, {
+    const response = await fetch(`${API_URL}/Replicar`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ nombre_restriccion: restriccion }),
