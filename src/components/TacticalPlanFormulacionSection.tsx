@@ -40,7 +40,7 @@ import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 import { cn } from '@/lib/utils';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, isValid, parseISO } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, isValid } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 const BLOCK_LENGTH_METERS = 20;
@@ -147,6 +147,13 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     });
   }, [ordenesFert, selectedDates]);
 
+  const filteredInventario = useMemo(() => {
+    return inventarioSAP.filter(row => {
+      const nombre = String(row.NOMBRE || row.DESCRIPCION || '').toUpperCase();
+      return nombre.includes('BLOQUE FORMULADO');
+    });
+  }, [inventarioSAP]);
+
   const handleProcessResumen = useCallback(async () => {
     if (provFiltradas.length === 0) {
       setUnifiedSummaryData([]);
@@ -218,7 +225,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     setIsProcessingResumen(false);
   }, [provFiltradas, inventarioSAP, extractMaterialInfo]);
 
-  // Segmentación de datos para los dos espacios del Resumen
   const summarySpaces = useMemo(() => {
     const withAperture = unifiedSummaryData.filter(row => row.apertura !== '—');
     const withoutAperture = unifiedSummaryData.filter(row => row.apertura === '—');
@@ -236,7 +242,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         const parts = d.split('-');
         if (parts.length === 3) {
           const tempDate = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
-          if (isValid(tempDate) && !isNaN(tempDate.getTime())) {
+          if (isValid(tempDate)) {
             fabDate = tempDate;
             fabDate.setHours(0,0,0,0);
           }
@@ -321,10 +327,8 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   }, [viewDate]);
 
   const renderSummaryTable = (data: any[], title: string, icon: any) => {
-    const tKg = data.reduce((s, r) => s + r.kgTotal, 0);
     const tStockKg = data.reduce((s, r) => s + r.stockKg, 0);
     const tStockUn = data.reduce((s, r) => s + r.stockUN, 0);
-    const tPlanUn = data.reduce((s, r) => s + r.planReposicion, 0);
 
     return (
       <div className="space-y-4">
@@ -388,11 +392,10 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
               </tbody>
               <tfoot className="bg-[#0f172a] text-white font-black text-[9px] uppercase sticky bottom-0 z-20">
                 <tr>
-                  <td colSpan={4} className="px-6 py-4 text-right tracking-widest border-r border-white/5">Totales de Sección</td>
-                  <td className="px-4 py-4 border-r border-white/5 font-mono text-indigo-300">{formatNum(tKg, 1)}</td>
+                  <td colSpan={5} className="px-6 py-4 text-right tracking-widest border-r border-white/5">Totales de Sección</td>
                   <td className="px-6 py-4 border-r border-white/5 font-mono text-emerald-300 bg-emerald-500/10">{formatNum(tStockKg, 0)}</td>
-                  <td className="px-4 py-4 border-r border-white/5 font-mono text-emerald-300 bg-emerald-500/10">{Math.round(tStockUn)}</td>
-                  <td className="px-6 py-4 font-mono text-yellow-300 bg-yellow-500/10">{tPlanUn}</td>
+                  <td className="px-4 py-4 font-mono text-emerald-300 bg-emerald-500/10">{Math.round(tStockUn)}</td>
+                  <td className="px-6 py-4"></td>
                 </tr>
               </tfoot>
             </table>
@@ -403,7 +406,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   };
 
   if (!mounted) {
-    return <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 font-sans text-left" />;
+    return <div className="p-4 md:p-6 min-h-screen bg-white" />;
   }
 
   return (
@@ -477,10 +480,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
              </div>
            ) : (
              <>
-               {/* ESPACIO 1: BLOQUES CON APERTURA TÉCNICA */}
                {renderSummaryTable(summarySpaces.withAperture, "Carga Operativa: Bloques con Apertura Técnica", TrendingUp)}
-
-               {/* ESPACIO 2: BLOQUES POR COMBINACIÓN (SIN APERTURA) */}
                {renderSummaryTable(summarySpaces.withoutAperture, "Carga Operativa: Bloques por Combinación", Box)}
              </>
            )}
@@ -508,9 +508,8 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                     ) : (
                       curadoAudit.map((row, idx) => {
                         const isReady = row.estatus === 'DISPONIBLE';
-                        const uniqueKey = `curado-${row.nroBloque}-${idx}`;
                         return (
-                          <tr key={uniqueKey} className="hover:bg-slate-50 transition-colors">
+                          <tr key={idx} className="hover:bg-slate-50 transition-colors">
                             <td className="px-6 py-4 text-left font-mono font-black text-indigo-600 border-r border-gray-100">{row.nroBloque || '—'}</td>
                             <td className="px-6 py-4 text-left uppercase text-slate-400 italic text-[9px] border-r border-gray-100 truncate max-w-[280px]" title={row.desc}>{row.desc}</td>
                             <td className="px-4 py-4 border-r border-gray-100 font-black text-blue-700 bg-blue-50/20">{row.apertura}</td>
@@ -659,14 +658,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           </Card>
         </TabsContent>
       </Tabs>
-      
-      {/* NOTA TECNICA FINAL */}
-      <div className="flex items-center gap-3 p-5 bg-indigo-50 border border-indigo-100 rounded-[1.5rem] shadow-sm text-left">
-        <Info className="w-5 h-5 text-indigo-600 flex-shrink-0" />
-        <p className="text-[10px] font-bold text-indigo-700 uppercase tracking-widest leading-relaxed">
-          Nota Técnica: Auditoría de carga segmentada por Apertura y Combinación. Los totales de stock reflejan la disponibilidad física traducida a unidades reales de bloque.
-        </p>
-      </div>
     </div>
   );
 };
