@@ -44,6 +44,7 @@ import type { Grupo, Restriccion } from '@/types/interfaces';
 import { cn } from '@/lib/utils';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { MaestroMaterialesExplosionSection } from './MaestroMaterialesExplosionSection';
 
 interface UnifiedNeedRow {
   material: string;
@@ -58,8 +59,8 @@ interface UnifiedNeedRow {
   nroRollos: number;
   consumoKgHalb: number;
   nroRollosHalb: number;
-  totalConsumoKg: number; // T CONSUMO OF.
-  totalNroRollos: number; // T. NRO ROLLOS
+  totalConsumoKg: number; 
+  totalNroRollos: number; 
   stock1006: number;
   stock1008: number;
   stock1015: number;
@@ -167,7 +168,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   
   const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set());
-  const [viewDate, setViewDate] = useState<Date | null>(null);
+  const [viewDate, setViewDate] = useState<Date>(new Date());
   
   const [unifiedNeeds, setUnifiedNeeds] = useState<UnifiedNeedRow[]>([]);
   const [isProcessingResumen, setIsProcessingResumen] = useState(false);
@@ -438,7 +439,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       
       const groupMap = new Map<string, UnifiedNeedRow[]>();
       finalArray.forEach(row => {
-        const k = `${row.apertura}|${row.densidad}`;
+        const k = `${row.apertura}|${row.dens}`;
         if(!groupMap.has(k)) groupMap.set(k, []);
         groupMap.get(k)!.push(row);
       });
@@ -463,7 +464,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     } finally { 
       setIsProcessingResumen(false); 
     }
-  }, [filteredOrders, filteredFertOrders, kpiLooperData, inventarioSAP, addNotification, extractMaterialInfo]);
+  }, [filteredOrders, filteredFertOrders, kpiLooperData, inventarioSAP, addNotification]);
 
   const handlePlanUnChange = (material: string, newValue: string) => {
     const newPlanUn = Math.max(0, parseInt(newValue) || 0);
@@ -590,8 +591,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 <div className="flex items-center justify-between mb-5">
                   <h3 className="text-xs font-black text-slate-800 capitalize">{viewDate ? format(viewDate, 'MMMM yyyy', { locale: es }) : '—'}</h3>
                   <div className="flex gap-1 bg-slate-50 p-1 rounded-xl">
-                    <Button variant="ghost" size="icon" onClick={() => setViewDate(prev => prev ? subMonths(prev, 1) : null)} className="h-8 w-8 hover:bg-white hover:shadow-sm"><ChevronLeft className="w-4 h-4" /></Button>
-                    <Button variant="ghost" size="icon" onClick={() => setViewDate(addMonths(viewDate!, 1))} className="h-8 w-8 hover:bg-white hover:shadow-sm"><ChevronRight className="w-4 h-4" /></Button>
+                    <Button variant="ghost" size="icon" onClick={() => setViewDate(prev => subMonths(prev, 1))} className="h-8 w-8 hover:bg-white hover:shadow-sm"><ChevronLeft className="w-4 h-4" /></Button>
+                    <Button variant="ghost" size="icon" onClick={() => setViewDate(addMonths(viewDate, 1))} className="h-8 w-8 hover:bg-white hover:shadow-sm"><ChevronRight className="w-4 h-4" /></Button>
                   </div>
                 </div>
                 <div className="grid grid-cols-7 gap-y-1.5 text-center mb-4">
