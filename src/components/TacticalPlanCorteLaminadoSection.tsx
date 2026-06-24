@@ -67,6 +67,8 @@ interface UnifiedNeedRow {
   stockUN1006: number;
   stockUN1008: number;
   stockUN1015: number;
+  totalStockKg: number; // Nueva: 1006+1008+1015
+  totalStockUN: number; // Nueva: sum UN
   looperPesoUN: number;
   looperDensidad: string;
   looperEspesor: number;
@@ -384,6 +386,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 const s1006 = getStockKg('1006');
                 const s1008 = getStockKg('1008');
                 const s1015 = getStockKg('1015');
+                const tStockKg = s1006 + s1008 + s1015;
+                const tStockUN = finalPeso > 0 ? tStockKg / finalPeso : 0;
 
                 consolidatedMap.set(compCode, {
                   material: compCode,
@@ -406,6 +410,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   stockUN1006: finalPeso > 0 ? s1006 / finalPeso : 0,
                   stockUN1008: finalPeso > 0 ? s1008 / finalPeso : 0,
                   stockUN1015: finalPeso > 0 ? s1015 / finalPeso : 0,
+                  totalStockKg: tStockKg,
+                  totalStockUN: tStockUN,
                   looperPesoUN: looperMatch ? safeNum(looperMatch.PesoUN) : 0,
                   looperDensidad: looperMatch ? String(looperMatch.Densidad) : '—',
                   looperEspesor: looperMatch ? safeNum(looperMatch.Espesor) : 0,
@@ -439,14 +445,14 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       
       const groupMap = new Map<string, UnifiedNeedRow[]>();
       finalArray.forEach(row => {
-        const k = `${row.apertura}|${row.dens}`;
+        const k = `${row.apertura}|${row.densidad}`;
         if(!groupMap.has(k)) groupMap.set(k, []);
         groupMap.get(k)!.push(row);
       });
       
       groupMap.forEach(items => {
         const totalKgGroup = items.reduce((s, r) => s + r.totalConsumoKg, 0);
-        const totalStockUnGroup = items.reduce((s, r) => s + r.stockUN1006 + r.stockUN1008 + r.stockUN1015, 0);
+        const totalStockUnGroup = items.reduce((s, r) => s + r.totalStockUN, 0);
         const totalConsumoUnGroup = items.reduce((s, r) => s + r.totalNroRollos, 0);
         
         const groupDeficit = Math.max(0, totalConsumoUnGroup - totalStockUnGroup);
@@ -464,7 +470,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     } finally { 
       setIsProcessingResumen(false); 
     }
-  }, [filteredOrders, filteredFertOrders, kpiLooperData, inventarioSAP, addNotification]);
+  }, [filteredOrders, filteredFertOrders, kpiLooperData, inventarioSAP, addNotification, extractMaterialInfo]);
 
   const handlePlanUnChange = (material: string, newValue: string) => {
     const newPlanUn = Math.max(0, parseInt(newValue) || 0);
@@ -492,6 +498,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       total1006: number; total1008: number; total1015: number; totalPlanUn: number; totalPlanKg: number;
       totalUN1006: number; totalUN1008: number; totalUN1015: number; totalTProceso: number;
       totalRollos: number; totalKgHalb: number; totalRollosHalb: number; totalConsumoKg: number; totalNroRollos: number;
+      totalStockKg: number; totalStockUN: number;
     }>();
     unifiedNeeds.forEach(item => {
       const key = `${item.apertura}|${item.densidad}`;
@@ -500,7 +507,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           densidad: item.densidad, apertura: item.apertura, items: [], totalKg: 0, totalUn: 0,
           total1006: 0, total1008: 0, total1015: 0, totalPlanUn: 0, totalPlanKg: 0,
           totalUN1006: 0, totalUN1008: 0, totalUN1015: 0, totalTProceso: 0, totalRollos: 0,
-          totalKgHalb: 0, totalRollosHalb: 0, totalConsumoKg: 0, totalNroRollos: 0
+          totalKgHalb: 0, totalRollosHalb: 0, totalConsumoKg: 0, totalNroRollos: 0,
+          totalStockKg: 0, totalStockUN: 0
         });
       }
       const group = map.get(key)!;
@@ -518,6 +526,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       group.totalUN1006 += item.stockUN1006;
       group.totalUN1008 += item.stockUN1008;
       group.totalUN1015 += item.stockUN1015;
+      group.totalStockKg += item.totalStockKg;
+      group.totalStockUN += item.totalStockUN;
       group.totalPlanUn += item.planUn;
       group.totalPlanKg += item.planKg;
       group.totalTProceso += item.tProceso;
@@ -542,8 +552,10 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       stockUN1006: acc.stockUN1006 + row.stockUN1006,
       stockUN1008: acc.stockUN1008 + row.stockUN1008,
       stockUN1015: acc.stockUN1015 + row.stockUN1015,
+      totalStockKg: acc.totalStockKg + row.totalStockKg,
+      totalStockUN: acc.totalStockUN + row.totalStockUN,
       tProceso: acc.tProceso + row.tProceso
-    }), { kg: 0, kgHalb: 0, totalKg: 0, un: 0, rollos: 0, rollosHalb: 0, totalRollos: 0, planUn: 0, planKg: 0, stock1006: 0, stock1008: 0, stock1015: 0, stockUN1006: 0, stockUN1008: 0, stockUN1015: 0, tProceso: 0 });
+    }), { kg: 0, kgHalb: 0, totalKg: 0, un: 0, rollos: 0, rollosHalb: 0, totalRollos: 0, planUn: 0, planKg: 0, stock1006: 0, stock1008: 0, stock1015: 0, stockUN1006: 0, stockUN1008: 0, stockUN1015: 0, totalStockKg: 0, totalStockUN: 0, tProceso: 0 });
   }, [unifiedNeeds]);
 
   const toggleGroup = (key: string) => {
@@ -674,7 +686,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             <div className="overflow-x-auto max-h-[600px] relative">
               <table className="w-full border-collapse font-sans text-[11px] text-center">
                 <thead className="sticky top-0 z-20">
-                  <tr className="bg-[#ffff00] text-black uppercase font-black tracking-tighter text-[11px] border-b-2 border-black/10">
+                  <tr className="bg-[#ffff00] text-black uppercase font-black tracking-tighter text-[10px] border-b-2 border-black/10">
                     <th className="px-4 py-4 border-r border-black/5 text-left w-32">Material</th>
                     <th className="px-6 py-4 border-r border-black/5 text-left min-w-[200px]">Descripción</th>
                     <th className="px-2 py-4 border-r border-black/5 bg-indigo-50/50">Peso (Kg)</th>
@@ -686,6 +698,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     <th className="px-2 py-4 border-r border-black/5 bg-cyan-50/50 text-cyan-800">UN 1008</th>
                     <th className="px-3 py-4 border-r border-black/5 bg-blue-50/50">Stock 1015 (Kg)</th>
                     <th className="px-2 py-4 border-r border-black/5 bg-cyan-50/50 text-cyan-800">UN 1015</th>
+                    <th className="px-3 py-4 border-r border-black/10 bg-indigo-900 text-white">T. ROLLOS BODEGAS UN</th>
+                    <th className="px-3 py-4 border-r border-black/10 bg-indigo-900 text-white">T. ROLLOS BODEGAS KG</th>
                     <th className="px-4 py-4 border-r border-black/5 text-right bg-orange-100/30">Consumo OF [Kg]</th>
                     <th className="px-4 py-4 border-r border-black/5 text-right bg-indigo-100/30">Consumo OF_halb [Kg]</th>
                     <th className="px-4 py-4 border-r border-black/10 text-right bg-slate-900 text-white font-black">T CONSUMO OF.</th>
@@ -701,7 +715,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 <tbody className="divide-y divide-gray-100 font-bold">
                   {isProcessingResumen ? (
                     <tr>
-                      <td colSpan={21} className="py-20 text-center">
+                      <td colSpan={23} className="py-20 text-center">
                         <Loader2 className="w-8 h-8 animate-spin mx-auto text-indigo-500 mb-3" />
                         <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Ejecutando Explosión Técnica BOM: {resumenProgress.current} / {resumenProgress.total}</p>
                       </td>
@@ -731,6 +745,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                             <td className="px-2 py-4 text-cyan-600/50 font-mono">{(group.totalUN1008).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
                             <td className="px-3 py-4 text-slate-400 font-mono">{(group.total1015).toLocaleString()}</td>
                             <td className="px-2 py-4 text-cyan-600/50 font-mono">{(group.totalUN1015).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                            <td className="px-3 py-4 bg-indigo-800 text-white font-mono">{Math.round(group.totalStockUN).toLocaleString()}</td>
+                            <td className="px-3 py-4 bg-indigo-800 text-white font-mono">{Math.round(group.totalStockKg).toLocaleString()}</td>
                             <td className="px-4 py-4 text-right font-mono font-black text-indigo-900 bg-indigo-50/50 opacity-40">{group.totalKg.toLocaleString()}</td>
                             <td className="px-4 py-4 text-right font-mono font-black text-indigo-400 bg-indigo-50/50 opacity-40">{group.totalKgHalb.toLocaleString()}</td>
                             <td className="px-4 py-4 text-right font-mono font-black text-white bg-slate-800">{group.totalConsumoKg.toLocaleString()}</td>
@@ -755,6 +771,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                               <td className="px-2 py-3 border-r border-gray-100 font-mono text-cyan-600 bg-cyan-50/10">{item.stockUN1008 > 0 ? Math.round(item.stockUN1008).toLocaleString() : '—'}</td>
                               <td className="px-3 py-3 border-r border-gray-100 font-mono text-slate-400">{item.stock1015 > 0 ? item.stock1015.toLocaleString() : '—'}</td>
                               <td className="px-2 py-3 border-r border-gray-100 font-mono text-cyan-600 bg-cyan-50/10">{item.stockUN1015 > 0 ? Math.round(item.stockUN1015).toLocaleString() : '—'}</td>
+                              <td className="px-3 py-3 border-r border-gray-100 font-mono text-indigo-700 bg-indigo-50/20">{Math.round(item.totalStockUN).toLocaleString()}</td>
+                              <td className="px-3 py-3 border-r border-gray-100 font-mono text-indigo-700 bg-indigo-50/20">{Math.round(item.totalStockKg).toLocaleString()}</td>
                               <td className="px-4 py-3 border-r border-gray-100 text-right font-mono font-bold text-orange-400/40">{item.consumoKg.toLocaleString()}</td>
                               <td className="px-4 py-3 border-r border-gray-100 text-right font-mono font-bold text-indigo-300/40">{item.consumoKgHalb.toLocaleString()}</td>
                               <td className="px-4 py-3 border-r border-gray-100 text-right font-mono font-bold text-slate-400 bg-slate-50/10">{item.totalConsumoKg.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
