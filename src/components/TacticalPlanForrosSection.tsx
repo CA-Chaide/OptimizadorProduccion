@@ -626,7 +626,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   // Restricción para explosión de insumos (Match por nombre)
   const allowedComponentsCHN = useMemo(() => {
-    const codes = new Set<string>();
+    const keywords = new Set<string>();
     const forroGroupCodes = new Set(forrosGruposList.map(g => g.codigo_grupo));
     restricciones.forEach(r => {
       if (forroGroupCodes.has(r.codigo_grupo)) {
@@ -634,13 +634,13 @@ export const TacticalPlanForrosSection: React.FC = () => {
         if (normName === 'COMPONENTES_CHN') {
           const values = r.valor_restriccion.split('&');
           values.forEach(v => {
-            const clean = v.trim();
-            if (clean) codes.add(clean);
+            const clean = v.trim().toUpperCase();
+            if (clean) keywords.add(clean);
           });
         }
       }
     });
-    return Array.from(codes);
+    return Array.from(keywords);
   }, [restricciones, forrosGruposList]);
 
   const { fert1000, fert2000, summary1000, summary2000 } = useMemo(() => {
@@ -718,7 +718,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
     } catch (error) {
       console.error('Error al cargar tiempos:', error);
     } finally {
-      setIsLoadingTiempos(false);
+      setIsLoading(false);
     }
   }, [forrosGruposList]);
 
@@ -874,16 +874,17 @@ export const TacticalPlanForrosSection: React.FC = () => {
         const response = await serviciosService.getMaestroMaterialesExplosion('1000', fertCode, 1, 5000);
         const components = response.data || [];
 
+        // FILTRADO POR NOMBRE BASADO EN REGLA COMPONENTES_CHN
         const filteredComponents = components.filter((comp: any) => {
           const compName = String(comp.NOMBRE_COMPONENTE || comp.Descripcion || '').toUpperCase();
-          const compCode = String(comp.COMPONENTE || comp.Componente || comp.Material || '').trim().replace(/^0+/, '');
+          const compCode = String(comp.COMPONENTE || comp.Componente || comp.Material || '').trim().toUpperCase();
           
           if (allowedComponentsCHN.length === 0) return true;
           
-          // MATCH POR CONTENIDO EN EL NOMBRE O CÓDIGO (SEGÚN REGLA)
-          return allowedComponentsCHN.some(val => {
-            const v = val.toUpperCase().trim();
-            return compName.includes(v) || compCode === v;
+          // MATCH POR CONTENIDO EN EL NOMBRE O CÓDIGO (SEGÚN REGLA SOLICITADA)
+          return allowedComponentsCHN.some(keyword => {
+            const k = keyword.toUpperCase().trim();
+            return compName.includes(k) || compCode.includes(k);
           });
         });
 
@@ -1458,7 +1459,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   </Button>
                 </div>
 
-                {/* Panel de Resúmenes en 3 Columnas */}
+                {/* Panel de Resúmenes en 3 Columnas según Imagen de Referencia */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {/* Card 1: Resumen por Responsable (Unidades FERT) */}
                   <Card className="rounded-3xl border-none shadow-sm ring-1 ring-slate-100 overflow-hidden bg-white">
