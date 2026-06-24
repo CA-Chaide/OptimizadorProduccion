@@ -102,6 +102,24 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
     return String(code || '').trim().slice(-8);
   };
 
+  // VINCULACIÓN CON REV CAPACIDAD (CENTRO 1000)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedProgDates = localStorage.getItem('sim_prog_dates');
+      if (savedProgDates) {
+        try {
+          const parsed = JSON.parse(savedProgDates);
+          // Si existe fecha para el Centro 1000 en capacidad, sincronizarla aquí
+          if (parsed['1000']) {
+            setProgrammingDate(parsed['1000']);
+          }
+        } catch (e) {
+          console.error('[TiemposEnsambladoTab] Error al cargar sim_prog_dates:', e);
+        }
+      }
+    }
+  }, []);
+
   const loadData = useCallback(async () => {
     setIsLoading(true);
     try {
@@ -336,7 +354,20 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
                   type="date"
                   value={programmingDate}
                   onChange={(e) => {
-                      setProgrammingDate(e.target.value);
+                      const val = e.target.value;
+                      setProgrammingDate(val);
+                      
+                      // ACTUALIZACIÓN DE LOCALSTORAGE PARA REV CAPACIDAD
+                      if (typeof window !== 'undefined') {
+                        const saved = localStorage.getItem('sim_prog_dates');
+                        let next = {};
+                        if (saved) try { next = JSON.parse(saved); } catch(e) {}
+                        // Sincronizar con el master (1000) y su espejo (2000)
+                        (next as any)['1000'] = val;
+                        (next as any)['2000'] = val;
+                        localStorage.setItem('sim_prog_dates', JSON.stringify(next));
+                      }
+                      
                       setCurrentPage(1);
                   }}
                   className="text-xs border-none bg-transparent focus:ring-0 font-medium text-indigo-700 outline-none"
