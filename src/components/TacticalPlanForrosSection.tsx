@@ -148,7 +148,7 @@ const MachineCard = React.memo(({
     if (isConsolidated) {
       const grouped = new Map<string, any>();
       filtered.forEach(o => {
-        const materialCode = o['CodMaterial'] || normalizeMaterialCode(o['MATERIAL'] || '');
+        const materialCode = normalizeMaterialCode(o['MATERIAL'] || o['CodMaterial'] || '');
         const qty = Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0);
         if (grouped.has(materialCode)) {
           const existing = grouped.get(materialCode);
@@ -221,7 +221,7 @@ const MachineCard = React.memo(({
                 <span className={cn("text-[8px] font-black uppercase", config.isDayActive ? "text-amber-700" : "text-slate-400")}>Día</span>
               </div>
               <div className={cn("rounded-xl p-2 border flex flex-col items-center", config.isNightActive ? "bg-indigo-50 border-indigo-200" : "bg-slate-50 border-slate-100 opacity-40")}>
-                 Moon className={cn("w-3.5 h-3.5 mb-0.5", config.isNightActive ? "text-indigo-500" : "text-slate-400")} />
+                <Moon className={cn("w-3.5 h-3.5 mb-0.5", config.isNightActive ? "text-indigo-500" : "text-slate-400")} />
                 <span className={cn("text-[8px] font-black uppercase", config.isNightActive ? "text-indigo-700" : "text-slate-400")}>Noche</span>
               </div>
             </div>
@@ -236,7 +236,7 @@ const MachineCard = React.memo(({
                 utilization >= 90 ? "bg-green-100 text-green-700" : 
                 "bg-yellow-100 text-yellow-700"
               )}>
-                {utilization > 100 ? "Sobrecapacidad" : utilization >= 90 ? "Estable" : "Debajo de capacidad"}
+                {utilization > 100 ? "Sobrecapacidad" : utilization >= 90 ? "Estable" : "Baja"}
               </Badge>
             </div>
             <div className="flex items-baseline gap-1 mb-2">
@@ -278,9 +278,11 @@ const MachineCard = React.memo(({
       <div className="flex-1 p-6 flex flex-col bg-slate-50/20">
         <div className="flex items-center justify-between mb-4">
           <h4 className="text-[10px] font-black text-slate-800 uppercase tracking-[0.2em] flex items-center gap-2">
-            <ClipboardList className="w-4 h-4 text-indigo-600" /> {isConsolidated ? 'Plan Consolidado' : 'Plan Operativo'}
+            <ClipboardList className="w-4 h-4 text-indigo-600" /> {isConsolidated ? 'Carga Consolidada' : 'Plan Operativo'}
           </h4>
-          <Badge className="bg-white text-slate-900 border-slate-200 font-mono font-black text-[10px] px-3 py-0.5 rounded-full shadow-sm">{filteredOrders.length} {isConsolidated ? 'MAT' : 'ORD'}</Badge>
+          <Badge className="bg-white text-slate-900 border-slate-200 font-mono font-black text-[10px] px-3 py-0.5 rounded-full shadow-sm">
+            {filteredOrders.length} {isConsolidated ? 'MATERIALES' : 'ÓRDENES'}
+          </Badge>
         </div>
         <div className="flex-1 overflow-auto rounded-2xl border border-slate-200 bg-white shadow-inner text-[10px]">
           <table className="w-full border-collapse">
@@ -310,7 +312,7 @@ const MachineCard = React.memo(({
                 );
               }) : (
                 <tr>
-                  <td colSpan={4} className="py-16 text-center text-slate-400 uppercase font-black tracking-widest text-[9px] opacity-30">Sin carga</td>
+                  <td colSpan={4} className="py-16 text-center text-slate-400 uppercase font-black tracking-widest text-[9px] opacity-30">Sin carga programada</td>
                 </tr>
               )}
             </tbody>
@@ -331,6 +333,41 @@ const MachineCard = React.memo(({
     prevProps.horasNetasNocturnas === nextProps.horasNetasNocturnas &&
     prevProps.orders === nextProps.orders;
 });
+
+const renderDateFilterHeader = (techStartDate: string, setTechStartDate: (d: string) => void, techEndDate: string, setTechEndDate: (d: string) => void) => (
+  <div className="flex items-center justify-between p-6 bg-white border border-slate-200 rounded-[2rem] shadow-sm mb-6">
+    <div className="flex items-center gap-3">
+      <div className="bg-indigo-600 p-2 rounded-xl text-white shadow-lg shadow-indigo-100">
+        <CalendarIcon className="w-4 h-4" />
+      </div>
+      <div>
+        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Rango de Carga Técnica</p>
+        <p className="text-xs font-black text-indigo-900">Filtrado por Fecha de Inicio de Órdenes</p>
+      </div>
+    </div>
+    
+    <div className="flex items-center gap-4">
+      <div className="flex items-center gap-2">
+        <span className="text-[9px] font-black text-slate-400 uppercase">Desde:</span>
+        <input 
+          type="date" 
+          value={techStartDate} 
+          onChange={(e) => setTechStartDate(e.target.value)}
+          className="text-xs font-bold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 focus:ring-indigo-500 outline-none"
+        />
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="text-[9px] font-black text-slate-400 uppercase">Hasta:</span>
+        <input 
+          type="date" 
+          value={techEndDate} 
+          onChange={(e) => setTechEndDate(e.target.value)}
+          className="text-xs font-bold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 focus:ring-indigo-500 outline-none"
+        />
+      </div>
+    </div>
+  </div>
+);
 
 export const TacticalPlanForrosSection: React.FC = () => {
   const { addNotification, apiCuboInventariosData } = useAppContext();
@@ -933,7 +970,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
   const { consolidatedInsumos, resumenPorResponsableExplosion } = useMemo(() => {
     const materialMap = new Map<string, { code: string, name: string, total: number, unit: string }>();
-    const respMap = new Map<string, { resp: string, totalForros: number, totalInsumos: number }>();
+    const respMap = new Map<string, { resp: string, totalForros: number, totalInsumos: number, centro?: string }>();
 
     explodedComponentsData.forEach(item => {
       const code = String(item.COMPONENTE || item.Componente || item.Material || '').trim();
@@ -948,7 +985,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
 
       const resp = item.responsable;
       if (!respMap.has(resp)) {
-        respMap.set(resp, { resp, totalForros: 0, totalInsumos: 0 });
+        respMap.set(resp, { resp, totalForros: 0, totalInsumos: 0, centro: item.centro });
       }
       respMap.get(resp)!.totalInsumos += total;
     });
@@ -993,40 +1030,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   const horasNetasDiurnasVal = parseFloat(jornadaDiurnaSel || "0") * 0.84;
   const horasNetasNocturnasVal = parseFloat(jornadaNocturnaSel || "0") * 0.84;
 
-  const renderDateFilterHeader = () => (
-    <div className="flex items-center justify-between p-6 bg-white border border-slate-200 rounded-[2rem] shadow-sm mb-6">
-      <div className="flex items-center gap-3">
-        <div className="bg-indigo-600 p-2 rounded-xl text-white shadow-lg shadow-indigo-100">
-          <CalendarIcon className="w-4 h-4" />
-        </div>
-        <div>
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Rango de Carga Técnica</p>
-          <p className="text-xs font-black text-indigo-900">Filtrado por Fecha de Inicio de Órdenes</p>
-        </div>
-      </div>
-      
-      <div className="flex items-center gap-4">
-        <div className="flex items-center gap-2">
-          <span className="text-[9px] font-black text-slate-400 uppercase">Desde:</span>
-          <input 
-            type="date" 
-            value={techStartDate} 
-            onChange={(e) => setTechStartDate(e.target.value)}
-            className="text-xs font-bold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 focus:ring-indigo-500 outline-none"
-          />
-        </div>
-        <div className="flex items-center gap-4">
-          <span className="text-[9px] font-black text-slate-400 uppercase">Hasta:</span>
-          <input 
-            type="date" 
-            value={techEndDate} 
-            onChange={(e) => setTechEndDate(e.target.value)}
-            className="text-xs font-bold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 focus:ring-indigo-500 outline-none"
-          />
-        </div>
-      </div>
-    </div>
-  );
+  const renderDateFilterHeaderInternal = () => renderDateFilterHeader(techStartDate, setTechStartDate, techEndDate, setTechEndDate);
 
   const renderForrosSummaryTables = () => {
     const calculateSumCant = (puestoKey: string) => {
@@ -1046,102 +1050,92 @@ export const TacticalPlanForrosSection: React.FC = () => {
     const progColchones = calculateSumCant('FORRO-COLCHONES');
     const progBases = calculateSumCant('FBASE-01') + calculateSumCant('FBASE-02') + calculateSumCant('FORRO-BASE-BCAMAS');
 
-    let necColchones1000 = 0, necBases1000 = 0, necColchones2000 = 0, necBases2000 = 0;
+    const getExplosionData = (centro: string, resp: string) => {
+      return explodedComponentsData
+        .filter(item => item.centro === centro && item.responsable === resp)
+        .reduce((sum, item) => sum + Number(item.totalNeeded || 0), 0);
+    };
 
-    if (explodedComponentsData.length > 0) {
-      explodedComponentsData.forEach(item => {
-        const name = (item.NOMBRE_COMPONENTE || item.Descripcion || '').toUpperCase();
-        const centro = item.centro;
-        const total = Number(item.totalNeeded || 0);
-        
-        if (centro === '1000') {
-          if (name.includes('BASE')) necBases1000 += total;
-          else if (name.includes('FORRO')) necColchones1000 += total;
-        } else {
-          if (name.includes('BASE')) necBases2000 += total;
-          else if (name.includes('FORRO')) necColchones2000 += total;
-        }
-      });
-    } else {
-      necColchones1000 = fert1000.filter(o => String(o['RESPCTRLPROD'] || '').trim().replace(/^0+/, '') === '3').reduce((sum, o) => sum + Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0), 0);
-      necBases1000 = fert1000.filter(o => String(o['RESPCTRLPROD'] || '').trim().replace(/^0+/, '') === '4').reduce((sum, o) => sum + Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0), 0);
-      necColchones2000 = fert2000.filter(o => String(o['RESPCTRLPROD'] || '').trim().replace(/^0+/, '') === '3').reduce((sum, o) => sum + Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0), 0);
-      necBases2000 = fert2000.filter(o => String(o['RESPCTRLPROD'] || '').trim().replace(/^0+/, '') === '6').reduce((sum, o) => sum + Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0), 0);
-    }
+    const necColchones1000 = explodedComponentsData.length > 0 ? getExplosionData('1000', '3') : fert1000.filter(o => String(o['RESPCTRLPROD'] || '').trim().replace(/^0+/, '') === '3').reduce((sum, o) => sum + Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0), 0);
+    const necBases1000 = explodedComponentsData.length > 0 ? getExplosionData('1000', '4') : fert1000.filter(o => String(o['RESPCTRLPROD'] || '').trim().replace(/^0+/, '') === '4').reduce((sum, o) => sum + Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0), 0);
+    const necColchones2000 = explodedComponentsData.length > 0 ? getExplosionData('2000', '3') : fert2000.filter(o => String(o['RESPCTRLPROD'] || '').trim().replace(/^0+/, '') === '3').reduce((sum, o) => sum + Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0), 0);
+    const necBases2000 = explodedComponentsData.length > 0 ? getExplosionData('2000', '6') : fert2000.filter(o => String(o['RESPCTRLPROD'] || '').trim().replace(/^0+/, '') === '6').reduce((sum, o) => sum + Number(o['CANTIDAD'] || o['CANTPROGRAMADA'] || 0), 0);
 
     const stockColchones = apiCuboInventariosData.filter(i => (i.Descripcion || '').toUpperCase().includes('FORRO') && !(i.Descripcion || '').toUpperCase().includes('BASE')).reduce((sum, i) => sum + (i.StockActual || 0), 0);
     const stockBases = apiCuboInventariosData.filter(i => (i.Descripcion || '').toUpperCase().includes('FORRO') && (i.Descripcion || '').toUpperCase().includes('BASE')).reduce((sum, i) => sum + (i.StockActual || 0), 0);
 
-    const totalNecColchones = necColchones1000 + necColchones2000;
-    const totalNecBases = necBases1000 + necBases2000;
-
     return (
       <div className="mb-10 space-y-6">
-        <div className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-md">
-          <table className="w-full border-collapse">
-            <thead className="bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest text-center">
-              <tr>
-                <th className="p-4 border-r border-slate-800" rowSpan={2}>Centro</th>
-                <th className="p-4 border-r border-slate-800" colSpan={2}>Programados (Carga Operativa)</th>
-                <th className="p-4 border-slate-800" colSpan={2}>Necesidades (Cálculo Insumos)</th>
-              </tr>
-              <tr className="bg-slate-800 text-sky-400">
-                <th className="p-3 border-r border-slate-700">Bases</th>
-                <th className="p-3 border-r border-slate-700">Colchones</th>
-                <th className="p-3 border-r border-slate-700">Bases</th>
-                <th className="p-3">Colchones</th>
-              </tr>
-            </thead>
-            <tbody className="text-2xl font-mono font-black text-center">
-              <tr className="border-b border-slate-100">
-                <td className="p-5 border-r text-sm font-black bg-slate-50 text-slate-600 uppercase">1000</td>
-                <td className="p-5 border-r text-indigo-600">—</td>
-                <td className="p-5 border-r text-indigo-600">{Math.round(progColchones).toLocaleString()}</td>
-                <td className="p-5 border-r text-emerald-600">{Math.round(necBases1000).toLocaleString()}</td>
-                <td className="p-5 text-emerald-600">{Math.round(necColchones1000).toLocaleString()}</td>
-              </tr>
-              <tr>
-                <td className="p-5 border-r text-sm font-black bg-slate-50 text-slate-600 uppercase">2000</td>
-                <td className="p-5 border-r text-indigo-600">{Math.round(progBases).toLocaleString()}</td>
-                <td className="p-5 border-r text-indigo-600">—</td>
-                <td className="p-5 border-r text-emerald-600">{Math.round(necBases2000).toLocaleString()}</td>
-                <td className="p-5 text-emerald-600">{Math.round(necColchones2000).toLocaleString()}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+        <Card className="rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden shadow-sm border-none">
+          <div className="px-6 py-3 bg-slate-900 text-white font-black text-[10px] uppercase tracking-widest text-center">Resumen Operativo de Forros</div>
+          <CardContent className="p-0">
+            <table className="w-full text-[11px] border-collapse">
+              <thead className="bg-slate-800 text-sky-400 uppercase font-black tracking-widest text-center">
+                <tr>
+                  <th className="p-4 border-r border-slate-700" rowSpan={2}>Centro</th>
+                  <th className="p-4 border-r border-slate-700" colSpan={2}>Programados (Plan Operativo)</th>
+                  <th className="p-4" colSpan={2}>Necesidades (Cálculo Explosión)</th>
+                </tr>
+                <tr className="bg-slate-700 text-white/80">
+                  <th className="p-3 border-r border-slate-600">Bases (CANT)</th>
+                  <th className="p-3 border-r border-slate-600">Colchones (CANT)</th>
+                  <th className="p-3 border-r border-slate-600">Bases (M/UN)</th>
+                  <th className="p-3">Colchones (M/UN)</th>
+                </tr>
+              </thead>
+              <tbody className="text-xl font-mono font-black text-center divide-y divide-slate-100">
+                <tr>
+                  <td className="p-5 border-r text-sm font-black bg-slate-50 text-slate-500">UIO 1000</td>
+                  <td className="p-5 border-r text-indigo-600">—</td>
+                  <td className="p-5 border-r text-indigo-600">{Math.round(progColchones).toLocaleString()}</td>
+                  <td className="p-5 border-r text-emerald-600">{Math.round(necBases1000).toLocaleString()}</td>
+                  <td className="p-5 text-emerald-600">{Math.round(necColchones1000).toLocaleString()}</td>
+                </tr>
+                <tr>
+                  <td className="p-5 border-r text-sm font-black bg-slate-50 text-slate-500">GYE 2000</td>
+                  <td className="p-5 border-r text-indigo-600">{Math.round(progBases).toLocaleString()}</td>
+                  <td className="p-5 border-r text-indigo-600">—</td>
+                  <td className="p-5 border-r text-emerald-600">{Math.round(necBases2000).toLocaleString()}</td>
+                  <td className="p-5 text-emerald-600">{Math.round(necColchones2000).toLocaleString()}</td>
+                </tr>
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
 
         <div className="flex justify-center">
-          <div className="w-full max-w-4xl border border-slate-200 rounded-[2.5rem] overflow-hidden bg-white shadow-md text-[10px] font-black uppercase">
-            <div className="p-4 bg-slate-950 text-sky-400 text-center font-black tracking-[0.4em] text-xs">Análisis Diferencial Operativo</div>
-            <table className="w-full text-center border-collapse">
-               <thead>
-                 <tr className="bg-slate-50 border-b border-slate-100">
-                    <th className="p-3 border-r"></th>
-                    <th className="p-3 border-r text-indigo-900">FORRO-BASE-BCAMAS</th>
-                    <th className="p-3 text-indigo-900">FORRO-COLCHONES</th>
-                 </tr>
-               </thead>
-               <tbody className="text-2xl font-mono font-black">
-                  <tr className="border-b border-slate-100">
-                    <td className="p-5 border-r text-[10px] font-black bg-slate-100/50 text-slate-500">Necesidad</td>
-                    <td className="p-5 border-r text-red-600">{Math.round(totalNecBases).toLocaleString()}</td>
-                    <td className="p-5 text-red-600">{Math.round(totalNecColchones).toLocaleString()}</td>
+          <Card className="w-full max-w-4xl rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden shadow-md border-none">
+            <div className="px-6 py-3 bg-slate-900 text-white font-black text-[10px] uppercase tracking-widest text-center">Análisis de Inventario Actual</div>
+            <CardContent className="p-0">
+              <table className="w-full text-[11px] border-collapse">
+                <thead className="bg-slate-50 text-slate-500 uppercase font-black tracking-widest border-b">
+                  <tr>
+                    <th className="p-4 border-r">Indicador</th>
+                    <th className="p-4 border-r text-indigo-700">FORRO-BASE-BCAMAS</th>
+                    <th className="p-4 text-indigo-700">FORRO-COLCHONES</th>
+                  </tr>
+                </thead>
+                <tbody className="text-xl font-mono font-black text-center divide-y divide-slate-100">
+                  <tr>
+                    <td className="p-5 border-r text-sm font-black bg-slate-50 text-slate-500">Necesidad Total</td>
+                    <td className="p-5 border-r text-red-600">{Math.round(necBases1000 + necBases2000).toLocaleString()}</td>
+                    <td className="p-5 text-red-600">{Math.round(necColchones1000 + necColchones2000).toLocaleString()}</td>
                   </tr>
                   <tr>
-                    <td className="p-5 border-r text-[10px] font-black bg-slate-100/50 text-slate-500">Stock Actual</td>
+                    <td className="p-5 border-r text-sm font-black bg-slate-50 text-slate-500">Stock en Mano</td>
                     <td className="p-5 border-r text-blue-600">{Math.round(stockBases).toLocaleString()}</td>
                     <td className="p-5 text-blue-600">{Math.round(stockColchones).toLocaleString()}</td>
                   </tr>
-               </tbody>
-            </table>
-          </div>
+                </tbody>
+              </table>
+            </CardContent>
+          </Card>
         </div>
       </div>
     );
   };
 
-  const renderFertTable = (orders: any[], summary: any[], title: string, date: string, setDate: (d: string) => void, color: string) => {
+  const renderFertTableInternal = (orders: any[], summary: any[], title: string, date: string, setDate: (d: string) => void, color: string) => {
     const fertCols = [
       { id: 'CENTRO', key: 'Centro' },
       { id: 'ORDEN', key: 'ORDEN' },
@@ -1163,7 +1157,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
               <div>
                 <CardTitle className="text-2xl font-black uppercase tracking-tight">{title}</CardTitle>
                 <CardDescription className="text-white/60 font-bold uppercase text-[10px] tracking-widest mt-1">
-                  Visualización de carga operativa segmentada
+                  Carga Operativa FERT
                 </CardDescription>
               </div>
             </div>
@@ -1198,7 +1192,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                       {fertCols.map((col) => {
                         let val = order[col.key] || order[col.id] || order[col.id.toLowerCase()];
                         if (col.id === 'MATERIAL' && val) {
-                          val = String(val).trim().slice(-8); 
+                          val = normalizeMaterialCode(val); 
                         }
                         if (col.id === 'FECHA' && val) val = String(val).split('T')[0];
                         if (col.id === 'CANTPROGRAMADA' && val) val = Math.round(Number(val)).toLocaleString();
@@ -1216,7 +1210,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                 </tbody>
               </table>
             ) : (
-              <div className="py-20 text-center text-slate-400 uppercase font-black tracking-widest text-xs opacity-40">No hay registros para este centro en la fecha seleccionada</div>
+              <div className="py-20 text-center text-slate-400 uppercase font-black tracking-widest text-xs opacity-40">No hay registros para este centro</div>
             )}
           </div>
         </CardContent>
@@ -1227,10 +1221,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
   if (!isMounted) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-slate-50">
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="w-12 h-12 animate-spin text-indigo-600" />
-          <p className="text-slate-500 font-black uppercase tracking-widest text-xs">Inicializando Sistema Táctico...</p>
-        </div>
+        <Loader2 className="w-12 h-12 animate-spin text-indigo-600" />
       </div>
     );
   }
@@ -1421,7 +1412,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="acolchado-tapas" className="space-y-6 pb-20">
-          {renderDateFilterHeader()}
+          {renderDateFilterHeaderInternal()}
 
           {/* Botón de Consolidación ACH */}
           <div className="flex justify-end mb-6">
@@ -1482,7 +1473,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="bandas" className="space-y-6 pb-20">
-          {renderDateFilterHeader()}
+          {renderDateFilterHeaderInternal()}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
             {uniquePuestos.filter(p => 
               p.includes('ACOLCHADORA11') || 
@@ -1515,7 +1506,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="interiores-corte" className="space-y-6 pb-20">
-          {renderDateFilterHeader()}
+          {renderDateFilterHeaderInternal()}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
             {uniquePuestos.filter(p => 
               p.includes('INTP') || 
@@ -1553,7 +1544,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="forros" className="space-y-6 pb-20">
-          {renderDateFilterHeader()}
+          {renderDateFilterHeaderInternal()}
           {renderForrosSummaryTables()}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
             {uniquePuestos.filter(p => p.includes('FORRO') || p.includes('FBASE')).map((pName) => (
@@ -1707,8 +1698,8 @@ export const TacticalPlanForrosSection: React.FC = () => {
               </div>
 
               {/* Fert Tables */}
-              {renderFertTable(fert1000, summary1000, "Órdenes FERT - Centro 1000 (UIO)", targetDate1000, setTargetDate1000, "bg-slate-900")}
-              {renderFertTable(fert2000, summary2000, "Órdenes FERT - Centro 2000 (GYE)", targetDate2000, setTargetDate2000, "bg-indigo-700")}
+              {renderFertTableInternal(fert1000, summary1000, "Órdenes FERT - Centro 1000 (UIO)", targetDate1000, setTargetDate1000, "bg-slate-900")}
+              {renderFertTableInternal(fert2000, summary2000, "Órdenes FERT - Centro 2000 (GYE)", targetDate2000, setTargetDate2000, "bg-indigo-700")}
             </div>
           )}
         </TabsContent>
@@ -2057,7 +2048,7 @@ export const TacticalPlanForrosSection: React.FC = () => {
                   </div>
                   <div>
                     <CardTitle className="text-2xl font-black text-white uppercase tracking-tight">KPI Maestro de Forros</CardTitle>
-                    <CardDescription className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-1">Auditoría técnica de tiempos promedio por material y hoja de ruta</CardDescription>
+                    <CardDescription className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-1">Auditoría técnica de tiempos promedio por material</CardDescription>
                   </div>
                 </div>
               </div>
