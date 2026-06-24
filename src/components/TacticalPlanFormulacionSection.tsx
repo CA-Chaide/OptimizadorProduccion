@@ -40,7 +40,7 @@ import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 import { cn } from '@/lib/utils';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, isValid } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 const BLOCK_LENGTH_METERS = 20;
@@ -144,10 +144,8 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       const centro = String(getProp(o, ['CENTRO', 'Centro'])).trim();
       const alm = String(getProp(o, ['ALMACEN', 'Almacen'])).trim();
       const nombre = String(getProp(o, ['NOMBRE', 'DESCRIPCION', 'MATERIAL']) || '').toUpperCase();
-      
       const matchScope = alm === '1006' || centro === '1000' || nombre.includes('CORTE') || nombre.includes('LAMINADO');
       if (!matchScope) return false;
-
       const itemDateFull = getProp(o, ['FECHA', 'FECHAINICIO', 'FECHA_INICIO']).trim();
       const itemDate = itemDateFull.includes('T') ? itemDateFull.split('T')[0] : itemDateFull;
       return selectedDates.size === 0 || selectedDates.has(itemDate);
@@ -166,7 +164,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       setUnifiedSummaryData([]);
       return;
     }
-    
     setIsProcessingResumen(true);
     const groupsMap = new Map<string, any>();
     setResumenProgress({ current: 0, total: provFiltradas.length });
@@ -174,7 +171,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     for (let i = 0; i < provFiltradas.length; i++) {
       const o = provFiltradas[i];
       const info = extractMaterialInfo(o);
-      
       const qty = safeNum(o.CANTPROGRAMADA || o.CANTIDAD || 0);
       const anchoVal = parseFloat(info.ancho) || 0;
       const espVal = parseFloat(info.esp) || 0;
@@ -198,16 +194,13 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       } catch (e) { console.warn(`Error BOM para ${info.code}`); }
 
       const key = `${blockCode}|${info.apertura}|${densVal}`;
-
       if (!groupsMap.has(key)) {
         const finalSearchCode = blockCode !== '—' ? blockCode : info.code;
         const stockKg = inventarioSAP
           .filter(inv => cleanCode(inv.MATERIAL) === finalSearchCode)
           .reduce((sum, item) => sum + safeNum(item.LIBREUTILIZACION), 0);
-
         const pesoBloque = (100 * usefulHeight * BLOCK_LENGTH_METERS * densVal) / 10000;
         const stockUN = pesoBloque > 0 ? stockKg / pesoBloque : 0;
-
         groupsMap.set(key, { 
           blockCode, blockDesc: blockDesc !== '—' ? blockDesc : info.desc, 
           dens: info.dens, apertura: info.apertura, 
@@ -217,17 +210,14 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           ferts: [] 
         });
       }
-      
       const entry = groupsMap.get(key)!;
       entry.totalBloques += itemBloques;
       entry.kgTotal += itemKg;
       entry.unidades += qty;
       entry.planReposicion = Math.ceil(entry.totalBloques);
       entry.ferts.push({ code: info.code, desc: info.desc, qty, kg: itemKg, bloques: itemBloques });
-      
       if (i % 10 === 0) setResumenProgress({ current: i + 1, total: provFiltradas.length });
     }
-
     setUnifiedSummaryData(Array.from(groupsMap.values()).sort((a, b) => b.kgTotal - a.kgTotal));
     setIsProcessingResumen(false);
   }, [provFiltradas, inventarioSAP, extractMaterialInfo]);
@@ -248,7 +238,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       });
       setGrupos(filteredGroups);
       const groupsIds = filteredGroups.map(g => g.codigo_grupo);
-
       const [restrsRes, provsRes, invRes, curadoRes, fertsRes] = await Promise.all([
         restriccionService.getAll(),
         serviciosService.OrdenesProvisionalesPaginados(1, 20000).catch(() => ({ data: [] })),
@@ -256,7 +245,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         serviciosService.getTiemposCuradoBloqueFormulado(1, 10000).catch(() => ({ data: [] })),
         serviciosService.getOrdenesFert(1, 20000).catch(() => ({ data: [] }))
       ]);
-
       setRestricciones((restrsRes.data || []).filter((r: any) => groupsIds.includes(r.codigo_grupo)));
       setOrders(provsRes.data?.data || provsRes.data || []);
       setOrdersFert(fertsRes.data?.data || fertsRes.data || []);
@@ -298,7 +286,6 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
             <Badge variant="outline" className="text-[10px] font-black border-slate-200 bg-slate-50">T. UNIDADES: {Math.round(tStockUn)} UN</Badge>
           </div>
         </div>
-
         <div className="border-2 border-gray-100 rounded-[2rem] shadow-xl overflow-hidden bg-white text-left">
           <div className="overflow-x-auto max-h-[500px]">
             <table className="w-full border-collapse text-center font-sans text-[10px] text-gray-700">
@@ -370,9 +357,15 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         </div>
       );
     }
-
     const keys = Object.keys(curadoData[0] || {});
-    
+    // Mapeo solicitado por el usuario para cabeceras específicas
+    const headerMapping: Record<string, string> = {
+      'ESTADOTRAS': 'CALLE',
+      'ESTADO_TRAS': 'CALLE',
+      'MAQUINA': 'F_BLOQ',
+      'RECURSO': 'F_BLOQ'
+    };
+
     return (
       <div className="border-2 border-gray-100 rounded-[2.5rem] shadow-xl overflow-hidden bg-white text-left">
         <div className="overflow-x-auto max-h-[600px]">
@@ -380,7 +373,9 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
             <thead className="bg-[#0f172a] text-white uppercase font-black tracking-widest text-[8px] sticky top-0 z-10 border-b-2 border-white/10">
               <tr>
                 {keys.map((k, i) => (
-                  <th key={i} className="px-4 py-4 border-r border-white/5">{k}</th>
+                  <th key={i} className="px-4 py-4 border-r border-white/5 whitespace-nowrap uppercase">
+                    {headerMapping[k.toUpperCase()] || k}
+                  </th>
                 ))}
               </tr>
             </thead>
@@ -388,7 +383,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
               {curadoData.map((row, idx) => (
                 <tr key={idx} className="hover:bg-slate-50 transition-colors">
                   {keys.map((k, i) => (
-                    <td key={i} className="px-4 py-3 border-r border-gray-100 font-mono text-slate-500">
+                    <td key={i} className="px-4 py-3 border-r border-gray-100 font-mono text-slate-500 whitespace-nowrap">
                       {String(row[k] ?? '—')}
                     </td>
                   ))}
@@ -401,9 +396,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     );
   };
 
-  if (!mounted) {
-    return <div className="p-4 md:p-6 min-h-screen bg-white" />;
-  }
+  if (!mounted) return <div className="p-4 md:p-6 min-h-screen bg-white" />;
 
   return (
     <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
@@ -412,12 +405,10 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           <div className="p-2 bg-indigo-600/10 rounded-xl shadow-inner"><FlaskConical className="w-6 h-6 text-indigo-600" /></div>
           <h2 className="text-xl font-black text-gray-800 uppercase tracking-tighter">Programación Táctica Formulación</h2>
         </div>
-
         <div className="flex items-center gap-2">
           <Button onClick={handleProcessResumen} disabled={isProcessingResumen} className="h-9 px-5 rounded-xl bg-primary text-white gap-2 font-black text-[10px] uppercase shadow-lg active:scale-95 transition-all">
             {isProcessingResumen ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} ACTUALIZAR AUDITORÍA
           </Button>
-
           <Popover>
             <PopoverTrigger asChild>
               <Button variant="outline" className="h-9 px-5 rounded-xl border-gray-200 gap-2 font-black text-[10px] uppercase shadow-sm transition-all hover:border-primary/50">
@@ -545,7 +536,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-50 font-bold text-slate-600">
                   {prodFiltradas.length === 0 ? (
-                    <tr><td colSpan={6} className="py-20 text-center text-slate-200 uppercase font-black">Sin órdenes de producción detectadas para Formulación / Almacén 1006</td></tr>
+                    <tr><td colSpan={6} className="py-20 text-center text-slate-200 uppercase font-black">Sin órdenes de producción detectadas</td></tr>
                   ) : (
                     prodFiltradas.map((o, idx) => {
                       const info = extractMaterialInfo(o);
@@ -609,6 +600,13 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <div className="flex items-center gap-3 p-5 bg-indigo-50 border border-indigo-100 rounded-[1.5rem] shadow-sm text-left">
+        <Info className="w-5 h-5 text-indigo-600 flex-shrink-0" />
+        <p className="text-[10px] font-bold text-indigo-700 uppercase tracking-widest leading-relaxed">
+          Nota Técnica: Auditoría multinivel FERT -> BLOQUE. Mapeo de columnas: estadoTras = CALLE | Maquina = F_BLOQ. Estructura de datos cruda íntegra de SAP.
+        </p>
+      </div>
     </div>
   );
 };
