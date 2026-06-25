@@ -485,7 +485,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         items.forEach(row => {
           row.porcentajeNecesidad = totalKgGroup > 0 ? (row.totalConsumoKg / totalKgGroup) : 0;
           row.hasDeficit = totalConsumoUnGroup > totalStockUnGroup;
-          row.planUn = totalUnitsInPlan > 0 ? Math.ceil(totalUnitsInPlan * row.porcentajeNecesidad) : 0;
+          row.planUn = totalUnitsInPlan > 0 ? Math.round(totalUnitsInPlan * row.porcentajeNecesidad) : 0;
           row.planKg = row.planUn * row.peso;
           row.tProceso = ((row.looperTRolloMin || 0) * row.planUn) / 60;
         });
@@ -524,7 +524,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       total1006: number; total1008: number; total1015: number; totalPlanUn: number; totalPlanKg: number;
       totalUN1006: number; totalUN1008: number; totalUN1015: number; totalTProceso: number;
       totalRollos: number; totalKgHalb: number; totalRollosHalb: number; totalConsumoKg: number; totalNroRollos: number;
-      totalStockKg: number; totalStockUN: number; hasGroupDeficit: boolean;
+      totalStockKg: number; totalStockUN: number; hasGroupDeficit: boolean; runsNeeded: number;
     }>();
     unifiedNeeds.forEach(item => {
       const key = `${item.apertura}|${item.densidad}`;
@@ -534,7 +534,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           total1006: 0, total1008: 0, total1015: 0, totalPlanUn: 0, totalPlanKg: 0,
           totalUN1006: 0, totalUN1008: 0, totalUN1015: 0, totalTProceso: 0, totalRollos: 0,
           totalKgHalb: 0, totalRollosHalb: 0, totalConsumoKg: 0, totalNroRollos: 0,
-          totalStockKg: 0, totalStockUN: 0, hasGroupDeficit: false
+          totalStockKg: 0, totalStockUN: 0, hasGroupDeficit: false, runsNeeded: 0
         });
       }
       const group = map.get(key)!;
@@ -559,6 +559,13 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       group.totalTProceso += item.tProceso;
       if (item.hasDeficit) group.hasGroupDeficit = true;
     });
+
+    // Calcular corridas por grupo basadas en el déficit neto
+    map.forEach(group => {
+      const deficit = Math.max(0, group.totalNroRollos - group.totalStockUN);
+      group.runsNeeded = Math.ceil(deficit / 40);
+    });
+
     return Array.from(map.values()).sort((a, b) => b.totalConsumoKg - a.totalConsumoKg);
   }, [unifiedNeeds]);
 
@@ -584,15 +591,20 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       tProceso: acc.tProceso + row.tProceso
     }), { kg: 0, kgHalb: 0, totalKg: 0, un: 0, rollos: 0, rollosHalb: 0, totalRollos: 0, planUn: 0, planKg: 0, stock1006: 0, stock1008: 0, stock1015: 0, stockUN1006: 0, stockUN1008: 0, stockUN1015: 0, totalStockKg: 0, totalStockUN: 0, tProceso: 0 });
 
-    const looperRuns = groupedNeeds.reduce((acc, group) => {
-      const nonConvUnits = group.items
-        .filter(it => !it.descripcion.toUpperCase().includes('CONV'))
-        .reduce((sum, it) => sum + it.planUn, 0);
+    const totalRuns = groupedNeeds.reduce((acc, group) => {
+      // Excluir materiales que contienen "CONV" (proceso alterno) para el conteo de corridas Looper
+      const groupHasStandard = group.items.some(it => !it.descripcion.toUpperCase().includes('CONV'));
+      if (!groupHasStandard) return acc;
       
-      return acc + Math.ceil(nonConvUnits / 40);
+      const standardDeficit = Math.max(0, 
+        group.items.filter(it => !it.descripcion.toUpperCase().includes('CONV')).reduce((s, r) => s + r.totalNroRollos, 0) -
+        group.items.filter(it => !it.descripcion.toUpperCase().includes('CONV')).reduce((s, r) => s + r.totalStockUN, 0)
+      );
+
+      return acc + Math.ceil(standardDeficit / 40);
     }, 0);
 
-    return { ...base, looperRuns };
+    return { ...base, totalRuns };
   }, [unifiedNeeds, groupedNeeds]);
 
   const toggleGroup = (key: string) => {
@@ -628,8 +640,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             <tr className="bg-slate-800/50 border-b border-slate-700">
               <th className="px-4 py-3 text-center border-r border-slate-700 w-[15%]">Demanda Consolidada (Kg)</th>
               <th className="px-4 py-3 text-center border-r border-slate-700 w-[15%]">Demanda Consolidada (Un)</th>
-              <th className="px-4 py-3 text-center border-r border-slate-700 w-[13%]">Rollos Requeridos (Plan Un)</th>
               <th className="px-4 py-3 text-center border-r border-slate-700 w-[13%]">Rollos Requeridos (Plan Kg)</th>
+              <th className="px-4 py-3 text-center border-r border-slate-700 w-[13%]">Rollos Requeridos (Plan Un)</th>
               <th className="px-4 py-3 text-center border-r border-slate-700 w-[13%] bg-cyan-900/40 text-cyan-200">NRO DE CORRIDAS LOOPER</th>
               <th className="px-4 py-3 text-center border-r border-slate-700 w-[13%]">TURNO</th>
               <th className="px-4 py-3 text-center w-[18%]">PERSONAL</th>
@@ -666,13 +678,13 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 </div>
               </td>
               <td className="px-4 py-4 border-r border-slate-700 text-center align-middle bg-black/10">
-                <span className="text-4xl font-black text-white">{Math.round(totalsUnified.planUn).toLocaleString()}</span>
-              </td>
-              <td className="px-4 py-4 border-r border-slate-700 text-center align-middle bg-black/20">
                 <span className="text-3xl font-black text-indigo-400">{Math.round(totalsUnified.planKg).toLocaleString()}</span>
               </td>
+              <td className="px-4 py-4 border-r border-slate-700 text-center align-middle bg-black/20">
+                <span className="text-4xl font-black text-white">{Math.round(totalsUnified.planUn).toLocaleString()}</span>
+              </td>
               <td className="px-4 py-4 border-r border-slate-700 text-center align-middle bg-cyan-500/10">
-                <span className="text-4xl font-black text-cyan-400">{totalsUnified.looperRuns}</span>
+                <span className="text-4xl font-black text-cyan-400">{totalsUnified.totalRuns}</span>
               </td>
               <td rowSpan={2} className="px-4 py-3 border-r border-slate-700 text-center align-middle bg-slate-800/20">
                 <div className="flex flex-col gap-6">
@@ -907,7 +919,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                                {isExp ? <Minus className="w-3 h-3 text-red-500" /> : <Plus className="w-3 h-3 text-indigo-500" />}
                                <span className="font-black text-[10px] uppercase tracking-widest opacity-70">Corrida {group.apertura} - D{group.densidad}</span>
                             </td>
-                            <td className="px-6 py-4 text-left text-indigo-900 font-black uppercase">Subtotal Corrida</td>
+                            <td className="px-6 py-4 text-left text-indigo-900 font-black uppercase">Subtotal Corrida ({group.runsNeeded} bloques)</td>
                             <td colSpan={3} className="bg-indigo-50/10"></td>
                             <td className="px-3 py-4 text-slate-400 font-mono">{(group.total1006).toLocaleString()}</td>
                             <td className="px-2 py-4 text-cyan-600/50 font-mono">{(group.totalUN1006).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
@@ -925,6 +937,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                             <td className="px-3 py-4 bg-[#1e293b] font-mono text-[#facc15]">{Math.round(group.totalNroRollos).toLocaleString()}</td>
                             <td className="px-4 py-4 text-center font-black">
                                <div className={cn("w-4 h-4 rounded-full mx-auto shadow-sm", group.hasGroupDeficit ? "bg-red-500 animate-pulse" : "bg-green-500")} />
+                               <span className="text-[8px] text-slate-400 mt-0.5 block">{group.hasGroupDeficit ? 'STOCK BAJO' : 'STOCK OK'}</span>
                             </td>
                             <td className="px-4 py-4 text-right font-mono font-black text-red-900 bg-[#fee2e2]/50">{group.totalPlanUn.toLocaleString()}</td>
                             <td className="px-4 py-4 text-right font-mono font-black text-red-900 bg-[#fee2e2]/50">{group.totalPlanKg.toLocaleString()}</td>
