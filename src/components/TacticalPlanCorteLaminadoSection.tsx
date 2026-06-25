@@ -259,7 +259,10 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       
       setRestriccionesArray((restrs.data || []).filter((r: any) => ids.includes(r.codigo_grupo)));
       setOrders(provs.data?.data || provs.data || []);
-      setOrdersFert(ferts.data?.data || ferts.data || []);
+      
+      const actualFertData = ferts.data?.data || ferts.data || [];
+      setOrdersFert(actualFertData);
+      
       setKpiLooperData(kpiLooper?.data || []);
       setInventarioSAP(Array.isArray(invSAP?.data) ? invSAP.data : []);
 
@@ -478,14 +481,16 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         const totalStockUnGroup = items.reduce((s, r) => s + r.totalStockUN, 0);
         const totalConsumoUnGroup = items.reduce((s, r) => s + r.totalNroRollos, 0);
         
+        // Lógica de cálculo de corridas (múltiplos de 40)
         const groupDeficit = Math.max(0, totalConsumoUnGroup - totalStockUnGroup);
         const runsNeeded = Math.ceil(groupDeficit / 40);
         const totalUnitsInPlan = runsNeeded * 40;
 
         items.forEach(row => {
           row.porcentajeNecesidad = totalKgGroup > 0 ? (row.totalConsumoKg / totalKgGroup) : 0;
-          // Análisis individual de déficit
+          // Evaluación individual de stock bajo
           row.hasDeficit = row.totalNroRollos > row.totalStockUN;
+          // Reposición proporcional por participación
           row.planUn = totalUnitsInPlan > 0 ? Math.round(totalUnitsInPlan * row.porcentajeNecesidad) : 0;
           row.planKg = row.planUn * row.peso;
           row.tProceso = ((row.looperTRolloMin || 0) * row.planUn) / 60;
@@ -525,7 +530,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       total1006: number; total1008: number; total1015: number; totalPlanUn: number; totalPlanKg: number;
       totalUN1006: number; totalUN1008: number; totalUN1015: number; totalTProceso: number;
       totalRollos: number; totalKgHalb: number; totalRollosHalb: number; totalConsumoKg: number; totalNroRollos: number;
-      totalStockKg: number; totalStockUN: number;
+      totalStockKg: number; totalStockUN: number; hasGroupDeficit: boolean;
     }>();
     unifiedNeeds.forEach(item => {
       const key = `${item.apertura}|${item.densidad}`;
@@ -535,7 +540,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           total1006: 0, total1008: 0, total1015: 0, totalPlanUn: 0, totalPlanKg: 0,
           totalUN1006: 0, totalUN1008: 0, totalUN1015: 0, totalTProceso: 0, totalRollos: 0,
           totalKgHalb: 0, totalRollosHalb: 0, totalConsumoKg: 0, totalNroRollos: 0,
-          totalStockKg: 0, totalStockUN: 0
+          totalStockKg: 0, totalStockUN: 0, hasGroupDeficit: false
         });
       }
       const group = map.get(key)!;
@@ -558,6 +563,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       group.totalPlanUn += item.planUn;
       group.totalPlanKg += item.planKg;
       group.totalTProceso += item.tProceso;
+      // Si cualquier item del grupo tiene déficit, el grupo completo tiene alerta
+      if (item.hasDeficit) group.hasGroupDeficit = true;
     });
     return Array.from(map.values()).sort((a, b) => b.totalConsumoKg - a.totalConsumoKg);
   }, [unifiedNeeds]);
@@ -584,17 +591,17 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       tProceso: acc.tProceso + row.tProceso
     }), { kg: 0, kgHalb: 0, totalKg: 0, un: 0, rollos: 0, rollosHalb: 0, totalRollos: 0, planUn: 0, planKg: 0, stock1006: 0, stock1008: 0, stock1015: 0, stockUN1006: 0, stockUN1008: 0, stockUN1015: 0, totalStockKg: 0, totalStockUN: 0, tProceso: 0 });
 
+    // Cálculo de Corridas Looper (bloques de 40)
+    // Excluir grupos que sean puramente "CONV" (convoluted / proceso alterno)
     const totalRuns = groupedNeeds.reduce((acc, group) => {
-      // Excluir materiales que contienen "CONV" (proceso alterno) para el conteo de corridas Looper
-      const groupHasStandard = group.items.some(it => !it.descripcion.toUpperCase().includes('CONV'));
-      if (!groupHasStandard) return acc;
+      const looperItems = group.items.filter(it => !it.descripcion.toUpperCase().includes('CONV'));
+      if (looperItems.length === 0) return acc;
       
-      const standardDeficit = Math.max(0, 
-        group.items.filter(it => !it.descripcion.toUpperCase().includes('CONV')).reduce((s, r) => s + r.totalNroRollos, 0) -
-        group.items.filter(it => !it.descripcion.toUpperCase().includes('CONV')).reduce((s, r) => s + r.totalStockUN, 0)
-      );
-
-      return acc + Math.ceil(standardDeficit / 40);
+      const looperConsumoUn = looperItems.reduce((s, r) => s + r.totalNroRollos, 0);
+      const looperStockUn = looperItems.reduce((s, r) => s + r.totalStockUN, 0);
+      const looperDeficit = Math.max(0, looperConsumoUn - looperStockUn);
+      
+      return acc + Math.ceil(looperDeficit / 40);
     }, 0);
 
     return { ...base, totalRuns };
@@ -635,7 +642,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               <th className="px-4 py-3 text-center border-r border-slate-700 w-[15%]">Demanda Consolidada (Un)</th>
               <th className="px-4 py-3 text-center border-r border-slate-700 w-[13%]">Rollos Requeridos (Plan Kg)</th>
               <th className="px-4 py-3 text-center border-r border-slate-700 w-[13%]">Rollos Requeridos (Plan Un)</th>
-              <th className="px-4 py-3 text-center border-r border-slate-700 w-[13%] bg-cyan-900/40 text-cyan-200">NRO DE CORRIDAS LOOPER</th>
+              <th className="px-4 py-3 text-center border-r border-slate-700 w-[13%] bg-cyan-900/40 text-cyan-200 uppercase">NRO DE CORRIDAS LOOPER</th>
               <th className="px-4 py-3 text-center border-r border-slate-700 w-[13%]">TURNO</th>
               <th className="px-4 py-3 text-center w-[18%]">PERSONAL</th>
             </tr>
@@ -682,7 +689,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               <td rowSpan={2} className="px-4 py-3 border-r border-slate-700 text-center align-middle bg-slate-800/20">
                 <div className="flex flex-col gap-6">
                   <div className="space-y-1">
-                    <p className="text-[9px] text-slate-500 text-left">DIA</p>
+                    <p className="text-[9px] text-slate-500 text-left uppercase">Día</p>
                     <select 
                       value={selectedDiaShift} 
                       onChange={(e) => setSelectedDiaShift(e.target.value)}
@@ -692,7 +699,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     </select>
                   </div>
                   <div className="space-y-1">
-                    <p className="text-[9px] text-slate-500 text-left">NOCHE</p>
+                    <p className="text-[9px] text-slate-500 text-left uppercase">Noche</p>
                     <select 
                       value={selectedNocheShift} 
                       onChange={(e) => setSelectedNocheShift(e.target.value)}
@@ -706,7 +713,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               <td className="px-4 py-3 border-b border-slate-700 bg-slate-800/40">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1 text-left">
-                    <p className="text-[9px] text-slate-500">OP1 DIA</p>
+                    <p className="text-[9px] text-slate-500 uppercase">Op1 Día</p>
                     <select 
                       value={assignedPersonnel.dia.op1} 
                       onChange={(e) => setAssignedPersonnel(p => ({ ...p, dia: { ...p.dia, op1: e.target.value } }))}
@@ -717,7 +724,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     </select>
                   </div>
                   <div className="space-y-1 text-left">
-                    <p className="text-[9px] text-slate-500">OP2 DIA AYUD</p>
+                    <p className="text-[9px] text-slate-500 uppercase">Op2 Día Ayud</p>
                     <select 
                       value={assignedPersonnel.dia.op2} 
                       onChange={(e) => setAssignedPersonnel(p => ({ ...p, dia: { ...p.dia, op2: e.target.value } }))}
@@ -739,17 +746,17 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                  </div>
               </td>
               <td className="px-4 py-3 border-r border-slate-700 bg-slate-800/20 text-center">
-                <p className="text-[9px] text-slate-500 mb-1">TIEMPO OPERATIVO (H)</p>
+                <p className="text-[9px] text-slate-500 mb-1 uppercase">Tiempo Operativo (H)</p>
                 <span className="text-2xl font-black text-emerald-400">{totalsUnified.tProceso.toFixed(2)}</span>
               </td>
               <td colSpan={2} className="px-4 py-3 border-r border-slate-700 bg-slate-800/30 text-center">
-                <p className="text-[9px] text-slate-500 mb-1">DISPONIBILIDAD TOTAL (H)</p>
+                <p className="text-[9px] text-slate-500 mb-1 uppercase">Disponibilidad Total (H)</p>
                 <span className="text-2xl font-black text-yellow-400">{tDisponible.toFixed(2)}</span>
               </td>
               <td className="px-4 py-3 bg-slate-800/40">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1 text-left">
-                    <p className="text-[9px] text-slate-500">OP1 NOCHE</p>
+                    <p className="text-[9px] text-slate-500 uppercase">Op1 Noche</p>
                     <select 
                       value={assignedPersonnel.noche.op1} 
                       onChange={(e) => setAssignedPersonnel(p => ({ ...p, noche: { ...p.noche, op1: e.target.value } }))}
@@ -760,7 +767,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     </select>
                   </div>
                   <div className="space-y-1 text-left">
-                    <p className="text-[9px] text-slate-500">OP2 NOCHE AYUD</p>
+                    <p className="text-[9px] text-slate-500 uppercase">Op2 Noche Ayud</p>
                     <select 
                       value={assignedPersonnel.noche.op2} 
                       onChange={(e) => setAssignedPersonnel(p => ({ ...p, noche: { ...p.noche, op2: e.target.value } }))}
@@ -873,18 +880,18 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     <th className="px-2 py-4 border-r border-black/5 bg-cyan-50/50 text-cyan-800">UN 1008</th>
                     <th className="px-3 py-4 border-r border-black/5 bg-blue-50/50">Stock 1015 (Kg)</th>
                     <th className="px-2 py-4 border-r border-black/5 bg-cyan-50/50 text-cyan-800">UN 1015</th>
-                    <th className="px-3 py-4 border-r border-black/10 bg-indigo-900 text-white">T. ROLLOS BODEGAS UN</th>
-                    <th className="px-3 py-4 border-r border-black/10 bg-indigo-900 text-white">T. ROLLOS BODEGAS KG</th>
+                    <th className="px-3 py-4 border-r border-black/10 bg-indigo-900 text-white uppercase">T. ROLLOS BODEGAS UN</th>
+                    <th className="px-3 py-4 border-r border-black/10 bg-indigo-900 text-white uppercase">T. ROLLOS BODEGAS KG</th>
                     <th className="px-4 py-4 border-r border-black/5 text-right bg-orange-100/10 uppercase">CONSUMO ROLLOS OF_PROV [Kg]</th>
                     <th className="px-4 py-4 border-r border-black/5 text-right bg-indigo-100/10 uppercase">CONSUMO ROLLOS OF_HALB [Kg]</th>
                     <th className="px-4 py-4 border-r border-black/10 text-right bg-slate-900 text-white font-black uppercase">T. ROLLOS NECESIDADES [Kg]</th>
                     <th className="px-3 py-4 border-r border-black/5 bg-[#cfe2f3]/10 text-indigo-900 font-black uppercase">NRO ROLLOS NECESIDADES PROV [Un]</th>
                     <th className="px-3 py-4 border-r border-black/5 bg-[#d1d5db]/10 text-indigo-900 font-black uppercase">NRO ROLLOS NECESIDADES HALB [Un]</th>
                     <th className="px-3 py-4 border-r border-black/10 bg-[#1e293b] text-[#facc15] font-black uppercase">T. ROLLOS NECESIDADES [Un]</th>
-                    <th className="px-3 py-4 border-r border-black/5 text-center">semaforo % Nec.</th>
-                    <th className="px-4 py-4 border-r border-black/5 text-right font-black bg-[#fee2e2] text-red-900">PLAN (UN)</th>
-                    <th className="px-4 py-4 border-r border-black/5 text-right font-black bg-[#fee2e2] text-red-900">PLAN (KG)</th>
-                    <th className="px-4 py-4 text-right font-black bg-indigo-900 text-white">T. PROCESO (H)</th>
+                    <th className="px-3 py-4 border-r border-black/5 text-center uppercase">semaforo % Nec.</th>
+                    <th className="px-4 py-4 border-r border-black/5 text-right font-black bg-[#fee2e2] text-red-900 uppercase">PLAN (UN)</th>
+                    <th className="px-4 py-4 border-r border-black/5 text-right font-black bg-[#fee2e2] text-red-900 uppercase">PLAN (KG)</th>
+                    <th className="px-4 py-4 text-right font-black bg-indigo-900 text-white uppercase">T. PROCESO (H)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 font-bold">
@@ -912,7 +919,10 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                                {isExp ? <Minus className="w-3 h-3 text-red-500" /> : <Plus className="w-3 h-3 text-indigo-500" />}
                                <span className="font-black text-[10px] uppercase tracking-widest opacity-70">Corrida {group.apertura} - D{group.densidad}</span>
                             </td>
-                            <td className="px-6 py-4 text-left text-indigo-900 font-black uppercase">Subtotal Corrida ({group.totalPlanUn} ROLLOS)</td>
+                            <td className="px-6 py-4 text-left text-indigo-900 font-black uppercase flex items-center gap-3">
+                              Subtotal Corrida ({group.totalPlanUn} ROLLOS)
+                              <div className={cn("w-4 h-4 rounded-full shadow-sm", group.hasGroupDeficit ? "bg-red-500 animate-pulse" : "bg-green-500")} />
+                            </td>
                             <td colSpan={3} className="bg-indigo-50/10"></td>
                             <td className="px-3 py-4 text-slate-400 font-mono">{(group.total1006).toLocaleString()}</td>
                             <td className="px-2 py-4 text-cyan-600/50 font-mono">{(group.totalUN1006).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
@@ -929,8 +939,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                             <td className="px-3 py-4 bg-[#d1d5db]/30 font-mono text-slate-600 opacity-40">{Math.round(group.totalRollosHalb).toLocaleString()}</td>
                             <td className="px-3 py-4 bg-[#1e293b] font-mono text-[#facc15]">{Math.round(group.totalNroRollos).toLocaleString()}</td>
                             <td className="px-4 py-4 text-center font-black">
-                               <div className={cn("w-4 h-4 rounded-full mx-auto shadow-sm", group.totalNroRollos > group.totalStockUN ? "bg-red-500 animate-pulse" : "bg-green-500")} />
-                               <span className="text-[8px] text-slate-400 mt-0.5 block">{group.totalNroRollos > group.totalStockUN ? 'STOCK BAJO' : 'STOCK OK'}</span>
+                               <div className={cn("w-4 h-4 rounded-full mx-auto shadow-sm", group.hasGroupDeficit ? "bg-red-500 animate-pulse" : "bg-green-500")} />
+                               <span className="text-[8px] text-slate-400 mt-0.5 block">{group.hasGroupDeficit ? 'STOCK BAJO' : 'STOCK OK'}</span>
                             </td>
                             <td className="px-4 py-4 text-right font-mono font-black text-red-900 bg-[#fee2e2]/50">{group.totalPlanUn.toLocaleString()}</td>
                             <td className="px-4 py-4 text-right font-mono font-black text-red-900 bg-[#fee2e2]/50">{group.totalPlanKg.toLocaleString()}</td>
