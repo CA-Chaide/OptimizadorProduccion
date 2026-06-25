@@ -24,7 +24,9 @@ import {
   Info,
   ShoppingCart,
   ChevronsLeft,
-  ChevronsRight
+  ChevronsRight,
+  Users,
+  Timer
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -105,10 +107,6 @@ const parseDimensionsEnhanced = (desc: string) => {
   const densMatch = d.match(/D-?\s*(\d+(?:\.\d+)?(?:\s*[A-Z]+)*)/);
   const densidad = densMatch ? densMatch[1].trim() : '—';
 
-  if (d.includes('CV')) {
-    return { densidad, distancia: 60, altura: 206, espesor: 3.5 };
-  }
-
   const dimMatch = d.match(/(\d+(?:\.\d+)?)\s*[xX*]\s*(\d+(?:\.\d+)?)(?:\s*[xX*]\s*(\d+(?:\.\d+)?))?/);
   const alturaOriginal = dimMatch ? parseFloat(dimMatch[1]) : 0;
   const espesor = dimMatch ? parseFloat(dimMatch[2]) : 0;
@@ -171,12 +169,33 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   
   const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set());
-  const [viewDate, setViewDate] = useState<Date>(new Date(2026, 0, 1)); 
+  const [viewDate, setViewDate] = useState<Date>(new Date()); 
   
   const [unifiedNeeds, setUnifiedNeeds] = useState<UnifiedNeedRow[]>([]);
   const [isProcessingResumen, setIsProcessingResumen] = useState(false);
   const [resumenProgress, setResumenProgress] = useState({ current: 0, total: 0 });
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+
+  // --- Estados de Gestión de Turnos y Personal ---
+  const [selectedDiaShift, setSelectedDiaShift] = useState('H1');
+  const [selectedNocheShift, setSelectedNocheShift] = useState('H1');
+  const [assignedPersonnel, setAssignedPersonnel] = useState({
+    dia: { op1: '', op2: '' },
+    noche: { op1: '', op2: '' }
+  });
+  const [looperOperators, setLooperOperators] = useState<any[]>([]);
+
+  const diaShiftOptions = [
+    { v: 'H1', l: '07:00 - 15:45' },
+    { v: 'H2', l: '07:00 - 17:00' },
+    { v: 'H3', l: '07:00 - 18:00' },
+    { v: 'H4', l: '07:00 - 19:00' }
+  ];
+
+  const nocheShiftOptions = [
+    { v: 'H1', l: '21:00 - 05:30' },
+    { v: 'H2', l: '19:00 - 05:00' }
+  ];
 
   useEffect(() => {
     setMounted(true);
@@ -232,12 +251,13 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       setGrupos(filteredGroups);
       const ids = filteredGroups.map(g => g.codigo_grupo);
       
-      const [restrs, provs, kpiLooper, invSAP, ferts] = await Promise.all([
+      const [restrs, provs, kpiLooper, invSAP, ferts, skills] = await Promise.all([
         restriccionService.getAll(),
         serviciosService.OrdenesProvisionalesPaginados(1, 20000).catch(() => ({ data: [] })),
         serviciosService.getKPIMAestroLooper().catch(() => ({ data: [] })),
         serviciosService.getInventarioAñoActual().catch(() => ({ data: [] })),
-        serviciosService.getOrdenesFert(1, 20000).catch(() => ({ data: [] }))
+        serviciosService.getOrdenesFert(1, 20000).catch(() => ({ data: [] })),
+        serviciosService.getHabilidadesOperadorPorEstacion().catch(() => ({ data: [] }))
       ]);
       
       setRestriccionesArray((restrs.data || []).filter((r: any) => ids.includes(r.codigo_grupo)));
@@ -245,6 +265,14 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       setOrdersFert(ferts.data?.data || ferts.data || []);
       setKpiLooperData(kpiLooper?.data || []);
       setInventarioSAP(Array.isArray(invSAP?.data) ? invSAP.data : []);
+
+      // Filtrar operadores calificados para LOOPER
+      const skillsArray = Array.isArray(skills.data) ? skills.data : (Array.isArray(skills) ? skills : []);
+      const filteredOps = skillsArray.filter((op: any) => 
+        String(op.ESTACION || '').toUpperCase().includes('LOOPER') || 
+        String(op.PUESTO || '').toUpperCase().includes('LOOPER')
+      );
+      setLooperOperators(filteredOps);
 
     } catch (e) {
       console.error('Error init TacticalPlanCorteLaminado:', e);
@@ -289,7 +317,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return ordenesFert.filter(o => {
       const centro = String(o.CENTRO || o.Centro || '').trim();
       if (centro === '2000') return false; 
-      const responsable = String(o.RESPCTRLPROD || o.RESP_CONTROL_PROD || o.RespControlProd || '').trim();
+      const responsable = String(o.RESPCONTROLPROD || o.RESP_CONTROL_PROD || o.RespControlProd || '').trim();
       if (allowedResps.length > 0 && !allowedResps.includes(responsable)) return false;
       
       if (selectedDates.size > 0) {
@@ -454,7 +482,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         const totalStockUnGroup = items.reduce((s, r) => s + r.totalStockUN, 0);
         const totalConsumoUnGroup = items.reduce((s, r) => s + r.totalNroRollos, 0);
         
-        // Lógica de Corridas Técnicas (Múltiplos de 40)
         const groupDeficit = Math.max(0, totalConsumoUnGroup - totalStockUnGroup);
         const runsNeeded = Math.ceil(groupDeficit / 40);
         const totalUnitsInPlan = runsNeeded * 40;
@@ -462,7 +489,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         items.forEach(row => {
           row.porcentajeNecesidad = totalKgGroup > 0 ? (row.totalConsumoKg / totalKgGroup) : 0;
           row.hasDeficit = totalConsumoUnGroup > totalStockUnGroup;
-          // Distribución proporcional del plan de corridas
           row.planUn = totalUnitsInPlan > 0 ? Math.ceil(totalUnitsInPlan * row.porcentajeNecesidad) : 0;
           row.planKg = row.planUn * row.peso;
           row.tProceso = ((row.looperTRolloMin || 0) * row.planUn) / 60;
@@ -474,7 +500,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     } finally { 
       setIsProcessingResumen(false); 
     }
-  }, [filteredOrders, filteredFertOrders, kpiLooperData, inventarioSAP, addNotification, extractMaterialInfo]);
+  }, [filteredOrders, filteredFertOrders, kpiLooperData, inventarioSAP, addNotification]);
 
   const handlePlanUnChange = (material: string, newValue: string) => {
     const newPlanUn = Math.max(0, parseInt(newValue) || 0);
@@ -577,9 +603,132 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     setSelectedDates(next);
   };
 
-  if (!mounted) {
-    return <div className="p-4 md:p-6 min-h-screen bg-white" />;
-  }
+  const renderTopConsolidation = () => {
+    return (
+      <div className="bg-white border rounded-lg shadow-sm overflow-hidden mb-8 font-sans">
+        <table className="w-full border-collapse text-[10px] uppercase font-bold text-slate-700">
+          <thead>
+            <tr className="bg-gray-100 border-b">
+              <th className="px-4 py-3 text-left border-r w-1/5">Demanda Consolidada (Kg)</th>
+              <th className="px-4 py-3 text-left border-r w-1/5">Demanda Consolidada (Un)</th>
+              <th className="px-4 py-3 border-r w-1/5">Rollos Requeridos (Plan)</th>
+              <th className="px-4 py-3 border-r w-1/5">TURNO</th>
+              <th className="px-4 py-3 w-1/5">PERSONAL</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {/* Fila Prov / DIA */}
+            <tr>
+              <td className="px-4 py-3 border-r">
+                <span className="text-red-500">Prov: {totalsUnified.kg.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+              </td>
+              <td className="px-4 py-3 border-r">
+                <span className="text-red-500">Prov: {Math.round(totalsUnified.rollos).toLocaleString()}</span>
+              </td>
+              <td rowSpan={2} className="px-4 py-3 border-r text-center align-middle">
+                <span className="text-3xl font-black text-yellow-500">{Math.round(totalsUnified.planUn).toLocaleString()}</span>
+              </td>
+              <td rowSpan={4} className="px-4 py-3 border-r text-center align-middle">
+                <div className="flex flex-col gap-4">
+                  <div className="space-y-2">
+                    <p className="text-[9px] text-slate-400">DIA</p>
+                    <select 
+                      value={selectedDiaShift} 
+                      onChange={(e) => setSelectedDiaShift(e.target.value)}
+                      className="w-full bg-slate-50 border rounded p-1 text-[10px]"
+                    >
+                      {diaShiftOptions.map(o => <option key={o.v} value={o.v}>{o.v} = "{o.l}"</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-[9px] text-slate-400">NOCHE</p>
+                    <select 
+                      value={selectedNocheShift} 
+                      onChange={(e) => setSelectedNocheShift(e.target.value)}
+                      className="w-full bg-slate-50 border rounded p-1 text-[10px]"
+                    >
+                      {nocheShiftOptions.map(o => <option key={o.v} value={o.v}>{o.v} = "{o.l}"</option>)}
+                    </select>
+                  </div>
+                </div>
+              </td>
+              <td className="px-4 py-2 border-b">
+                <p className="text-[8px] text-slate-400 mb-1">DIA - OP1</p>
+                <select 
+                  value={assignedPersonnel.dia.op1} 
+                  onChange={(e) => setAssignedPersonnel(p => ({ ...p, dia: { ...p.dia, op1: e.target.value } }))}
+                  className="w-full border-none bg-transparent outline-none text-indigo-600 font-black"
+                >
+                  <option value="">SELECCIONAR OP1</option>
+                  {looperOperators.map((op, idx) => <option key={idx} value={op.NOMBRE}>{op.NOMBRE}</option>)}
+                </select>
+              </td>
+            </tr>
+            {/* Fila Halb / NOCHE */}
+            <tr>
+              <td className="px-4 py-3 border-r">
+                <span className="text-indigo-500">Halb: {totalsUnified.kgHalb.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+              </td>
+              <td className="px-4 py-3 border-r">
+                <span className="text-indigo-500">Halb: {Math.round(totalsUnified.rollosHalb).toLocaleString()}</span>
+              </td>
+              {/* Rollos Requeridos ocupado por rowSpan */}
+              <td className="px-4 py-2 border-b">
+                <p className="text-[8px] text-slate-400 mb-1">NOCHE - OP1</p>
+                <select 
+                  value={assignedPersonnel.noche.op1} 
+                  onChange={(e) => setAssignedPersonnel(p => ({ ...p, noche: { ...p.noche, op1: e.target.value } }))}
+                  className="w-full border-none bg-transparent outline-none text-indigo-600 font-black"
+                >
+                  <option value="">SELECCIONAR OP1</option>
+                  {looperOperators.map((op, idx) => <option key={idx} value={op.NOMBRE}>{op.NOMBRE}</option>)}
+                </select>
+              </td>
+            </tr>
+            {/* Fila Tiempo Total / OP2 DIA */}
+            <tr>
+              <td className="px-4 py-3 border-r"></td>
+              <td className="px-4 py-3 border-r"></td>
+              <td className="px-4 py-3 border-r text-right bg-slate-50/50">
+                <span className="text-[9px] text-slate-400 block">Tiempo Total (H)</span>
+                <span className="text-xl font-black text-emerald-600">{totalsUnified.tProceso.toFixed(1)}</span>
+              </td>
+              <td className="px-4 py-2 border-b">
+                <p className="text-[8px] text-slate-400 mb-1">DIA - OP2</p>
+                <select 
+                  value={assignedPersonnel.dia.op2} 
+                  onChange={(e) => setAssignedPersonnel(p => ({ ...p, dia: { ...p.dia, op2: e.target.value } }))}
+                  className="w-full border-none bg-transparent outline-none text-indigo-600 font-black"
+                >
+                  <option value="">SELECCIONAR OP2</option>
+                  {looperOperators.map((op, idx) => <option key={idx} value={op.NOMBRE}>{op.NOMBRE}</option>)}
+                </select>
+              </td>
+            </tr>
+            {/* Fila Total / OP2 NOCHE */}
+            <tr className="bg-gray-50/50 font-black">
+              <td className="px-4 py-3 border-r text-slate-400">Total: {totalsUnified.totalKg.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+              <td className="px-4 py-3 border-r text-slate-400">Total: {Math.round(totalsUnified.totalRollos).toLocaleString()}</td>
+              <td className="px-4 py-3 border-r"></td>
+              <td className="px-4 py-2">
+                <p className="text-[8px] text-slate-400 mb-1">NOCHE - OP2</p>
+                <select 
+                  value={assignedPersonnel.noche.op2} 
+                  onChange={(e) => setAssignedPersonnel(p => ({ ...p, noche: { ...p.noche, op2: e.target.value } }))}
+                  className="w-full border-none bg-transparent outline-none text-indigo-600 font-black"
+                >
+                  <option value="">SELECCIONAR OP2</option>
+                  {looperOperators.map((op, idx) => <option key={idx} value={op.NOMBRE}>{op.NOMBRE}</option>)}
+                </select>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
+  if (!mounted) return null;
 
   return (
     <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
@@ -656,36 +805,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         </TabsList>
 
         <TabsContent value="resumen" className="space-y-6 animate-in fade-in duration-300">
-           <div className="flex items-center gap-8 bg-[#1e293b] p-6 rounded-[2.5rem] border border-white/5 shadow-2xl text-white">
-             <div className="flex items-start gap-8 flex-1">
-                <div className="flex flex-col gap-1 border-r border-white/10 pr-8 text-left min-w-[200px]">
-                   <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Demanda Consolidada (KG)</span>
-                   <div className="flex flex-col gap-1 mt-2">
-                     <p className="text-xl font-black font-mono text-[#f87171] tracking-tighter">Prov: {totalsUnified.kg.toLocaleString()}</p>
-                     <p className="text-xl font-black font-mono text-indigo-400 tracking-tighter">Halb: {totalsUnified.kgHalb.toLocaleString()}</p>
-                     <p className="text-sm font-black font-mono text-slate-300 border-t border-white/10 mt-1 pt-1">Total: {totalsUnified.totalKg.toLocaleString()}</p>
-                   </div>
-                </div>
-
-                <div className="flex flex-col gap-4 border-r border-white/10 pr-8 text-right min-w-[200px]">
-                   <div>
-                     <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Rollos Requeridos (Plan)</span>
-                     <p className="text-2xl font-black font-mono text-[#facc15] tracking-tighter">
-                       {Math.round(totalsUnified.planUn).toLocaleString()}
-                     </p>
-                   </div>
-                </div>
-
-                <div className="flex flex-col gap-4 text-right min-w-[180px]">
-                   <div>
-                     <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Tiempo Total (H)</span>
-                     <p className="text-xl font-black font-mono text-emerald-400 tracking-tighter">
-                       {totalsUnified.tProceso.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
-                     </p>
-                   </div>
-                </div>
-             </div>
-           </div>
+           {/* NUEVO DASHBOARD SUPERIOR REESTRUCTURADO */}
+           {renderTopConsolidation()}
 
           <div className="border-2 border-gray-100 rounded-[2.5rem] shadow-2xl overflow-hidden bg-white mt-8">
             <div className="overflow-x-auto max-h-[600px] relative">
@@ -728,7 +849,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   ) : (
                     groupedNeeds.map((group) => {
                       const groupKey = `${group.apertura}|${group.densidad}`;
-                      const isExpanded = expandedGroups.has(groupKey);
+                      const isExp = expandedGroups.has(groupKey);
                       return (
                         <React.Fragment key={groupKey}>
                           <tr 
@@ -739,7 +860,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                             onClick={() => toggleGroup(groupKey)}
                           >
                             <td className="px-4 py-4 flex items-center gap-2 text-left">
-                               {isExpanded ? <Minus className="w-3 h-3 text-red-500" /> : <Plus className="w-3 h-3 text-indigo-500" />}
+                               {isExp ? <Minus className="w-3 h-3 text-red-500" /> : <Plus className="w-3 h-3 text-indigo-500" />}
                                <span className="font-black text-[10px] uppercase tracking-widest opacity-70">Corrida {group.apertura} - D{group.densidad}</span>
                             </td>
                             <td className="px-6 py-4 text-left text-indigo-900 font-black uppercase">Subtotal Corrida</td>
@@ -765,7 +886,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                             <td className="px-4 py-4 text-right font-mono font-black text-red-900 bg-[#fee2e2]/50">{group.totalPlanKg.toLocaleString()}</td>
                             <td className="px-4 py-4 text-right font-mono font-black text-indigo-900 bg-indigo-100/50">{formatNum(group.totalTProceso, 1)}</td>
                           </tr>
-                          {isExpanded && group.items.map((item, iIdx) => (
+                          {isExp && group.items.map((item, iIdx) => (
                             <tr key={`${groupKey}-${iIdx}`} className="bg-white hover:bg-blue-50/10 transition-colors">
                               <td className="px-4 py-3 border-r border-gray-100 font-mono text-indigo-600 text-left pl-8">{item.material}</td>
                               <td className="px-6 py-3 border-r border-gray-100 text-left text-gray-400 uppercase leading-tight italic text-[10px] truncate max-w-[250px]">{item.descripcion}</td>
