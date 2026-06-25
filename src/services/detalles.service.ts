@@ -3,7 +3,7 @@ import type { BodyResponse } from "@/types/body-response";
 import { environment } from "@/environments/environments.prod";
 import { Detalles } from "../types/interfaces";
 
-const API_URL = `${environment.apiURL}/Detalles`;
+const API_URL = `${environment.apiURL}/detalles`;
 
 export const detallesService = {
   async getAll(): Promise<BodyListResponse<Detalles>> {

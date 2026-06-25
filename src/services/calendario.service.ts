@@ -3,7 +3,7 @@ import type { BodyResponse } from "@/types/body-response";
 import { environment } from "@/environments/environments.prod";
 import { Calendario } from "../types/interfaces";
 
-const API_URL = `${environment.apiURL}/Calendario`;
+const API_URL = `${environment.apiURL}/calendario`;
 
 export const calendarioService = {
   async getAll(): Promise<BodyListResponse<Calendario>> {
