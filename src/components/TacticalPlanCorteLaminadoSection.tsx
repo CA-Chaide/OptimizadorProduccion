@@ -169,14 +169,14 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   
   const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set());
-  const [viewDate, setViewDate] = useState<Date>(new Date(2025, 0, 1)); // Fecha fija para evitar error hidratación
+  const [viewDate, setViewDate] = useState<Date>(new Date(2025, 0, 1)); 
   
   const [unifiedNeeds, setUnifiedNeeds] = useState<UnifiedNeedRow[]>([]);
   const [isProcessingResumen, setIsProcessingResumen] = useState(false);
   const [resumenProgress, setResumenProgress] = useState({ current: 0, total: 0 });
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
-  // --- Estados de Gestión de Turnos y Personal ---
+  // --- Turnos y Personal (Nuevo Dashboard) ---
   const [selectedDiaShift, setSelectedDiaShift] = useState('H1');
   const [selectedNocheShift, setSelectedNocheShift] = useState('H1');
   const [assignedPersonnel, setAssignedPersonnel] = useState({
@@ -186,15 +186,15 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [looperOperators, setLooperOperators] = useState<any[]>([]);
 
   const diaShiftOptions = [
-    { v: 'H1', l: '07:00 - 15:45' },
-    { v: 'H2', l: '07:00 - 17:00' },
-    { v: 'H3', l: '07:00 - 18:00' },
-    { v: 'H4', l: '07:00 - 19:00' }
+    { v: 'H1', l: '07:00 - 15:45', h: 8.75 },
+    { v: 'H2', l: '07:00 - 17:00', h: 10 },
+    { v: 'H3', l: '07:00 - 18:00', h: 11 },
+    { v: 'H4', l: '07:00 - 19:00', h: 12 }
   ];
 
   const nocheShiftOptions = [
-    { v: 'H1', l: '21:00 - 05:30' },
-    { v: 'H2', l: '19:00 - 05:00' }
+    { v: 'H1', l: '21:00 - 05:30', h: 8.5 },
+    { v: 'H2', l: '19:00 - 05:00', h: 10 }
   ];
 
   const extractMaterialInfo = useCallback((item: any) => {
@@ -499,7 +499,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     } finally { 
       setIsProcessingResumen(false); 
     }
-  }, [filteredOrders, filteredFertOrders, kpiLooperData, inventarioSAP, addNotification]);
+  }, [filteredOrders, filteredFertOrders, kpiLooperData, inventarioSAP, addNotification, extractMaterialInfo]);
 
   const handlePlanUnChange = (material: string, newValue: string) => {
     const newPlanUn = Math.max(0, parseInt(newValue) || 0);
@@ -602,119 +602,148 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     setSelectedDates(next);
   };
 
+  // --- Lógica de Dashboard y Eficiencia (NUEVA ESTRUCTURA) ---
+  const tDisponible = useMemo(() => {
+    const diaH = diaShiftOptions.find(o => o.v === selectedDiaShift)?.h || 0;
+    const nocheH = nocheShiftOptions.find(o => o.v === selectedNocheShift)?.h || 0;
+    return (diaH + nocheH) * 0.87;
+  }, [selectedDiaShift, selectedNocheShift]);
+
+  const ocupacionPorc = useMemo(() => {
+    if (totalsUnified.tProceso <= 0) return 0;
+    return (tDisponible / totalsUnified.tProceso) * 100;
+  }, [tDisponible, totalsUnified.tProceso]);
+
   const renderTopConsolidation = () => {
     return (
-      <div className="bg-white border rounded-lg shadow-sm overflow-hidden mb-8 font-sans">
-        <table className="w-full border-collapse text-[10px] uppercase font-bold text-slate-700">
+      <div className="bg-[#1e293b] border-2 border-slate-700 rounded-lg shadow-2xl overflow-hidden mb-8 font-sans">
+        <table className="w-full border-collapse text-[11px] uppercase font-bold text-slate-300">
           <thead>
-            <tr className="bg-gray-100 border-b">
-              <th className="px-4 py-3 text-left border-r w-1/5">Demanda Consolidada (Kg)</th>
-              <th className="px-4 py-3 text-left border-r w-1/5">Demanda Consolidada (Un)</th>
-              <th className="px-4 py-3 border-r w-1/5">Rollos Requeridos (Plan)</th>
-              <th className="px-4 py-3 border-r w-1/5">TURNO</th>
-              <th className="px-4 py-3 w-1/5">PERSONAL</th>
+            <tr className="bg-slate-800/50 border-b border-slate-700">
+              <th className="px-4 py-3 text-center border-r border-slate-700 w-[15%]">Demanda Consolidada (Kg)</th>
+              <th className="px-4 py-3 text-center border-r border-slate-700 w-[15%]">Demanda Consolidada (Un)</th>
+              <th className="px-4 py-3 text-center border-r border-slate-700 w-[14%]">Rollos Requeridos (Plan)</th>
+              <th className="px-4 py-3 text-center border-r border-slate-700 w-[14%]">TIEMPO DISPONIBLE (H)</th>
+              <th className="px-4 py-3 text-center border-r border-slate-700 w-[14%]">TURNO</th>
+              <th className="px-4 py-3 text-center w-[28%]">PERSONAL</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-slate-700">
             <tr>
-              <td className="px-4 py-3 border-r">
-                <span className="text-red-500">Prov: {totalsUnified.kg.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+              <td className="px-4 py-2 border-r border-slate-700">
+                <span className="text-red-400">Prov: {totalsUnified.kg.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
               </td>
-              <td className="px-4 py-3 border-r">
-                <span className="text-red-500">Prov: {Math.round(totalsUnified.rollos).toLocaleString()}</span>
+              <td className="px-4 py-2 border-r border-slate-700">
+                <span className="text-red-400">Prov: {Math.round(totalsUnified.rollos).toLocaleString()}</span>
               </td>
-              <td rowSpan={2} className="px-4 py-3 border-r text-center align-middle">
-                <span className="text-3xl font-black text-yellow-500">{Math.round(totalsUnified.planUn).toLocaleString()}</span>
+              <td rowSpan={1} className="px-4 py-4 border-r border-slate-700 text-center align-middle bg-black/10">
+                <span className="text-4xl font-black text-yellow-400">{Math.round(totalsUnified.planUn).toLocaleString()}</span>
               </td>
-              <td rowSpan={4} className="px-4 py-3 border-r text-center align-middle">
-                <div className="flex flex-col gap-4">
-                  <div className="space-y-2">
-                    <p className="text-[9px] text-slate-400">DIA</p>
+              <td rowSpan={1} className="px-4 py-4 border-r border-slate-700 text-center align-middle bg-black/20">
+                <span className="text-3xl font-black text-yellow-400">{(tDisponible).toFixed(2)}</span>
+              </td>
+              <td rowSpan={3} className="px-4 py-3 border-r border-slate-700 text-center align-middle bg-slate-800/20">
+                <div className="flex flex-col gap-5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-yellow-500 font-black text-xs">DIA</span>
                     <select 
                       value={selectedDiaShift} 
                       onChange={(e) => setSelectedDiaShift(e.target.value)}
-                      className="w-full bg-slate-50 border rounded p-1 text-[10px]"
+                      className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[11px] text-yellow-500 outline-none w-16"
                     >
-                      {diaShiftOptions.map(o => <option key={o.v} value={o.v}>{o.v} = "{o.l}"</option>)}
+                      {diaShiftOptions.map(o => <option key={o.v} value={o.v}>{o.v}</option>)}
                     </select>
                   </div>
-                  <div className="space-y-2">
-                    <p className="text-[9px] text-slate-400">NOCHE</p>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-yellow-500 font-black text-xs">NOCHE</span>
                     <select 
                       value={selectedNocheShift} 
                       onChange={(e) => setSelectedNocheShift(e.target.value)}
-                      className="w-full bg-slate-50 border rounded p-1 text-[10px]"
+                      className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[11px] text-yellow-500 outline-none w-16"
                     >
-                      {nocheShiftOptions.map(o => <option key={o.v} value={o.v}>{o.v} = "{o.l}"</option>)}
+                      {nocheShiftOptions.map(o => <option key={o.v} value={o.v}>{o.v}</option>)}
                     </select>
                   </div>
                 </div>
               </td>
-              <td className="px-4 py-2 border-b">
-                <p className="text-[8px] text-slate-400 mb-1">DIA - OP1</p>
-                <select 
-                  value={assignedPersonnel.dia.op1} 
-                  onChange={(e) => setAssignedPersonnel(p => ({ ...p, dia: { ...p.dia, op1: e.target.value } }))}
-                  className="w-full border-none bg-transparent outline-none text-indigo-600 font-black"
-                >
-                  <option value="">SELECCIONAR OP1</option>
-                  {looperOperators.map((op, idx) => <option key={idx} value={op.NOMBRE}>{op.NOMBRE}</option>)}
-                </select>
+              <td className="px-4 py-3 border-b border-slate-700 bg-slate-800/40">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <p className="text-[9px] text-slate-500">OP1</p>
+                    <select 
+                      value={assignedPersonnel.dia.op1} 
+                      onChange={(e) => setAssignedPersonnel(p => ({ ...p, dia: { ...p.dia, op1: e.target.value } }))}
+                      className="w-full bg-transparent border-none outline-none text-yellow-500 font-black text-xs"
+                    >
+                      <option value="">—</option>
+                      {looperOperators.map((op, idx) => <option key={idx} value={op.NOMBRE}>{op.NOMBRE}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[9px] text-slate-500">OP2 AYUD</p>
+                    <select 
+                      value={assignedPersonnel.dia.op2} 
+                      onChange={(e) => setAssignedPersonnel(p => ({ ...p, dia: { ...p.dia, op2: e.target.value } }))}
+                      className="w-full bg-transparent border-none outline-none text-yellow-500 font-black text-xs"
+                    >
+                      <option value="">—</option>
+                      {looperOperators.map((op, idx) => <option key={idx} value={op.NOMBRE}>{op.NOMBRE}</option>)}
+                    </select>
+                  </div>
+                </div>
               </td>
             </tr>
             <tr>
-              <td className="px-4 py-3 border-r">
-                <span className="text-indigo-500">Halb: {totalsUnified.kgHalb.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+              <td className="px-4 py-2 border-r border-slate-700">
+                <span className="text-blue-400">Halb: {totalsUnified.kgHalb.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
               </td>
-              <td className="px-4 py-3 border-r">
-                <span className="text-indigo-500">Halb: {Math.round(totalsUnified.rollosHalb).toLocaleString()}</span>
+              <td className="px-4 py-2 border-r border-slate-700">
+                <span className="text-blue-400">Halb: {Math.round(totalsUnified.rollosHalb).toLocaleString()}</span>
               </td>
-              <td className="px-4 py-2 border-b">
-                <p className="text-[8px] text-slate-400 mb-1">NOCHE - OP1</p>
-                <select 
-                  value={assignedPersonnel.noche.op1} 
-                  onChange={(e) => setAssignedPersonnel(p => ({ ...p, noche: { ...p.noche, op1: e.target.value } }))}
-                  className="w-full border-none bg-transparent outline-none text-indigo-600 font-black"
-                >
-                  <option value="">SELECCIONAR OP1</option>
-                  {looperOperators.map((op, idx) => <option key={idx} value={op.NOMBRE}>{op.NOMBRE}</option>)}
-                </select>
+              <td className="px-4 py-3 border-r border-slate-700 bg-slate-800/20">
+                <p className="text-[9px] text-slate-500 mb-1">Tiempo Operativo (H)</p>
+                <span className="text-2xl font-black text-emerald-400">{totalsUnified.tProceso.toFixed(2)}</span>
+              </td>
+              <td className="px-4 py-3 border-r border-slate-700 bg-slate-800/30">
+                <p className="text-[9px] text-slate-500 mb-1">OCUPACION</p>
+                <div className="flex flex-col items-center">
+                  <span className="text-emerald-400 font-black text-lg">{ocupacionPorc.toFixed(1)}%</span>
+                  <p className="text-[8px] text-emerald-500/50 mt-1">% = T Disponible / T operativo</p>
+                </div>
+              </td>
+              <td className="px-4 py-3 bg-slate-800/40">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <p className="text-[9px] text-slate-500">OP1</p>
+                    <select 
+                      value={assignedPersonnel.noche.op1} 
+                      onChange={(e) => setAssignedPersonnel(p => ({ ...p, noche: { ...p.noche, op1: e.target.value } }))}
+                      className="w-full bg-transparent border-none outline-none text-yellow-500 font-black text-xs"
+                    >
+                      <option value="">—</option>
+                      {looperOperators.map((op, idx) => <option key={idx} value={op.NOMBRE}>{op.NOMBRE}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[9px] text-slate-500">OP2 AYUD</p>
+                    <select 
+                      value={assignedPersonnel.noche.op2} 
+                      onChange={(e) => setAssignedPersonnel(p => ({ ...p, noche: { ...p.noche, op2: e.target.value } }))}
+                      className="w-full bg-transparent border-none outline-none text-yellow-500 font-black text-xs"
+                    >
+                      <option value="">—</option>
+                      {looperOperators.map((op, idx) => <option key={idx} value={op.NOMBRE}>{op.NOMBRE}</option>)}
+                    </select>
+                  </div>
+                </div>
               </td>
             </tr>
-            <tr>
-              <td className="px-4 py-3 border-r"></td>
-              <td className="px-4 py-3 border-r"></td>
-              <td className="px-4 py-3 border-r text-right bg-slate-50/50">
-                <span className="text-[9px] text-slate-400 block">Tiempo Total (H)</span>
-                <span className="text-xl font-black text-emerald-600">{totalsUnified.tProceso.toFixed(1)}</span>
-              </td>
-              <td className="px-4 py-2 border-b">
-                <p className="text-[8px] text-slate-400 mb-1">DIA - OP2</p>
-                <select 
-                  value={assignedPersonnel.dia.op2} 
-                  onChange={(e) => setAssignedPersonnel(p => ({ ...p, dia: { ...p.dia, op2: e.target.value } }))}
-                  className="w-full border-none bg-transparent outline-none text-indigo-600 font-black"
-                >
-                  <option value="">SELECCIONAR OP2</option>
-                  {looperOperators.map((op, idx) => <option key={idx} value={op.NOMBRE}>{op.NOMBRE}</option>)}
-                </select>
-              </td>
-            </tr>
-            <tr className="bg-gray-50/50 font-black">
-              <td className="px-4 py-3 border-r text-slate-400">Total: {totalsUnified.totalKg.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-              <td className="px-4 py-3 border-r text-slate-400">Total: {Math.round(totalsUnified.totalRollos).toLocaleString()}</td>
-              <td className="px-4 py-3 border-r"></td>
-              <td className="px-4 py-2">
-                <p className="text-[8px] text-slate-400 mb-1">NOCHE - OP2</p>
-                <select 
-                  value={assignedPersonnel.noche.op2} 
-                  onChange={(e) => setAssignedPersonnel(p => ({ ...p, noche: { ...p.noche, op2: e.target.value } }))}
-                  className="w-full border-none bg-transparent outline-none text-indigo-600 font-black"
-                >
-                  <option value="">SELECCIONAR OP2</option>
-                  {looperOperators.map((op, idx) => <option key={idx} value={op.NOMBRE}>{op.NOMBRE}</option>)}
-                </select>
-              </td>
+            <tr className="bg-slate-900/50">
+              <td className="px-4 py-3 border-r border-slate-700 font-black text-white">Total: {totalsUnified.totalKg.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+              <td className="px-4 py-3 border-r border-slate-700 font-black text-white">Total: {Math.round(totalsUnified.totalRollos).toLocaleString()}</td>
+              <td className="px-4 py-3 border-r border-slate-700"></td>
+              <td className="px-4 py-3 border-r border-slate-700"></td>
+              <td className="px-4 py-3"></td>
             </tr>
           </tbody>
         </table>
@@ -802,7 +831,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
            {renderTopConsolidation()}
 
           <div className="border-2 border-gray-100 rounded-[2.5rem] shadow-2xl overflow-hidden bg-white mt-8">
-            <div className="overflow-x-auto max-h-[600px] relative">
+            <div className="overflow-x-auto max-h-[600px] relative text-left">
               <table className="w-full border-collapse font-sans text-[11px] text-center">
                 <thead className="sticky top-0 z-20">
                   <tr className="bg-[#ffff00] text-black uppercase font-black tracking-tighter text-[10px] border-b-2 border-black/10">
@@ -1079,7 +1108,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             </div>
           </div>
           <Card className="rounded-3xl border border-blue-100 shadow-xl overflow-hidden bg-white">
-            <div className="overflow-x-auto max-h-[600px] relative">
+            <div className="overflow-x-auto max-h-[600px] relative text-center">
               <table className="w-full border-collapse text-center font-sans text-[10px]">
                 <thead className="bg-[#1e293b] text-white border-b border-gray-100 uppercase font-black tracking-widest text-[8px] sticky top-0 z-10">
                   <tr>
