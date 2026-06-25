@@ -169,7 +169,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   
   const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set());
-  const [viewDate, setViewDate] = useState<Date>(new Date()); 
+  const [viewDate, setViewDate] = useState<Date>(new Date(2025, 0, 1)); // Fecha fija para evitar error hidratación
   
   const [unifiedNeeds, setUnifiedNeeds] = useState<UnifiedNeedRow[]>([]);
   const [isProcessingResumen, setIsProcessingResumen] = useState(false);
@@ -197,13 +197,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     { v: 'H2', l: '19:00 - 05:00' }
   ];
 
-  useEffect(() => {
-    setMounted(true);
-    const today = new Date();
-    setViewDate(today);
-    setSelectedDates(new Set([format(today, 'yyyy-MM-dd')]));
-  }, []);
-
   const extractMaterialInfo = useCallback((item: any) => {
     const matStr = getProp(item, ['MATERIAL', 'Material', 'CodMaterial', 'MATERIAL_ID', 'CODIGO']);
     const nameStr = getProp(item, ['NOMBRE', 'NombreMaterial', 'Descripcion', 'NomMaterial', 'DESCRIPCION']);
@@ -214,6 +207,13 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     const desc = nameStr || matStr.replace(/^\d+\s*/, '') || '—';
 
     return { code, desc, categoria: catStr };
+  }, []);
+
+  useEffect(() => {
+    setMounted(true);
+    const today = new Date();
+    setViewDate(today);
+    setSelectedDates(new Set([format(today, 'yyyy-MM-dd')]));
   }, []);
 
   const datesWithOrders = useMemo(() => {
@@ -266,7 +266,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       setKpiLooperData(kpiLooper?.data || []);
       setInventarioSAP(Array.isArray(invSAP?.data) ? invSAP.data : []);
 
-      // Filtrar operadores calificados para LOOPER
       const skillsArray = Array.isArray(skills.data) ? skills.data : (Array.isArray(skills) ? skills : []);
       const filteredOps = skillsArray.filter((op: any) => 
         String(op.ESTACION || '').toUpperCase().includes('LOOPER') || 
@@ -617,7 +616,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {/* Fila Prov / DIA */}
             <tr>
               <td className="px-4 py-3 border-r">
                 <span className="text-red-500">Prov: {totalsUnified.kg.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
@@ -664,7 +662,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 </select>
               </td>
             </tr>
-            {/* Fila Halb / NOCHE */}
             <tr>
               <td className="px-4 py-3 border-r">
                 <span className="text-indigo-500">Halb: {totalsUnified.kgHalb.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
@@ -672,7 +669,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               <td className="px-4 py-3 border-r">
                 <span className="text-indigo-500">Halb: {Math.round(totalsUnified.rollosHalb).toLocaleString()}</span>
               </td>
-              {/* Rollos Requeridos ocupado por rowSpan */}
               <td className="px-4 py-2 border-b">
                 <p className="text-[8px] text-slate-400 mb-1">NOCHE - OP1</p>
                 <select 
@@ -685,7 +681,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 </select>
               </td>
             </tr>
-            {/* Fila Tiempo Total / OP2 DIA */}
             <tr>
               <td className="px-4 py-3 border-r"></td>
               <td className="px-4 py-3 border-r"></td>
@@ -705,7 +700,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 </select>
               </td>
             </tr>
-            {/* Fila Total / OP2 NOCHE */}
             <tr className="bg-gray-50/50 font-black">
               <td className="px-4 py-3 border-r text-slate-400">Total: {totalsUnified.totalKg.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
               <td className="px-4 py-3 border-r text-slate-400">Total: {Math.round(totalsUnified.totalRollos).toLocaleString()}</td>
@@ -728,7 +722,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     );
   };
 
-  if (!mounted) return null;
+  if (!mounted) return <div className="p-4 md:p-6 min-h-screen bg-white" />;
 
   return (
     <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
@@ -758,7 +752,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   <h3 className="text-xs font-black text-slate-800 capitalize">{viewDate ? format(viewDate, 'MMMM yyyy', { locale: es }) : '—'}</h3>
                   <div className="flex gap-1 bg-slate-50 p-1 rounded-xl">
                     <Button variant="ghost" size="icon" onClick={() => setViewDate(prev => subMonths(prev, 1))} className="h-8 w-8 hover:bg-white hover:shadow-sm"><ChevronLeft className="w-4 h-4" /></Button>
-                    <Button variant="ghost" size="icon" onClick={() => setViewDate(addMonths(viewDate, 1))} className="h-8 w-8 hover:bg-white hover:shadow-sm"><ChevronRight className="w-4 h-4" /></Button>
+                    <Button variant="ghost" size="icon" onClick={() => setViewDate(prev => addMonths(prev, 1))} className="h-8 w-8 hover:bg-white hover:shadow-sm"><ChevronRight className="w-4 h-4" /></Button>
                   </div>
                 </div>
                 <div className="grid grid-cols-7 gap-y-1.5 text-center mb-4">
@@ -805,7 +799,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         </TabsList>
 
         <TabsContent value="resumen" className="space-y-6 animate-in fade-in duration-300">
-           {/* NUEVO DASHBOARD SUPERIOR REESTRUCTURADO */}
            {renderTopConsolidation()}
 
           <div className="border-2 border-gray-100 rounded-[2.5rem] shadow-2xl overflow-hidden bg-white mt-8">
