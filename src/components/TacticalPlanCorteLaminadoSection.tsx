@@ -44,7 +44,6 @@ import type { Grupo, Restriccion } from '@/types/interfaces';
 import { cn } from '@/lib/utils';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { MaestroMaterialesExplosionSection } from './MaestroMaterialesExplosionSection';
 
 interface UnifiedNeedRow {
   material: string;
@@ -221,7 +220,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     const dates = new Set<string>();
     const allOrders = [...ordenes, ...ordenesFert];
     allOrders.forEach(o => {
-      const d = String(o.FECHAINICIO || o.FECHA || o.fecha_inicio || '').trim();
+      const d = getProp(o, ['FECHAINICIO', 'FECHA', 'fecha_inicio']).trim();
       if (d && d !== 'null') {
         const normalized = d.includes('T') ? d.split('T')[0] : d;
         dates.add(normalized);
@@ -292,13 +291,13 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       .filter(v => v !== '');
 
     return ordenes.filter(o => {
-      const centro = String(o.CENTRO || o.Centro || '').trim();
+      const centro = getProp(o, ['CENTRO', 'Centro', 'centro']).trim();
       if (centro === '2000') return false; 
-      const responsable = String(o.RESPCONTROLPROD || o.RespControlProd || o.RESP_CONTROL_PROD || '').trim();
+      const responsable = getProp(o, ['RESPCONTROLPROD', 'RespControlProd', 'RESP_CONTROL_PROD', 'RESPONSABLE']).trim();
       if (allowedResps.length > 0 && !allowedResps.includes(responsable)) return false;
       
       if (selectedDates.size > 0) {
-        const dateRaw = String(o.FECHAINICIO || o.FECHA || '').trim();
+        const dateRaw = getProp(o, ['FECHAINICIO', 'FECHA']).trim();
         const date = dateRaw.includes('T') ? dateRaw.split('T')[0] : dateRaw;
         if (!selectedDates.has(date)) return false;
       }
@@ -314,13 +313,13 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       .filter(v => v !== '');
 
     return ordenesFert.filter(o => {
-      const centro = String(o.CENTRO || o.Centro || o.centro || '').trim();
+      const centro = getProp(o, ['CENTRO', 'Centro', 'centro']).trim();
       if (centro === '2000') return false; 
-      const responsable = String(o.RESPCONTROLPROD || o.RESP_CONTROL_PROD || o.RespControlProd || o.RespControlProd || '').trim();
+      const responsable = getProp(o, ['RESP_CONTROL_PROD', 'RESPCONTROLPROD', 'RespControlProd', 'RESPONSABLE']).trim();
       if (allowedResps.length > 0 && !allowedResps.includes(responsable)) return false;
       
       if (selectedDates.size > 0) {
-        const dateRaw = String(o.FECHA || o.FECHAINICIO || '').trim();
+        const dateRaw = getProp(o, ['FECHA', 'FECHAINICIO', 'FECHA_INICIO']).trim();
         const date = dateRaw.includes('T') ? dateRaw.split('T')[0] : dateRaw;
         if (!selectedDates.has(date)) return false;
       }
@@ -337,21 +336,21 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     setIsProcessingResumen(true);
     const materialGroupsProv = new Map<string, number>();
     filteredOrders.forEach(order => {
-      const matRaw = String(order.MATERIAL || order.CodMaterial || '').trim();
+      const matRaw = getProp(order, ['MATERIAL', 'CodMaterial']).trim();
       const match = matRaw.match(/^(\d+)/);
       const matCode = match ? match[1] : matRaw;
       if (!matCode) return;
-      const orderQty = safeNum(order.CANTPROGRAMADA || order.CANTIDAD || 0);
+      const orderQty = safeNum(getProp(order, ['CANTPROGRAMADA', 'CANTIDAD']));
       materialGroupsProv.set(matCode, (materialGroupsProv.get(matCode) || 0) + orderQty);
     });
 
     const materialGroupsHalb = new Map<string, number>();
     filteredFertOrders.forEach(order => {
-      const matRaw = String(order.MATERIAL || order.CodMaterial || '').trim();
+      const matRaw = getProp(order, ['MATERIAL', 'CodMaterial']).trim();
       const match = matRaw.match(/^(\d+)/);
       const matCode = match ? match[1] : matRaw;
       if (!matCode) return;
-      const orderQty = safeNum(order.CANTPENDIENTE || order.CANTPROGRAMADA || order.CANTIDAD || 0);
+      const orderQty = safeNum(getProp(order, ['CANTPENDIENTE', 'CANTPROGRAMADA', 'CANTIDAD']));
       materialGroupsHalb.set(matCode, (materialGroupsHalb.get(matCode) || 0) + orderQty);
     });
 
@@ -627,7 +626,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               <th className="px-4 py-3 text-center w-[28%]">PERSONAL</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-700">
+          <tbody className="divide-y border-slate-700">
             <tr>
               <td className="px-4 py-2 border-r border-slate-700">
                 <div className="flex justify-between items-center text-[10px] mb-1">
@@ -824,12 +823,11 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-6 h-11 bg-gray-100/50 p-1.5 rounded-2xl border border-gray-200 mb-8">
+        <TabsList className="grid grid-cols-5 h-11 bg-gray-100/50 p-1.5 rounded-2xl border border-gray-200 mb-8">
           {[ 
             { v: 'resumen', l: 'Resumen Necesidades', i: LayoutDashboard },
             { v: 'ordenes', l: 'Órdenes Provisionales', i: Package }, 
             { v: 'ordenesFert', l: 'Órdenes FERT', i: ShoppingCart },
-            { v: 'listaMateriales', l: 'Auditoría BOM', i: ClipboardList },
             { v: 'tiempos', l: 'Procesos Looper', i: Clock },
             { v: 'inventario', l: 'Inventarios SAP', i: Database }
           ].map(tab => (
@@ -840,7 +838,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         </TabsList>
 
         <TabsContent value="resumen" className="space-y-6 animate-in fade-in duration-300">
-           {renderTopConsolidation()}
+          {renderTopConsolidation()}
 
           <div className="border-2 border-gray-100 rounded-[2.5rem] shadow-2xl overflow-hidden bg-white mt-8">
             <div className="overflow-x-auto max-h-[600px] relative text-left">
@@ -989,25 +987,25 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   ) : (
                     filteredOrders.map((o, i) => {
                       const info = extractMaterialInfo(o);
-                      const description = String(o.MATERIAL || '').replace(/^\d+\s*/, '') || o.NOMBRE || '—';
+                      const description = getProp(o, ['NOMBRE', 'MATERIAL', 'Material']).replace(/^\d+\s*/, '') || '—';
                       return (
                         <tr key={i} className="hover:bg-slate-50/50 transition-colors">
-                          <td className="px-6 py-4 font-black text-slate-800 border-r border-gray-50">{o.ORDENPREVISIONAL || '—'}</td>
-                          <td className="px-6 py-4 border-r border-gray-50 font-mono text-[9px] text-slate-400 text-center">{o.FECHAINICIO || o.FECHA || '—'}</td>
+                          <td className="px-6 py-4 font-black text-slate-800 border-r border-gray-50">{getProp(o, ['ORDENPREVISIONAL', 'ORDEN']) || '—'}</td>
+                          <td className="px-6 py-4 border-r border-gray-50 font-mono text-[9px] text-slate-400 text-center">{getProp(o, ['FECHAINICIO', 'FECHA']) || '—'}</td>
                           <td className="px-6 py-4 font-mono font-black text-red-600 border-r border-gray-50 tracking-tighter text-sm text-center">{info.code}</td>
                           <td className="px-6 py-4 text-left border-r border-gray-100 text-slate-600 font-black uppercase leading-tight max-w-[450px]">
                             {description}
                           </td>
                           <td className="px-6 py-4 font-black text-slate-900 border-r border-gray-50 font-mono text-sm text-center">
-                            {Number(o.CANTPROGRAMADA || o.CANTIDAD || o.CANT_PROG || 0).toLocaleString()}
+                            {Number(getProp(o, ['CANTPROGRAMADA', 'CANTIDAD', 'CANT_PROG']) || 0).toLocaleString()}
                           </td>
                           <td className="px-6 py-4 border-r border-gray-50 text-center">
-                            <Badge variant="outline" className="text-[10px] font-black bg-blue-50 text-blue-700 border-blue-100">{String(o.RESPCONTROLPROD || '—')}</Badge>
+                            <Badge variant="outline" className="text-[10px] font-black bg-blue-50 text-blue-700 border-blue-100">{getProp(o, ['RESPCONTROLPROD', 'RESP_CONTROL_PROD', 'RespControlProd']) || '—'}</Badge>
                           </td>
                           <td className="px-6 py-4 font-bold text-slate-400 border-r border-gray-50 text-[10px] uppercase text-center">
-                            {String(o.MAQUINA || o.RECURSO || '—')}
+                            {getProp(o, ['MAQUINA', 'RECURSO', 'ID_MAQUINA']) || '—'}
                           </td>
-                          <td className="px-6 py-4 font-bold text-slate-200 text-[10px] text-center">{o.Almacen || o.ALMACEN || '—'}</td>
+                          <td className="px-6 py-4 font-bold text-slate-200 text-[10px] text-center">{getProp(o, ['Almacen', 'ALMACEN']) || '—'}</td>
                         </tr>
                       );
                     })
@@ -1036,27 +1034,34 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-50 font-bold">
                   {filteredFertOrders.length === 0 ? (
-                    <tr><td colSpan={7} className="py-24 text-slate-300 font-black uppercase tracking-widest italic text-center">No se detectaron órdenes FERT para los criterios aplicados</td></tr>
+                    <tr><td colSpan={8} className="py-24 text-slate-300 font-black uppercase tracking-widest italic text-center">No se detectaron órdenes FERT para los criterios aplicados</td></tr>
                   ) : (
                     filteredFertOrders.map((o, i) => {
                       const info = extractMaterialInfo(o);
-                      const description = String(o.NOMBRE || o.MATERIAL || '').replace(/^\d+\s*/, '') || '—';
+                      const description = getProp(o, ['NOMBRE', 'MATERIAL', 'Material']).replace(/^\d+\s*/, '') || '—';
+                      const orderNum = getProp(o, ['ORDEN', 'ORDEN_PROCESO', 'ORDEN_FERT']) || '—';
+                      const date = getProp(o, ['FECHA', 'FECHAINICIO', 'FECHA_INICIO']);
+                      const qty = Number(getProp(o, ['CANTPENDIENTE', 'CANT_PEND', 'CANTIDAD', 'CANT_PROG']) || 0);
+                      const resp = getProp(o, ['RESP_CONTROL_PROD', 'RESPCONTROLPROD', 'RESPONSABLE']);
+                      const mach = getProp(o, ['MAQUINA', 'RECURSO', 'ID_MAQUINA']);
+                      const alm = getProp(o, ['Almacen', 'ALMACEN']);
+                      
                       return (
                         <tr key={i} className="hover:bg-indigo-50/20 transition-colors">
-                          <td className="px-6 py-4 font-black text-slate-800 border-r border-gray-50 text-center">{o.ORDEN || '—'}</td>
-                          <td className="px-6 py-4 border-r border-gray-50 font-mono text-[9px] text-slate-400 text-center">{o.FECHA || o.FECHAINICIO || '—'}</td>
+                          <td className="px-6 py-4 font-black text-slate-800 border-r border-gray-50 text-center">{orderNum}</td>
+                          <td className="px-6 py-4 border-r border-gray-50 font-mono text-[9px] text-slate-400 text-center">{date}</td>
                           <td className="px-6 py-4 font-mono font-black text-red-600 border-r border-gray-50 tracking-tighter text-sm text-center">{info.code}</td>
                           <td className="px-6 py-4 text-left border-r border-gray-100 text-slate-600 font-black uppercase leading-tight max-w-[450px]">
                             {description}
                           </td>
                           <td className="px-6 py-4 font-black text-slate-900 border-r border-gray-50 font-mono text-sm text-center">
-                            {Number(o.CANTPENDIENTE || o.CANT_PEND || o.CANTIDAD || 0).toLocaleString()}
+                            {qty.toLocaleString()}
                           </td>
                           <td className="px-6 py-4 border-r border-gray-50 text-center">
-                            <Badge variant="outline" className="text-[10px] font-black bg-indigo-50 text-indigo-700 border-indigo-100">{String(o.RESPCONTROLPROD || o.RESP_CONTROL_PROD || o.RESPCONTROLPROD || '—')}</Badge>
+                            <Badge variant="outline" className="text-[10px] font-black bg-indigo-50 text-indigo-700 border-indigo-100">{resp || '—'}</Badge>
                           </td>
-                          <td className="px-6 py-4 font-bold text-slate-400 border-r border-gray-50 text-[10px] uppercase text-center">{o.MAQUINA || o.RECURSO || '—'}</td>
-                          <td className="px-6 py-4 font-bold text-slate-200 text-[10px] text-center">{o.Almacen || o.ALMACEN || '—'}</td>
+                          <td className="px-6 py-4 font-bold text-slate-400 border-r border-gray-50 text-[10px] uppercase text-center">{mach || '—'}</td>
+                          <td className="px-6 py-4 font-bold text-slate-200 text-[10px] text-center">{alm || '—'}</td>
                         </tr>
                       );
                     })
@@ -1065,10 +1070,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               </table>
             </div>
           </div>
-        </TabsContent>
-
-        <TabsContent value="listaMateriales" className="animate-in fade-in duration-300 text-left">
-           <MaestroMaterialesExplosionSection ordenes={filteredOrders} />
         </TabsContent>
 
         <TabsContent value="tiempos" className="animate-in fade-in duration-300 space-y-4 text-left">
@@ -1138,7 +1139,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-100 text-[11px] font-black">
                   {inventarioSAP.filter(row => String(row.NOMBRE || row.DESCRIPCION || '').toUpperCase().includes('LAMINA CILINDRICA')).length === 0 ? (
-                    <tr><td colSpan={11} className="py-24 text-slate-200 font-black uppercase tracking-widest italic text-center">No hay inventario registrado en los almacenes configurados</td></tr>
+                    <tr><td colSpan={10} className="py-24 text-slate-200 font-black uppercase tracking-widest italic text-center">No hay inventario registrado en los almacenes configurados</td></tr>
                   ) : (
                     inventarioSAP.filter(row => String(row.NOMBRE || row.DESCRIPCION || '').toUpperCase().includes('LAMINA CILINDRICA')).map((row, i) => (
                       <tr key={i} className="hover:bg-blue-50/10 transition-colors">
