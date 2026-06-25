@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -19,7 +20,9 @@ import {
   Info,
   ShoppingCart,
   ChevronsLeft,
-  ChevronsRight
+  ChevronsRight,
+  Filter,
+  Activity
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -37,7 +40,7 @@ import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 import { cn } from '@/lib/utils';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, parseISO } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, parseISO, isValid } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 interface UnifiedNeedRow {
@@ -581,7 +584,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       tProceso: acc.tProceso + row.tProceso
     }), { kg: 0, kgHalb: 0, totalKg: 0, un: 0, rollos: 0, rollosHalb: 0, totalRollos: 0, planUn: 0, planKg: 0, stock1006: 0, stock1008: 0, stock1015: 0, stockUN1006: 0, stockUN1008: 0, stockUN1015: 0, totalStockKg: 0, totalStockUN: 0, tProceso: 0 });
 
-    // Cálculo dinámico de corridas excluyendo materiales CONV
     const looperRuns = groupedNeeds.reduce((acc, group) => {
       const nonConvUnits = group.items
         .filter(it => !it.descripcion.toUpperCase().includes('CONV'))
@@ -796,6 +798,12 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             </Button>
 
            <Popover>
+            <PopoverTrigger asChild>
+              <button className="h-10 px-5 rounded-2xl border border-gray-200 bg-white hover:border-red-500/50 flex items-center gap-3 font-black text-[11px] uppercase shadow-sm transition-all">
+                <Filter className="w-4 h-4 text-red-500" /> 
+                {selectedDates.size === 0 ? 'Plan Maestro' : `${selectedDates.size} días seleccionados`}
+              </button>
+            </PopoverTrigger>
             <PopoverContent className="w-[260px] p-0 border-none shadow-2xl rounded-2xl overflow-hidden mt-3" align="end">
               <div className="bg-white p-5 font-sans text-left">
                 <div className="flex items-center justify-between mb-5">
@@ -822,12 +830,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 <Button variant="ghost" size="sm" className="w-full text-[10px] font-black uppercase text-red-600 h-9 mt-1 rounded-xl hover:bg-red-50 tracking-widest" onClick={() => setSelectedDates(new Set())}>Ver Todo el Plan</Button>
               </div>
             </PopoverContent>
-            <PopoverTrigger asChild>
-              <button className="h-10 px-5 rounded-2xl border border-gray-200 bg-white hover:border-red-500/50 flex items-center gap-3 font-black text-[11px] uppercase shadow-sm transition-all">
-                <Filter className="w-4 h-4 text-red-500" /> 
-                {selectedDates.size === 0 ? 'Plan Maestro' : `${selectedDates.size} días seleccionados`}
-              </button>
-            </PopoverTrigger>
           </Popover>
         </div>
       </div>
