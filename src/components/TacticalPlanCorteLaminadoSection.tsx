@@ -7,11 +7,7 @@ import {
   Loader2, 
   Clock, 
   LayoutDashboard, 
-  ClipboardList, 
-  Filter,
-  Activity,
-  PlayCircle,
-  RefreshCw,
+  RefreshCw, 
   Database,
   ChevronLeft,
   ChevronRight,
@@ -23,8 +19,7 @@ import {
   Info,
   ShoppingCart,
   ChevronsLeft,
-  ChevronsRight,
-  Users
+  ChevronsRight
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -565,7 +560,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   }, [unifiedNeeds]);
 
   const totalsUnified = useMemo(() => {
-    return unifiedNeeds.reduce((acc, row) => ({
+    const base = unifiedNeeds.reduce((acc, row) => ({
       kg: acc.kg + row.consumoKg,
       kgHalb: acc.kgHalb + row.consumoKgHalb,
       totalKg: acc.totalKg + row.totalConsumoKg,
@@ -585,7 +580,18 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       totalStockUN: acc.totalStockUN + row.totalStockUN,
       tProceso: acc.tProceso + row.tProceso
     }), { kg: 0, kgHalb: 0, totalKg: 0, un: 0, rollos: 0, rollosHalb: 0, totalRollos: 0, planUn: 0, planKg: 0, stock1006: 0, stock1008: 0, stock1015: 0, stockUN1006: 0, stockUN1008: 0, stockUN1015: 0, totalStockKg: 0, totalStockUN: 0, tProceso: 0 });
-  }, [unifiedNeeds]);
+
+    // Cálculo dinámico de corridas excluyendo materiales CONV
+    const looperRuns = groupedNeeds.reduce((acc, group) => {
+      const nonConvUnits = group.items
+        .filter(it => !it.descripcion.toUpperCase().includes('CONV'))
+        .reduce((sum, it) => sum + it.planUn, 0);
+      
+      return acc + Math.ceil(nonConvUnits / 40);
+    }, 0);
+
+    return { ...base, looperRuns };
+  }, [unifiedNeeds, groupedNeeds]);
 
   const toggleGroup = (key: string) => {
     const next = new Set(expandedGroups);
@@ -620,10 +626,11 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             <tr className="bg-slate-800/50 border-b border-slate-700">
               <th className="px-4 py-3 text-center border-r border-slate-700 w-[15%]">Demanda Consolidada (Kg)</th>
               <th className="px-4 py-3 text-center border-r border-slate-700 w-[15%]">Demanda Consolidada (Un)</th>
-              <th className="px-4 py-3 text-center border-r border-slate-700 w-[14%]">Rollos Requeridos (Plan Un)</th>
-              <th className="px-4 py-3 text-center border-r border-slate-700 w-[14%]">Rollos Requeridos (Plan Kg)</th>
-              <th className="px-4 py-3 text-center border-r border-slate-700 w-[14%]">TURNO</th>
-              <th className="px-4 py-3 text-center w-[28%]">PERSONAL</th>
+              <th className="px-4 py-3 text-center border-r border-slate-700 w-[13%]">Rollos Requeridos (Plan Un)</th>
+              <th className="px-4 py-3 text-center border-r border-slate-700 w-[13%]">Rollos Requeridos (Plan Kg)</th>
+              <th className="px-4 py-3 text-center border-r border-slate-700 w-[13%] bg-cyan-900/40 text-cyan-200">NRO DE CORRIDAS LOOPER</th>
+              <th className="px-4 py-3 text-center border-r border-slate-700 w-[13%]">TURNO</th>
+              <th className="px-4 py-3 text-center w-[18%]">PERSONAL</th>
             </tr>
           </thead>
           <tbody className="divide-y border-slate-700">
@@ -661,6 +668,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               </td>
               <td className="px-4 py-4 border-r border-slate-700 text-center align-middle bg-black/20">
                 <span className="text-3xl font-black text-indigo-400">{Math.round(totalsUnified.planKg).toLocaleString()}</span>
+              </td>
+              <td className="px-4 py-4 border-r border-slate-700 text-center align-middle bg-cyan-500/10">
+                <span className="text-4xl font-black text-cyan-400">{totalsUnified.looperRuns}</span>
               </td>
               <td rowSpan={2} className="px-4 py-3 border-r border-slate-700 text-center align-middle bg-slate-800/20">
                 <div className="flex flex-col gap-6">
@@ -725,7 +735,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 <p className="text-[9px] text-slate-500 mb-1">TIEMPO OPERATIVO (H)</p>
                 <span className="text-2xl font-black text-emerald-400">{totalsUnified.tProceso.toFixed(2)}</span>
               </td>
-              <td className="px-4 py-3 border-r border-slate-700 bg-slate-800/30 text-center">
+              <td colSpan={2} className="px-4 py-3 border-r border-slate-700 bg-slate-800/30 text-center">
                 <p className="text-[9px] text-slate-500 mb-1">DISPONIBILIDAD TOTAL (H)</p>
                 <span className="text-2xl font-black text-yellow-400">{tDisponible.toFixed(2)}</span>
               </td>
@@ -1051,7 +1061,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                           <td className="px-6 py-4 font-black text-slate-800 border-r border-gray-50 text-center">{orderNum}</td>
                           <td className="px-6 py-4 border-r border-gray-50 font-mono text-[9px] text-slate-400 text-center">{date}</td>
                           <td className="px-6 py-4 font-mono font-black text-red-600 border-r border-gray-50 tracking-tighter text-sm text-center">{info.code}</td>
-                          <td className="px-6 py-4 text-left border-r border-gray-100 text-slate-600 font-black uppercase leading-tight max-w-[450px]">
+                          <td className="px-6 py-4 text-left border-r border-white/10 text-slate-600 font-black uppercase leading-tight max-w-[450px]">
                             {description}
                           </td>
                           <td className="px-6 py-4 font-black text-slate-900 border-r border-gray-50 font-mono text-sm text-center">
