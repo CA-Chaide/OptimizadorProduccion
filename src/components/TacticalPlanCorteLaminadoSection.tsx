@@ -175,7 +175,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [resumenProgress, setResumenProgress] = useState({ current: 0, total: 0 });
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
-  // --- Turnos y Personal (Nuevo Dashboard) ---
+  // --- Turnos y Personal ---
   const [selectedDiaShift, setSelectedDiaShift] = useState('H1');
   const [selectedNocheShift, setSelectedNocheShift] = useState('EMPTY');
   const [assignedPersonnel, setAssignedPersonnel] = useState({
@@ -195,7 +195,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const nocheShiftOptions = [
     { v: 'EMPTY', l: 'VACÍO', h: 0 },
     { v: 'H1', l: '21:00 - 05:30', h: 8.5 },
-    { v: 'H2', l: '19:00 - 05:00', h: 10 }
+    { v: 'H2', l: '19:00 - 05:30', h: 10.5 }
   ];
 
   const extractMaterialInfo = useCallback((item: any) => {
@@ -472,7 +472,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       
       const groupMap = new Map<string, UnifiedNeedRow[]>();
       finalArray.forEach(row => {
-        const k = `${row.apertura}|${row.dens}`;
+        const k = `${row.apertura}|${row.densidad}`;
         if(!groupMap.has(k)) groupMap.set(k, []);
         groupMap.get(k)!.push(row);
       });
@@ -625,7 +625,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               <th className="px-4 py-3 text-center border-r border-slate-700 w-[15%]">Demanda Consolidada (Kg)</th>
               <th className="px-4 py-3 text-center border-r border-slate-700 w-[15%]">Demanda Consolidada (Un)</th>
               <th className="px-4 py-3 text-center border-r border-slate-700 w-[14%]">Rollos Requeridos (Plan)</th>
-              <th className="px-4 py-3 text-center border-r border-slate-700 w-[14%]">TIEMPO DISPONIBLE (H)</th>
+              <th className="px-4 py-3 text-center border-r border-slate-700 w-[14%]">DISPONIBILIDAD TOTAL (H)</th>
               <th className="px-4 py-3 text-center border-r border-slate-700 w-[14%]">TURNO</th>
               <th className="px-4 py-3 text-center w-[28%]">PERSONAL</th>
             </tr>
@@ -1039,7 +1039,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-50 font-bold">
                   {filteredFertOrders.length === 0 ? (
-                    <tr><td colSpan={8} className="py-24 text-slate-300 font-black uppercase tracking-widest italic text-center">No se detectaron órdenes FERT para los criterios aplicados</td></tr>
+                    <tr><td colSpan={7} className="py-24 text-slate-300 font-black uppercase tracking-widest italic text-center">No se detectaron órdenes FERT para los criterios aplicados</td></tr>
                   ) : (
                     filteredFertOrders.map((o, i) => {
                       const info = extractMaterialInfo(o);
