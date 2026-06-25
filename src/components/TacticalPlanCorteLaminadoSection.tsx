@@ -1,7 +1,6 @@
-
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   Scissors, 
   Package, 
@@ -603,11 +602,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     setSelectedDates(next);
   };
 
-  // --- Lógica de Dashboard y Eficiencia ---
   const tDisponible = useMemo(() => {
     const diaH = diaShiftOptions.find(o => o.v === selectedDiaShift)?.h || 0;
     const nocheH = nocheShiftOptions.find(o => o.v === selectedNocheShift)?.h || 0;
-    // Cálculo: Suma de horas * factor de eficiencia (87%)
     return (diaH + nocheH) * 0.87;
   }, [selectedDiaShift, selectedNocheShift]);
 
@@ -624,8 +621,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             <tr className="bg-slate-800/50 border-b border-slate-700">
               <th className="px-4 py-3 text-center border-r border-slate-700 w-[15%]">Demanda Consolidada (Kg)</th>
               <th className="px-4 py-3 text-center border-r border-slate-700 w-[15%]">Demanda Consolidada (Un)</th>
-              <th className="px-4 py-3 text-center border-r border-slate-700 w-[14%]">Rollos Requeridos (Plan)</th>
-              <th className="px-4 py-3 text-center border-r border-slate-700 w-[14%]">DISPONIBILIDAD TOTAL (H)</th>
+              <th className="px-4 py-3 text-center border-r border-slate-700 w-[14%]">Rollos Requeridos (Plan Un)</th>
+              <th className="px-4 py-3 text-center border-r border-slate-700 w-[14%]">Rollos Requeridos (Plan Kg)</th>
               <th className="px-4 py-3 text-center border-r border-slate-700 w-[14%]">TURNO</th>
               <th className="px-4 py-3 text-center w-[28%]">PERSONAL</th>
             </tr>
@@ -664,7 +661,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 <span className="text-4xl font-black text-white">{Math.round(totalsUnified.planUn).toLocaleString()}</span>
               </td>
               <td className="px-4 py-4 border-r border-slate-700 text-center align-middle bg-black/20">
-                <span className="text-3xl font-black text-yellow-400">{(tDisponible).toFixed(2)}</span>
+                <span className="text-3xl font-black text-indigo-400">{Math.round(totalsUnified.planKg).toLocaleString()}</span>
               </td>
               <td rowSpan={2} className="px-4 py-3 border-r border-slate-700 text-center align-middle bg-slate-800/20">
                 <div className="flex flex-col gap-6">
@@ -719,7 +716,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             </tr>
             <tr>
               <td colSpan={2} className="px-4 py-3 border-r border-slate-700 bg-slate-900/40 text-center">
-                 <p className="text-[9px] text-slate-500 uppercase tracking-widest mb-1">Semaforo Ocupación (%)</p>
+                 <p className="text-[9px] text-slate-500 uppercase tracking-widest mb-1">Ocupación (%)</p>
                  <div className="flex items-center justify-center gap-3">
                     <div className={cn("w-3 h-3 rounded-full", ocupacionPorc > 100 ? "bg-red-500 animate-pulse" : "bg-emerald-500")} />
                     <span className={cn("text-2xl font-black", ocupacionPorc > 100 ? "text-red-400" : "text-emerald-400")}>{ocupacionPorc.toFixed(1)}%</span>
@@ -1056,7 +1053,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                             {Number(o.CANTPENDIENTE || o.CANT_PEND || o.CANTIDAD || 0).toLocaleString()}
                           </td>
                           <td className="px-6 py-4 border-r border-gray-50 text-center">
-                            <Badge variant="outline" className="text-[10px] font-black bg-indigo-50 text-indigo-700 border-indigo-100">{String(o.RESPCTRLPROD || o.RESP_CONTROL_PROD || o.RESPCONTROLPROD || '—')}</Badge>
+                            <Badge variant="outline" className="text-[10px] font-black bg-indigo-50 text-indigo-700 border-indigo-100">{String(o.RESPCONTROLPROD || o.RESP_CONTROL_PROD || o.RESPCONTROLPROD || '—')}</Badge>
                           </td>
                           <td className="px-6 py-4 font-bold text-slate-400 border-r border-gray-50 text-[10px] uppercase text-center">{o.MAQUINA || o.RECURSO || '—'}</td>
                           <td className="px-6 py-4 font-bold text-slate-200 text-[10px] text-center">{o.Almacen || o.ALMACEN || '—'}</td>
