@@ -25,8 +25,7 @@ import {
   ShoppingCart,
   ChevronsLeft,
   ChevronsRight,
-  Users,
-  Timer
+  Users
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -178,7 +177,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
   // --- Turnos y Personal (Nuevo Dashboard) ---
   const [selectedDiaShift, setSelectedDiaShift] = useState('H1');
-  const [selectedNocheShift, setSelectedNocheShift] = useState('H1');
+  const [selectedNocheShift, setSelectedNocheShift] = useState('EMPTY');
   const [assignedPersonnel, setAssignedPersonnel] = useState({
     dia: { op1: '', op2: '' },
     noche: { op1: '', op2: '' }
@@ -186,6 +185,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [looperOperators, setLooperOperators] = useState<any[]>([]);
 
   const diaShiftOptions = [
+    { v: 'EMPTY', l: 'VACÍO', h: 0 },
     { v: 'H1', l: '07:00 - 15:45', h: 8.75 },
     { v: 'H2', l: '07:00 - 17:00', h: 10 },
     { v: 'H3', l: '07:00 - 18:00', h: 11 },
@@ -193,6 +193,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   ];
 
   const nocheShiftOptions = [
+    { v: 'EMPTY', l: 'VACÍO', h: 0 },
     { v: 'H1', l: '21:00 - 05:30', h: 8.5 },
     { v: 'H2', l: '19:00 - 05:00', h: 10 }
   ];
@@ -314,9 +315,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       .filter(v => v !== '');
 
     return ordenesFert.filter(o => {
-      const centro = String(o.CENTRO || o.Centro || '').trim();
+      const centro = String(o.CENTRO || o.Centro || o.centro || '').trim();
       if (centro === '2000') return false; 
-      const responsable = String(o.RESPCONTROLPROD || o.RESP_CONTROL_PROD || o.RespControlProd || '').trim();
+      const responsable = String(o.RESPCONTROLPROD || o.RESP_CONTROL_PROD || o.RespControlProd || o.RespControlProd || '').trim();
       if (allowedResps.length > 0 && !allowedResps.includes(responsable)) return false;
       
       if (selectedDates.size > 0) {
@@ -471,7 +472,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       
       const groupMap = new Map<string, UnifiedNeedRow[]>();
       finalArray.forEach(row => {
-        const k = `${row.apertura}|${row.densidad}`;
+        const k = `${row.apertura}|${row.dens}`;
         if(!groupMap.has(k)) groupMap.set(k, []);
         groupMap.get(k)!.push(row);
       });
@@ -602,16 +603,17 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     setSelectedDates(next);
   };
 
-  // --- Lógica de Dashboard y Eficiencia (NUEVA ESTRUCTURA) ---
+  // --- Lógica de Dashboard y Eficiencia ---
   const tDisponible = useMemo(() => {
     const diaH = diaShiftOptions.find(o => o.v === selectedDiaShift)?.h || 0;
     const nocheH = nocheShiftOptions.find(o => o.v === selectedNocheShift)?.h || 0;
+    // Cálculo: Suma de horas * factor de eficiencia (87%)
     return (diaH + nocheH) * 0.87;
   }, [selectedDiaShift, selectedNocheShift]);
 
   const ocupacionPorc = useMemo(() => {
-    if (totalsUnified.tProceso <= 0) return 0;
-    return (tDisponible / totalsUnified.tProceso) * 100;
+    if (tDisponible <= 0) return 0;
+    return (totalsUnified.tProceso / tDisponible) * 100;
   }, [tDisponible, totalsUnified.tProceso]);
 
   const renderTopConsolidation = () => {
@@ -631,62 +633,84 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           <tbody className="divide-y divide-slate-700">
             <tr>
               <td className="px-4 py-2 border-r border-slate-700">
-                <span className="text-red-400">Prov: {totalsUnified.kg.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                <div className="flex justify-between items-center text-[10px] mb-1">
+                  <span className="text-slate-500">PROV:</span>
+                  <span className="text-red-400">{totalsUnified.kg.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                </div>
+                <div className="flex justify-between items-center text-[10px] mb-1">
+                  <span className="text-slate-500">HALB:</span>
+                  <span className="text-blue-400">{totalsUnified.kgHalb.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                </div>
+                <div className="flex justify-between items-center border-t border-slate-600 pt-1">
+                  <span className="text-white">TOTAL:</span>
+                  <span className="text-white">{totalsUnified.totalKg.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                </div>
               </td>
               <td className="px-4 py-2 border-r border-slate-700">
-                <span className="text-red-400">Prov: {Math.round(totalsUnified.rollos).toLocaleString()}</span>
+                <div className="flex justify-between items-center text-[10px] mb-1">
+                  <span className="text-slate-500">PROV:</span>
+                  <span className="text-red-400">{Math.round(totalsUnified.rollos).toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between items-center text-[10px] mb-1">
+                  <span className="text-slate-500">HALB:</span>
+                  <span className="text-blue-400">{Math.round(totalsUnified.rollosHalb).toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between items-center border-t border-slate-600 pt-1">
+                  <span className="text-white">TOTAL:</span>
+                  <span className="text-white">{Math.round(totalsUnified.totalRollos).toLocaleString()}</span>
+                </div>
               </td>
-              <td rowSpan={1} className="px-4 py-4 border-r border-slate-700 text-center align-middle bg-black/10">
-                <span className="text-4xl font-black text-yellow-400">{Math.round(totalsUnified.planUn).toLocaleString()}</span>
+              <td className="px-4 py-4 border-r border-slate-700 text-center align-middle bg-black/10">
+                <span className="text-4xl font-black text-white">{Math.round(totalsUnified.planUn).toLocaleString()}</span>
               </td>
-              <td rowSpan={1} className="px-4 py-4 border-r border-slate-700 text-center align-middle bg-black/20">
+              <td className="px-4 py-4 border-r border-slate-700 text-center align-middle bg-black/20">
                 <span className="text-3xl font-black text-yellow-400">{(tDisponible).toFixed(2)}</span>
               </td>
-              <td rowSpan={3} className="px-4 py-3 border-r border-slate-700 text-center align-middle bg-slate-800/20">
-                <div className="flex flex-col gap-5">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-yellow-500 font-black text-xs">DIA</span>
+              <td rowSpan={2} className="px-4 py-3 border-r border-slate-700 text-center align-middle bg-slate-800/20">
+                <div className="flex flex-col gap-6">
+                  <div className="space-y-1">
+                    <p className="text-[9px] text-slate-500 text-left">DIA</p>
                     <select 
                       value={selectedDiaShift} 
                       onChange={(e) => setSelectedDiaShift(e.target.value)}
-                      className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[11px] text-yellow-500 outline-none w-16"
+                      className="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-[11px] text-yellow-500 outline-none w-full"
                     >
-                      {diaShiftOptions.map(o => <option key={o.v} value={o.v}>{o.v}</option>)}
+                      {diaShiftOptions.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
                     </select>
                   </div>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-yellow-500 font-black text-xs">NOCHE</span>
+                  <div className="space-y-1">
+                    <p className="text-[9px] text-slate-500 text-left">NOCHE</p>
                     <select 
                       value={selectedNocheShift} 
                       onChange={(e) => setSelectedNocheShift(e.target.value)}
-                      className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[11px] text-yellow-500 outline-none w-16"
+                      className="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-[11px] text-yellow-500 outline-none w-full"
                     >
-                      {nocheShiftOptions.map(o => <option key={o.v} value={o.v}>{o.v}</option>)}
+                      {nocheShiftOptions.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
                     </select>
                   </div>
                 </div>
               </td>
               <td className="px-4 py-3 border-b border-slate-700 bg-slate-800/40">
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <p className="text-[9px] text-slate-500">OP1</p>
+                  <div className="space-y-1 text-left">
+                    <p className="text-[9px] text-slate-500">OP1 DIA</p>
                     <select 
                       value={assignedPersonnel.dia.op1} 
                       onChange={(e) => setAssignedPersonnel(p => ({ ...p, dia: { ...p.dia, op1: e.target.value } }))}
                       className="w-full bg-transparent border-none outline-none text-yellow-500 font-black text-xs"
                     >
-                      <option value="">—</option>
+                      <option value="">— SIN ASIGNAR —</option>
                       {looperOperators.map((op, idx) => <option key={idx} value={op.NOMBRE}>{op.NOMBRE}</option>)}
                     </select>
                   </div>
-                  <div className="space-y-1">
-                    <p className="text-[9px] text-slate-500">OP2 AYUD</p>
+                  <div className="space-y-1 text-left">
+                    <p className="text-[9px] text-slate-500">OP2 DIA AYUD</p>
                     <select 
                       value={assignedPersonnel.dia.op2} 
                       onChange={(e) => setAssignedPersonnel(p => ({ ...p, dia: { ...p.dia, op2: e.target.value } }))}
                       className="w-full bg-transparent border-none outline-none text-yellow-500 font-black text-xs"
                     >
-                      <option value="">—</option>
+                      <option value="">— SIN ASIGNAR —</option>
                       {looperOperators.map((op, idx) => <option key={idx} value={op.NOMBRE}>{op.NOMBRE}</option>)}
                     </select>
                   </div>
@@ -694,56 +718,47 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               </td>
             </tr>
             <tr>
-              <td className="px-4 py-2 border-r border-slate-700">
-                <span className="text-blue-400">Halb: {totalsUnified.kgHalb.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+              <td colSpan={2} className="px-4 py-3 border-r border-slate-700 bg-slate-900/40 text-center">
+                 <p className="text-[9px] text-slate-500 uppercase tracking-widest mb-1">Semaforo Ocupación (%)</p>
+                 <div className="flex items-center justify-center gap-3">
+                    <div className={cn("w-3 h-3 rounded-full", ocupacionPorc > 100 ? "bg-red-500 animate-pulse" : "bg-emerald-500")} />
+                    <span className={cn("text-2xl font-black", ocupacionPorc > 100 ? "text-red-400" : "text-emerald-400")}>{ocupacionPorc.toFixed(1)}%</span>
+                 </div>
               </td>
-              <td className="px-4 py-2 border-r border-slate-700">
-                <span className="text-blue-400">Halb: {Math.round(totalsUnified.rollosHalb).toLocaleString()}</span>
-              </td>
-              <td className="px-4 py-3 border-r border-slate-700 bg-slate-800/20">
-                <p className="text-[9px] text-slate-500 mb-1">Tiempo Operativo (H)</p>
+              <td className="px-4 py-3 border-r border-slate-700 bg-slate-800/20 text-center">
+                <p className="text-[9px] text-slate-500 mb-1">TIEMPO OPERATIVO (H)</p>
                 <span className="text-2xl font-black text-emerald-400">{totalsUnified.tProceso.toFixed(2)}</span>
               </td>
-              <td className="px-4 py-3 border-r border-slate-700 bg-slate-800/30">
-                <p className="text-[9px] text-slate-500 mb-1">OCUPACION</p>
-                <div className="flex flex-col items-center">
-                  <span className="text-emerald-400 font-black text-lg">{ocupacionPorc.toFixed(1)}%</span>
-                  <p className="text-[8px] text-emerald-500/50 mt-1">% = T Disponible / T operativo</p>
-                </div>
+              <td className="px-4 py-3 border-r border-slate-700 bg-slate-800/30 text-center">
+                <p className="text-[9px] text-slate-500 mb-1">DISPONIBILIDAD TOTAL (H)</p>
+                <span className="text-2xl font-black text-yellow-400">{tDisponible.toFixed(2)}</span>
               </td>
               <td className="px-4 py-3 bg-slate-800/40">
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <p className="text-[9px] text-slate-500">OP1</p>
+                  <div className="space-y-1 text-left">
+                    <p className="text-[9px] text-slate-500">OP1 NOCHE</p>
                     <select 
                       value={assignedPersonnel.noche.op1} 
                       onChange={(e) => setAssignedPersonnel(p => ({ ...p, noche: { ...p.noche, op1: e.target.value } }))}
                       className="w-full bg-transparent border-none outline-none text-yellow-500 font-black text-xs"
                     >
-                      <option value="">—</option>
+                      <option value="">— SIN ASIGNAR —</option>
                       {looperOperators.map((op, idx) => <option key={idx} value={op.NOMBRE}>{op.NOMBRE}</option>)}
                     </select>
                   </div>
-                  <div className="space-y-1">
-                    <p className="text-[9px] text-slate-500">OP2 AYUD</p>
+                  <div className="space-y-1 text-left">
+                    <p className="text-[9px] text-slate-500">OP2 NOCHE AYUD</p>
                     <select 
                       value={assignedPersonnel.noche.op2} 
                       onChange={(e) => setAssignedPersonnel(p => ({ ...p, noche: { ...p.noche, op2: e.target.value } }))}
                       className="w-full bg-transparent border-none outline-none text-yellow-500 font-black text-xs"
                     >
-                      <option value="">—</option>
+                      <option value="">— SIN ASIGNAR —</option>
                       {looperOperators.map((op, idx) => <option key={idx} value={op.NOMBRE}>{op.NOMBRE}</option>)}
                     </select>
                   </div>
                 </div>
               </td>
-            </tr>
-            <tr className="bg-slate-900/50">
-              <td className="px-4 py-3 border-r border-slate-700 font-black text-white">Total: {totalsUnified.totalKg.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-              <td className="px-4 py-3 border-r border-slate-700 font-black text-white">Total: {Math.round(totalsUnified.totalRollos).toLocaleString()}</td>
-              <td className="px-4 py-3 border-r border-slate-700"></td>
-              <td className="px-4 py-3 border-r border-slate-700"></td>
-              <td className="px-4 py-3"></td>
             </tr>
           </tbody>
         </table>
@@ -848,12 +863,12 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     <th className="px-2 py-4 border-r border-black/5 bg-cyan-50/50 text-cyan-800">UN 1015</th>
                     <th className="px-3 py-4 border-r border-black/10 bg-indigo-900 text-white">T. ROLLOS BODEGAS UN</th>
                     <th className="px-3 py-4 border-r border-black/10 bg-indigo-900 text-white">T. ROLLOS BODEGAS KG</th>
-                    <th className="px-4 py-4 border-r border-black/5 text-right bg-orange-100/10">CONSUMO ROLLOS OF_PROV [Kg]</th>
-                    <th className="px-4 py-4 border-r border-black/5 text-right bg-indigo-100/10">CONSUMO ROLLOS OF_HALB [Kg]</th>
-                    <th className="px-4 py-4 border-r border-black/10 text-right bg-slate-900 text-white font-black">T. ROLLOS NECESIDADES [Kg]</th>
-                    <th className="px-3 py-4 border-r border-black/5 bg-[#cfe2f3]/10 text-indigo-900 font-black">NRO ROLLOS NECESIDADES PROV [Un]</th>
-                    <th className="px-3 py-4 border-r border-black/5 bg-[#d1d5db]/10 text-indigo-900 font-black">NRO ROLLOS NECESIDADES HALB [Un]</th>
-                    <th className="px-3 py-4 border-r border-black/10 bg-[#1e293b] text-[#facc15] font-black">T. ROLLOS NECESIDADES [Un]</th>
+                    <th className="px-4 py-4 border-r border-black/5 text-right bg-orange-100/10 uppercase">CONSUMO ROLLOS OF_PROV [Kg]</th>
+                    <th className="px-4 py-4 border-r border-black/5 text-right bg-indigo-100/10 uppercase">CONSUMO ROLLOS OF_HALB [Kg]</th>
+                    <th className="px-4 py-4 border-r border-black/10 text-right bg-slate-900 text-white font-black uppercase">T. ROLLOS NECESIDADES [Kg]</th>
+                    <th className="px-3 py-4 border-r border-black/5 bg-[#cfe2f3]/10 text-indigo-900 font-black uppercase">NRO ROLLOS NECESIDADES PROV [Un]</th>
+                    <th className="px-3 py-4 border-r border-black/5 bg-[#d1d5db]/10 text-indigo-900 font-black uppercase">NRO ROLLOS NECESIDADES HALB [Un]</th>
+                    <th className="px-3 py-4 border-r border-black/10 bg-[#1e293b] text-[#facc15] font-black uppercase">T. ROLLOS NECESIDADES [Un]</th>
                     <th className="px-3 py-4 border-r border-black/5 text-center">semaforo % Nec.</th>
                     <th className="px-4 py-4 border-r border-black/5 text-right font-black bg-[#fee2e2] text-red-900">PLAN (UN)</th>
                     <th className="px-4 py-4 border-r border-black/5 text-right font-black bg-[#fee2e2] text-red-900">PLAN (KG)</th>
@@ -1030,7 +1045,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                       const info = extractMaterialInfo(o);
                       const description = String(o.NOMBRE || o.MATERIAL || '').replace(/^\d+\s*/, '') || '—';
                       return (
-                        <tr key={i} className="hover:bg-slate-50/50 transition-colors">
+                        <tr key={i} className="hover:bg-indigo-50/20 transition-colors">
                           <td className="px-6 py-4 font-black text-slate-800 border-r border-gray-50 text-center">{o.ORDEN || '—'}</td>
                           <td className="px-6 py-4 border-r border-gray-50 font-mono text-[9px] text-slate-400 text-center">{o.FECHA || o.FECHAINICIO || '—'}</td>
                           <td className="px-6 py-4 font-mono font-black text-red-600 border-r border-gray-50 tracking-tighter text-sm text-center">{info.code}</td>
@@ -1038,10 +1053,10 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                             {description}
                           </td>
                           <td className="px-6 py-4 font-black text-slate-900 border-r border-gray-50 font-mono text-sm text-center">
-                            {Number(o.CANTPENDIENTE || 0).toLocaleString()}
+                            {Number(o.CANTPENDIENTE || o.CANT_PEND || o.CANTIDAD || 0).toLocaleString()}
                           </td>
                           <td className="px-6 py-4 border-r border-gray-50 text-center">
-                            <Badge variant="outline" className="text-[10px] font-black bg-blue-50 text-blue-700 border-blue-100">{String(o.RESPCTRLPROD || o.RESP_CONTROL_PROD || o.RESPCONTROLPROD || '—')}</Badge>
+                            <Badge variant="outline" className="text-[10px] font-black bg-indigo-50 text-indigo-700 border-indigo-100">{String(o.RESPCTRLPROD || o.RESP_CONTROL_PROD || o.RESPCONTROLPROD || '—')}</Badge>
                           </td>
                           <td className="px-6 py-4 font-bold text-slate-400 border-r border-gray-50 text-[10px] uppercase text-center">{o.MAQUINA || o.RECURSO || '—'}</td>
                           <td className="px-6 py-4 font-bold text-slate-200 text-[10px] text-center">{o.Almacen || o.ALMACEN || '—'}</td>
@@ -1065,7 +1080,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             <h3 className="text-sm font-black uppercase tracking-widest text-slate-800">Indicadores Maestro Looper (KPI SAP)</h3>
           </div>
           <Card className="rounded-3xl border border-indigo-100 shadow-xl overflow-hidden bg-white">
-            <div className="overflow-x-auto max-h-[600px] relative">
+            <div className="overflow-x-auto max-h-[600px] relative text-center">
               <table className="w-full border-collapse text-center">
                 <thead className="bg-[#1e293b] text-white sticky top-0 z-10 text-[9px] font-black uppercase tracking-tight border-b border-white/5">
                   <tr>
