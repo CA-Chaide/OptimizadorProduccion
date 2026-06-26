@@ -22,7 +22,8 @@ import {
   ChevronsLeft,
   ChevronsRight,
   Filter,
-  Activity
+  Activity,
+  AlertCircle
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -42,7 +43,10 @@ import type { Grupo, Restriccion } from '@/types/interfaces';
 import { cn } from '@/lib/utils';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, parseISO, isValid } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { MaestroMaterialesExplosionSection } from './MaestroMaterialesExplosionSection';
+
+// Constantes técnicas
+const CAROUSEL_RADIO_CM = 320; 
+const CAROUSEL_CIRCUMFERENCE = 2 * Math.PI * CAROUSEL_RADIO_CM; 
 
 interface UnifiedNeedRow {
   material: string;
@@ -78,9 +82,6 @@ interface UnifiedNeedRow {
   tProceso: number; 
   hasDeficit: boolean;
 }
-
-const CAROUSEL_RADIO_CM = 320; 
-const CAROUSEL_CIRCUMFERENCE = 2 * Math.PI * CAROUSEL_RADIO_CM; 
 
 const safeNum = (val: any): number => {
   const n = Number(val);
@@ -262,10 +263,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       
       setRestriccionesArray((restrs.data || []).filter((r: any) => ids.includes(r.codigo_grupo)));
       setOrders(provs.data?.data || provs.data || []);
-      
-      const actualFertData = ferts.data?.data || ferts.data || [];
-      setOrdersFert(actualFertData);
-      
+      setOrdersFert(ferts.data?.data || ferts.data || []);
       setKpiLooperData(kpiLooper?.data || []);
       setInventarioSAP(Array.isArray(invSAP?.data) ? invSAP.data : []);
 
@@ -468,7 +466,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           consumoUn: cUn,
           nroRollos: cUn,
           nroRollosHalb: cUnHalb,
-          totalNroRollos: cUn + cUnHalb
+          totalNroRollos: cUn + cUnHalb,
+          hasDeficit: (cUn + cUnHalb) > row.totalStockUN
         };
       });
       
@@ -484,13 +483,13 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         const totalStockUnGroup = items.reduce((s, r) => s + r.totalStockUN, 0);
         const totalConsumoUnGroup = items.reduce((s, r) => s + r.totalNroRollos, 0);
         
+        // Motor de Reposición Proporcional
         const groupDeficit = Math.max(0, totalConsumoUnGroup - totalStockUnGroup);
         const runsNeeded = Math.ceil(groupDeficit / 40);
         const totalUnitsInPlan = runsNeeded * 40;
 
         items.forEach(row => {
           row.porcentajeNecesidad = totalKgGroup > 0 ? (row.totalConsumoKg / totalKgGroup) : 0;
-          row.hasDeficit = row.totalNroRollos > row.totalStockUN;
           row.planUn = totalUnitsInPlan > 0 ? Math.round(totalUnitsInPlan * row.porcentajeNecesidad) : 0;
           row.planKg = row.planUn * row.peso;
           row.tProceso = ((row.looperTRolloMin || 0) * row.planUn) / 60;
@@ -498,7 +497,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       });
 
       setUnifiedNeeds(finalArray.sort((a, b) => b.totalConsumoKg - a.totalConsumoKg));
-      addNotification('success', 'Actualización técnica completada con éxito.');
+      addNotification('success', 'Plan propuesto generado exitosamente por bloque Looper.');
     } finally { 
       setIsProcessingResumen(false); 
     }
@@ -590,6 +589,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       tProceso: acc.tProceso + row.tProceso
     }), { kg: 0, kgHalb: 0, totalKg: 0, un: 0, rollos: 0, rollosHalb: 0, totalRollos: 0, planUn: 0, planKg: 0, stock1006: 0, stock1008: 0, stock1015: 0, stockUN1006: 0, stockUN1008: 0, stockUN1015: 0, totalStockKg: 0, totalStockUN: 0, tProceso: 0 });
 
+    // Cálculo consolidado de corridas (excluyendo CONV)
     const totalRuns = groupedNeeds.reduce((acc, group) => {
       const looperItems = group.items.filter(it => !it.descripcion.toUpperCase().includes('CONV'));
       if (looperItems.length === 0) return acc;
@@ -918,12 +918,21 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                                   <span className="font-black text-[10px] uppercase tracking-widest opacity-70">{group.apertura} - D{group.densidad}</span>
                                </div>
                             </td>
-                            <td className="px-6 py-4 text-left text-indigo-900 font-black uppercase">
-                              Subtotal Corrida ({group.totalPlanUn} ROLLOS)
+                            <td className="px-6 py-4 text-left font-black uppercase">
+                               <div className="flex items-center gap-3">
+                                  {group.hasGroupDeficit ? (
+                                    <AlertCircle className="w-4 h-4 text-red-500" />
+                                  ) : (
+                                    <div className="w-4 h-4 rounded-full bg-green-500" />
+                                  )}
+                                  <span className={cn(group.hasGroupDeficit ? "text-red-700" : "text-indigo-900")}>
+                                    {group.hasGroupDeficit ? "BLOQUE CRÍTICO" : "BLOQUE OK"} ({group.totalPlanUn} ROLLOS)
+                                  </span>
+                               </div>
                             </td>
-                            <td className="px-2 py-4 bg-indigo-50/10 border-r border-gray-100/10"></td>
-                            <td className="px-2 py-4 bg-indigo-50/10 border-r border-gray-100/10"></td>
-                            <td className="px-2 py-4 bg-indigo-50/10 border-r border-gray-100/10"></td>
+                            <td className="px-2 py-4 border-r border-gray-100/10"></td>
+                            <td className="px-2 py-4 border-r border-gray-100/10"></td>
+                            <td className="px-2 py-4 border-r border-gray-100/10"></td>
                             <td className="px-3 py-4 text-slate-400 font-mono border-r border-gray-100/10">{formatNum(group.total1006, 0)}</td>
                             <td className="px-2 py-4 text-cyan-600/50 font-mono border-r border-gray-100/10">{formatNum(group.totalUN1006, 0)}</td>
                             <td className="px-3 py-4 text-slate-400 font-mono border-r border-gray-100/10">{formatNum(group.total1008, 0)}</td>
@@ -938,9 +947,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                             <td className="px-3 py-4 bg-[#cfe2f3]/30 font-mono text-indigo-800 opacity-40 border-r border-gray-100/10">{formatNum(group.totalRollos, 0)}</td>
                             <td className="px-3 py-4 bg-[#d1d5db]/30 font-mono text-slate-600 opacity-40 border-r border-gray-100/10">{formatNum(group.totalRollosHalb, 0)}</td>
                             <td className="px-3 py-4 bg-[#1e293b] font-mono text-[#facc15] border-r border-gray-100/10">{formatNum(group.totalNroRollos, 0)}</td>
-                            <td className="px-3 py-4 text-center border-r border-gray-100/10">
-                               <div className={cn("w-4 h-4 rounded-full mx-auto shadow-sm", group.hasGroupDeficit ? "bg-red-500 animate-pulse" : "bg-green-500")} />
-                            </td>
+                            <td className="px-3 py-4 text-center border-r border-gray-100/10"></td>
                             <td className="px-4 py-4 text-right font-mono font-black text-red-900 bg-[#fee2e2]/50 border-r border-gray-100/10">{formatNum(group.totalPlanUn, 0)}</td>
                             <td className="px-4 py-4 text-right font-mono font-black text-red-900 bg-[#fee2e2]/50 border-r border-gray-100/10">{formatNum(group.totalPlanKg, 0)}</td>
                             <td className="px-4 py-4 text-right font-mono font-black text-indigo-900 bg-indigo-100/50">{formatNum(group.totalTProceso, 1)}</td>
@@ -966,8 +973,14 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                               <td className="px-3 py-3 border-r border-gray-100 bg-[#cfe2f3]/10 font-mono font-black text-indigo-600/40">{Math.round(item.consumoUn).toLocaleString()}</td>
                               <td className="px-3 py-3 border-r border-gray-100 bg-[#d1d5db]/10 font-mono font-black text-slate-400/40">{Math.round(item.nroRollosHalb).toLocaleString()}</td>
                               <td className="px-3 py-3 border-r border-gray-100 bg-slate-100/30 font-mono font-black text-slate-900">{Math.round(item.totalNroRollos).toLocaleString()}</td>
-                              <td className="px-4 py-3 border-r border-gray-100 text-center font-black">
-                                 <div className={cn("w-3 h-3 rounded-full mx-auto", item.hasDeficit ? "bg-red-400" : "bg-green-400")} />
+                              <td className="px-3 py-3 border-r border-gray-100 text-center font-black">
+                                 <div className="flex flex-col items-center gap-1">
+                                    <div className={cn("w-3 h-3 rounded-full", item.hasDeficit ? "bg-red-500 shadow-[0_0_8px_#ef4444]" : "bg-green-500")} />
+                                    <span className={cn("text-[8px] font-black uppercase tracking-tighter", item.hasDeficit ? "text-red-600" : "text-green-600")}>
+                                      {item.hasDeficit ? "STOCK BAJO" : "STOCK OK"}
+                                    </span>
+                                    <span className="text-[9px] text-slate-500 font-mono">{(item.porcentajeNecesidad * 100).toFixed(1)}%</span>
+                                 </div>
                               </td>
                               <td className="px-4 py-3 border-r border-black/10 text-right font-mono font-black text-red-500 bg-[#fee2e2]/20">
                                  <input 
