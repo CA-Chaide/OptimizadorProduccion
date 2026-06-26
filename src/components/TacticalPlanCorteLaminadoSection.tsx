@@ -206,6 +206,15 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     setExpandedGroups(next);
   };
 
+  const calendarDaysList = useMemo(() => {
+    const start = startOfMonth(viewDate);
+    const end = endOfMonth(viewDate);
+    const days = eachDayOfInterval({ start, end });
+    const startDay = getDay(start);
+    const padding = startDay === 0 ? 6 : startDay - 1; // Ajuste para Lunes-Domingo
+    return [...Array(padding).fill(null), ...days];
+  }, [viewDate]);
+
   const datesWithOrders = useMemo(() => {
     if (!mounted) return new Set<string>();
     const dates = new Set<string>();
@@ -454,18 +463,20 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           row.porcentajeNecesidad = totalKgGroup > 0 ? (row.totalConsumoKg / totalKgGroup) : 0;
         });
 
+        // Metodología de reposición iterativa por bloques de 40 UN
+        let runsNeeded = 0;
         const standardItems = items.filter(it => !it.descripcion.toUpperCase().includes('CONV') && !it.descripcion.toUpperCase().includes('CV'));
 
-        let runsNeeded = 0;
         if (standardItems.length > 0) {
-          let covered = false;
-          while (!covered && runsNeeded < 20) {
-            const tempRuns = runsNeeded + 1;
-            const tempTotalUnits = tempRuns * BLOCK_SIZE;
-            const allMatch = standardItems.every(r => (r.totalStockUN + tempTotalUnits * r.porcentajeNecesidad) >= r.totalNroRollos);
-            if (allMatch) {
-              runsNeeded = tempRuns;
-              covered = true;
+          let allCovered = false;
+          while (!allCovered && runsNeeded < 25) {
+            const totalProposedUnits = runsNeeded * BLOCK_SIZE;
+            const itemSuccess = standardItems.every(r => {
+                const proposedContribution = totalProposedUnits * r.porcentajeNecesidad;
+                return (r.totalStockUN + proposedContribution) >= r.totalNroRollos;
+            });
+            if (itemSuccess && runsNeeded > 0) {
+              allCovered = true;
             } else {
               runsNeeded++;
             }
@@ -494,7 +505,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       total1006: number; total1008: number; total1015: number; totalPlanUn: number; totalPlanKg: number;
       totalUN1006: number; totalUN1008: number; totalUN1015: number; totalTProceso: number;
       totalRollos: number; totalKgHalb: number; totalRollosHalb: number; totalConsumoKg: number; totalNroRollos: number;
-      totalStockKg: number; totalStockUN: number; hasGroupDeficit: boolean;
+      totalStockKg: number; totalStockUN: number; hasGroupDeficit: boolean; runs: number;
     }>();
     unifiedNeeds.forEach(item => {
       const key = `${item.apertura}|${item.densidad}`;
@@ -504,7 +515,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           total1006: 0, total1008: 0, total1015: 0, totalPlanUn: 0, totalPlanKg: 0,
           totalUN1006: 0, totalUN1008: 0, totalUN1015: 0, totalTProceso: 0, totalRollos: 0,
           totalKgHalb: 0, totalRollosHalb: 0, totalConsumoKg: 0, totalNroRollos: 0,
-          totalStockKg: 0, totalStockUN: 0, hasGroupDeficit: false
+          totalStockKg: 0, totalStockUN: 0, hasGroupDeficit: false, runs: 0
         });
       }
       const group = map.get(key)!;
@@ -529,6 +540,11 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       group.totalTProceso += item.tProceso;
       if (item.hasDeficit) group.hasGroupDeficit = true;
     });
+
+    map.forEach(group => {
+      group.runs = Math.ceil(group.totalPlanUn / BLOCK_SIZE);
+    });
+
     return Array.from(map.values()).sort((a, b) => b.totalConsumoKg - a.totalConsumoKg);
   }, [unifiedNeeds]);
 
@@ -557,7 +573,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     const totalRuns = groupedNeeds.reduce((acc, group) => {
       const standardItems = group.items.filter(it => !it.descripcion.toUpperCase().includes('CONV') && !it.descripcion.toUpperCase().includes('CV'));
       if (standardItems.length === 0) return acc;
-      return acc + Math.ceil(group.totalPlanUn / BLOCK_SIZE);
+      return acc + group.runs;
     }, 0);
 
     return { ...base, totalRuns };
@@ -747,7 +763,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     groupedNeeds.map((group) => {
                       const groupKey = `${group.apertura}|${group.densidad}`;
                       const isExp = expandedGroups.has(groupKey);
-                      const groupRuns = Math.ceil(group.totalPlanUn / BLOCK_SIZE);
                       return (
                         <React.Fragment key={groupKey}>
                           <tr className={cn("hover:brightness-95 cursor-pointer transition-all border-l-4 font-black", getDensityColor(group.densidad))} onClick={() => toggleGroup(groupKey)}>
@@ -758,11 +773,11 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                             <td className="px-6 py-4 text-left font-black uppercase">
                                <div className="flex items-center gap-3">
                                   {group.hasGroupDeficit ? (
-                                    <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-red-500 animate-pulse shadow-[0_0_8px_#ef4444]" /><span className="text-red-700">BLOQUE CRÍTICO</span></div>
+                                    <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-red-500 animate-pulse" /><span className="text-red-700">BLOQUE CRÍTICO</span></div>
                                   ) : (
                                     <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-green-500" /><span className="text-indigo-900">BLOQUE OK</span></div>
                                   )}
-                                  <span className="text-[10px] text-slate-700 ml-auto font-black uppercase">Subtotal / corridas ( {groupRuns} )</span>
+                                  <span className="text-[10px] text-slate-700 ml-auto font-black uppercase">Subtotal / corridas ( {group.runs} )</span>
                                </div>
                             </td>
                             <td colSpan={9} className="border-r border-gray-100/10"></td>
@@ -783,20 +798,20 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                             <tr key={`${groupKey}-${iIdx}`} className="bg-white hover:bg-blue-50 transition-colors font-bold text-slate-700">
                               <td className="px-4 py-3 border-r border-gray-100 font-mono font-black text-indigo-600 text-left pl-10">{item.material}</td>
                               <td className="px-6 py-3 border-r border-gray-100 text-left text-slate-900 font-black uppercase leading-tight truncate max-w-[250px]">{item.descripcion}</td>
-                              <td className="px-2 py-3 border-r border-gray-100 font-mono text-slate-700 bg-indigo-50/5">{item.peso.toFixed(2)}</td>
-                              <td className="px-2 py-3 border-r border-gray-100 text-slate-700 bg-indigo-50/5">{item.densidad}</td>
-                              <td className="px-2 py-3 border-r border-gray-100 font-mono text-slate-700 bg-indigo-50/5">{item.looperTRolloMin || '—'}</td>
-                              <td className="px-3 py-3 border-r border-gray-100 font-mono text-slate-600">{item.stock1006 > 0 ? item.stock1006.toLocaleString() : '—'}</td>
-                              <td className="px-2 py-3 border-r border-gray-100 font-mono text-cyan-800 bg-cyan-50/5">{item.stockUN1006 > 0 ? Math.round(item.stockUN1006).toLocaleString() : '—'}</td>
-                              <td className="px-3 py-3 border-r border-gray-100 font-mono text-slate-600">{item.stock1008 > 0 ? item.stock1008.toLocaleString() : '—'}</td>
-                              <td className="px-2 py-3 border-r border-gray-100 font-mono text-cyan-800 bg-cyan-50/5">{item.stockUN1008 > 0 ? Math.round(item.stockUN1008).toLocaleString() : '—'}</td>
-                              <td className="px-3 py-3 border-r border-gray-100 font-mono text-slate-600">{item.stock1015 > 0 ? item.stock1015.toLocaleString() : '—'}</td>
-                              <td className="px-2 py-3 border-r border-gray-100 font-mono text-cyan-800 bg-cyan-50/5">{item.stockUN1015 > 0 ? Math.round(item.stockUN1015).toLocaleString() : '—'}</td>
-                              <td className="px-3 py-3 border-r border-gray-100 font-mono text-indigo-900 bg-indigo-50/10">{Math.round(item.totalStockUN).toLocaleString()}</td>
-                              <td className="px-3 py-3 border-r border-gray-100 font-mono text-indigo-900 bg-indigo-50/10">{Math.round(item.totalStockKg).toLocaleString()}</td>
+                              <td className="px-2 py-3 border-r border-gray-100 font-mono text-slate-700">{item.peso.toFixed(2)}</td>
+                              <td className="px-2 py-3 border-r border-gray-100 text-slate-700">{item.densidad}</td>
+                              <td className="px-2 py-3 border-r border-gray-100 font-mono text-slate-700">{item.looperTRolloMin || '—'}</td>
+                              <td className="px-3 py-3 border-r border-gray-100 font-mono text-slate-700">{item.stock1006 > 0 ? item.stock1006.toLocaleString() : '—'}</td>
+                              <td className="px-2 py-3 border-r border-gray-100 font-mono text-indigo-900">{item.stockUN1006 > 0 ? Math.round(item.stockUN1006).toLocaleString() : '—'}</td>
+                              <td className="px-3 py-3 border-r border-gray-100 font-mono text-slate-700">{item.stock1008 > 0 ? item.stock1008.toLocaleString() : '—'}</td>
+                              <td className="px-2 py-3 border-r border-gray-100 font-mono text-indigo-900">{item.stockUN1008 > 0 ? Math.round(item.stockUN1008).toLocaleString() : '—'}</td>
+                              <td className="px-3 py-3 border-r border-gray-100 font-mono text-slate-700">{item.stock1015 > 0 ? item.stock1015.toLocaleString() : '—'}</td>
+                              <td className="px-2 py-3 border-r border-gray-100 font-mono text-indigo-900">{item.stockUN1015 > 0 ? Math.round(item.stockUN1015).toLocaleString() : '—'}</td>
+                              <td className="px-3 py-4 border-r border-gray-100 font-mono text-indigo-900 bg-indigo-50/10">{Math.round(item.totalStockUN).toLocaleString()}</td>
+                              <td className="px-3 py-4 border-r border-gray-100 font-mono text-indigo-900 bg-indigo-50/10">{Math.round(item.totalStockKg).toLocaleString()}</td>
                               <td className="px-4 py-3 border-r border-gray-100 text-right font-mono text-slate-700">{item.consumoKg.toLocaleString()}</td>
                               <td className="px-4 py-3 border-r border-gray-100 text-right font-mono text-slate-700">{item.consumoKgHalb.toLocaleString()}</td>
-                              <td className="px-4 py-3 border-r border-gray-100 text-right font-mono text-slate-900 bg-slate-50/5">{item.totalConsumoKg.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+                              <td className="px-4 py-3 border-r border-gray-100 text-right font-mono text-slate-900">{item.totalConsumoKg.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
                               <td className="px-3 py-3 border-r border-gray-100 bg-[#cfe2f3]/10 font-mono text-indigo-900">{Math.round(item.consumoUn).toLocaleString()}</td>
                               <td className="px-3 py-3 border-r border-gray-100 bg-[#d1d5db]/10 font-mono text-slate-900">{Math.round(item.nroRollosHalb).toLocaleString()}</td>
                               <td className="px-3 py-3 border-r border-gray-100 bg-slate-100/10 font-mono text-slate-900">{Math.round(item.totalNroRollos).toLocaleString()}</td>
