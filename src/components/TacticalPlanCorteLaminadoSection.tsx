@@ -42,6 +42,7 @@ import type { Grupo, Restriccion } from '@/types/interfaces';
 import { cn } from '@/lib/utils';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, parseISO, isValid } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { MaestroMaterialesExplosionSection } from './MaestroMaterialesExplosionSection';
 
 interface UnifiedNeedRow {
   material: string;
@@ -77,6 +78,9 @@ interface UnifiedNeedRow {
   tProceso: number; 
   hasDeficit: boolean;
 }
+
+const CAROUSEL_RADIO_CM = 320; 
+const CAROUSEL_CIRCUMFERENCE = 2 * Math.PI * CAROUSEL_RADIO_CM; 
 
 const safeNum = (val: any): number => {
   const n = Number(val);
@@ -171,7 +175,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [resumenProgress, setResumenProgress] = useState({ current: 0, total: 0 });
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
-  // --- Turnos y Personal ---
   const [selectedDiaShift, setSelectedDiaShift] = useState('H1');
   const [selectedNocheShift, setSelectedNocheShift] = useState('EMPTY');
   const [assignedPersonnel, setAssignedPersonnel] = useState({
@@ -481,16 +484,13 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         const totalStockUnGroup = items.reduce((s, r) => s + r.totalStockUN, 0);
         const totalConsumoUnGroup = items.reduce((s, r) => s + r.totalNroRollos, 0);
         
-        // Lógica de cálculo de corridas (múltiplos de 40)
         const groupDeficit = Math.max(0, totalConsumoUnGroup - totalStockUnGroup);
         const runsNeeded = Math.ceil(groupDeficit / 40);
         const totalUnitsInPlan = runsNeeded * 40;
 
         items.forEach(row => {
           row.porcentajeNecesidad = totalKgGroup > 0 ? (row.totalConsumoKg / totalKgGroup) : 0;
-          // Evaluación individual de stock bajo
           row.hasDeficit = row.totalNroRollos > row.totalStockUN;
-          // Reposición proporcional por participación
           row.planUn = totalUnitsInPlan > 0 ? Math.round(totalUnitsInPlan * row.porcentajeNecesidad) : 0;
           row.planKg = row.planUn * row.peso;
           row.tProceso = ((row.looperTRolloMin || 0) * row.planUn) / 60;
@@ -563,7 +563,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       group.totalPlanUn += item.planUn;
       group.totalPlanKg += item.planKg;
       group.totalTProceso += item.tProceso;
-      // Si cualquier item del grupo tiene déficit, el grupo completo tiene alerta
       if (item.hasDeficit) group.hasGroupDeficit = true;
     });
     return Array.from(map.values()).sort((a, b) => b.totalConsumoKg - a.totalConsumoKg);
@@ -591,8 +590,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       tProceso: acc.tProceso + row.tProceso
     }), { kg: 0, kgHalb: 0, totalKg: 0, un: 0, rollos: 0, rollosHalb: 0, totalRollos: 0, planUn: 0, planKg: 0, stock1006: 0, stock1008: 0, stock1015: 0, stockUN1006: 0, stockUN1008: 0, stockUN1015: 0, totalStockKg: 0, totalStockUN: 0, tProceso: 0 });
 
-    // Cálculo de Corridas Looper (bloques de 40)
-    // Excluir grupos que sean puramente "CONV" (convoluted / proceso alterno)
     const totalRuns = groupedNeeds.reduce((acc, group) => {
       const looperItems = group.items.filter(it => !it.descripcion.toUpperCase().includes('CONV'));
       if (looperItems.length === 0) return acc;
@@ -637,18 +634,18 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       <div className="bg-[#1e293b] border-2 border-slate-700 rounded-lg shadow-2xl overflow-hidden mb-8 font-sans">
         <table className="w-full border-collapse text-[11px] uppercase font-bold text-slate-300">
           <thead>
-            <tr className="bg-slate-800/50 border-b border-slate-700">
-              <th className="px-4 py-3 text-center border-r border-slate-700 w-[15%]">Demanda Consolidada (Kg)</th>
-              <th className="px-4 py-3 text-center border-r border-slate-700 w-[15%]">Demanda Consolidada (Un)</th>
-              <th className="px-4 py-3 text-center border-r border-slate-700 w-[13%]">Rollos Requeridos (Plan Kg)</th>
-              <th className="px-4 py-3 text-center border-r border-slate-700 w-[13%]">Rollos Requeridos (Plan Un)</th>
-              <th className="px-4 py-3 text-center border-r border-slate-700 w-[13%] bg-cyan-900/40 text-cyan-200 uppercase">NRO DE CORRIDAS LOOPER</th>
-              <th className="px-4 py-3 text-center border-r border-slate-700 w-[13%]">TURNO</th>
-              <th className="px-4 py-3 text-center w-[18%]">PERSONAL</th>
+            <tr className="bg-slate-800/50 border-b border-slate-700 text-center">
+              <th className="px-4 py-3 border-r border-slate-700 w-[15%]">Demanda Consolidada (Kg)</th>
+              <th className="px-4 py-3 border-r border-slate-700 w-[15%]">Demanda Consolidada (Un)</th>
+              <th className="px-4 py-3 border-r border-slate-700 w-[13%]">Rollos Requeridos (Plan Kg)</th>
+              <th className="px-4 py-3 border-r border-slate-700 w-[13%]">Rollos Requeridos (Plan Un)</th>
+              <th className="px-4 py-3 border-r border-slate-700 w-[13%] bg-cyan-900/40 text-cyan-200">NRO DE CORRIDAS LOOPER</th>
+              <th className="px-4 py-3 border-r border-slate-700 w-[13%]">TURNO</th>
+              <th className="px-4 py-3 w-[18%]">PERSONAL</th>
             </tr>
           </thead>
           <tbody className="divide-y border-slate-700">
-            <tr>
+            <tr className="text-center">
               <td className="px-4 py-2 border-r border-slate-700">
                 <div className="flex justify-between items-center text-[10px] mb-1">
                   <span className="text-slate-500">PROV:</span>
@@ -658,7 +655,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   <span className="text-slate-500">HALB:</span>
                   <span className="text-blue-400">{totalsUnified.kgHalb.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
                 </div>
-                <div className="flex justify-between items-center border-t border-slate-600 pt-1">
+                <div className="flex justify-between items-center border-t border-slate-600 pt-1 font-black">
                   <span className="text-white">TOTAL:</span>
                   <span className="text-white">{totalsUnified.totalKg.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
                 </div>
@@ -672,28 +669,28 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   <span className="text-slate-500">HALB:</span>
                   <span className="text-blue-400">{Math.round(totalsUnified.rollosHalb).toLocaleString()}</span>
                 </div>
-                <div className="flex justify-between items-center border-t border-slate-600 pt-1">
+                <div className="flex justify-between items-center border-t border-slate-600 pt-1 font-black">
                   <span className="text-white">TOTAL:</span>
                   <span className="text-white">{Math.round(totalsUnified.totalRollos).toLocaleString()}</span>
                 </div>
               </td>
-              <td className="px-4 py-4 border-r border-slate-700 text-center align-middle bg-black/10">
+              <td className="px-4 py-4 border-r border-slate-700 bg-black/10">
                 <span className="text-3xl font-black text-indigo-400">{Math.round(totalsUnified.planKg).toLocaleString()}</span>
               </td>
-              <td className="px-4 py-4 border-r border-slate-700 text-center align-middle bg-black/20">
+              <td className="px-4 py-4 border-r border-slate-700 bg-black/20">
                 <span className="text-4xl font-black text-white">{Math.round(totalsUnified.planUn).toLocaleString()}</span>
               </td>
-              <td className="px-4 py-4 border-r border-slate-700 text-center align-middle bg-cyan-500/10">
+              <td className="px-4 py-4 border-r border-slate-700 bg-cyan-500/10">
                 <span className="text-4xl font-black text-cyan-400">{totalsUnified.totalRuns}</span>
               </td>
-              <td rowSpan={2} className="px-4 py-3 border-r border-slate-700 text-center align-middle bg-slate-800/20">
+              <td rowSpan={2} className="px-4 py-3 border-r border-slate-700 bg-slate-800/20 align-middle">
                 <div className="flex flex-col gap-6">
                   <div className="space-y-1">
                     <p className="text-[9px] text-slate-500 text-left uppercase">Día</p>
                     <select 
                       value={selectedDiaShift} 
                       onChange={(e) => setSelectedDiaShift(e.target.value)}
-                      className="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-[11px] text-yellow-500 outline-none w-full"
+                      className="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-[11px] text-yellow-500 outline-none w-full font-black"
                     >
                       {diaShiftOptions.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
                     </select>
@@ -703,16 +700,16 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     <select 
                       value={selectedNocheShift} 
                       onChange={(e) => setSelectedNocheShift(e.target.value)}
-                      className="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-[11px] text-yellow-500 outline-none w-full"
+                      className="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-[11px] text-yellow-500 outline-none w-full font-black"
                     >
                       {nocheShiftOptions.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
                     </select>
                   </div>
                 </div>
               </td>
-              <td className="px-4 py-3 border-b border-slate-700 bg-slate-800/40">
+              <td className="px-4 py-3 border-b border-slate-700 bg-slate-800/40 text-left">
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1 text-left">
+                  <div className="space-y-1">
                     <p className="text-[9px] text-slate-500 uppercase">Op1 Día</p>
                     <select 
                       value={assignedPersonnel.dia.op1} 
@@ -723,7 +720,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                       {looperOperators.map((op, idx) => <option key={idx} value={op.NOMBRE}>{op.NOMBRE}</option>)}
                     </select>
                   </div>
-                  <div className="space-y-1 text-left">
+                  <div className="space-y-1">
                     <p className="text-[9px] text-slate-500 uppercase">Op2 Día Ayud</p>
                     <select 
                       value={assignedPersonnel.dia.op2} 
@@ -737,25 +734,25 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 </div>
               </td>
             </tr>
-            <tr>
-              <td colSpan={2} className="px-4 py-3 border-r border-slate-700 bg-slate-900/40 text-center">
+            <tr className="text-center">
+              <td colSpan={2} className="px-4 py-3 border-r border-slate-700 bg-slate-900/40">
                  <p className="text-[9px] text-slate-500 uppercase tracking-widest mb-1">Ocupación (%)</p>
                  <div className="flex items-center justify-center gap-3">
                     <div className={cn("w-3 h-3 rounded-full", ocupacionPorc > 100 ? "bg-red-500 animate-pulse" : "bg-emerald-500")} />
                     <span className={cn("text-2xl font-black", ocupacionPorc > 100 ? "text-red-400" : "text-emerald-400")}>{ocupacionPorc.toFixed(1)}%</span>
                  </div>
               </td>
-              <td className="px-4 py-3 border-r border-slate-700 bg-slate-800/20 text-center">
+              <td className="px-4 py-3 border-r border-slate-700 bg-slate-800/20">
                 <p className="text-[9px] text-slate-500 mb-1 uppercase">Tiempo Operativo (H)</p>
                 <span className="text-2xl font-black text-emerald-400">{totalsUnified.tProceso.toFixed(2)}</span>
               </td>
-              <td colSpan={2} className="px-4 py-3 border-r border-slate-700 bg-slate-800/30 text-center">
+              <td colSpan={2} className="px-4 py-3 border-r border-slate-700 bg-slate-800/30">
                 <p className="text-[9px] text-slate-500 mb-1 uppercase">Disponibilidad Total (H)</p>
                 <span className="text-2xl font-black text-yellow-400">{tDisponible.toFixed(2)}</span>
               </td>
-              <td className="px-4 py-3 bg-slate-800/40">
+              <td className="px-4 py-3 bg-slate-800/40 text-left">
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1 text-left">
+                  <div className="space-y-1">
                     <p className="text-[9px] text-slate-500 uppercase">Op1 Noche</p>
                     <select 
                       value={assignedPersonnel.noche.op1} 
@@ -766,7 +763,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                       {looperOperators.map((op, idx) => <option key={idx} value={op.NOMBRE}>{op.NOMBRE}</option>)}
                     </select>
                   </div>
-                  <div className="space-y-1 text-left">
+                  <div className="space-y-1">
                     <p className="text-[9px] text-slate-500 uppercase">Op2 Noche Ayud</p>
                     <select 
                       value={assignedPersonnel.noche.op2} 
@@ -915,40 +912,42 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                             )}
                             onClick={() => toggleGroup(groupKey)}
                           >
-                            <td className="px-4 py-4 flex items-center gap-2 text-left">
-                               {isExp ? <Minus className="w-3 h-3 text-red-500" /> : <Plus className="w-3 h-3 text-indigo-500" />}
-                               <span className="font-black text-[10px] uppercase tracking-widest opacity-70">Corrida {group.apertura} - D{group.densidad}</span>
+                            <td className="px-4 py-4 text-left border-r border-gray-100/10">
+                               <div className="flex items-center gap-2">
+                                  {isExp ? <Minus className="w-3 h-3 text-red-500" /> : <Plus className="w-3 h-3 text-indigo-500" />}
+                                  <span className="font-black text-[10px] uppercase tracking-widest opacity-70">{group.apertura} - D{group.densidad}</span>
+                               </div>
                             </td>
-                            <td className="px-6 py-4 text-left text-indigo-900 font-black uppercase flex items-center gap-3">
+                            <td className="px-6 py-4 text-left text-indigo-900 font-black uppercase">
                               Subtotal Corrida ({group.totalPlanUn} ROLLOS)
-                              <div className={cn("w-4 h-4 rounded-full shadow-sm", group.hasGroupDeficit ? "bg-red-500 animate-pulse" : "bg-green-500")} />
                             </td>
-                            <td colSpan={3} className="bg-indigo-50/10"></td>
-                            <td className="px-3 py-4 text-slate-400 font-mono">{(group.total1006).toLocaleString()}</td>
-                            <td className="px-2 py-4 text-cyan-600/50 font-mono">{(group.totalUN1006).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                            <td className="px-3 py-4 text-slate-400 font-mono">{(group.total1008).toLocaleString()}</td>
-                            <td className="px-2 py-4 text-cyan-600/50 font-mono">{(group.totalUN1008).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                            <td className="px-3 py-4 text-slate-400 font-mono">{(group.total1015).toLocaleString()}</td>
-                            <td className="px-2 py-4 text-cyan-600/50 font-mono">{(group.totalUN1015).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                            <td className="px-3 py-4 bg-indigo-800 text-white font-mono">{Math.round(group.totalStockUN).toLocaleString()}</td>
-                            <td className="px-3 py-4 bg-indigo-800 text-white font-mono">{Math.round(group.totalStockKg).toLocaleString()}</td>
-                            <td className="px-4 py-4 text-right font-mono font-black text-indigo-900 bg-indigo-50/50 opacity-40">{group.totalKg.toLocaleString()}</td>
-                            <td className="px-4 py-4 text-right font-mono font-black text-indigo-400 bg-indigo-50/50 opacity-40">{group.totalKgHalb.toLocaleString()}</td>
-                            <td className="px-4 py-4 text-right font-mono font-black text-white bg-slate-800">{group.totalConsumoKg.toLocaleString()}</td>
-                            <td className="px-3 py-4 bg-[#cfe2f3]/30 font-mono text-indigo-800 opacity-40">{Math.round(group.totalRollos).toLocaleString()}</td>
-                            <td className="px-3 py-4 bg-[#d1d5db]/30 font-mono text-slate-600 opacity-40">{Math.round(group.totalRollosHalb).toLocaleString()}</td>
-                            <td className="px-3 py-4 bg-[#1e293b] font-mono text-[#facc15]">{Math.round(group.totalNroRollos).toLocaleString()}</td>
-                            <td className="px-4 py-4 text-center font-black">
+                            <td className="px-2 py-4 bg-indigo-50/10 border-r border-gray-100/10"></td>
+                            <td className="px-2 py-4 bg-indigo-50/10 border-r border-gray-100/10"></td>
+                            <td className="px-2 py-4 bg-indigo-50/10 border-r border-gray-100/10"></td>
+                            <td className="px-3 py-4 text-slate-400 font-mono border-r border-gray-100/10">{formatNum(group.total1006, 0)}</td>
+                            <td className="px-2 py-4 text-cyan-600/50 font-mono border-r border-gray-100/10">{formatNum(group.totalUN1006, 0)}</td>
+                            <td className="px-3 py-4 text-slate-400 font-mono border-r border-gray-100/10">{formatNum(group.total1008, 0)}</td>
+                            <td className="px-2 py-4 text-cyan-600/50 font-mono border-r border-gray-100/10">{formatNum(group.totalUN1008, 0)}</td>
+                            <td className="px-3 py-4 text-slate-400 font-mono border-r border-gray-100/10">{formatNum(group.total1015, 0)}</td>
+                            <td className="px-2 py-4 text-cyan-600/50 font-mono border-r border-gray-100/10">{formatNum(group.totalUN1015, 0)}</td>
+                            <td className="px-3 py-4 bg-indigo-800 text-white font-mono border-r border-gray-100/10">{formatNum(group.totalStockUN, 0)}</td>
+                            <td className="px-3 py-4 bg-indigo-800 text-white font-mono border-r border-gray-100/10">{formatNum(group.totalStockKg, 0)}</td>
+                            <td className="px-4 py-4 text-right font-mono font-black text-indigo-900 bg-indigo-50/50 opacity-40 border-r border-gray-100/10">{formatNum(group.totalKg, 0)}</td>
+                            <td className="px-4 py-4 text-right font-mono font-black text-indigo-400 bg-indigo-50/50 opacity-40 border-r border-gray-100/10">{formatNum(group.totalKgHalb, 0)}</td>
+                            <td className="px-4 py-4 text-right font-mono font-black text-white bg-slate-800 border-r border-gray-100/10">{formatNum(group.totalConsumoKg, 0)}</td>
+                            <td className="px-3 py-4 bg-[#cfe2f3]/30 font-mono text-indigo-800 opacity-40 border-r border-gray-100/10">{formatNum(group.totalRollos, 0)}</td>
+                            <td className="px-3 py-4 bg-[#d1d5db]/30 font-mono text-slate-600 opacity-40 border-r border-gray-100/10">{formatNum(group.totalRollosHalb, 0)}</td>
+                            <td className="px-3 py-4 bg-[#1e293b] font-mono text-[#facc15] border-r border-gray-100/10">{formatNum(group.totalNroRollos, 0)}</td>
+                            <td className="px-3 py-4 text-center border-r border-gray-100/10">
                                <div className={cn("w-4 h-4 rounded-full mx-auto shadow-sm", group.hasGroupDeficit ? "bg-red-500 animate-pulse" : "bg-green-500")} />
-                               <span className="text-[8px] text-slate-400 mt-0.5 block">{group.hasGroupDeficit ? 'STOCK BAJO' : 'STOCK OK'}</span>
                             </td>
-                            <td className="px-4 py-4 text-right font-mono font-black text-red-900 bg-[#fee2e2]/50">{group.totalPlanUn.toLocaleString()}</td>
-                            <td className="px-4 py-4 text-right font-mono font-black text-red-900 bg-[#fee2e2]/50">{group.totalPlanKg.toLocaleString()}</td>
+                            <td className="px-4 py-4 text-right font-mono font-black text-red-900 bg-[#fee2e2]/50 border-r border-gray-100/10">{formatNum(group.totalPlanUn, 0)}</td>
+                            <td className="px-4 py-4 text-right font-mono font-black text-red-900 bg-[#fee2e2]/50 border-r border-gray-100/10">{formatNum(group.totalPlanKg, 0)}</td>
                             <td className="px-4 py-4 text-right font-mono font-black text-indigo-900 bg-indigo-100/50">{formatNum(group.totalTProceso, 1)}</td>
                           </tr>
                           {isExp && group.items.map((item, iIdx) => (
                             <tr key={`${groupKey}-${iIdx}`} className="bg-white hover:bg-blue-50/10 transition-colors">
-                              <td className="px-4 py-3 border-r border-gray-100 font-mono text-indigo-600 text-left pl-8">{item.material}</td>
+                              <td className="px-4 py-3 border-r border-gray-100 font-mono text-indigo-600 text-left pl-10">{item.material}</td>
                               <td className="px-6 py-3 border-r border-gray-100 text-left text-gray-400 uppercase leading-tight italic text-[10px] truncate max-w-[250px]">{item.descripcion}</td>
                               <td className="px-2 py-3 border-r border-gray-100 font-mono text-indigo-900 bg-indigo-50/10">{item.peso.toFixed(2)}</td>
                               <td className="px-2 py-3 border-r border-gray-100 font-bold text-indigo-900 bg-indigo-50/10">{item.densidad}</td>
@@ -969,14 +968,13 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                               <td className="px-3 py-3 border-r border-gray-100 bg-slate-100/30 font-mono font-black text-slate-900">{Math.round(item.totalNroRollos).toLocaleString()}</td>
                               <td className="px-4 py-3 border-r border-gray-100 text-center font-black">
                                  <div className={cn("w-3 h-3 rounded-full mx-auto", item.hasDeficit ? "bg-red-400" : "bg-green-400")} />
-                                 <span className="text-[8px] text-slate-300">{(item.porcentajeNecesidad * 100).toFixed(0)}%</span>
                               </td>
                               <td className="px-4 py-3 border-r border-black/10 text-right font-mono font-black text-red-500 bg-[#fee2e2]/20">
                                  <input 
                                    type="number" 
                                    value={item.planUn} 
                                    onChange={(e) => handlePlanUnChange(item.material, e.target.value)}
-                                   className="w-16 bg-white border border-red-200 rounded text-center h-7 text-xs focus:ring-2 focus:ring-red-500 outline-none"
+                                   className="w-16 bg-white border border-red-200 rounded text-center h-7 text-xs focus:ring-2 focus:ring-red-500 outline-none font-bold"
                                  />
                               </td>
                               <td className="px-4 py-3 border-r border-black/10 text-right font-mono font-black text-red-500 bg-[#fee2e2]/20">{item.planKg.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
