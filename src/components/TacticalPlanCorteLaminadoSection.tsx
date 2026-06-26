@@ -47,6 +47,7 @@ import { es } from 'date-fns/locale';
 // Constantes técnicas
 const CAROUSEL_RADIO_CM = 320; 
 const CAROUSEL_CIRCUMFERENCE = 2 * Math.PI * CAROUSEL_RADIO_CM; 
+const SETUP_TIME_PER_RUN_MINUTES = 90; // Tiempo de preparación/carga/pegado por corrida
 
 interface UnifiedNeedRow {
   material: string;
@@ -138,7 +139,7 @@ const getDensityColor = (dens: string) => {
   if (d.includes('15')) return 'border-l-blue-600 bg-blue-50/50 text-blue-900';
   if (d.includes('18')) return 'border-l-emerald-600 bg-emerald-50/50 text-emerald-900';
   if (d.includes('20')) return 'border-l-purple-600 bg-purple-50/50 text-purple-900';
-  if (d.includes('23')) return 'border-l-amber-600 bg-amber-50/50 text-amber-900';
+  if (d.includes('23')) return 'border-l-amber-600 bg-emerald-50/50 text-emerald-900';
   if (d.includes('25')) return 'border-l-pink-600 bg-pink-50/50 text-pink-900';
   if (d.includes('26')) return 'border-l-teal-600 bg-teal-50/50 text-teal-900';
   if (d.includes('30')) return 'border-l-orange-600 bg-orange-50/50 text-orange-900';
@@ -265,7 +266,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       setOrders(provs.data?.data || provs.data || []);
       setOrdersFert(ferts.data?.data || ferts.data || []);
       setKpiLooperData(kpiLooper?.data || []);
-      setInventarioSAP(Array.isArray(invSAP?.data) ? invSAP.data : []);
+      setInventarioSAP(Array.isArray(invSAP?.data) ? invSAP.data : (invSAP?.data?.data || []));
 
       const skillsArray = Array.isArray(skills.data) ? skills.data : (Array.isArray(skills) ? skills : []);
       const filteredOps = skillsArray.filter((op: any) => 
@@ -483,7 +484,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         const totalStockUnGroup = items.reduce((s, r) => s + r.totalStockUN, 0);
         const totalConsumoUnGroup = items.reduce((s, r) => s + r.totalNroRollos, 0);
         
-        // Motor de Reposición Proporcional
+        // MOTOR DE REPOSICIÓN PROPORCIONAL ITERATIVO (Bloques de 40)
+        // Lógica solicitada: Plan (UN) = Stock Bodegas - Necesidades. Si es negativo, reposición.
         const groupDeficit = Math.max(0, totalConsumoUnGroup - totalStockUnGroup);
         const runsNeeded = Math.ceil(groupDeficit / 40);
         const totalUnitsInPlan = runsNeeded * 40;
@@ -492,12 +494,15 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           row.porcentajeNecesidad = totalKgGroup > 0 ? (row.totalConsumoKg / totalKgGroup) : 0;
           row.planUn = totalUnitsInPlan > 0 ? Math.round(totalUnitsInPlan * row.porcentajeNecesidad) : 0;
           row.planKg = row.planUn * row.peso;
-          row.tProceso = ((row.looperTRolloMin || 0) * row.planUn) / 60;
+          
+          // TIEMPO OPERATIVO INCLUYENDO PREPARACIÓN (90 min por corrida)
+          const setupTimeContribution = runsNeeded > 0 ? (SETUP_TIME_PER_RUN_MINUTES * runsNeeded * row.porcentajeNecesidad) : 0;
+          row.tProceso = ((row.looperTRolloMin || 0) * row.planUn + setupTimeContribution) / 60;
         });
       });
 
       setUnifiedNeeds(finalArray.sort((a, b) => b.totalConsumoKg - a.totalConsumoKg));
-      addNotification('success', 'Plan propuesto generado exitosamente por bloque Looper.');
+      addNotification('success', 'Plan propuesto generado exitosamente con tiempos de preparación integrados.');
     } finally { 
       setIsProcessingResumen(false); 
     }
@@ -509,7 +514,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       const updated = prev.map(row => {
         if (row.material === material) {
           const updatedPlanKg = newPlanUn * row.peso;
-          const updatedTProceso = ((row.looperTRolloMin || 0) * newPlanUn) / 60;
+          // Recalcular tiempo asumiendo un bloque (ajustado si se cambia manualmente)
+          const updatedTProceso = ((row.looperTRolloMin || 0) * newPlanUn + (newPlanUn > 0 ? SETUP_TIME_PER_RUN_MINUTES : 0)) / 60;
           return {
             ...row,
             planUn: newPlanUn,
@@ -589,7 +595,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       tProceso: acc.tProceso + row.tProceso
     }), { kg: 0, kgHalb: 0, totalKg: 0, un: 0, rollos: 0, rollosHalb: 0, totalRollos: 0, planUn: 0, planKg: 0, stock1006: 0, stock1008: 0, stock1015: 0, stockUN1006: 0, stockUN1008: 0, stockUN1015: 0, totalStockKg: 0, totalStockUN: 0, tProceso: 0 });
 
-    // Cálculo consolidado de corridas (excluyendo CONV)
+    // Cálculo consolidado de corridas (excluyendo CONV de la cabecera si aplica)
     const totalRuns = groupedNeeds.reduce((acc, group) => {
       const looperItems = group.items.filter(it => !it.descripcion.toUpperCase().includes('CONV'));
       if (looperItems.length === 0) return acc;
@@ -921,13 +927,17 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                             <td className="px-6 py-4 text-left font-black uppercase">
                                <div className="flex items-center gap-3">
                                   {group.hasGroupDeficit ? (
-                                    <AlertCircle className="w-4 h-4 text-red-500" />
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-3 h-3 rounded-full bg-red-500 animate-pulse shadow-[0_0_8px_#ef4444]" />
+                                        <span className="text-red-700">BLOQUE CRÍTICO</span>
+                                    </div>
                                   ) : (
-                                    <div className="w-4 h-4 rounded-full bg-green-500" />
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-3 h-3 rounded-full bg-green-500" />
+                                        <span className="text-indigo-900">BLOQUE OK</span>
+                                    </div>
                                   )}
-                                  <span className={cn(group.hasGroupDeficit ? "text-red-700" : "text-indigo-900")}>
-                                    {group.hasGroupDeficit ? "BLOQUE CRÍTICO" : "BLOQUE OK"} ({group.totalPlanUn} ROLLOS)
-                                  </span>
+                                  <span className="text-[10px] text-slate-400 ml-auto">Subtotal Corrida ({group.totalPlanUn} ROLLOS)</span>
                                </div>
                             </td>
                             <td className="px-2 py-4 border-r border-gray-100/10"></td>
