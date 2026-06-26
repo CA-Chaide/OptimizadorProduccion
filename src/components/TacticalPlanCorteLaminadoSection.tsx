@@ -128,8 +128,6 @@ const extractAperture = (desc: string): string => {
   const d = String(desc || '').toUpperCase();
   const match = d.match(/(194\.5|200|206|214|219|228|244)/);
   if (match) return match[0];
-  const fallbackMatch = d.match(/(\d{3}(?:\.\d)?)\s*[X*]/);
-  if (fallbackMatch) return fallbackMatch[1];
   return '—';
 };
 
@@ -211,7 +209,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     const end = endOfMonth(viewDate);
     const days = eachDayOfInterval({ start, end });
     const startDay = getDay(start);
-    const padding = startDay === 0 ? 6 : startDay - 1; // Ajuste para Lunes-Domingo
+    const padding = startDay === 0 ? 6 : startDay - 1;
     return [...Array(padding).fill(null), ...days];
   }, [viewDate]);
 
@@ -487,8 +485,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         items.forEach(row => {
           row.planUn = Math.round(totalUnitsInPlan * row.porcentajeNecesidad);
           row.planKg = row.planUn * row.peso;
-          const isStandard = !row.descripcion.toUpperCase().includes('CONV') && !row.descripcion.toUpperCase().includes('CV');
-          const setupContribution = (isStandard && runsNeeded > 0) ? (SETUP_TIME_PER_RUN * runsNeeded * row.porcentajeNecesidad) : 0;
+          const setupContribution = (runsNeeded > 0) ? (SETUP_TIME_PER_RUN * runsNeeded * row.porcentajeNecesidad) : 0;
           row.tProceso = ((row.looperTRolloMin || 0) * row.planUn + setupContribution) / 60;
         });
       });
@@ -591,69 +588,120 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   }, [tDisponible, totalsUnified.tProceso]);
 
   const renderTopConsolidation = () => (
-    <div className="bg-[#1e293b] border-2 border-slate-700 rounded-lg shadow-2xl overflow-hidden mb-8 font-sans">
-      <table className="w-full border-collapse text-[11px] uppercase font-bold text-slate-300">
-        <thead>
-          <tr className="bg-slate-800/50 border-b border-slate-700 text-center">
-            <th className="px-4 py-3 border-r border-slate-700 w-[15%]">Rollos Requeridos (Plan Kg)</th>
-            <th className="px-4 py-3 border-r border-slate-700 w-[15%]">Rollos Requeridos (Plan Un)</th>
-            <th className="px-4 py-3 border-r border-slate-700 w-[13%] bg-cyan-900/40 text-cyan-200">NRO DE CORRIDAS LOOPER</th>
-            <th className="px-4 py-3 border-r border-slate-700 w-[13%]">TURNO</th>
-            <th className="px-4 py-3">EFICIENCIA</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y border-slate-700">
-          <tr className="text-center">
-            <td className="px-4 py-4 border-r border-slate-700">
-              <span className="text-3xl font-black text-indigo-400">{formatNum(totalsUnified.planKg, 0)}</span>
-            </td>
-            <td className="px-4 py-4 border-r border-slate-700 bg-black/10">
-              <span className="text-4xl font-black text-white">{Math.round(totalsUnified.planUn).toLocaleString()}</span>
-            </td>
-            <td className="px-4 py-4 border-r border-slate-700 bg-cyan-500/10">
-              <span className="text-4xl font-black text-cyan-400">{totalsUnified.totalRuns}</span>
-            </td>
-            <td rowSpan={2} className="px-4 py-3 border-r border-slate-700 align-middle">
-              <div className="flex flex-col gap-6">
-                <div className="space-y-1">
-                  <p className="text-[9px] text-slate-500 text-left">Día</p>
-                  <select value={selectedDiaShift} onChange={(e) => setSelectedDiaShift(e.target.value)} className="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-[11px] text-yellow-500 w-full font-black">
-                    {diaShiftOptions.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
-                  </select>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-[9px] text-slate-500 text-left">Noche</p>
-                  <select value={selectedNocheShift} onChange={(e) => setSelectedNocheShift(e.target.value)} className="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-[11px] text-yellow-500 w-full font-black">
-                    {nocheShiftOptions.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
-                  </select>
-                </div>
-              </div>
-            </td>
-            <td className="px-4 py-4 align-middle bg-slate-800/40">
-               <div className="flex flex-col items-center gap-2">
-                  <span className="text-4xl font-black text-emerald-400 tracking-tighter">87%</span>
-                  <span className="text-[9px] text-slate-500">FACTOR PLANTA</span>
-               </div>
-            </td>
-          </tr>
-          <tr className="text-center">
-            <td colSpan={2} className="px-4 py-3 border-r border-slate-700 bg-slate-900/40">
-              <div className="flex items-center justify-center gap-3">
-                <div className={cn("w-3 h-3 rounded-full", ocupacionPorc > 100 ? "bg-red-500 animate-pulse" : "bg-emerald-500")} />
-                <span className={cn("text-2xl font-black", ocupacionPorc > 100 ? "text-red-400" : "text-emerald-400")}>{ocupacionPorc.toFixed(1)}% OCUPACIÓN</span>
-              </div>
-            </td>
-            <td className="px-4 py-3 border-r border-slate-700 bg-slate-800/20">
-              <p className="text-[9px] text-slate-500 mb-1 uppercase">T. Proceso (H)</p>
-              <span className="text-2xl font-black text-emerald-400">{totalsUnified.tProceso.toFixed(1)}</span>
-            </td>
-            <td colSpan={1} className="px-4 py-3 border-r border-slate-700 bg-slate-800/30">
-              <p className="text-[9px] text-slate-500 mb-1 uppercase">Disponibilidad (H)</p>
-              <span className="text-2xl font-black text-yellow-400">{tDisponible.toFixed(1)}</span>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+    <div className="bg-[#1e293b] border border-slate-700 rounded-xl shadow-2xl overflow-hidden mb-8 font-sans text-white">
+      <div className="grid grid-cols-7 border-b border-slate-700">
+        {/* 1. Demanda KG */}
+        <div className="p-3 border-r border-slate-700 flex flex-col justify-center min-h-[110px]">
+          <p className="text-[8px] font-black uppercase text-slate-500 tracking-tighter text-center mb-3">DEMANDA CONSOLIDADA (KG)</p>
+          <div className="space-y-1 font-bold text-[10px] w-full">
+            <div className="flex justify-between px-2 text-slate-400">
+              <span className="uppercase">PROV:</span> <span className="text-red-400 font-mono">{formatNum(totalsUnified.kg, 0)}</span>
+            </div>
+            <div className="flex justify-between px-2 text-slate-400">
+              <span className="uppercase">HALB:</span> <span className="text-blue-400 font-mono">{formatNum(totalsUnified.kgHalb, 0)}</span>
+            </div>
+            <div className="flex justify-between px-2 pt-1 border-t border-slate-700 mt-1">
+              <span className="text-white uppercase font-black">TOTAL:</span> <span className="text-white font-mono">{formatNum(totalsUnified.totalKg, 0)}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* 2. Demanda UN */}
+        <div className="p-3 border-r border-slate-700 flex flex-col justify-center min-h-[110px]">
+          <p className="text-[8px] font-black uppercase text-slate-500 tracking-tighter text-center mb-3">DEMANDA CONSOLIDADA (UN)</p>
+          <div className="space-y-1 font-bold text-[10px] w-full">
+            <div className="flex justify-between px-2 text-slate-400">
+              <span className="uppercase">PROV:</span> <span className="text-red-400 font-mono">{formatNum(totalsUnified.un, 0)}</span>
+            </div>
+            <div className="flex justify-between px-2 text-slate-400">
+              <span className="uppercase">HALB:</span> <span className="text-blue-400 font-mono">{formatNum(totalsUnified.rollosHalb, 0)}</span>
+            </div>
+            <div className="flex justify-between px-2 pt-1 border-t border-slate-700 mt-1">
+              <span className="text-white uppercase font-black">TOTAL:</span> <span className="text-white font-mono">{formatNum(totalsUnified.totalNroRollos, 0)}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* 3. Plan KG */}
+        <div className="p-3 border-r border-slate-700 flex flex-col items-center justify-center text-center">
+          <p className="text-[8px] font-black uppercase text-slate-500 tracking-tighter mb-4">ROLLOS REQUERIDOS (PLAN KG)</p>
+          <span className="text-3xl font-black text-indigo-400 tracking-tighter leading-none">{formatNum(totalsUnified.planKg, 0)}</span>
+        </div>
+
+        {/* 4. Plan UN */}
+        <div className="p-3 border-r border-slate-700 flex flex-col items-center justify-center text-center bg-black/10">
+          <p className="text-[8px] font-black uppercase text-slate-500 tracking-tighter mb-4">ROLLOS REQUERIDOS (PLAN UN)</p>
+          <span className="text-4xl font-black text-white tracking-tighter leading-none">{Math.round(totalsUnified.planUn).toLocaleString()}</span>
+        </div>
+
+        {/* 5. Corridas */}
+        <div className="p-3 border-r border-slate-700 flex flex-col items-center justify-center text-center bg-cyan-900/30">
+          <p className="text-[8px] font-black uppercase text-cyan-200 tracking-tighter mb-4">NRO DE CORRIDAS LOOPER</p>
+          <span className="text-4xl font-black text-cyan-400 tracking-tighter leading-none">{totalsUnified.totalRuns}</span>
+        </div>
+
+        {/* 6. Turno */}
+        <div className="p-3 border-r border-slate-700 flex flex-col justify-center text-center">
+          <p className="text-[8px] font-black uppercase text-slate-500 tracking-tighter mb-4">TURNO</p>
+          <div className="space-y-4">
+            <div className="space-y-1 text-left">
+              <p className="text-[7px] text-slate-600 uppercase px-1">Día</p>
+              <select value={selectedDiaShift} onChange={(e) => setSelectedDiaShift(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-[10px] text-yellow-500 w-full font-black outline-none appearance-none cursor-pointer">
+                {diaShiftOptions.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
+              </select>
+            </div>
+            <div className="space-y-1 text-left">
+              <p className="text-[7px] text-slate-600 uppercase px-1">Noche</p>
+              <select value={selectedNocheShift} onChange={(e) => setSelectedNocheShift(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-[10px] text-yellow-500 w-full font-black outline-none appearance-none cursor-pointer">
+                {nocheShiftOptions.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* 7. Personal */}
+        <div className="p-3 flex flex-col justify-center text-center">
+          <p className="text-[8px] font-black uppercase text-slate-500 tracking-tighter mb-4">PERSONAL</p>
+          <div className="grid grid-cols-2 gap-x-2 gap-y-6">
+            <div>
+              <p className="text-[6px] text-slate-600 uppercase mb-1">OP1 DÍA</p>
+              <p className="text-[9px] font-black text-yellow-500 tracking-tighter leading-none whitespace-nowrap">— SIN AS —</p>
+            </div>
+            <div>
+              <p className="text-[6px] text-slate-600 uppercase mb-1">OP2 DÍA AYUD</p>
+              <p className="text-[9px] font-black text-yellow-500 tracking-tighter leading-none whitespace-nowrap">— SIN AS —</p>
+            </div>
+            <div>
+              <p className="text-[6px] text-slate-600 uppercase mb-1">OP1 NOCHE</p>
+              <p className="text-[9px] font-black text-yellow-500 tracking-tighter leading-none whitespace-nowrap">— SIN AS —</p>
+            </div>
+            <div>
+              <p className="text-[6px] text-slate-600 uppercase mb-1">OP2 NOCHE AYUD</p>
+              <p className="text-[9px] font-black text-yellow-500 tracking-tighter leading-none whitespace-nowrap">— SIN AS —</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom Row Metrics */}
+      <div className="grid grid-cols-7 bg-slate-900/60">
+        <div className="col-span-2 p-4 border-r border-slate-700 flex items-center justify-center gap-4">
+          <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest">OCUPACIÓN (%)</div>
+          <div className="flex items-center gap-3">
+            <div className={cn("w-3 h-3 rounded-full", ocupacionPorc > 100 ? "bg-red-500 animate-pulse" : "bg-emerald-500")} />
+            <span className={cn("text-3xl font-black", ocupacionPorc > 100 ? "text-red-400" : "text-emerald-400")}>{ocupacionPorc.toFixed(1)}%</span>
+          </div>
+        </div>
+        <div className="p-4 border-r border-slate-700 flex flex-col items-center justify-center">
+          <p className="text-[9px] font-black text-slate-500 uppercase tracking-tighter mb-1">TIEMPO OPERATIVO (H)</p>
+          <span className="text-3xl font-black text-emerald-400 leading-none">{totalsUnified.tProceso.toFixed(2)}</span>
+        </div>
+        <div className="col-span-2 p-4 border-r border-slate-700 flex flex-col items-center justify-center">
+          <p className="text-[9px] font-black text-slate-500 uppercase tracking-tighter mb-1">DISPONIBILIDAD TOTAL (H)</p>
+          <span className="text-3xl font-black text-yellow-400 leading-none">{tDisponible.toFixed(2)}</span>
+        </div>
+        <div className="col-span-2" />
+      </div>
     </div>
   );
 
