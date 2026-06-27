@@ -47,7 +47,7 @@ import { MaestroMaterialesExplosionSection } from './MaestroMaterialesExplosionS
 
 // --- CONSTANTES TÉCNICAS PLANTA ---
 const BLOCK_SIZE = 40; 
-const SETUP_TIME_PER_RUN = 128; // Actualizado: 128 minutos de preparación por cada bloque físico
+const SETUP_TIME_PER_RUN = 128; // 128 minutos de preparación por cada bloque físico
 
 interface UnifiedNeedRow {
   material: string;
@@ -82,6 +82,7 @@ interface UnifiedNeedRow {
   planKg: number;
   tProceso: number; 
   hasDeficit: boolean;
+  unidades: number;
 }
 
 const safeNum = (val: any): number => {
@@ -260,7 +261,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         serviciosService.getKPIMAestroLooper().catch(() => ({ data: [] })),
         serviciosService.getInventarioAñoActual().catch(() => ({ data: [] })),
         serviciosService.getOrdenesFert(1, 20000).catch(() => ({ data: [] })),
-        serviciosService.getHabilidadesOperadorPorEstacion().catch(() => ({ data: [] }))
+        serviciosService.getCuboHabilidadesOP().catch(() => ({ data: [] }))
       ]);
       
       setRestriccionesArray((restrs.data || []).filter((r: any) => ids.includes(r.codigo_grupo)));
@@ -269,10 +270,10 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       setKpiLooperData(kpiLooper?.data || []);
       setInventarioSAP(Array.isArray(invSAP?.data) ? invSAP.data : (invSAP?.data?.data || []));
 
-      // Filtrar Operadores por Laminado Cilíndrico
+      // Filtrar Operadores por Laminado Cilíndrico usando el nuevo método
       const skillRows = Array.isArray(skills.data) ? skills.data : [];
       const laminadoOps = skillRows.filter((s: any) => 
-        String(getProp(s, ['LineaProceso'])).toUpperCase().includes('LAMINADO CILINDRICO')
+        String(getProp(s, ['LineaProceso', 'LINEA_PROCESO'])).toUpperCase().includes('LAMINADO CILINDRICO')
       );
       setOperadoresLaminado(laminadoOps);
 
@@ -354,7 +355,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       const match = matRaw.match(/^(\d+)/);
       const matCode = match ? match[1] : matRaw;
       if (!matCode) return;
-      const orderQty = safeNum(getProp(order, ['CANTPENDIENTE', 'CANTPROGRAMADA', 'CANTIDAD', 'CANTPENDIENTE']));
+      const orderQty = safeNum(getProp(order, ['CANTPENDIENTE', 'CANTPROGRAMADA', 'CANTIDAD']));
       materialGroupsHalb.set(matCode, (materialGroupsHalb.get(matCode) || 0) + orderQty);
     });
 
@@ -399,6 +400,10 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               existingRow.consumoKg += kgProv;
               existingRow.consumoKgHalb += kgHalb;
               existingRow.totalConsumoKg = existingRow.consumoKg + existingRow.consumoKgHalb;
+              existingRow.unidades += qtyProv; // PROV units
+              // FERT units contribution also needed for total rollos calculation
+              const rollosContributionHalb = existingRow.peso > 0 ? kgHalb / existingRow.peso : 0;
+              existingRow.nroRollosHalb += rollosContributionHalb;
             } else {
               const pesoTeorico = (finalDistancia * dims.altura * dims.espesor * safeNum(finalDens)) / 10000;
               const looperMatch = kpiLooperData.find(k => cleanCode(k.Material) === compCode);
@@ -448,7 +453,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 planUn: 0,
                 planKg: 0,
                 tProceso: 0,
-                hasDeficit: false
+                hasDeficit: false,
+                unidades: qtyProv
               });
             }
           });
@@ -489,7 +495,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       const standardItems = items.filter(it => !it.descripcion.toUpperCase().includes('CONV') && !it.descripcion.toUpperCase().includes('CV'));
       
       let runsNeeded = 0;
-      // CORRECCIÓN: Validar si stock es insuficiente para CUALQUIER item estándar antes de proponer corridas
       const needsReplenishment = standardItems.some(r => r.totalStockUN < r.totalNroRollos);
 
       if (needsReplenishment) {
@@ -499,7 +504,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           const totalProposedUnits = runsNeeded * BLOCK_SIZE;
           const allItemsCovered = standardItems.every(r => {
             const proposedContribution = totalProposedUnits * r.porcentajeNecesidad;
-            // Un material está cubierto si Stock + Proporción >= Necesidad
             return (r.totalStockUN + proposedContribution) >= (r.totalNroRollos - 0.01); 
           });
           
@@ -518,7 +522,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         
         row.planUn = planUn;
         row.planKg = planUn * row.peso;
-        // El nro de corridas reales para el cálculo de setup es el del grupo
         const groupRuns = runsNeeded;
         const setupContribution = (groupRuns > 0) ? (SETUP_TIME_PER_RUN * groupRuns * row.porcentajeNecesidad) : 0;
         row.tProceso = ((row.looperTRolloMin || 0) * planUn + setupContribution) / 60;
@@ -537,7 +540,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       const rowKey = `${row.material}|${row.apertura}|${row.densidad}`;
       if (rowKey === key) {
         const planKg = newValue * row.peso;
-        // Estimar corridas para el setup manual (prorrateado)
         const runs = Math.ceil(newValue / (BLOCK_SIZE * row.porcentajeNecesidad)) || (newValue > 0 ? 1 : 0);
         const setupContribution = (runs > 0) ? (SETUP_TIME_PER_RUN * runs * row.porcentajeNecesidad) : 0;
         const tProceso = ((row.looperTRolloMin || 0) * newValue + setupContribution) / 60;
@@ -579,7 +581,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       group.totalKg += item.consumoKg;
       group.totalKgHalb += item.consumoKgHalb;
       group.totalConsumoKg += item.totalConsumoKg;
-      group.totalUn += item.consumoUn;
+      group.totalUn += item.unidades; // Suma unidades originales PROV
       group.totalRollos += item.nroRollos;
       group.totalRollosHalb += item.nroRollosHalb;
       group.totalNroRollos += item.totalNroRollos;
@@ -601,13 +603,12 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       group.runs = Math.ceil(group.totalPlanUn / BLOCK_SIZE);
     });
 
-    // ORDENAMIENTO ASCENDENTE SOLICITADO: APERTURA -> DENSIDAD
     return Array.from(map.values()).sort((a, b) => {
         const apA = parseFloat(a.apertura) || 0;
         const apB = parseFloat(b.apertura) || 0;
         if (apA !== apB) return apA - apB;
-        const dEA = parseFloat(a.dens) || 0;
-        const dEB = parseFloat(b.dens) || 0;
+        const dEA = parseFloat(a.densidad) || 0;
+        const dEB = parseFloat(b.densidad) || 0;
         return dEA - dEB;
     });
   }, [unifiedNeeds]);
@@ -617,7 +618,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       kg: acc.kg + row.consumoKg,
       kgHalb: acc.kgHalb + row.consumoKgHalb,
       totalKg: acc.totalKg + row.totalConsumoKg,
-      un: acc.un + row.consumoUn,
+      un: acc.un + row.unidades, // Fix: Sumar unidades base
       rollos: acc.rollos + row.nroRollos,
       rollosHalb: acc.rollosHalb + row.nroRollosHalb,
       totalRollos: acc.totalRollos + row.totalNroRollos,
@@ -673,13 +674,13 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               <div className="space-y-1 font-bold text-[9px]">
                 <p className="text-slate-500 uppercase text-center border-b border-slate-700 pb-1 mb-2">UN</p>
                 <div className="flex justify-between px-1 text-slate-400"><span>PROV:</span> <span className="text-red-400">{formatNum(totalsUnified.un, 0)}</span></div>
-                <div className="flex justify-between px-1 text-slate-400"><span>HALB:</span> <span className="text-blue-400">{formatNum(totalsUnified.rollosHalb, 0)}</span></div>
+                <div className="flex justify-between px-1 text-slate-400"><span>HALB:</span> <span className="text-blue-400">{formatNum(totalsUnified.totalNroRollos - totalsUnified.un, 0)}</span></div>
                 <div className="flex justify-between px-1 pt-1 border-t border-slate-700 mt-1"><span className="font-black">TOTAL:</span> <span>{formatNum(totalsUnified.totalNroRollos, 0)}</span></div>
               </div>
             </div>
           </div>
 
-          {/* 2. Plan (2 cols) */}
+          {/* 2. Plan (2 cols - Reducido) */}
           <div className="col-span-2 grid grid-cols-2 border-r border-slate-700">
             <div className="p-3 border-r border-slate-700 flex flex-col items-center justify-center text-center bg-indigo-900/20">
               <p className="text-[8px] font-black uppercase text-slate-500 tracking-tighter mb-4">ROLLOS REQ. (KG)</p>
@@ -691,7 +692,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             </div>
           </div>
 
-          {/* 3. Corridas LOOPER (1 col) */}
+          {/* 3. Corridas LOOPER (1 col - Reducido) */}
           <div className={cn(
             "p-3 border-r border-slate-700 flex flex-col items-center justify-center text-center transition-all",
             isSaturated ? "bg-red-600 animate-pulse" : "bg-cyan-900/30"
@@ -701,7 +702,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             {isSaturated && <span className="text-[7px] font-black uppercase text-white mt-2">ALERTA CAPACIDAD</span>}
           </div>
 
-          {/* 4. Gestión de Tiempos (2 cols - AMPLIADA) */}
+          {/* 4. Gestión de Tiempos (2 cols - Ampliada) */}
           <div className="col-span-2 p-3 border-r border-slate-700 flex flex-col justify-center">
             <p className="text-[8px] font-black uppercase text-slate-500 tracking-widest mb-4 text-center">GESTIÓN DE TIEMPOS</p>
             <div className="space-y-3">
@@ -720,11 +721,10 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             </div>
           </div>
 
-          {/* 5. Personal Asignado (5 cols - AMPLIADA) */}
+          {/* 5. Personal Asignado (5 cols - Ampliada) */}
           <div className="col-span-5 p-4 flex flex-col justify-center bg-slate-800/40">
             <p className="text-[8px] font-black uppercase text-slate-500 tracking-widest mb-4 text-center">PERSONAL ASIGNADO — LAMINADO CILÍNDRICO</p>
             <div className="grid grid-cols-2 gap-8">
-              {/* TURNO DÍA */}
               <div className="space-y-2 border-l-2 border-indigo-500 pl-4">
                 <p className="text-[8px] text-indigo-400 uppercase font-black tracking-widest mb-2">TURNO DÍA</p>
                 <div className="space-y-3">
@@ -732,9 +732,11 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                       <span className="col-span-3 text-[8px] text-slate-600 font-black">OP-01</span>
                       <select value={assignedPersonnel.diaOp1} onChange={(e) => setAssignedPersonnel(p => ({ ...p, diaOp1: e.target.value }))}
                         className="col-span-9 bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-[9px] text-yellow-500 font-black outline-none focus:border-indigo-500">
-                        <option value="">— SIN ASIGNAR —</option>
+                        <option value="">— SELECCIONAR —</option>
                         {operadoresLaminado.map((op, i) => (
-                          <option key={i} value={op.CODIGO}>{op.NOMBRE} ({op.CODIGO}) — {op.LineaProceso}</option>
+                          <option key={i} value={getProp(op, ['CodigoOperador ', 'CODIGO_OPERADOR'])}>
+                            {getProp(op, ['NombreOperador', 'NOMBRE_OPERADOR'])} — [{getProp(op, ['Calificacion', 'CALIFICACION'])}]
+                          </option>
                         ))}
                       </select>
                    </div>
@@ -742,16 +744,17 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                       <span className="col-span-3 text-[8px] text-slate-600 font-black">OP-02</span>
                       <select value={assignedPersonnel.diaOp2} onChange={(e) => setAssignedPersonnel(p => ({ ...p, diaOp2: e.target.value }))}
                         className="col-span-9 bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-[9px] text-yellow-500 font-black outline-none focus:border-indigo-500">
-                        <option value="">— SIN ASIGNAR —</option>
+                        <option value="">— SELECCIONAR —</option>
                         {operadoresLaminado.map((op, i) => (
-                          <option key={i} value={op.CODIGO}>{op.NOMBRE} ({op.CODIGO}) — {op.LineaProceso}</option>
+                          <option key={i} value={getProp(op, ['CodigoOperador ', 'CODIGO_OPERADOR'])}>
+                            {getProp(op, ['NombreOperador', 'NOMBRE_OPERADOR'])} — [{getProp(op, ['Calificacion', 'CALIFICACION'])}]
+                          </option>
                         ))}
                       </select>
                    </div>
                 </div>
               </div>
 
-              {/* TURNO NOCHE */}
               <div className="space-y-2 border-l-2 border-purple-500 pl-4">
                 <p className="text-[8px] text-purple-400 uppercase font-black tracking-widest mb-2">TURNO NOCHE</p>
                 <div className="space-y-3">
@@ -759,9 +762,11 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                       <span className="col-span-3 text-[8px] text-slate-600 font-black">OP-01</span>
                       <select value={assignedPersonnel.nocheOp1} onChange={(e) => setAssignedPersonnel(p => ({ ...p, nocheOp1: e.target.value }))}
                         className="col-span-9 bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-[9px] text-yellow-500 font-black outline-none focus:border-purple-500">
-                        <option value="">— SIN ASIGNAR —</option>
+                        <option value="">— SELECCIONAR —</option>
                         {operadoresLaminado.map((op, i) => (
-                          <option key={i} value={op.CODIGO}>{op.NOMBRE} ({op.CODIGO}) — {op.LineaProceso}</option>
+                          <option key={i} value={getProp(op, ['CodigoOperador ', 'CODIGO_OPERADOR'])}>
+                            {getProp(op, ['NombreOperador', 'NOMBRE_OPERADOR'])} — [{getProp(op, ['Calificacion', 'CALIFICACION'])}]
+                          </option>
                         ))}
                       </select>
                    </div>
@@ -769,9 +774,11 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                       <span className="col-span-3 text-[8px] text-slate-600 font-black">OP-02</span>
                       <select value={assignedPersonnel.nocheOp2} onChange={(e) => setAssignedPersonnel(p => ({ ...p, nocheOp2: e.target.value }))}
                         className="col-span-9 bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-[9px] text-yellow-500 font-black outline-none focus:border-purple-500">
-                        <option value="">— SIN ASIGNAR —</option>
+                        <option value="">— SELECCIONAR —</option>
                         {operadoresLaminado.map((op, i) => (
-                          <option key={i} value={op.CODIGO}>{op.NOMBRE} ({op.CODIGO}) — {op.LineaProceso}</option>
+                          <option key={i} value={getProp(op, ['CodigoOperador ', 'CODIGO_OPERADOR'])}>
+                            {getProp(op, ['NombreOperador', 'NOMBRE_OPERADOR'])} — [{getProp(op, ['Calificacion', 'CALIFICACION'])}]
+                          </option>
                         ))}
                       </select>
                    </div>
@@ -781,7 +788,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           </div>
         </div>
 
-        {/* MÉTRICAS INFERIORES */}
         <div className="grid grid-cols-12 bg-slate-900/60 border-t border-slate-700">
           <div className="col-span-3 p-4 border-r border-slate-700 flex items-center justify-center gap-6">
             <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest">OCUPACIÓN REAL (%)</div>
@@ -811,7 +817,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     );
   };
 
-  // Render Component safe guard
   if (!mounted) return <div className="p-4 md:p-6 min-h-screen bg-white" />;
 
   return (
@@ -1067,7 +1072,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                       const orderNum = getProp(o, ['ORDEN', 'ORDEN_PROCESO', 'ORDEN_FERT']) || '—';
                       const date = getProp(o, ['FECHA', 'FECHAINICIO', 'FECHA_INICIO']);
                       const qty = Number(getProp(o, ['CANTPENDIENTE', 'CANT_PEND', 'CANTIDAD', 'CANT_PROG']) || 0);
-                      const resp = getProp(o, ['RESPCTRLPROD', 'RESP_CONTROL_PROD', 'RESPCONTROLPROD', 'RespControlProd', 'RESPONSABLE']);
+                      const resp = getProp(o, ['RESPCTRLPROD', 'RESP_CONTROL_PROD', 'RESPONSABLE']);
                       const mach = getProp(o, ['MAQUINA', 'RECURSO', 'ID_MAQUINA']);
                       const alm = getProp(o, ['ALMACEN', 'CENTRO', 'Almacen']);
                       
