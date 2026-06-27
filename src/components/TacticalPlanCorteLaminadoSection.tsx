@@ -47,7 +47,7 @@ import { MaestroMaterialesExplosionSection } from './MaestroMaterialesExplosionS
 
 // --- CONSTANTES TÉCNICAS PLANTA ---
 const BLOCK_SIZE = 40; 
-const SETUP_TIME_PER_RUN = 45; 
+const SETUP_TIME_PER_RUN = 45; // 45 minutos de preparación por cada bloque físico
 
 interface UnifiedNeedRow {
   material: string;
@@ -231,6 +231,17 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     });
     return dates;
   }, [ordenes, ordenesFert, mounted]);
+
+  const extractMaterialInfo = useCallback((item: any) => {
+    const matStr = getProp(item, ['MATERIAL', 'Material', 'CodMaterial', 'MATERIAL_ID', 'CODIGO']);
+    const nameStr = getProp(item, ['NOMBRE', 'NombreMaterial', 'Descripcion', 'NomMaterial', 'DESCRIPCION']);
+    
+    const match = matStr.match(/^(\d+)/);
+    const code = match ? match[1].slice(-8) : matStr.slice(-8);
+    const desc = nameStr || matStr.replace(/^\d+\s*/, '') || '—';
+
+    return { code, desc };
+  }, []);
 
   const initData = useCallback(async () => {
     setIsLoading(true);
@@ -641,8 +652,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     
     return (
       <div className="bg-[#1e293b] border border-slate-700 rounded-xl shadow-2xl overflow-hidden mb-8 font-sans text-white">
-        <div className="grid grid-cols-10 border-b border-slate-700">
-          {/* 1. Demanda KG */}
+        <div className="grid grid-cols-12 border-b border-slate-700">
+          {/* 1. Demanda KG (1 col) */}
           <div className="p-3 border-r border-slate-700 flex flex-col justify-center min-h-[120px]">
             <p className="text-[8px] font-black uppercase text-slate-500 tracking-tighter text-center mb-3">DEMANDA CONSOLIDADA (KG)</p>
             <div className="space-y-1 font-bold text-[10px] w-full">
@@ -658,7 +669,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             </div>
           </div>
 
-          {/* 2. Demanda UN */}
+          {/* 2. Demanda UN (1 col) */}
           <div className="p-3 border-r border-slate-700 flex flex-col justify-center min-h-[120px]">
             <p className="text-[8px] font-black uppercase text-slate-500 tracking-tighter text-center mb-3">DEMANDA CONSOLIDADA (UN)</p>
             <div className="space-y-1 font-bold text-[10px] w-full">
@@ -674,29 +685,29 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             </div>
           </div>
 
-          {/* 3. Plan KG */}
+          {/* 3. Plan KG (1 col) */}
           <div className="p-3 border-r border-slate-700 flex flex-col items-center justify-center text-center bg-indigo-900/20">
             <p className="text-[8px] font-black uppercase text-slate-500 tracking-tighter mb-4">ROLLOS REQ. (KG)</p>
-            <span className="text-xl font-black text-indigo-400 tracking-tighter leading-none">{formatNum(totalsUnified.planKg, 0)}</span>
+            <span className="text-lg font-black text-indigo-400 tracking-tighter leading-none">{formatNum(totalsUnified.planKg, 0)}</span>
           </div>
 
-          {/* 4. Plan UN */}
+          {/* 4. Plan UN (1 col) */}
           <div className="p-3 border-r border-slate-700 flex flex-col items-center justify-center text-center bg-black/10">
             <p className="text-[8px] font-black uppercase text-slate-500 tracking-tighter mb-4">ROLLOS REQ. (UN)</p>
-            <span className="text-2xl font-black text-white tracking-tighter leading-none">{Math.round(totalsUnified.planUn).toLocaleString()}</span>
+            <span className="text-xl font-black text-white tracking-tighter leading-none">{Math.round(totalsUnified.planUn).toLocaleString()}</span>
           </div>
 
-          {/* 5. Corridas LOOPER con Alerta */}
+          {/* 5. Corridas LOOPER con Alerta (1 col) */}
           <div className={cn(
             "p-3 border-r border-slate-700 flex flex-col items-center justify-center text-center transition-all",
             isSaturated ? "bg-red-600 animate-pulse" : "bg-cyan-900/30"
           )}>
             <p className="text-[8px] font-black uppercase text-white tracking-tighter mb-4">CORRIDAS LOOPER</p>
-            <span className="text-4xl font-black text-white tracking-tighter leading-none">{totalsUnified.totalRuns}</span>
+            <span className="text-3xl font-black text-white tracking-tighter leading-none">{totalsUnified.totalRuns}</span>
             {isSaturated && <span className="text-[7px] font-black uppercase text-white mt-2">ALERTA CAPACIDAD</span>}
           </div>
 
-          {/* 6. Turno */}
+          {/* 6. Turno (1 col) */}
           <div className="p-3 border-r border-slate-700 flex flex-col justify-center text-center">
             <p className="text-[8px] font-black uppercase text-slate-500 tracking-tighter mb-4">GESTIÓN TURNOS</p>
             <div className="space-y-3">
@@ -715,35 +726,35 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             </div>
           </div>
 
-          {/* 7. Personal (Doble ancho para nombres) */}
-          <div className="col-span-4 p-4 flex flex-col justify-center text-center bg-slate-800/40">
-            <p className="text-[8px] font-black uppercase text-slate-500 tracking-widest mb-4">PERSONAL ASIGNADO - LAMINADO CILÍNDRICO</p>
-            <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+          {/* 7. Personal (6 cols - ÁREA AMPLIADA) */}
+          <div className="col-span-6 p-4 flex flex-col justify-center text-center bg-slate-800/40">
+            <p className="text-[8px] font-black uppercase text-slate-500 tracking-widest mb-4">PERSONAL ASIGNADO - LAMINADO CILÍNDRICO (TÉCNICOS CALIFICADOS)</p>
+            <div className="grid grid-cols-2 gap-x-8 gap-y-3">
               {/* DÍA */}
-              <div className="space-y-2 border-l-2 border-indigo-500 pl-3">
-                <p className="text-[7px] text-indigo-400 uppercase text-left font-black">TURNO DÍA</p>
-                <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-2 border-l-2 border-indigo-500 pl-4">
+                <p className="text-[8px] text-indigo-400 uppercase text-left font-black tracking-widest mb-1">TURNO DÍA</p>
+                <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1 text-left">
-                    <p className="text-[6px] text-slate-600 uppercase">OP-01</p>
+                    <p className="text-[7px] text-slate-600 uppercase font-black">OPERADOR 01</p>
                     <select 
                       value={assignedPersonnel.diaOp1} 
                       onChange={(e) => setAssignedPersonnel(p => ({ ...p, diaOp1: e.target.value }))}
-                      className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[9px] text-yellow-500 w-full font-bold outline-none"
+                      className="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-[9px] text-yellow-500 w-full font-black outline-none focus:border-indigo-500"
                     >
-                      <option value="">— SELECCIONE —</option>
+                      <option value="">— SIN ASIGNAR —</option>
                       {operadoresLaminado.map((op, i) => (
                         <option key={i} value={op.CODIGO}>{op.NOMBRE || op.CODIGO}</option>
                       ))}
                     </select>
                   </div>
                   <div className="space-y-1 text-left">
-                    <p className="text-[6px] text-slate-600 uppercase">OP-02</p>
+                    <p className="text-[7px] text-slate-600 uppercase font-black">OPERADOR 02</p>
                     <select 
                       value={assignedPersonnel.diaOp2} 
                       onChange={(e) => setAssignedPersonnel(p => ({ ...p, diaOp2: e.target.value }))}
-                      className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[9px] text-yellow-500 w-full font-bold outline-none"
+                      className="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-[9px] text-yellow-500 w-full font-black outline-none focus:border-indigo-500"
                     >
-                      <option value="">— SELECCIONE —</option>
+                      <option value="">— SIN ASIGNAR —</option>
                       {operadoresLaminado.map((op, i) => (
                         <option key={i} value={op.CODIGO}>{op.NOMBRE || op.CODIGO}</option>
                       ))}
@@ -753,30 +764,30 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               </div>
 
               {/* NOCHE */}
-              <div className="space-y-2 border-l-2 border-purple-500 pl-3">
-                <p className="text-[7px] text-purple-400 uppercase text-left font-black">TURNO NOCHE</p>
-                <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-2 border-l-2 border-purple-500 pl-4">
+                <p className="text-[8px] text-purple-400 uppercase text-left font-black tracking-widest mb-1">TURNO NOCHE</p>
+                <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1 text-left">
-                    <p className="text-[6px] text-slate-600 uppercase">OP-01</p>
+                    <p className="text-[7px] text-slate-600 uppercase font-black">OPERADOR 01</p>
                     <select 
                       value={assignedPersonnel.nocheOp1} 
                       onChange={(e) => setAssignedPersonnel(p => ({ ...p, nocheOp1: e.target.value }))}
-                      className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[9px] text-yellow-500 w-full font-bold outline-none"
+                      className="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-[9px] text-yellow-500 w-full font-black outline-none focus:border-purple-500"
                     >
-                      <option value="">— SELECCIONE —</option>
+                      <option value="">— SIN ASIGNAR —</option>
                       {operadoresLaminado.map((op, i) => (
                         <option key={i} value={op.CODIGO}>{op.NOMBRE || op.CODIGO}</option>
                       ))}
                     </select>
                   </div>
                   <div className="space-y-1 text-left">
-                    <p className="text-[6px] text-slate-600 uppercase">OP-02</p>
+                    <p className="text-[7px] text-slate-600 uppercase font-black">OPERADOR 02</p>
                     <select 
                       value={assignedPersonnel.nocheOp2} 
                       onChange={(e) => setAssignedPersonnel(p => ({ ...p, nocheOp2: e.target.value }))}
-                      className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[9px] text-yellow-500 w-full font-bold outline-none"
+                      className="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-[9px] text-yellow-500 w-full font-black outline-none focus:border-purple-500"
                     >
-                      <option value="">— SELECCIONE —</option>
+                      <option value="">— SIN ASIGNAR —</option>
                       {operadoresLaminado.map((op, i) => (
                         <option key={i} value={op.CODIGO}>{op.NOMBRE || op.CODIGO}</option>
                       ))}
@@ -789,27 +800,27 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         </div>
 
         {/* Barra Inferior de Métricas */}
-        <div className="grid grid-cols-10 bg-slate-900/60">
+        <div className="grid grid-cols-12 bg-slate-900/60">
           <div className="col-span-3 p-4 border-r border-slate-700 flex items-center justify-center gap-6">
             <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest">OCUPACIÓN REAL (%)</div>
             <div className="flex items-center gap-3">
               <div className={cn("w-3 h-3 rounded-full shadow-[0_0_10px]", ocupacionPorc > 100 ? "bg-red-500 shadow-red-500 animate-pulse" : "bg-emerald-500 shadow-emerald-500")} />
-              <span className={cn("text-3xl font-black tabular-nums", ocupacionPorc > 100 ? "text-red-400" : "text-emerald-400")}>{ocupacionPorc.toFixed(1)}%</span>
+              <span className={cn("text-2xl font-black tabular-nums", ocupacionPorc > 100 ? "text-red-400" : "text-emerald-400")}>{ocupacionPorc.toFixed(1)}%</span>
             </div>
           </div>
           <div className="col-span-2 p-4 border-r border-slate-700 flex flex-col items-center justify-center">
             <p className="text-[9px] font-black text-slate-500 uppercase tracking-tighter mb-1">TIEMPO OPERATIVO (H)</p>
-            <span className="text-3xl font-black text-emerald-400 leading-none tabular-nums">{totalsUnified.tProceso.toFixed(2)}</span>
+            <span className="text-2xl font-black text-emerald-400 leading-none tabular-nums">{totalsUnified.tProceso.toFixed(2)}</span>
           </div>
           <div className="col-span-2 p-4 border-r border-slate-700 flex flex-col items-center justify-center">
             <p className="text-[9px] font-black text-slate-500 uppercase tracking-tighter mb-1">DISPONIBILIDAD TOTAL (H)</p>
-            <span className="text-3xl font-black text-yellow-400 leading-none tabular-nums">{tDisponible.toFixed(2)}</span>
+            <span className="text-2xl font-black text-yellow-400 leading-none tabular-nums">{tDisponible.toFixed(2)}</span>
           </div>
-          <div className="col-span-3 flex items-center px-6">
+          <div className="col-span-5 flex items-center px-6">
              {isSaturated && (
                <div className="flex items-center gap-3 text-red-400 animate-pulse">
                   <AlertCircle className="w-6 h-6 flex-shrink-0" />
-                  <p className="text-[10px] font-black uppercase leading-tight">Capacidad Superada: Evaluar reducción de unidades en bloques con stock de seguridad alto.</p>
+                  <p className="text-[10px] font-black uppercase leading-tight">Capacidad Crítica: Evaluar minimización de corridas en bloques con stock de seguridad excedido.</p>
                </div>
              )}
           </div>
@@ -834,7 +845,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         </div>
         <div className="flex items-center gap-3">
            <Button onClick={handleProcessResumen} disabled={isProcessingResumen} className="bg-red-600 hover:bg-red-700 text-white rounded-xl h-10 px-6 text-[10px] font-black uppercase tracking-widest shadow-lg flex items-center gap-2">
-              {isProcessingResumen ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} ACTUALIZAR DATOS
+              {isProcessingResumen ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} ACTUALIZAR AUDITORÍA
            </Button>
            <Popover>
             <PopoverTrigger asChild>
@@ -921,7 +932,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {isProcessingResumen ? (
-                    <tr><td colSpan={23} className="py-20 text-center"><Loader2 className="w-8 h-8 animate-spin mx-auto text-red-500 mb-3" /><p className="text-[10px] font-black uppercase text-slate-400">Ejecutando Explosión Técnica BOM: {resumenProgress.current} / {resumenProgress.total}</p></td></tr>
+                    <tr><td colSpan={23} className="py-20 text-center"><Loader2 className="w-8 h-8 animate-spin mx-auto text-red-500 mb-3" /><p className="text-[10px] font-black uppercase text-slate-400">Ejecutando Auditoría Técnica BOM: {resumenProgress.current} / {resumenProgress.total}</p></td></tr>
                   ) : (
                     groupedNeeds.map((group) => {
                       const groupKey = `${group.apertura}|${group.densidad}`;
@@ -1028,15 +1039,14 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     <tr><td colSpan={8} className="py-24 text-slate-300 font-black uppercase tracking-widest italic text-center">No se detectaron órdenes para los criterios aplicados</td></tr>
                   ) : (
                     filteredOrders.map((o, i) => {
-                      const matCode = String(o.MATERIAL || o.CodMaterial || '').match(/^\d+/)?.[0]?.slice(-8) || '—';
-                      const description = String(o.MATERIAL || '').replace(/^\d+\s*/, '') || o.NOMBRE || '—';
+                      const { code, desc } = extractMaterialInfo(o);
                       const resp = getProp(o, ['RESPCONTROLPROD', 'RESPCTRLPROD', 'RespControlProd', 'RESP_CONTROL_PROD', 'RESPONSABLE']);
                       return (
                         <tr key={i} className="hover:bg-slate-50 transition-colors">
                           <td className="px-6 py-4 font-black text-slate-900 border-r border-gray-50">{getProp(o, ['ORDENPREVISIONAL', 'ORDEN']) || '—'}</td>
                           <td className="px-6 py-4 border-r border-gray-50 font-mono text-[9px] text-slate-500 text-center">{getProp(o, ['FECHAINICIO', 'FECHA']) || '—'}</td>
-                          <td className="px-6 py-4 font-mono font-black text-red-600 border-r border-gray-50 tracking-tighter text-sm text-center">{matCode}</td>
-                          <td className="px-6 py-4 text-left border-r border-gray-100 text-slate-800 font-black uppercase leading-tight max-w-[450px]">{description}</td>
+                          <td className="px-6 py-4 font-mono font-black text-red-600 border-r border-gray-50 tracking-tighter text-sm text-center">{code}</td>
+                          <td className="px-6 py-4 text-left border-r border-gray-100 text-slate-800 font-black uppercase leading-tight max-w-[450px]">{desc}</td>
                           <td className="px-6 py-4 font-black text-slate-900 border-r border-gray-50 font-mono text-sm text-center">{Number(getProp(o, ['CANTPROGRAMADA', 'CANTIDAD', 'CANT_PROG']) || 0).toLocaleString()}</td>
                           <td className="px-6 py-4 border-r border-gray-50 text-center"><Badge variant="outline" className="text-[10px] font-black bg-blue-50 text-blue-700 border-blue-100">{resp || '—'}</Badge></td>
                           <td className="px-6 py-4 font-bold text-slate-600 border-r border-gray-50 text-[10px] uppercase text-center">{getProp(o, ['MAQUINA', 'RECURSO', 'ID_MAQUINA']) || '—'}</td>
@@ -1072,8 +1082,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     <tr><td colSpan={8} className="py-24 text-slate-300 font-black uppercase tracking-widest italic text-center">No se detectaron órdenes FERT para los criterios aplicados</td></tr>
                   ) : (
                     filteredFertOrders.map((o, i) => {
-                      const matCode = String(o.MATERIAL || o.CodMaterial || '').match(/^\d+/)?.[0]?.slice(-8) || '—';
-                      const description = String(o.NOMBRE || o.DESCRIPCION || o.MATERIAL || '').replace(/^\d+\s*/, '') || '—';
+                      const { code, desc } = extractMaterialInfo(o);
                       const orderNum = getProp(o, ['ORDEN', 'ORDEN_PROCESO', 'ORDEN_FERT']) || '—';
                       const date = getProp(o, ['FECHA', 'FECHAINICIO', 'FECHA_INICIO']);
                       const qty = Number(getProp(o, ['CANTPENDIENTE', 'CANT_PEND', 'CANTIDAD', 'CANT_PROG']) || 0);
@@ -1085,10 +1094,10 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                         <tr key={i} className="hover:bg-indigo-50/20 transition-colors">
                           <td className="px-6 py-4 font-black text-slate-900 border-r border-gray-50 text-center">{orderNum}</td>
                           <td className="px-6 py-4 border-r border-gray-50 font-mono text-[9px] text-slate-500 text-center">{date}</td>
-                          <td className="px-6 py-4 font-mono font-black text-red-600 border-r border-gray-50 tracking-tighter text-sm text-center">{matCode}</td>
-                          <td className="px-6 py-4 text-left border-r border-white/10 text-slate-800 font-black uppercase leading-tight max-w-[450px]">{description}</td>
+                          <td className="px-6 py-4 font-mono font-black text-red-600 border-r border-gray-50 tracking-tighter text-sm text-center">{code}</td>
+                          <td className="px-6 py-4 text-left border-r border-white/10 text-slate-800 font-black uppercase leading-tight max-w-[450px]">{desc}</td>
                           <td className="px-6 py-4 font-black text-slate-900 border-r border-gray-50 font-mono text-sm text-center">{qty.toLocaleString()}</td>
-                          <td className="px-6 py-4 border-r border-gray-50 text-center"><Badge variant="outline" className="text-[10px] font-black bg-indigo-50 text-indigo-700 border-indigo-100">{resp || '—'}</Badge></td>
+                          <td className="px-6 py-4 border-r border-gray-50 text-center"><Badge variant="outline" className="text-[10px] font-black bg-indigo-50 text-indigo-700 border-indigo-100">{String(resp || '—')}</Badge></td>
                           <td className="px-6 py-4 font-bold text-slate-600 border-r border-gray-50 text-[10px] uppercase text-center">{mach || '—'}</td>
                           <td className="px-6 py-4 font-bold text-slate-400 text-[10px] text-center">{alm || '—'}</td>
                         </tr>
