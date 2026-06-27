@@ -177,15 +177,15 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   
   const [planManualOverrides, setPlanOverrides] = useState<Record<string, number>>({});
 
-  // Turnos y Personal
-  const [selectedDiaShift, setSelectedDiaShift] = useState('H1');
-  const [selectedNocheShift, setSelectedNocheShift] = useState('EMPTY');
   const [assignedPersonnel, setAssignedPersonnel] = useState({
     diaOp1: '',
     diaOp2: '',
     nocheOp1: '',
     nocheOp2: ''
   });
+
+  const [selectedDiaShift, setSelectedDiaShift] = useState('H1');
+  const [selectedNocheShift, setSelectedNocheShift] = useState('EMPTY');
 
   const diaShiftOptions = [
     { v: 'EMPTY', l: 'VACÍO', h: 0 },
@@ -209,13 +209,14 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   }, []);
 
   const calendarDaysList = useMemo(() => {
+    if (!mounted) return [];
     const start = startOfMonth(viewDate);
     const end = endOfMonth(viewDate);
     const days = eachDayOfInterval({ start, end });
     const startDay = getDay(start);
     const padding = startDay === 0 ? 6 : startDay - 1;
     return [...Array(padding).fill(null), ...days];
-  }, [viewDate]);
+  }, [viewDate, mounted]);
 
   const datesWithOrders = useMemo(() => {
     if (!mounted) return new Set<string>();
@@ -248,7 +249,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         serviciosService.getKPIMAestroLooper().catch(() => ({ data: [] })),
         serviciosService.getInventarioAñoActual().catch(() => ({ data: [] })),
         serviciosService.getOrdenesFert(1, 20000).catch(() => ({ data: [] })),
-        serviciosService.getCuboHabilidadesOP().catch(() => ({ data: [] }))
+        serviciosService.getHabilidadesOperadorPorEstacion().catch(() => ({ data: [] }))
       ]);
       
       setRestriccionesArray((restrs.data || []).filter((r: any) => ids.includes(r.codigo_grupo)));
@@ -342,7 +343,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       const match = matRaw.match(/^(\d+)/);
       const matCode = match ? match[1] : matRaw;
       if (!matCode) return;
-      const orderQty = safeNum(getProp(order, ['CANTPENDIENTE', 'CANTPROGRAMADA', 'CANTIDAD']));
+      const orderQty = safeNum(getProp(order, ['CANTPENDIENTE', 'CANTPROGRAMADA', 'CANTIDAD', 'CANTPENDIENTE']));
       materialGroupsHalb.set(matCode, (materialGroupsHalb.get(matCode) || 0) + orderQty);
     });
 
@@ -450,13 +451,14 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     const finalArray = Array.from(consolidatedMap.values()).map(row => {
       const cUn = row.peso > 0 ? row.consumoKg / row.peso : 0;
       const cUnHalb = row.peso > 0 ? row.consumoKgHalb / row.peso : 0;
+      const totalNecRollos = cUn + cUnHalb;
       return {
         ...row,
         consumoUn: cUn,
         nroRollos: cUn,
         nroRollosHalb: cUnHalb,
-        totalNroRollos: cUn + cUnHalb,
-        hasDeficit: (cUn + cUnHalb) > row.totalStockUN
+        totalNroRollos: totalNecRollos,
+        hasDeficit: totalNecRollos > row.totalStockUN
       };
     });
     
@@ -495,37 +497,39 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       const totalUnitsInPlan = runsNeeded * BLOCK_SIZE;
       items.forEach(row => {
         const key = `${row.material}|${row.apertura}|${row.densidad}`;
-        if (planManualOverrides[key] === undefined) {
-           row.planUn = Math.round(totalUnitsInPlan * row.porcentajeNecesidad);
-        } else {
-           row.planUn = planManualOverrides[key];
-        }
+        // Aplicar el override manual si existe, si no usar el cálculo automático
+        const planUn = planManualOverrides[key] !== undefined ? planManualOverrides[key] : Math.round(totalUnitsInPlan * row.porcentajeNecesidad);
         
-        row.planKg = row.planUn * row.peso;
-        const setupContribution = (runsNeeded > 0) ? (SETUP_TIME_PER_RUN * runsNeeded * row.porcentajeNecesidad) : 0;
-        row.tProceso = ((row.looperTRolloMin || 0) * row.planUn + setupContribution) / 60;
+        row.planUn = planUn;
+        row.planKg = planUn * row.peso;
+        const runs = Math.ceil(planUn / BLOCK_SIZE) || (planUn > 0 ? 1 : 0);
+        const setupContribution = (runs > 0) ? (SETUP_TIME_PER_RUN * runs * row.porcentajeNecesidad) : 0;
+        row.tProceso = ((row.looperTRolloMin || 0) * planUn + setupContribution) / 60;
       });
     });
 
     setUnifiedNeeds(finalArray.sort((a, b) => b.totalConsumoKg - a.totalConsumoKg));
     setIsProcessingResumen(false);
-  }, [filteredOrders, filteredFertOrders, kpiLooperData, inventarioSAP, planManualOverrides]);
+  }, [filteredOrders, filteredFertOrders, kpiLooperData, inventarioSAP, extractMaterialInfo, planManualOverrides]);
 
   const handleUpdatePlanUn = (material: string, apertura: string, densidad: string, newValue: number) => {
     const key = `${material}|${apertura}|${densidad}`;
     
+    // Guardar el override manual
     setPlanOverrides(prev => ({
       ...prev,
       [key]: newValue
     }));
 
-    // Actualizar localmente sin re-explocionar para evitar el "recarga" disruptive
+    // Actualizar localmente SIN disparar handleProcessResumen (evita recarga disruptiva)
     setUnifiedNeeds(prev => prev.map(row => {
       const rowKey = `${row.material}|${row.apertura}|${row.densidad}`;
       if (rowKey === key) {
         const planKg = newValue * row.peso;
+        // Recalcular tiempo de proceso basándose en los nuevos rollos
         const runs = Math.ceil(newValue / BLOCK_SIZE) || (newValue > 0 ? 1 : 0);
-        const tProceso = ((row.looperTRolloMin || 0) * newValue + (SETUP_TIME_PER_RUN * runs * row.porcentajeNecesidad)) / 60;
+        const setupContribution = (runs > 0) ? (SETUP_TIME_PER_RUN * runs * row.porcentajeNecesidad) : 0;
+        const tProceso = ((row.looperTRolloMin || 0) * newValue + setupContribution) / 60;
         return { ...row, planUn: newValue, planKg, tProceso };
       }
       return row;
@@ -582,6 +586,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     });
 
     map.forEach(group => {
+      // El nro de corridas es el total de unidades planeadas dividido por el tamaño del bloque (40)
       group.runs = Math.ceil(group.totalPlanUn / BLOCK_SIZE);
     });
 
@@ -610,6 +615,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       tProceso: acc.tProceso + row.tProceso
     }), { kg: 0, kgHalb: 0, totalKg: 0, un: 0, rollos: 0, rollosHalb: 0, totalRollos: 0, planUn: 0, planKg: 0, stock1006: 0, stock1008: 0, stock1015: 0, stockUN1006: 0, stockUN1008: 0, stockUN1015: 0, totalStockKg: 0, totalStockUN: 0, tProceso: 0 });
 
+    // Calcular el total de corridas excluyendo CONV de la saturación
     const totalRuns = groupedNeeds.reduce((acc, group) => {
       const hasOnlyConv = group.items.every(it => it.descripcion.toUpperCase().includes('CONV') || it.descripcion.toUpperCase().includes('CV'));
       if (hasOnlyConv) return acc;
@@ -622,7 +628,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const tDisponible = useMemo(() => {
     const diaH = diaShiftOptions.find(o => o.v === selectedDiaShift)?.h || 0;
     const nocheH = nocheShiftOptions.find(o => o.v === selectedNocheShift)?.h || 0;
-    return (diaH + nocheH) * 0.87;
+    return (diaH + nocheH) * 0.87; // Eficiencia planta
   }, [selectedDiaShift, selectedNocheShift]);
 
   const ocupacionPorc = useMemo(() => {
@@ -709,7 +715,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             </div>
           </div>
 
-          {/* 7. PERSONAL ASIGNADO (AMPLIADO A 4 COLUMNAS) */}
+          {/* 7. Personal (Doble ancho para nombres) */}
           <div className="col-span-4 p-4 flex flex-col justify-center text-center bg-slate-800/40">
             <p className="text-[8px] font-black uppercase text-slate-500 tracking-widest mb-4">PERSONAL ASIGNADO - LAMINADO CILÍNDRICO</p>
             <div className="grid grid-cols-2 gap-x-6 gap-y-3">
@@ -812,7 +818,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     );
   };
 
-  if (!mounted) return null;
+  if (!mounted) {
+    return <div className="p-4 md:p-6 min-h-screen bg-white" />;
+  }
 
   return (
     <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
@@ -1143,7 +1151,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         </TabsContent>
       </Tabs>
 
-      {/* MAESTRO MATERIALES EXPLOSIÓN (Oculto pero funcional) */}
+      {/* MAESTRO MATERIALES EXPLOSIÓN (Solo consulta externa) */}
       <div className="mt-12 hidden">
         <MaestroMaterialesExplosionSection ordenes={filteredOrders} />
       </div>
