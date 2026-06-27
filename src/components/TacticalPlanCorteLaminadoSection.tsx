@@ -47,7 +47,7 @@ import { MaestroMaterialesExplosionSection } from './MaestroMaterialesExplosionS
 
 // --- CONSTANTES TÉCNICAS PLANTA ---
 const BLOCK_SIZE = 40; 
-const SETUP_TIME_PER_RUN = 45; // 45 minutos de preparación por cada bloque físico
+const SETUP_TIME_PER_RUN = 128; // Actualizado: 128 minutos de preparación por cada bloque físico
 
 interface UnifiedNeedRow {
   material: string;
@@ -486,18 +486,24 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         row.porcentajeNecesidad = totalKgGroup > 0 ? (row.totalConsumoKg / totalKgGroup) : 0;
       });
 
-      let runsNeeded = 0;
       const standardItems = items.filter(it => !it.descripcion.toUpperCase().includes('CONV') && !it.descripcion.toUpperCase().includes('CV'));
+      
+      let runsNeeded = 0;
+      // CORRECCIÓN: Validar si stock es insuficiente para CUALQUIER item estándar antes de proponer corridas
+      const needsReplenishment = standardItems.some(r => r.totalStockUN < r.totalNroRollos);
 
-      if (standardItems.length > 0) {
+      if (needsReplenishment) {
+        runsNeeded = 1;
         let allCovered = false;
         while (!allCovered && runsNeeded < 25) {
           const totalProposedUnits = runsNeeded * BLOCK_SIZE;
-          const itemSuccess = standardItems.every(r => {
-              const proposedContribution = totalProposedUnits * r.porcentajeNecesidad;
-              return (r.totalStockUN + proposedContribution) >= r.totalNroRollos;
+          const allItemsCovered = standardItems.every(r => {
+            const proposedContribution = totalProposedUnits * r.porcentajeNecesidad;
+            // Un material está cubierto si Stock + Proporción >= Necesidad
+            return (r.totalStockUN + proposedContribution) >= (r.totalNroRollos - 0.01); 
           });
-          if (itemSuccess && runsNeeded > 0) {
+          
+          if (allItemsCovered) {
             allCovered = true;
           } else {
             runsNeeded++;
@@ -508,37 +514,31 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       const totalUnitsInPlan = runsNeeded * BLOCK_SIZE;
       items.forEach(row => {
         const key = `${row.material}|${row.apertura}|${row.densidad}`;
-        // Aplicar el override manual si existe, si no usar el cálculo automático
         const planUn = planManualOverrides[key] !== undefined ? planManualOverrides[key] : Math.round(totalUnitsInPlan * row.porcentajeNecesidad);
         
         row.planUn = planUn;
         row.planKg = planUn * row.peso;
-        const runs = Math.ceil(planUn / BLOCK_SIZE) || (planUn > 0 ? 1 : 0);
-        const setupContribution = (runs > 0) ? (SETUP_TIME_PER_RUN * runs * row.porcentajeNecesidad) : 0;
+        // El nro de corridas reales para el cálculo de setup es el del grupo
+        const groupRuns = runsNeeded;
+        const setupContribution = (groupRuns > 0) ? (SETUP_TIME_PER_RUN * groupRuns * row.porcentajeNecesidad) : 0;
         row.tProceso = ((row.looperTRolloMin || 0) * planUn + setupContribution) / 60;
       });
     });
 
-    setUnifiedNeeds(finalArray.sort((a, b) => b.totalConsumoKg - a.totalConsumoKg));
+    setUnifiedNeeds(finalArray);
     setIsProcessingResumen(false);
   }, [filteredOrders, filteredFertOrders, kpiLooperData, inventarioSAP, extractMaterialInfo, planManualOverrides]);
 
   const handleUpdatePlanUn = (material: string, apertura: string, densidad: string, newValue: number) => {
     const key = `${material}|${apertura}|${densidad}`;
-    
-    // Guardar el override manual
-    setPlanOverrides(prev => ({
-      ...prev,
-      [key]: newValue
-    }));
+    setPlanOverrides(prev => ({ ...prev, [key]: newValue }));
 
-    // Actualizar localmente SIN disparar handleProcessResumen (evita recarga disruptiva)
     setUnifiedNeeds(prev => prev.map(row => {
       const rowKey = `${row.material}|${row.apertura}|${row.densidad}`;
       if (rowKey === key) {
         const planKg = newValue * row.peso;
-        // Recalcular tiempo de proceso basándose en los nuevos rollos
-        const runs = Math.ceil(newValue / BLOCK_SIZE) || (newValue > 0 ? 1 : 0);
+        // Estimar corridas para el setup manual (prorrateado)
+        const runs = Math.ceil(newValue / (BLOCK_SIZE * row.porcentajeNecesidad)) || (newValue > 0 ? 1 : 0);
         const setupContribution = (runs > 0) ? (SETUP_TIME_PER_RUN * runs * row.porcentajeNecesidad) : 0;
         const tProceso = ((row.looperTRolloMin || 0) * newValue + setupContribution) / 60;
         return { ...row, planUn: newValue, planKg, tProceso };
@@ -562,6 +562,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       totalRollos: number; totalKgHalb: number; totalRollosHalb: number; totalConsumoKg: number; totalNroRollos: number;
       totalStockKg: number; totalStockUN: number; hasGroupDeficit: boolean; runs: number;
     }>();
+    
     unifiedNeeds.forEach(item => {
       const key = `${item.apertura}|${item.densidad}`;
       if (!map.has(key)) {
@@ -597,11 +598,18 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     });
 
     map.forEach(group => {
-      // El nro de corridas es el total de unidades planeadas dividido por el tamaño del bloque (40)
       group.runs = Math.ceil(group.totalPlanUn / BLOCK_SIZE);
     });
 
-    return Array.from(map.values()).sort((a, b) => b.totalConsumoKg - a.totalConsumoKg);
+    // ORDENAMIENTO ASCENDENTE SOLICITADO: APERTURA -> DENSIDAD
+    return Array.from(map.values()).sort((a, b) => {
+        const apA = parseFloat(a.apertura) || 0;
+        const apB = parseFloat(b.apertura) || 0;
+        if (apA !== apB) return apA - apB;
+        const dEA = parseFloat(a.dens) || 0;
+        const dEB = parseFloat(b.dens) || 0;
+        return dEA - dEB;
+    });
   }, [unifiedNeeds]);
 
   const totalsUnified = useMemo(() => {
@@ -626,7 +634,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       tProceso: acc.tProceso + row.tProceso
     }), { kg: 0, kgHalb: 0, totalKg: 0, un: 0, rollos: 0, rollosHalb: 0, totalRollos: 0, planUn: 0, planKg: 0, stock1006: 0, stock1008: 0, stock1015: 0, stockUN1006: 0, stockUN1008: 0, stockUN1015: 0, totalStockKg: 0, totalStockUN: 0, tProceso: 0 });
 
-    // Calcular el total de corridas excluyendo CONV de la saturación
     const totalRuns = groupedNeeds.reduce((acc, group) => {
       const hasOnlyConv = group.items.every(it => it.descripcion.toUpperCase().includes('CONV') || it.descripcion.toUpperCase().includes('CV'));
       if (hasOnlyConv) return acc;
@@ -639,7 +646,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const tDisponible = useMemo(() => {
     const diaH = diaShiftOptions.find(o => o.v === selectedDiaShift)?.h || 0;
     const nocheH = nocheShiftOptions.find(o => o.v === selectedNocheShift)?.h || 0;
-    return (diaH + nocheH) * 0.87; // Eficiencia planta
+    return (diaH + nocheH) * 0.87; 
   }, [selectedDiaShift, selectedNocheShift]);
 
   const ocupacionPorc = useMemo(() => {
@@ -653,51 +660,38 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return (
       <div className="bg-[#1e293b] border border-slate-700 rounded-xl shadow-2xl overflow-hidden mb-8 font-sans text-white">
         <div className="grid grid-cols-12 border-b border-slate-700">
-          {/* 1. Demanda KG (1 col) */}
-          <div className="p-3 border-r border-slate-700 flex flex-col justify-center min-h-[120px]">
-            <p className="text-[8px] font-black uppercase text-slate-500 tracking-tighter text-center mb-3">DEMANDA CONSOLIDADA (KG)</p>
-            <div className="space-y-1 font-bold text-[10px] w-full">
-              <div className="flex justify-between px-2 text-slate-400">
-                <span className="uppercase">PROV:</span> <span className="text-red-400 font-mono">{formatNum(totalsUnified.kg, 0)}</span>
+          {/* 1. Demanda Consolidada (2 cols) */}
+          <div className="col-span-2 p-3 border-r border-slate-700 flex flex-col justify-center min-h-[120px]">
+            <p className="text-[8px] font-black uppercase text-slate-500 tracking-widest text-center mb-3">DEMANDA CONSOLIDADA</p>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1 font-bold text-[9px]">
+                <p className="text-slate-500 uppercase text-center border-b border-slate-700 pb-1 mb-2">KG</p>
+                <div className="flex justify-between px-1 text-slate-400"><span>PROV:</span> <span className="text-red-400">{formatNum(totalsUnified.kg, 0)}</span></div>
+                <div className="flex justify-between px-1 text-slate-400"><span>HALB:</span> <span className="text-blue-400">{formatNum(totalsUnified.kgHalb, 0)}</span></div>
+                <div className="flex justify-between px-1 pt-1 border-t border-slate-700 mt-1"><span className="font-black">TOTAL:</span> <span>{formatNum(totalsUnified.totalKg, 0)}</span></div>
               </div>
-              <div className="flex justify-between px-2 text-slate-400">
-                <span className="uppercase">HALB:</span> <span className="text-blue-400 font-mono">{formatNum(totalsUnified.kgHalb, 0)}</span>
-              </div>
-              <div className="flex justify-between px-2 pt-1 border-t border-slate-700 mt-1">
-                <span className="text-white uppercase font-black">TOTAL:</span> <span className="text-white font-mono">{formatNum(totalsUnified.totalKg, 0)}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* 2. Demanda UN (1 col) */}
-          <div className="p-3 border-r border-slate-700 flex flex-col justify-center min-h-[120px]">
-            <p className="text-[8px] font-black uppercase text-slate-500 tracking-tighter text-center mb-3">DEMANDA CONSOLIDADA (UN)</p>
-            <div className="space-y-1 font-bold text-[10px] w-full">
-              <div className="flex justify-between px-2 text-slate-400">
-                <span className="uppercase">PROV:</span> <span className="text-red-400 font-mono">{formatNum(totalsUnified.un, 0)}</span>
-              </div>
-              <div className="flex justify-between px-2 text-slate-400">
-                <span className="uppercase">HALB:</span> <span className="text-blue-400 font-mono">{formatNum(totalsUnified.rollosHalb, 0)}</span>
-              </div>
-              <div className="flex justify-between px-2 pt-1 border-t border-slate-700 mt-1">
-                <span className="text-white uppercase font-black">TOTAL:</span> <span className="text-white font-mono">{formatNum(totalsUnified.totalNroRollos, 0)}</span>
+              <div className="space-y-1 font-bold text-[9px]">
+                <p className="text-slate-500 uppercase text-center border-b border-slate-700 pb-1 mb-2">UN</p>
+                <div className="flex justify-between px-1 text-slate-400"><span>PROV:</span> <span className="text-red-400">{formatNum(totalsUnified.un, 0)}</span></div>
+                <div className="flex justify-between px-1 text-slate-400"><span>HALB:</span> <span className="text-blue-400">{formatNum(totalsUnified.rollosHalb, 0)}</span></div>
+                <div className="flex justify-between px-1 pt-1 border-t border-slate-700 mt-1"><span className="font-black">TOTAL:</span> <span>{formatNum(totalsUnified.totalNroRollos, 0)}</span></div>
               </div>
             </div>
           </div>
 
-          {/* 3. Plan KG (1 col) */}
-          <div className="p-3 border-r border-slate-700 flex flex-col items-center justify-center text-center bg-indigo-900/20">
-            <p className="text-[8px] font-black uppercase text-slate-500 tracking-tighter mb-4">ROLLOS REQ. (KG)</p>
-            <span className="text-lg font-black text-indigo-400 tracking-tighter leading-none">{formatNum(totalsUnified.planKg, 0)}</span>
+          {/* 2. Plan (2 cols) */}
+          <div className="col-span-2 grid grid-cols-2 border-r border-slate-700">
+            <div className="p-3 border-r border-slate-700 flex flex-col items-center justify-center text-center bg-indigo-900/20">
+              <p className="text-[8px] font-black uppercase text-slate-500 tracking-tighter mb-4">ROLLOS REQ. (KG)</p>
+              <span className="text-lg font-black text-indigo-400 tracking-tighter leading-none">{formatNum(totalsUnified.planKg, 0)}</span>
+            </div>
+            <div className="p-3 flex flex-col items-center justify-center text-center bg-black/10">
+              <p className="text-[8px] font-black uppercase text-slate-500 tracking-tighter mb-4">ROLLOS REQ. (UN)</p>
+              <span className="text-xl font-black text-white tracking-tighter leading-none">{Math.round(totalsUnified.planUn).toLocaleString()}</span>
+            </div>
           </div>
 
-          {/* 4. Plan UN (1 col) */}
-          <div className="p-3 border-r border-slate-700 flex flex-col items-center justify-center text-center bg-black/10">
-            <p className="text-[8px] font-black uppercase text-slate-500 tracking-tighter mb-4">ROLLOS REQ. (UN)</p>
-            <span className="text-xl font-black text-white tracking-tighter leading-none">{Math.round(totalsUnified.planUn).toLocaleString()}</span>
-          </div>
-
-          {/* 5. Corridas LOOPER con Alerta (1 col) */}
+          {/* 3. Corridas LOOPER (1 col) */}
           <div className={cn(
             "p-3 border-r border-slate-700 flex flex-col items-center justify-center text-center transition-all",
             isSaturated ? "bg-red-600 animate-pulse" : "bg-cyan-900/30"
@@ -707,100 +701,88 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             {isSaturated && <span className="text-[7px] font-black uppercase text-white mt-2">ALERTA CAPACIDAD</span>}
           </div>
 
-          {/* 6. Turno (1 col) */}
-          <div className="p-3 border-r border-slate-700 flex flex-col justify-center text-center">
-            <p className="text-[8px] font-black uppercase text-slate-500 tracking-tighter mb-4">GESTIÓN TURNOS</p>
+          {/* 4. Gestión de Tiempos (2 cols - AMPLIADA) */}
+          <div className="col-span-2 p-3 border-r border-slate-700 flex flex-col justify-center">
+            <p className="text-[8px] font-black uppercase text-slate-500 tracking-widest mb-4 text-center">GESTIÓN DE TIEMPOS</p>
             <div className="space-y-3">
-              <div className="space-y-1 text-left">
-                <p className="text-[7px] text-slate-600 uppercase px-1 font-bold">Día</p>
-                <select value={selectedDiaShift} onChange={(e) => setSelectedDiaShift(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-[9px] text-yellow-500 w-full font-black outline-none appearance-none cursor-pointer">
+              <div className="flex items-center gap-3">
+                <span className="text-[9px] font-black text-slate-400 w-12">DÍA:</span>
+                <select value={selectedDiaShift} onChange={(e) => setSelectedDiaShift(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-[10px] text-yellow-500 flex-1 font-black outline-none appearance-none cursor-pointer">
                   {diaShiftOptions.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
                 </select>
               </div>
-              <div className="space-y-1 text-left">
-                <p className="text-[7px] text-slate-600 uppercase px-1 font-bold">Noche</p>
-                <select value={selectedNocheShift} onChange={(e) => setSelectedNocheShift(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-[9px] text-yellow-500 w-full font-black outline-none appearance-none cursor-pointer">
+              <div className="flex items-center gap-3">
+                <span className="text-[9px] font-black text-slate-400 w-12">NOCHE:</span>
+                <select value={selectedNocheShift} onChange={(e) => setSelectedNocheShift(e.target.value)} className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-[10px] text-yellow-500 flex-1 font-black outline-none appearance-none cursor-pointer">
                   {nocheShiftOptions.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
                 </select>
               </div>
             </div>
           </div>
 
-          {/* 7. Personal (6 cols - ÁREA AMPLIADA) */}
-          <div className="col-span-6 p-4 flex flex-col justify-center text-center bg-slate-800/40">
-            <p className="text-[8px] font-black uppercase text-slate-500 tracking-widest mb-4">PERSONAL ASIGNADO - LAMINADO CILÍNDRICO (TÉCNICOS CALIFICADOS)</p>
-            <div className="grid grid-cols-2 gap-x-8 gap-y-3">
-              {/* DÍA */}
+          {/* 5. Personal Asignado (5 cols - AMPLIADA) */}
+          <div className="col-span-5 p-4 flex flex-col justify-center bg-slate-800/40">
+            <p className="text-[8px] font-black uppercase text-slate-500 tracking-widest mb-4 text-center">PERSONAL ASIGNADO — LAMINADO CILÍNDRICO</p>
+            <div className="grid grid-cols-2 gap-8">
+              {/* TURNO DÍA */}
               <div className="space-y-2 border-l-2 border-indigo-500 pl-4">
-                <p className="text-[8px] text-indigo-400 uppercase text-left font-black tracking-widest mb-1">TURNO DÍA</p>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1 text-left">
-                    <p className="text-[7px] text-slate-600 uppercase font-black">OPERADOR 01</p>
-                    <select 
-                      value={assignedPersonnel.diaOp1} 
-                      onChange={(e) => setAssignedPersonnel(p => ({ ...p, diaOp1: e.target.value }))}
-                      className="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-[9px] text-yellow-500 w-full font-black outline-none focus:border-indigo-500"
-                    >
-                      <option value="">— SIN ASIGNAR —</option>
-                      {operadoresLaminado.map((op, i) => (
-                        <option key={i} value={op.CODIGO}>{op.NOMBRE || op.CODIGO}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="space-y-1 text-left">
-                    <p className="text-[7px] text-slate-600 uppercase font-black">OPERADOR 02</p>
-                    <select 
-                      value={assignedPersonnel.diaOp2} 
-                      onChange={(e) => setAssignedPersonnel(p => ({ ...p, diaOp2: e.target.value }))}
-                      className="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-[9px] text-yellow-500 w-full font-black outline-none focus:border-indigo-500"
-                    >
-                      <option value="">— SIN ASIGNAR —</option>
-                      {operadoresLaminado.map((op, i) => (
-                        <option key={i} value={op.CODIGO}>{op.NOMBRE || op.CODIGO}</option>
-                      ))}
-                    </select>
-                  </div>
+                <p className="text-[8px] text-indigo-400 uppercase font-black tracking-widest mb-2">TURNO DÍA</p>
+                <div className="space-y-3">
+                   <div className="grid grid-cols-12 items-center gap-2">
+                      <span className="col-span-3 text-[8px] text-slate-600 font-black">OP-01</span>
+                      <select value={assignedPersonnel.diaOp1} onChange={(e) => setAssignedPersonnel(p => ({ ...p, diaOp1: e.target.value }))}
+                        className="col-span-9 bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-[9px] text-yellow-500 font-black outline-none focus:border-indigo-500">
+                        <option value="">— SIN ASIGNAR —</option>
+                        {operadoresLaminado.map((op, i) => (
+                          <option key={i} value={op.CODIGO}>{op.NOMBRE} ({op.CODIGO}) — {op.LineaProceso}</option>
+                        ))}
+                      </select>
+                   </div>
+                   <div className="grid grid-cols-12 items-center gap-2">
+                      <span className="col-span-3 text-[8px] text-slate-600 font-black">OP-02</span>
+                      <select value={assignedPersonnel.diaOp2} onChange={(e) => setAssignedPersonnel(p => ({ ...p, diaOp2: e.target.value }))}
+                        className="col-span-9 bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-[9px] text-yellow-500 font-black outline-none focus:border-indigo-500">
+                        <option value="">— SIN ASIGNAR —</option>
+                        {operadoresLaminado.map((op, i) => (
+                          <option key={i} value={op.CODIGO}>{op.NOMBRE} ({op.CODIGO}) — {op.LineaProceso}</option>
+                        ))}
+                      </select>
+                   </div>
                 </div>
               </div>
 
-              {/* NOCHE */}
+              {/* TURNO NOCHE */}
               <div className="space-y-2 border-l-2 border-purple-500 pl-4">
-                <p className="text-[8px] text-purple-400 uppercase text-left font-black tracking-widest mb-1">TURNO NOCHE</p>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1 text-left">
-                    <p className="text-[7px] text-slate-600 uppercase font-black">OPERADOR 01</p>
-                    <select 
-                      value={assignedPersonnel.nocheOp1} 
-                      onChange={(e) => setAssignedPersonnel(p => ({ ...p, nocheOp1: e.target.value }))}
-                      className="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-[9px] text-yellow-500 w-full font-black outline-none focus:border-purple-500"
-                    >
-                      <option value="">— SIN ASIGNAR —</option>
-                      {operadoresLaminado.map((op, i) => (
-                        <option key={i} value={op.CODIGO}>{op.NOMBRE || op.CODIGO}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="space-y-1 text-left">
-                    <p className="text-[7px] text-slate-600 uppercase font-black">OPERADOR 02</p>
-                    <select 
-                      value={assignedPersonnel.nocheOp2} 
-                      onChange={(e) => setAssignedPersonnel(p => ({ ...p, nocheOp2: e.target.value }))}
-                      className="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-[9px] text-yellow-500 w-full font-black outline-none focus:border-purple-500"
-                    >
-                      <option value="">— SIN ASIGNAR —</option>
-                      {operadoresLaminado.map((op, i) => (
-                        <option key={i} value={op.CODIGO}>{op.NOMBRE || op.CODIGO}</option>
-                      ))}
-                    </select>
-                  </div>
+                <p className="text-[8px] text-purple-400 uppercase font-black tracking-widest mb-2">TURNO NOCHE</p>
+                <div className="space-y-3">
+                   <div className="grid grid-cols-12 items-center gap-2">
+                      <span className="col-span-3 text-[8px] text-slate-600 font-black">OP-01</span>
+                      <select value={assignedPersonnel.nocheOp1} onChange={(e) => setAssignedPersonnel(p => ({ ...p, nocheOp1: e.target.value }))}
+                        className="col-span-9 bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-[9px] text-yellow-500 font-black outline-none focus:border-purple-500">
+                        <option value="">— SIN ASIGNAR —</option>
+                        {operadoresLaminado.map((op, i) => (
+                          <option key={i} value={op.CODIGO}>{op.NOMBRE} ({op.CODIGO}) — {op.LineaProceso}</option>
+                        ))}
+                      </select>
+                   </div>
+                   <div className="grid grid-cols-12 items-center gap-2">
+                      <span className="col-span-3 text-[8px] text-slate-600 font-black">OP-02</span>
+                      <select value={assignedPersonnel.nocheOp2} onChange={(e) => setAssignedPersonnel(p => ({ ...p, nocheOp2: e.target.value }))}
+                        className="col-span-9 bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-[9px] text-yellow-500 font-black outline-none focus:border-purple-500">
+                        <option value="">— SIN ASIGNAR —</option>
+                        {operadoresLaminado.map((op, i) => (
+                          <option key={i} value={op.CODIGO}>{op.NOMBRE} ({op.CODIGO}) — {op.LineaProceso}</option>
+                        ))}
+                      </select>
+                   </div>
                 </div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Barra Inferior de Métricas */}
-        <div className="grid grid-cols-12 bg-slate-900/60">
+        {/* MÉTRICAS INFERIORES */}
+        <div className="grid grid-cols-12 bg-slate-900/60 border-t border-slate-700">
           <div className="col-span-3 p-4 border-r border-slate-700 flex items-center justify-center gap-6">
             <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest">OCUPACIÓN REAL (%)</div>
             <div className="flex items-center gap-3">
@@ -820,7 +802,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
              {isSaturated && (
                <div className="flex items-center gap-3 text-red-400 animate-pulse">
                   <AlertCircle className="w-6 h-6 flex-shrink-0" />
-                  <p className="text-[10px] font-black uppercase leading-tight">Capacidad Crítica: Evaluar minimización de corridas en bloques con stock de seguridad excedido.</p>
+                  <p className="text-[10px] font-black uppercase leading-tight">Capacidad Crítica: Evaluar minimización de corridas para optimizar ocupación.</p>
                </div>
              )}
           </div>
@@ -829,9 +811,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     );
   };
 
-  if (!mounted) {
-    return <div className="p-4 md:p-6 min-h-screen bg-white" />;
-  }
+  // Render Component safe guard
+  if (!mounted) return <div className="p-4 md:p-6 min-h-screen bg-white" />;
 
   return (
     <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
@@ -840,7 +821,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           <div className="p-2 bg-red-600/10 rounded-xl shadow-inner"><Scissors className="w-6 h-6 text-red-600" /></div>
           <div>
             <h2 className="text-xl font-black text-gray-800 uppercase tracking-tighter">Programación Táctica Laminado</h2>
-            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Apertura Bloque SAP | Auditoría de Stock Multialmacén (Kg/UN)</p>
+            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Setup: {SETUP_TIME_PER_RUN}min | Auditoría Multialmacén SAP</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
