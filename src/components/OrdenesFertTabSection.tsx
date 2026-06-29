@@ -287,7 +287,6 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
 
     const fetchDeliveryDatesMapping = async () => {
       try {
-        // Consultar un bloque grande de pendientes para el mapeo (20,000 registros)
         const response = await serviciosService.getPendientesTotales(1, 20000);
         if (response.data) {
           const data = Array.isArray(response.data) ? response.data : [response.data];
@@ -301,7 +300,6 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
               
               if (dia !== '00' && mes !== '00' && anio) {
                 const formattedDate = `${dia}-${mes}-${anio}`;
-                // Guardamos con y sin ceros a la izquierda para el cruce flexible
                 map.set(pedido, formattedDate);
                 map.set(pedido.replace(/^0+/, ''), formattedDate);
               }
@@ -324,7 +322,6 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
       setError(null);
       
       try {
-        // 1. Fetch FERT Orders
         const exploreResponse = await serviciosService.getOrdenesFert(1, 1);
         const totalFert = exploreResponse.totalRegistros || 0;
 
@@ -338,14 +335,12 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
           }
         }
 
-        // 2. Fetch Provisional Orders
         const provResponse = await serviciosService.OrdenesProvisionalesPaginados(1, 20000);
         let allProv: ProvisionalOrder[] = [];
         if (provResponse.data) {
           allProv = Array.isArray(provResponse.data) ? provResponse.data : [provResponse.data];
         }
 
-        // 3. Unificar con filtros (019, 006, Centro 1000)
         const validResp = ['019', '006'];
         
         const fertMapped = allFert.filter(o => 
@@ -387,17 +382,25 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
     }
   }, [addNotification, restricciones, isMounted]);
 
-  // CÁLCULOS MACRO (Independientes del filtro de fecha actual)
+  // ORDENES ESTRUCTURALES FILTRADAS (Toma en cuenta restricciones base como exclusión de LAMIN-01)
+  const structuralFilteredOrders = useMemo(() => {
+    return orders.filter(order => {
+        const puesto = String(order.PUESTOTRABAJO || '').trim().toUpperCase();
+        return puesto !== 'LAMIN-01';
+    });
+  }, [orders]);
+
+  // CÁLCULOS MACRO (Usando structuralFilteredOrders para respetar restricciones actualizadas)
   const globalSummary = useMemo(() => {
-    const totalCant = orders.reduce((sum, o) => sum + (Number(o.CANTPROGRAMADA) || 0), 0);
-    const totalTimeMin = orders.reduce((sum, o) => {
+    const totalCant = structuralFilteredOrders.reduce((sum, o) => sum + (Number(o.CANTPROGRAMADA) || 0), 0);
+    const totalTimeMin = structuralFilteredOrders.reduce((sum, o) => {
       const materialCode = normalizeMaterialCode(o.MATERIAL);
       const t = tiemposMap.get(materialCode) || 0;
       return sum + (Number(o.CANTPROGRAMADA) || 0) * t;
     }, 0);
 
     return { totalCant, totalHours: totalTimeMin / 60 };
-  }, [orders, tiemposMap]);
+  }, [structuralFilteredOrders, tiemposMap]);
 
   const statusSummary = useMemo(() => {
     const getTargetDateStr = () => {
@@ -419,7 +422,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
     let todayCant = 0, todayHours = 0;
     let futureCant = 0, futureHours = 0;
 
-    orders.forEach(o => {
+    structuralFilteredOrders.forEach(o => {
       const materialCode = normalizeMaterialCode(o.MATERIAL);
       const t = tiemposMap.get(materialCode) || 0;
       const hours = ((Number(o.CANTPROGRAMADA) || 0) * t) / 60;
@@ -440,12 +443,12 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
     });
 
     return { pastCant, pastHours, todayCant, todayHours, futureCant, futureHours };
-  }, [orders, tiemposMap]);
+  }, [structuralFilteredOrders, tiemposMap]);
 
   const uniqueDates = useMemo(() => {
-    const dates = new Set(orders.map(order => order.FECHA));
+    const dates = new Set(structuralFilteredOrders.map(order => order.FECHA));
     return Array.from(dates).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
-  }, [orders]);
+  }, [structuralFilteredOrders]);
 
   useEffect(() => {
     if (!hasSetDefaultDate && uniqueDates.length > 0 && displayMode === 'plan') {
@@ -468,15 +471,11 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
   }, [uniqueDates, hasSetDefaultDate, displayMode]);
 
   const filteredOrders = useMemo(() => {
-    return orders.filter(order => {
-        // Exclusión estricta de LAMIN-01 solicitada por el usuario para la pestaña PLAN
-        const puesto = String(order.PUESTOTRABAJO || '').trim().toUpperCase();
-        if (puesto === 'LAMIN-01') return false;
-
+    return structuralFilteredOrders.filter(order => {
         if (selectedDates.length === 0) return true;
         return selectedDates.includes(order.FECHA);
       });
-  }, [orders, selectedDates]);
+  }, [structuralFilteredOrders, selectedDates]);
   
   const missingTimesInfo = useMemo(() => {
     const missing = new Set<string>();
@@ -576,7 +575,6 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
                 const parentDemand = fertDemandMap.get(fert) || 0;
                 
                 components.forEach((comp: any) => {
-                    // Usar campos COMPONENTE, DESCRIPCION_COMPONENTE, CANTIDAD_ACUMULADA del JSON proporcionado
                     const cantBase = Number(comp.CANTIDAD_ACUMULADA || comp.CANTIDAD_UNITARIA || 0);
                     allComponents.push({
                         ...comp,
@@ -721,7 +719,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
 
           {displayMode === 'plan' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Card 1: CAPACIDAD CONSOLIDADA (Independiente de fechas) */}
+                {/* Card 1: CAPACIDAD CONSOLIDADA (Toma en cuenta restricciones actualizadas) */}
                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 shadow-sm">
                   <h4 className="text-[13px] font-bold text-gray-800 mb-4 text-center uppercase tracking-wide flex items-center justify-center gap-2">
                     <LayoutDashboard className="w-4 h-4 text-indigo-600" /> CAPACIDAD CONSOLIDADA (TOTAL SISTEMA)
@@ -744,7 +742,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
                   </div>
                 </div>
 
-                {/* Card 2: ESTADO DE ÓRDENES (CRONOLÓGICO) */}
+                {/* Card 2: ESTADO DE ÓRDENES (Toma en cuenta restricciones actualizadas) */}
                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 shadow-sm">
                   <h4 className="text-[13px] font-bold text-gray-800 mb-4 text-center uppercase tracking-wide flex items-center justify-center gap-2">
                     <History className="w-4 h-4 text-indigo-600" /> ESTADO DE ÓRDENES (CRONOLÓGICO)
@@ -761,7 +759,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
                           <p className="text-[10px] text-blue-500 font-mono">{statusSummary.todayHours.toFixed(1)}h</p>
                       </div>
                       <div className="text-center p-2 flex flex-col justify-center bg-green-50/30">
-                          <p className="text-[9px] text-green-600 font-bold uppercase mb-1" title="Carga total desde el 3er día laborable en adelante">POR PLANIFICAR</p>
+                          <p className="text-[9px] text-green-600 font-bold uppercase mb-1" title="Carga total por planificar">POR PLANIFICAR</p>
                           <p className="font-bold text-sm text-green-700">{statusSummary.futureCant.toLocaleString()}</p>
                           <p className="text-[10px] text-green-500 font-mono">{statusSummary.futureHours.toFixed(1)}h</p>
                       </div>
