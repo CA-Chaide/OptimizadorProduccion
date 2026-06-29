@@ -12,10 +12,8 @@ import {
   Wrench,
   Minus,
   Plus,
-  MapPin,
   TrendingUp,
   Box,
-  Wind,
   Info,
   Calendar as CalendarIcon,
   ChevronLeft,
@@ -23,9 +21,7 @@ import {
   Filter,
   Users,
   Activity,
-  AlertCircle,
-  Database,
-  Trash2
+  AlertCircle
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -43,10 +39,8 @@ import { cn } from '@/lib/utils';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, isValid } from 'date-fns';
 import { es } from 'date-fns/locale';
 
-// --- CONSTANTES TÉCNICAS INGENIERÍA ---
-const CAROUSEL_DIAMETER_CM = 320; 
-const CAROUSEL_CIRCUMFERENCE = Math.PI * CAROUSEL_DIAMETER_CM; 
-const BLOCK_LENGTH_METERS = 20;
+// --- CONSTANTES TÉCNICAS ---
+const CAROUSEL_CIRCUMFERENCE = Math.PI * 320; // 3.2m diámetro
 const EFFICIENCY_FACTOR = 0.87;
 
 interface UnifiedRow {
@@ -64,10 +58,8 @@ interface UnifiedRow {
   tIndiv: number;
   tTotal: number;
   subBloques: number;
-  capacidadCarga: number;
   nroCargas: number;
   undBatch: number;
-  participacion: number;
   apertura: string;
   categoria: string;
   centro: string;
@@ -141,7 +133,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const [viewDate, setViewDate] = useState<Date>(new Date());
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
-  // --- ESTADO DASHBOARD CAPACIDAD (UIO / GYE) ---
+  // --- DASHBOARD CONFIG ---
   const [uioConfig, setUioConfig] = useState({
     shift: 'H1', nightShift: 'EMPTY', performance: 90,
     paros: { CR04: 0, CR03: 0, CR01: 0, CNC01: 0 },
@@ -185,7 +177,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const info = extractMaterialInfo(o);
       const qty = safeNum(getProp(o, ['CANTIDAD', 'CANTPROGRAMADA', 'CANTPENDIENTE']));
       const densVal = safeNum(info.dens);
-      const height = densVal < 30 ? 103 : 85;
+      const height = densVal < 28 ? 103 : 85;
       const hTotal = info.esp * qty;
       const subB = height > 0 ? hTotal / height : 0;
       
@@ -205,7 +197,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
       return {
         orden: getProp(o, ['ORDENPREVISIONAL', 'ORDEN']) || '—',
-        fecha: getProp(o, ['FECHAINICIO', 'FECHA']).split('T')[0],
+        fecha: String(getProp(o, ['FECHAINICIO', 'FECHA'])).split('T')[0],
         material: info.code,
         descripcion: info.desc,
         ancho: info.ancho, largo: info.largo, esp: info.esp, dens: info.dens,
@@ -213,12 +205,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         peso: pesoUN * qty,
         alturaTotal: hTotal,
         subBloques: subB,
-        capacidadCarga: capGiro,
         nroCargas: nBatches,
         undBatch: (capGiro * height) / (info.esp || 1),
         tIndiv,
         tTotal: (tIndiv * qty) / 60,
-        participacion: 0,
         apertura: info.apertura,
         categoria: getProp(o, ['CATEGORIA', 'Categoria']) || '—',
         centro: centroId,
@@ -237,36 +227,34 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return [];
   };
 
-  const getFilteredData = useCallback((rawData: any[], centro: string, storeId: string) => {
+  const getFilteredData = useCallback((rawData: any[], centro: string) => {
     const allowed = getAllowedResps(centro);
     return rawData.filter(o => {
       const c = String(getProp(o, ['Centro', 'CENTRO'])).trim();
-      const a = String(getProp(o, ['Almacen', 'ALMACEN'])).trim();
       const r = String(getProp(o, ['RESPCONTROLPROD', 'RESPCTRLPROD', 'RespControlProd'])).trim();
       const dateRaw = String(getProp(o, ['FECHAINICIO', 'FECHA'])).trim();
       const date = dateRaw.includes('T') ? dateRaw.split('T')[0] : dateRaw;
       
-      return c === centro && a === storeId && allowed.includes(r) && (selectedDates.size === 0 || selectedDates.has(date));
+      return c === centro && allowed.includes(r) && (selectedDates.size === 0 || selectedDates.has(date));
     });
   }, [selectedDates]);
 
-  const provAuditUIO = useMemo(() => auditMapper(getFilteredData(ordenesProvisionales, '1000', '1006'), '1000'), [auditMapper, getFilteredData, ordenesProvisionales]);
-  const provAuditGYE = useMemo(() => auditMapper(getFilteredData(ordenesProvisionales, '2000', '2006'), '2000'), [auditMapper, getFilteredData, ordenesProvisionales]);
-  const fertAuditUIO = useMemo(() => auditMapper(getFilteredData(ordenesFert, '1000', '1006'), '1000'), [auditMapper, getFilteredData, ordenesFert]);
-  const fertAuditGYE = useMemo(() => auditMapper(getFilteredData(ordenesFert, '2000', '2006'), '2000'), [auditMapper, getFilteredData, ordenesFert]);
+  const provAuditUIO = useMemo(() => auditMapper(getFilteredData(ordenesProvisionales, '1000'), '1000'), [auditMapper, getFilteredData, ordenesProvisionales]);
+  const provAuditGYE = useMemo(() => auditMapper(getFilteredData(ordenesProvisionales, '2000'), '2000'), [auditMapper, getFilteredData, ordenesProvisionales]);
+  const fertAuditUIO = useMemo(() => auditMapper(getFilteredData(ordenesFert, '1000'), '1000'), [auditMapper, getFilteredData, ordenesFert]);
+  const fertAuditGYE = useMemo(() => auditMapper(getFilteredData(ordenesFert, '2000'), '2000'), [auditMapper, getFilteredData, ordenesFert]);
 
   const totalPlannedUIO = useMemo(() => provAuditUIO.reduce((s, r) => s + r.tTotal, 0) + fertAuditUIO.reduce((s, r) => s + r.tTotal, 0), [provAuditUIO, fertAuditUIO]);
   const totalPlannedGYE = useMemo(() => provAuditGYE.reduce((s, r) => s + r.tTotal, 0) + fertAuditGYE.reduce((s, r) => s + r.tTotal, 0), [provAuditGYE, fertAuditGYE]);
 
   const calendarDaysList = useMemo(() => {
-    if (!mounted) return [];
     const start = startOfMonth(viewDate);
     const end = endOfMonth(viewDate);
     const days = eachDayOfInterval({ start, end });
     const startDay = getDay(start);
     const padding = startDay === 0 ? 6 : startDay - 1;
     return [...Array(padding).fill(null), ...days];
-  }, [viewDate, mounted]);
+  }, [viewDate]);
 
   const datesWithOrders = useMemo(() => {
     const dates = new Set<string>();
@@ -325,12 +313,12 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         <h3 className="text-xs font-black uppercase text-slate-800 tracking-widest flex items-center gap-2">
           <div className="w-2.5 h-2.5 rounded-full bg-indigo-600" /> {title} ({data.length})
         </h3>
-        <div className="border border-slate-200 rounded-3xl overflow-hidden bg-white shadow-xl">
+        <div className="border border-slate-200 rounded-[2rem] overflow-hidden bg-white shadow-xl">
           <div className="overflow-x-auto max-h-[600px]">
             <table className="w-full text-center border-collapse text-[10px]">
               <thead className="bg-[#0f172a] text-white uppercase font-black tracking-tighter sticky top-0 z-20">
                 <tr>
-                  <th className="px-4 py-4 border-r border-white/5 text-left">Nivel / Material</th>
+                  <th className="px-4 py-4 border-r border-white/5 text-left">Material</th>
                   <th className="px-6 py-4 border-r border-white/5 text-left">Descripción Técnica</th>
                   <th className="px-2 py-4 border-r border-white/5">Ancho</th>
                   <th className="px-2 py-4 border-r border-white/5">Largo</th>
@@ -343,9 +331,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                   <th className="px-3 py-4 border-r border-white/5">Stock Kg</th>
                   <th className="px-3 py-4 border-r border-white/10 bg-indigo-500/20">T. Indiv</th>
                   <th className="px-4 py-4 border-r border-white/10 bg-indigo-600">T. Total H</th>
-                  <th className="px-3 py-4 border-r border-white/5 bg-amber-500/20 text-amber-300">Batches</th>
+                  <th className="px-3 py-4 border-r border-white/5 bg-amber-500/20 text-amber-300">Cargas</th>
                   <th className="px-3 py-4 border-r border-white/5">Und/Batch</th>
-                  <th className="px-3 py-4 border-r border-white/5">SUB_Bloque</th>
+                  <th className="px-3 py-4 border-r border-white/5"># SUB_Bloque</th>
                   <th className="px-3 py-4 border-r border-white/5">Planta/ALM</th>
                   <th className="px-3 py-4 border-r border-white/5">Resp. CP</th>
                   <th className="px-3 py-4">Orden</th>
@@ -365,12 +353,12 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                            {isExp ? <Minus className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
                            {key.split('|')[0]} — {key.split('|')[1]}
                         </td>
-                        <td colSpan={6} className="text-right pr-10 italic opacity-40">Subtotales de grupo:</td>
+                        <td colSpan={6} className="text-right pr-10 italic opacity-40">Subtotales:</td>
                         <td className="px-3 py-3 font-black text-slate-900">{formatNum(tKg, 0)}</td>
                         <td colSpan={4} className="border-r border-slate-50"></td>
                         <td className="px-4 py-3 bg-indigo-600 text-white font-black">{tH.toFixed(1)}h</td>
                         <td className="px-3 py-3 bg-amber-500/10 text-amber-700 font-black">{tBatches}</td>
-                        <td colSpan={5}></td>
+                        <td colSpan={4}></td>
                       </tr>
                       {isExp && items.map((row, idx) => (
                         <tr key={idx} className="hover:bg-slate-50 transition-colors font-mono text-[9px]">
@@ -407,53 +395,53 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   };
 
   const renderMachineColumn = (id: string, name: string, config: any, setConfig: any) => {
-    const diaShift = shiftOptions.find(o => o.v === config.shift)?.h || 0;
-    const nightShift = nightShiftOptions.find(o => o.v === config.nightShift)?.h || 0;
+    const diaH = shiftOptions.find(o => o.v === config.shift)?.h || 0;
+    const nightH = nightShiftOptions.find(o => o.v === config.nightShift)?.h || 0;
     const p1 = (config.paros[id] || 0) / 100;
     const p2 = (config.parosT2[id] || 0) / 100;
-    const performance = (config.performance || 0) / 100;
+    const perf = (config.performance || 0) / 100;
     
-    const tDisponible = ((diaShift * (1 - p1)) + (nightShift * (1 - p2))) * performance * EFFICIENCY_FACTOR;
+    const tDisp = ((diaH * (1 - p1)) + (nightH * (1 - p2))) * perf * EFFICIENCY_FACTOR;
 
     return (
-      <div key={id} className="flex flex-col border-r border-slate-700 last:border-r-0 min-w-[140px]">
+      <div key={id} className="flex flex-col border-r border-slate-700 last:border-r-0 min-w-[140px] text-left">
         <div className="bg-slate-800/50 p-2 text-center border-b border-slate-700">
-           <p className="text-[10px] font-black text-indigo-400 uppercase tracking-tighter">{name}</p>
+           <p className="text-[9px] font-black text-indigo-400 uppercase tracking-tighter">{name}</p>
         </div>
         <div className="p-3 space-y-4">
-           <div className="space-y-1 text-left">
-             <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest text-center">PARO T1 (%)</p>
+           <div className="space-y-1">
+             <p className="text-[7px] font-black text-slate-500 uppercase tracking-widest text-center">PARO T1 (%)</p>
              <input type="number" value={config.paros[id]} onChange={e => setConfig({ ...config, paros: { ...config.paros, [id]: safeNum(e.target.value) } })} className="w-full bg-slate-900 border border-slate-700 rounded px-1 py-1 text-center text-[10px] text-red-400 font-bold" />
            </div>
-           <div className="space-y-1 text-left">
-             <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest text-center">PARO T2 (%)</p>
+           <div className="space-y-1">
+             <p className="text-[7px] font-black text-slate-500 uppercase tracking-widest text-center">PARO T2 (%)</p>
              <input type="number" value={config.parosT2[id]} onChange={e => setConfig({ ...config, parosT2: { ...config.parosT2, [id]: safeNum(e.target.value) } })} className="w-full bg-slate-900 border border-slate-700 rounded px-1 py-1 text-center text-[10px] text-red-400 font-bold" />
            </div>
-           <div className="space-y-2 border-t border-slate-700 pt-3 text-left">
-             <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest text-center">PERSONAL DÍA</p>
-             <select value={config.personnel[`${id}_day_op1`] || ''} onChange={e => setConfig({...config, personnel: {...config.personnel, [`${id}_day_op1`]: e.target.value}})} className="w-full bg-slate-900 border border-slate-700 rounded px-1 py-1 text-[9px] text-yellow-500 font-bold outline-none">
+           <div className="space-y-2 border-t border-slate-700 pt-3">
+             <p className="text-[7px] font-black text-slate-500 uppercase tracking-widest text-center">PERSONAL DÍA</p>
+             <select value={config.personnel[`${id}_day_op1`] || ''} onChange={e => setConfig({...config, personnel: {...config.personnel, [`${id}_day_op1`]: e.target.value}})} className="w-full bg-slate-900 border border-slate-700 rounded px-1 py-1 text-[8px] text-yellow-500 font-bold outline-none">
                <option value="">— OP1 —</option>
                {operadoresCorte.map((op, i) => <option key={i} value={getProp(op, ['CODIGO_OPERADOR'])}>{getProp(op, ['NOMBRE_OPERADOR'])}</option>)}
              </select>
-             <select value={config.personnel[`${id}_day_op2`] || ''} onChange={e => setConfig({...config, personnel: {...config.personnel, [`${id}_day_op2`]: e.target.value}})} className="w-full bg-slate-900 border border-slate-700 rounded px-1 py-1 text-[9px] text-yellow-500 font-bold outline-none">
+             <select value={config.personnel[`${id}_day_op2`] || ''} onChange={e => setConfig({...config, personnel: {...config.personnel, [`${id}_day_op2`]: e.target.value}})} className="w-full bg-slate-900 border border-slate-700 rounded px-1 py-1 text-[8px] text-yellow-500 font-bold outline-none">
                <option value="">— OP2 AYUD —</option>
                {operadoresCorte.map((op, i) => <option key={i} value={getProp(op, ['CODIGO_OPERADOR'])}>{getProp(op, ['NOMBRE_OPERADOR'])}</option>)}
              </select>
            </div>
-           <div className="space-y-2 border-t border-slate-700 pt-3 text-left">
-             <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest text-center">PERSONAL NOCHE</p>
-             <select value={config.personnel[`${id}_night_op1`] || ''} onChange={e => setConfig({...config, personnel: {...config.personnel, [`${id}_night_op1`]: e.target.value}})} className="w-full bg-slate-900 border border-slate-700 rounded px-1 py-1 text-[9px] text-yellow-500 font-bold outline-none">
+           <div className="space-y-2 border-t border-slate-700 pt-3">
+             <p className="text-[7px] font-black text-slate-500 uppercase tracking-widest text-center">PERSONAL NOCHE</p>
+             <select value={config.personnel[`${id}_night_op1`] || ''} onChange={e => setConfig({...config, personnel: {...config.personnel, [`${id}_night_op1`]: e.target.value}})} className="w-full bg-slate-900 border border-slate-700 rounded px-1 py-1 text-[8px] text-yellow-500 font-bold outline-none">
                <option value="">— OP1 —</option>
                {operadoresCorte.map((op, i) => <option key={i} value={getProp(op, ['CODIGO_OPERADOR'])}>{getProp(op, ['NOMBRE_OPERADOR'])}</option>)}
              </select>
-             <select value={config.personnel[`${id}_night_op2`] || ''} onChange={e => setConfig({...config, personnel: {...config.personnel, [`${id}_night_op2`]: e.target.value}})} className="w-full bg-slate-900 border border-slate-700 rounded px-1 py-1 text-[9px] text-yellow-500 font-bold outline-none">
+             <select value={config.personnel[`${id}_night_op2`] || ''} onChange={e => setConfig({...config, personnel: {...config.personnel, [`${id}_night_op2`]: e.target.value}})} className="w-full bg-slate-900 border border-slate-700 rounded px-1 py-1 text-[8px] text-yellow-500 font-bold outline-none">
                <option value="">— OP2 AYUD —</option>
                {operadoresCorte.map((op, i) => <option key={i} value={getProp(op, ['CODIGO_OPERADOR'])}>{getProp(op, ['NOMBRE_OPERADOR'])}</option>)}
              </select>
            </div>
            <div className="pt-3 border-t border-slate-700 text-center">
               <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-1">DISP. NETA (H)</p>
-              <span className="text-xs font-black text-emerald-400 tabular-nums">{tDisponible.toFixed(2)}</span>
+              <span className="text-xs font-black text-emerald-400 tabular-nums">{tDisp.toFixed(2)}</span>
            </div>
         </div>
       </div>
@@ -461,118 +449,94 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   };
 
   const renderTopConsolidation = () => {
-    const uioSaturated = totalPlannedUIO > 27.4;
-    const gyeSaturated = totalPlannedGYE > 15.0;
-
     return (
-      <div className="space-y-10 mb-12">
-        {/* QUITO (UIO) DASHBOARD */}
-        <div className="bg-[#1e293b] border border-slate-700 rounded-[2rem] shadow-2xl overflow-hidden font-sans text-white">
+      <div className="space-y-8 mb-10">
+        <div className="bg-[#1e293b] border border-slate-700 rounded-[2rem] shadow-2xl overflow-hidden font-sans text-white text-left">
           <div className="grid grid-cols-12">
-            <div className="col-span-2 p-6 border-r border-slate-700 bg-slate-900/50 flex flex-col justify-between text-left">
+            <div className="col-span-2 p-6 border-r border-slate-700 bg-slate-900/50 flex flex-col justify-between">
               <div>
                 <p className="text-[9px] font-black uppercase text-slate-500 tracking-widest mb-1">UBICACIÓN TÉCNICA</p>
                 <h3 className="text-2xl font-black text-indigo-400 tracking-tighter">QUITO (UIO)</h3>
                 <div className="mt-8 space-y-5">
                   <div className="space-y-1">
                     <p className="text-[8px] font-black text-slate-500 uppercase">JORNADA DÍA</p>
-                    <select value={uioConfig.shift} onChange={e => setUioConfig({ ...uioConfig, shift: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-[10px] text-yellow-500 font-black appearance-none">
+                    <select value={uioConfig.shift} onChange={e => setUioConfig({ ...uioConfig, shift: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[10px] text-yellow-500 font-black">
                       {shiftOptions.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
                     </select>
                   </div>
                   <div className="space-y-1">
                     <p className="text-[8px] font-black text-slate-500 uppercase">JORNADA NOCHE</p>
-                    <select value={uioConfig.nightShift} onChange={e => setUioConfig({ ...uioConfig, nightShift: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-[10px] text-yellow-500 font-black appearance-none">
+                    <select value={uioConfig.nightShift} onChange={e => setUioConfig({ ...uioConfig, nightShift: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[10px] text-yellow-500 font-black">
                       {nightShiftOptions.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
                     </select>
                   </div>
                   <div className="space-y-1">
                     <p className="text-[8px] font-black text-slate-500 uppercase">RENDIMIENTO (%)</p>
-                    <input type="number" value={uioConfig.performance} onChange={e => setUioConfig({ ...uioConfig, performance: safeNum(e.target.value) })} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-[10px] text-emerald-400 font-black outline-none" />
+                    <input type="number" value={uioConfig.performance} onChange={e => setUioConfig({ ...uioConfig, performance: safeNum(e.target.value) })} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[10px] text-emerald-400 font-black" />
                   </div>
-                </div>
-              </div>
-              <div className="pt-6 border-t border-slate-700">
-                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 text-center">PLANTA ACTIVA</p>
-                <div className="flex items-center justify-center gap-3">
-                   <div className="w-2.5 h-2.5 rounded-full bg-green-500 shadow-[0_0_10px_#22c55e]" />
-                   <span className="text-[10px] font-black uppercase">Online SAP</span>
                 </div>
               </div>
             </div>
             <div className="col-span-8 flex overflow-x-auto">
-               {['CR04', 'CR03', 'CR01', 'CNC01'].map(id => renderMachineColumn(id, id === 'CNC01' ? 'CNC01 (GIOTTO)' : id, uioConfig, setUioConfig))}
+               {['CR04', 'CR03', 'CR01', 'CNC01'].map(id => renderMachineColumn(id, id, uioConfig, setUioConfig))}
             </div>
-            <div className="col-span-2 p-6 bg-slate-900/30 flex flex-col justify-center border-l border-slate-700 text-left">
+            <div className="col-span-2 p-6 bg-slate-900/30 flex flex-col justify-center border-l border-slate-700">
                <div className="space-y-8">
                  <div>
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="text-[9px] font-black text-slate-500 uppercase">PLANIFICADO (H)</span>
-                      <TrendingUp className="w-3 h-3 text-indigo-400" />
-                    </div>
-                    <span className="text-3xl font-black text-emerald-400 tabular-nums">{totalPlannedUIO.toFixed(2)}</span>
+                    <span className="text-[9px] font-black text-slate-500 uppercase block mb-1">PLANIFICADO (H)</span>
+                    <span className="text-3xl font-black text-indigo-400 tabular-nums">{totalPlannedUIO.toFixed(1)}</span>
                  </div>
                  <div className="pt-6 border-t border-slate-700">
-                    <p className="text-[9px] font-black text-slate-500 uppercase mb-1">OCUPACIÓN REAL</p>
-                    <div className="flex items-center gap-3">
-                       <span className={cn("text-2xl font-black tabular-nums", uioSaturated ? "text-red-400" : "text-indigo-300")}>
-                          {((totalPlannedUIO / Math.max(1, 27.4)) * 100).toFixed(1)}%
-                       </span>
-                       {uioSaturated && <div className="w-2 h-2 rounded-full bg-red-500 animate-ping" />}
-                    </div>
+                    <p className="text-[9px] font-black text-slate-500 uppercase mb-1">OCUPACIÓN</p>
+                    <span className="text-2xl font-black tabular-nums text-emerald-400">
+                       {((totalPlannedUIO / 32) * 100).toFixed(1)}%
+                    </span>
                  </div>
                </div>
             </div>
           </div>
         </div>
 
-        {/* GUAYAQUIL (GYE) DASHBOARD */}
-        <div className="bg-[#1e293b] border border-slate-700 rounded-[2.5rem] shadow-2xl overflow-hidden font-sans text-white">
+        <div className="bg-[#1e293b] border border-slate-700 rounded-[2.5rem] shadow-2xl overflow-hidden font-sans text-white text-left">
           <div className="grid grid-cols-12">
-            <div className="col-span-2 p-6 border-r border-slate-700 bg-slate-900/50 flex flex-col justify-between text-left">
+            <div className="col-span-2 p-6 border-r border-slate-700 bg-slate-900/50 flex flex-col justify-between">
               <div>
                 <p className="text-[9px] font-black uppercase text-slate-500 tracking-widest mb-1">UBICACIÓN TÉCNICA</p>
-                <h3 className="text-2xl font-black text-indigo-400 tracking-tighter">GUAYAQUIL (GYE)</h3>
+                <h3 className="text-2xl font-black text-indigo-400 tracking-tighter">GYE (2000)</h3>
                 <div className="mt-8 space-y-5">
                   <div className="space-y-1">
                     <p className="text-[8px] font-black text-slate-500 uppercase">JORNADA DÍA</p>
-                    <select value={gyeConfig.shift} onChange={e => setGyeConfig({ ...gyeConfig, shift: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-[10px] text-yellow-500 font-black appearance-none">
+                    <select value={gyeConfig.shift} onChange={e => setGyeConfig({ ...gyeConfig, shift: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[10px] text-yellow-500 font-black">
                       {shiftOptions.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
                     </select>
                   </div>
                   <div className="space-y-1">
                     <p className="text-[8px] font-black text-slate-500 uppercase">JORNADA NOCHE</p>
-                    <select value={gyeConfig.nightShift} onChange={e => setGyeConfig({ ...gyeConfig, nightShift: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-[10px] text-yellow-500 font-black appearance-none">
+                    <select value={gyeConfig.nightShift} onChange={e => setGyeConfig({ ...gyeConfig, nightShift: e.target.value })} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[10px] text-yellow-500 font-black">
                       {nightShiftOptions.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
                     </select>
                   </div>
                   <div className="space-y-1">
                     <p className="text-[8px] font-black text-slate-500 uppercase">RENDIMIENTO (%)</p>
-                    <input type="number" value={gyeConfig.performance} onChange={e => setGyeConfig({ ...gyeConfig, performance: safeNum(e.target.value) })} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-[10px] text-emerald-400 font-black outline-none" />
+                    <input type="number" value={gyeConfig.performance} onChange={e => setGyeConfig({ ...gyeConfig, performance: safeNum(e.target.value) })} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[10px] text-emerald-400 font-black" />
                   </div>
                 </div>
               </div>
-              <div className="pt-6 border-t border-slate-700 text-center">
-                 <Badge variant="outline" className="text-[9px] border-emerald-500/30 text-emerald-400 font-black">AUDITORÍA ACTIVA</Badge>
-              </div>
             </div>
             <div className="col-span-8 flex overflow-x-auto">
-               {['CR02', 'CR01', 'LA02'].map(id => renderMachineColumn(id, id === 'LA02' ? 'LA02 (REPOT)' : id, gyeConfig, setGyeConfig))}
+               {['CR02', 'CR01', 'LA02'].map(id => renderMachineColumn(id, id, gyeConfig, setGyeConfig))}
             </div>
-            <div className="col-span-2 p-6 bg-slate-900/30 flex flex-col justify-center border-l border-slate-700 text-left">
+            <div className="col-span-2 p-6 bg-slate-900/30 flex flex-col justify-center border-l border-slate-700">
                <div className="space-y-8">
                  <div>
                     <span className="text-[9px] font-black text-slate-500 uppercase block mb-1">PLANIFICADO (H)</span>
-                    <span className="text-3xl font-black text-indigo-400 tabular-nums">{totalPlannedGYE.toFixed(2)}</span>
+                    <span className="text-3xl font-black text-indigo-400 tabular-nums">{totalPlannedGYE.toFixed(1)}</span>
                  </div>
                  <div className="pt-6 border-t border-slate-700">
-                    <p className="text-[9px] font-black text-slate-500 uppercase mb-1">OCUPACIÓN REAL</p>
-                    <div className="flex items-center gap-3">
-                       <span className={cn("text-2xl font-black tabular-nums", gyeSaturated ? "text-red-400" : "text-indigo-300")}>
-                          {((totalPlannedGYE / Math.max(1, 15.0)) * 100).toFixed(1)}%
-                       </span>
-                       {gyeSaturated && <AlertCircle className="w-4 h-4 text-red-400" />}
-                    </div>
+                    <p className="text-[9px] font-black text-slate-500 uppercase mb-1">OCUPACIÓN</p>
+                    <span className="text-2xl font-black tabular-nums text-emerald-400">
+                       {((totalPlannedGYE / 24) * 100).toFixed(1)}%
+                    </span>
                  </div>
                </div>
             </div>
@@ -582,9 +546,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     );
   };
 
-  if (!mounted) {
-    return <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left" />;
-  }
+  if (!mounted) return <div className="p-4 md:p-6 min-h-screen bg-white rounded-xl border border-gray-100 shadow-sm" />;
 
   return (
     <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
@@ -630,7 +592,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                     );
                   })}
                 </div>
-                <Button variant="ghost" size="sm" className="w-full text-[10px] font-black uppercase text-red-600 h-9 mt-1 rounded-xl tracking-widest" onClick={() => setSelectedDates(new Set())}>Ver Todo el Plan</Button>
+                <Button variant="ghost" size="sm" className="w-full text-[10px] font-black uppercase text-red-600 h-9 mt-1 rounded-xl tracking-widest" onClick={() => setSelectedDates(new Set())}>Ver Todo</Button>
               </div>
             </PopoverContent>
           </Popover>
@@ -643,8 +605,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             { v: 'resumen', l: 'Capacidad Operativa', i: LayoutDashboard },
             { v: 'ordenes', l: 'Provisionales', i: Package }, 
             { v: 'ordenesFert', l: 'Órdenes FERT', i: ShoppingCart },
-            { v: 'inventario', l: 'Inventario SAP', i: Database },
-            { v: 'mantenimiento', l: 'Mantenimiento', i: Wrench }
+            { v: 'mantenimiento', l: 'Mantenimiento', i: Wrench },
+            { v: 'grupos', l: 'Grupos', i: Users }
           ].map(tab => (
             <TabsTrigger key={tab.v} value={tab.v} className="gap-2 text-[10px] font-black uppercase transition-all data-[state=active]:bg-white data-[state=active]:shadow-lg data-[state=active]:text-red-600 rounded-xl">
               <tab.i className="w-4 h-4" /> {tab.l}
@@ -662,56 +624,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           </TabsContent>
 
           <TabsContent value="ordenes" className="animate-in fade-in duration-300 space-y-10">
-            {renderAuditTable(provAuditUIO, "AUDITORÍA TÉCNICA QUITO (UIO) — ÓRDENES PROVISIONALES")}
-            {renderAuditTable(provAuditGYE, "AUDITORÍA TÉCNICA GUAYAQUIL (GYE) — ÓRDENES PROVISIONALES")}
+            {renderAuditTable(provAuditUIO, "AUDITORÍA TÉCNICA QUITO (1000) — PROVISIONALES")}
+            {renderAuditTable(provAuditGYE, "AUDITORÍA TÉCNICA GUAYAQUIL (2000) — PROVISIONALES")}
           </TabsContent>
 
           <TabsContent value="ordenesFert" className="animate-in fade-in duration-300 space-y-10">
-            {renderAuditTable(fertAuditUIO, "AUDITORÍA TÉCNICA QUITO (UIO) — ÓRDENES FERT")}
-            {renderAuditTable(fertAuditGYE, "AUDITORÍA TÉCNICA GUAYAQUIL (GYE) — ÓRDENES FERT")}
-          </TabsContent>
-
-          <TabsContent value="inventario" className="animate-in fade-in duration-300 text-left space-y-4">
-             <div className="flex items-center gap-3 px-2">
-                <div className="p-2 bg-indigo-600 rounded-xl text-white shadow-lg"><Database className="w-4 h-4" /></div>
-                <h3 className="text-sm font-black uppercase tracking-widest text-slate-800">Inventario SAP Bloques Formulados (Auditado)</h3>
-             </div>
-             <div className="border border-slate-200 rounded-[2.5rem] overflow-hidden bg-white shadow-xl">
-                <div className="overflow-x-auto max-h-[600px]">
-                  <table className="w-full text-center border-collapse text-[10px]">
-                    <thead className="bg-[#0f172a] text-white border-b border-white/5 uppercase font-black tracking-widest text-[8px] sticky top-0 z-10">
-                      <tr>
-                        <th className="px-6 py-5 border-r border-white/5">Material</th>
-                        <th className="px-6 py-5 border-r border-white/10 text-left">Descripción del Material</th>
-                        <th className="px-3 py-5 border-r border-white/5">Centro</th>
-                        <th className="px-3 py-5 border-r border-white/5 text-indigo-300">Almacén</th>
-                        <th className="px-4 py-5 border-r border-white/5 bg-green-500/20 text-green-300">Libre Utiliz.</th>
-                        <th className="px-4 py-5 border-r border-white/5 bg-blue-500/20 text-blue-200">En Traslado</th>
-                        <th className="px-3 py-5 border-r border-white/5">Resp. CP</th>
-                        <th className="px-3 py-5">Tipo</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 font-black text-[11px] text-slate-700">
-                      {inventarioSAP.filter(r => String(r.NOMBRE || r.DESCRIPCION || '').toUpperCase().includes('BLOQUE FORMULADO')).length === 0 ? (
-                        <tr><td colSpan={8} className="py-24 text-slate-300 uppercase font-black tracking-widest italic opacity-50">Sin registros detectados</td></tr>
-                      ) : (
-                        inventarioSAP.filter(r => String(r.NOMBRE || r.DESCRIPCION || '').toUpperCase().includes('BLOQUE FORMULADO')).map((row, i) => (
-                          <tr key={i} className="hover:bg-blue-50/10 transition-colors">
-                            <td className="px-6 py-3 border-r border-dashed border-gray-100 font-mono text-indigo-600 font-black">{cleanCode(row.MATERIAL)}</td>
-                            <td className="px-6 py-3 border-r border-dashed border-gray-100 text-left uppercase font-black truncate max-w-[350px] leading-tight" title={row.NOMBRE}>{row.NOMBRE || '—'}</td>
-                            <td className="px-3 py-3 border-r border-dashed border-gray-100">{row.CENTRO}</td>
-                            <td className="px-3 py-3 border-r border-dashed border-gray-100 text-indigo-700 font-black bg-indigo-50/30">{row.ALMACEN}</td>
-                            <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-green-700 bg-green-50/30 font-black">{Number(row.LIBREUTILIZACION || 0).toLocaleString()}</td>
-                            <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-blue-600 bg-blue-50/30 font-black">{Number(row.ENTRASLADO || 0).toLocaleString()}</td>
-                            <td className="px-3 py-3 border-r border-dashed border-gray-100 text-indigo-900 font-black">{getProp(row, ['RESP_CONTROL_PROD', 'RESPCONTROLPROD'])}</td>
-                            <td className="px-3 py-3 text-[9px] text-slate-400 uppercase font-bold">{row.TIPO_MATERIAL}</td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-             </div>
+            {renderAuditTable(fertAuditUIO, "AUDITORÍA TÉCNICA QUITO (1000) — ÓRDENES FERT")}
+            {renderAuditTable(fertAuditGYE, "AUDITORÍA TÉCNICA GUAYAQUIL (2000) — ÓRDENES FERT")}
           </TabsContent>
 
           <TabsContent value="mantenimiento" className="animate-in fade-in duration-300 text-left space-y-4">
@@ -730,7 +649,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                       <th className="px-6 py-5 border-r border-white/5">Máquina</th>
                       <th className="px-6 py-5 border-r border-white/5">Inicio</th>
                       <th className="px-6 py-5 border-r border-white/5">Fin</th>
-                      <th className="px-6 py-5 text-indigo-300 bg-indigo-900/40">Duración (MIN)</th>
+                      <th className="px-6 py-5 text-indigo-300 bg-indigo-900/40">TIEMPO_MANTENIMIENTO (MIN)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-black text-[11px] text-slate-700">
@@ -757,6 +676,19 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                   </tbody>
                 </table>
               </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="grupos" className="animate-in fade-in duration-300">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 text-left">
+              {grupos.map(g => (
+                <Card key={g.codigo_grupo} className="relative overflow-hidden group hover:shadow-md transition-all border border-gray-100 rounded-2xl bg-white p-6">
+                  <div className="absolute top-0 left-0 w-1 h-full bg-red-600 group-hover:bg-red-700" />
+                  <Badge className="bg-red-50 text-red-700 mb-2 font-bold text-[9px] uppercase border-red-200">PLANTA {g.centro}</Badge>
+                  <h4 className="font-bold text-gray-800 uppercase text-sm">{g.nombre_grupo}</h4>
+                  <p className="text-[9px] font-mono text-gray-400 mt-2">ID: {g.codigo_grupo}</p>
+                </Card>
+              ))}
             </div>
           </TabsContent>
         </div>
