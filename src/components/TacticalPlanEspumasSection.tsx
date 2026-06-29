@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -124,7 +123,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanEspumas');
   const { addNotification } = useAppContext();
 
-  // --- Funciones de Utilidad (definidas antes del uso) ---
+  // --- Funciones de Utilidad (definidas antes del uso para evitar errores de inicialización) ---
   const extractMaterialInfo = useCallback((item: any) => {
     const matStr = getProp(item, ['MATERIAL', 'Material', 'CodMaterial']);
     const nameStr = getProp(item, ['NOMBRE', 'NombreMaterial', 'Descripcion']);
@@ -191,7 +190,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const gap = 15;
       const capGiro = info.ancho > 0 ? Math.floor(CAROUSEL_CIRCUMFERENCE / (info.ancho + gap)) : 0;
       const nBatchesRaw = capGiro > 0 ? subB / capGiro : 0;
-      const nBatches = Math.ceil(nBatchesRaw); // Redondeo superior industrial
+      // REDONDEO SUPERIOR INDUSTRIAL SOLICITADO
+      const nBatches = Math.ceil(nBatchesRaw); 
 
       const tMatch = tiemposCatalogo.find(t => cleanCode(t.CodMaterial) === info.code && String(t.Centro).trim() === centroId);
       const tIndiv = tMatch ? safeNum(tMatch.Tiempo || tMatch.Tiempo_Min) : 0;
@@ -277,7 +277,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return dates;
   }, [ordenesProvisionales, ordenesFert]);
 
-  const fetchData = useCallback(async () => {
+  const fetchDataAsync = useCallback(async () => {
     setIsLoading(true);
     try {
       const [groupsRes, restrsRes, provsRes, fertsRes, invRes, maintRes, timesRes, skillsRes] = await Promise.all([
@@ -310,7 +310,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   }, []);
 
   useEffect(() => { setMounted(true); setViewDate(new Date()); }, []);
-  useEffect(() => { if (mounted) fetchData(); }, [mounted, fetchData]);
+  useEffect(() => { if (mounted) fetchDataAsync(); }, [mounted, fetchDataAsync]);
 
   const renderAuditTable = (data: UnifiedRow[], title: string) => {
     const grouped = data.reduce((acc, row) => {
@@ -367,7 +367,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         </td>
                         <td colSpan={6} className="text-right pr-10 italic opacity-40">Subtotales de grupo:</td>
                         <td className="px-3 py-3 font-black text-slate-900">{formatNum(tKg, 0)}</td>
-                        <td colSpan={4}></td>
+                        <td colSpan={4} className="border-r border-slate-50"></td>
                         <td className="px-4 py-3 bg-indigo-600 text-white font-black">{tH.toFixed(1)}h</td>
                         <td className="px-3 py-3 bg-amber-500/10 text-amber-700 font-black">{Math.ceil(tBatches)}</td>
                         <td colSpan={6}></td>
@@ -492,7 +492,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               </div>
               <div className="pt-4 border-t border-slate-700 text-center">
                 <p className="text-[9px] font-black text-slate-500 uppercase mb-1">OCUPACIÓN REAL</p>
-                <span className="text-2xl font-black text-emerald-400">{((totalPlannedUIO / 40) * 100).toFixed(1)}%</span>
+                <span className="text-2xl font-black text-emerald-400">{((totalPlannedUIO / Math.max(1, 40)) * 100).toFixed(1)}%</span>
               </div>
             </div>
             <div className="col-span-8 flex overflow-x-auto">
@@ -546,7 +546,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               </div>
               <div className="pt-4 border-t border-slate-700 text-center">
                 <p className="text-[9px] font-black text-slate-500 uppercase mb-1">OCUPACIÓN REAL</p>
-                <span className="text-2xl font-black text-indigo-400">{((totalPlannedGYE / 30) * 100).toFixed(1)}%</span>
+                <span className="text-2xl font-black text-indigo-400">{((totalPlannedGYE / Math.max(1, 30)) * 100).toFixed(1)}%</span>
               </div>
             </div>
             <div className="col-span-8 flex overflow-x-auto">
@@ -575,58 +575,16 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     );
   };
 
-  const renderMantenimiento = () => {
-    return (
-      <div className="space-y-6 text-left">
-        <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest px-2 flex items-center gap-2">
-          <Wrench className="w-4 h-4 text-slate-500" /> Mantenimiento Preventivo Programado SAP
-        </h3>
-        <div className="border border-slate-200 rounded-3xl overflow-hidden bg-white shadow-lg">
-          <div className="overflow-x-auto max-h-[600px]">
-            <table className="w-full text-center border-collapse text-[10px]">
-              <thead className="bg-[#1e293b] text-white uppercase font-black tracking-widest text-[9px] border-b border-white/5 sticky top-0 z-10">
-                <tr>
-                  <th className="px-6 py-5 border-r border-white/5">Planta</th>
-                  <th className="px-6 py-5 border-r border-white/5">Máquina / Recurso</th>
-                  <th className="px-6 py-5 border-r border-white/5 text-left">Descripción Máquina</th>
-                  <th className="px-6 py-5 border-r border-white/5">Orden Trabajo (OT)</th>
-                  <th className="px-6 py-5 border-r border-white/5">Inicio Programado</th>
-                  <th className="px-6 py-5 border-r border-white/5">Fin Programado</th>
-                  <th className="px-6 py-5 bg-indigo-600 text-white">Tiempo Mantenimiento (Min)</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 font-bold text-slate-600">
-                {mantenimientos.length === 0 ? (
-                  <tr><td colSpan={7} className="py-20 text-slate-300 uppercase font-black tracking-widest italic opacity-50">Sin mantenimientos vigentes en SAP</td></tr>
-                ) : (
-                  mantenimientos.map((m, idx) => {
-                    const start = new Date(m.FECHA_OT_PRG_INI);
-                    const end = new Date(m.FECHA_OT_PRG_FIN);
-                    const diffMin = (isValid(start) && isValid(end)) ? Math.round((end.getTime() - start.getTime()) / 60000) : 0;
-                    return (
-                      <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-6 py-4 font-black border-r border-slate-50">{m.PLANTA || '—'}</td>
-                        <td className="px-6 py-4 font-black text-indigo-700 border-r border-slate-50">{m.ID_MAQUINA || '—'}</td>
-                        <td className="px-6 py-4 text-left uppercase border-r border-slate-50 text-slate-400">{m.MAQUINA || '—'}</td>
-                        <td className="px-6 py-4 font-mono font-black text-slate-900 border-r border-slate-50">{m.OT_PRG_ID || '—'}</td>
-                        <td className="px-6 py-4 font-mono text-[9px] border-r border-slate-50">{m.FECHA_OT_PRG_INI || '—'}</td>
-                        <td className="px-6 py-4 font-mono text-[9px] border-r border-slate-50">{m.FECHA_OT_PRG_FIN || '—'}</td>
-                        <td className="px-6 py-4 font-mono font-black text-indigo-900 bg-indigo-50/30 text-center">{diffMin}</td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
   if (!mounted) {
-    return <div className="p-4 md:p-6 min-h-screen bg-white rounded-xl border border-gray-100 shadow-sm" />;
+    return <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left" />;
   }
+
+  if (isLoading) return (
+    <div className="flex flex-col items-center justify-center p-20 gap-4">
+      <Loader2 className="w-10 h-10 animate-spin text-primary" />
+      <p className="text-xs font-bold text-gray-400 uppercase tracking-widest animate-pulse">Sincronizando Corte Espuma...</p>
+    </div>
+  );
 
   return (
     <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
@@ -639,7 +597,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           </div>
         </div>
         <div className="flex items-center gap-3">
-           <Button onClick={fetchData} disabled={isLoading} className="h-10 px-6 rounded-2xl bg-indigo-600 text-white gap-2 font-black text-[10px] uppercase shadow-lg active:scale-95 transition-all">
+           <Button onClick={() => fetchDataAsync()} disabled={isLoading} className="h-10 px-6 rounded-2xl bg-indigo-600 text-white gap-2 font-black text-[10px] uppercase shadow-lg active:scale-95 transition-all">
               {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Actualizar Datos
            </Button>
            <Popover>
@@ -753,8 +711,50 @@ export const TacticalPlanEspumasSection: React.FC = () => {
              </div>
           </TabsContent>
 
-          <TabsContent value="mmto" className="animate-in fade-in duration-300">
-             {renderMantenimiento()}
+          <TabsContent value="mmto" className="animate-in fade-in duration-300 text-left space-y-4">
+             <div className="flex items-center gap-3 px-2">
+                <div className="p-2 bg-indigo-600 rounded-xl text-white shadow-lg"><Wrench className="w-4 h-4" /></div>
+                <h3 className="text-sm font-black uppercase tracking-widest text-slate-800">Mantenimiento Preventivo SAP</h3>
+             </div>
+             <div className="border border-slate-200 rounded-3xl overflow-hidden bg-white shadow-lg">
+                <div className="overflow-x-auto max-h-[600px]">
+                  <table className="w-full text-center border-collapse text-[10px]">
+                    <thead className="bg-[#1e293b] text-white uppercase font-black tracking-widest text-[8px] sticky top-0 z-10 border-b-2 border-white/5">
+                      <tr>
+                        <th className="px-6 py-5 border-r border-white/5">Planta</th>
+                        <th className="px-6 py-5 border-r border-white/5">Máquina / Recurso</th>
+                        <th className="px-6 py-5 border-r border-white/10 text-left">Descripción Máquina</th>
+                        <th className="px-6 py-5 border-r border-white/5">Orden Trabajo (OT)</th>
+                        <th className="px-6 py-5 border-r border-white/5">Inicio Programado</th>
+                        <th className="px-6 py-5 border-r border-white/5">Fin Programado</th>
+                        <th className="px-6 py-5 bg-indigo-600 text-white">Tiempo Mant. (Min)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-bold text-slate-600">
+                      {mantenimientos.length === 0 ? (
+                        <tr><td colSpan={7} className="py-20 text-slate-300 uppercase font-black tracking-widest italic opacity-50 text-center">Sin mantenimientos programados detectados</td></tr>
+                      ) : (
+                        mantenimientos.map((m, idx) => {
+                          const start = new Date(m.FECHA_OT_PRG_INI);
+                          const end = new Date(m.FECHA_OT_PRG_FIN);
+                          const diffMin = (isValid(start) && isValid(end)) ? Math.round((end.getTime() - start.getTime()) / 60000) : 0;
+                          return (
+                            <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                              <td className="px-6 py-4 font-black border-r border-slate-50">{m.PLANTA || '—'}</td>
+                              <td className="px-6 py-4 font-black text-indigo-700 border-r border-slate-50">{m.ID_MAQUINA || '—'}</td>
+                              <td className="px-6 py-4 text-left uppercase border-r border-slate-50 text-slate-400">{m.MAQUINA || '—'}</td>
+                              <td className="px-6 py-4 font-mono font-black text-slate-900 border-r border-slate-50">{m.OT_PRG_ID || '—'}</td>
+                              <td className="px-6 py-4 font-mono text-[9px] border-r border-slate-50">{m.FECHA_OT_PRG_INI || '—'}</td>
+                              <td className="px-6 py-4 font-mono text-[9px] border-r border-slate-50">{m.FECHA_OT_PRG_FIN || '—'}</td>
+                              <td className="px-6 py-4 font-mono font-black text-indigo-900 bg-indigo-50/30 text-center">{diffMin}</td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+             </div>
           </TabsContent>
 
           <TabsContent value="grupos" className="animate-in fade-in duration-300">
