@@ -24,7 +24,8 @@ import {
   Users,
   Activity,
   AlertCircle,
-  Database
+  Database,
+  Trash2
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -132,6 +133,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const [ordenesProvisionales, setOrdenesProvisionales] = useState<any[]>([]);
   const [ordenesFert, setOrdenesFert] = useState<any[]>([]);
   const [inventarioSAP, setInventarioSAP] = useState<any[]>([]);
+  const [mantenimientosSAP, setMantenimientosSAP] = useState<any[]>([]);
   const [tiemposCatalogo, setTiemposCatalogo] = useState<any[]>([]);
   const [operadoresCorte, setOperadoresCorte] = useState<any[]>([]);
   
@@ -142,15 +144,15 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   // --- ESTADO DASHBOARD CAPACIDAD (UIO / GYE) ---
   const [uioConfig, setUioConfig] = useState({
     shift: 'H1', nightShift: 'EMPTY', performance: 90,
-    paros: { CR04: 13, CR03: 13, CR01: 13, CNC01: 13 },
-    parosT2: { CR04: 13, CR03: 13, CR01: 13, CNC01: 13 },
+    paros: { CR04: 0, CR03: 0, CR01: 0, CNC01: 0 },
+    parosT2: { CR04: 0, CR03: 0, CR01: 0, CNC01: 0 },
     personnel: {} as Record<string, string>
   });
 
   const [gyeConfig, setGyeConfig] = useState({
     shift: 'H1', nightShift: 'EMPTY', performance: 75,
-    paros: { CR02: 13, CR01: 13, LA02: 13 },
-    parosT2: { CR02: 13, CR01: 13, LA02: 13 },
+    paros: { CR02: 0, CR01: 0, LA02: 0 },
+    parosT2: { CR02: 0, CR01: 0, LA02: 0 },
     personnel: {} as Record<string, string>
   });
 
@@ -189,7 +191,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       
       const gap = 15;
       const capGiro = info.ancho > 0 ? Math.floor(CAROUSEL_CIRCUMFERENCE / (info.ancho + gap)) : 0;
-      const nBatches = Math.ceil(capGiro > 0 ? subB / capGiro : 0);
+      const nBatches = Math.ceil(capGiro > 0 ? subB / capGiro : (subB > 0 ? 1 : 0));
 
       const tMatch = tiemposCatalogo.find(t => cleanCode(t.CodMaterial) === info.code && String(t.Centro).trim() === centroId);
       const tIndiv = tMatch ? safeNum(tMatch.Tiempo || tMatch.Tiempo_Min) : 0;
@@ -213,7 +215,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         subBloques: subB,
         capacidadCarga: capGiro,
         nroCargas: nBatches,
-        undBatch: capGiro * height / (info.esp || 1),
+        undBatch: (capGiro * height) / (info.esp || 1),
         tIndiv,
         tTotal: (tIndiv * qty) / 60,
         participacion: 0,
@@ -256,6 +258,16 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const totalPlannedUIO = useMemo(() => provAuditUIO.reduce((s, r) => s + r.tTotal, 0) + fertAuditUIO.reduce((s, r) => s + r.tTotal, 0), [provAuditUIO, fertAuditUIO]);
   const totalPlannedGYE = useMemo(() => provAuditGYE.reduce((s, r) => s + r.tTotal, 0) + fertAuditGYE.reduce((s, r) => s + r.tTotal, 0), [provAuditGYE, fertAuditGYE]);
 
+  const calendarDaysList = useMemo(() => {
+    if (!mounted) return [];
+    const start = startOfMonth(viewDate);
+    const end = endOfMonth(viewDate);
+    const days = eachDayOfInterval({ start, end });
+    const startDay = getDay(start);
+    const padding = startDay === 0 ? 6 : startDay - 1;
+    return [...Array(padding).fill(null), ...days];
+  }, [viewDate, mounted]);
+
   const datesWithOrders = useMemo(() => {
     const dates = new Set<string>();
     [...ordenesProvisionales, ...ordenesFert].forEach(o => {
@@ -268,14 +280,15 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const fetchDataAsync = useCallback(async () => {
     setIsLoading(true);
     try {
-      const [groupsRes, restrsRes, provsRes, fertsRes, invRes, timesRes, skillsRes] = await Promise.all([
+      const [groupsRes, restrsRes, provsRes, fertsRes, invRes, timesRes, skillsRes, maintRes] = await Promise.all([
         grupoService.getAll(),
         restriccionService.getAll(),
         serviciosService.OrdenesProvisionalesPaginados(1, 20000).catch(() => ({ data: [] })),
         serviciosService.getOrdenesFert(1, 20000).catch(() => ({ data: [] })),
         serviciosService.getInventarioAñoActual().catch(() => ({ data: [] })),
         serviciosService.getTiemposEnsamblado(1, 20000).catch(() => ({ data: [] })),
-        serviciosService.getCuboHabilidadesOP().catch(() => ({ data: [] }))
+        serviciosService.getCuboHabilidadesOP().catch(() => ({ data: [] })),
+        serviciosService.ListarMantenimientoPreventivosProgramados().catch(() => ({ data: [] }))
       ]);
 
       setGrupos(groupsRes.data || []);
@@ -284,6 +297,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       setOrdenesFert(fertsRes.data?.data || fertsRes.data || []);
       setInventarioSAP(invRes.data || []);
       setTiemposCatalogo(timesRes.data?.data || timesRes.data || []);
+      setMantenimientosSAP(Array.isArray(maintRes.data) ? maintRes.data : []);
       
       const skills = Array.isArray(skillsRes.data) ? skillsRes.data : [];
       setOperadoresCorte(skills.filter((s: any) => String(getProp(s, ['LineaProceso', 'LINEA_PROCESO'])).toUpperCase().includes('CORTE')));
@@ -630,7 +644,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             { v: 'ordenes', l: 'Provisionales', i: Package }, 
             { v: 'ordenesFert', l: 'Órdenes FERT', i: ShoppingCart },
             { v: 'inventario', l: 'Inventario SAP', i: Database },
-            { v: 'grupos', l: 'Grupos', i: Users }
+            { v: 'mantenimiento', l: 'Mantenimiento', i: Wrench }
           ].map(tab => (
             <TabsTrigger key={tab.v} value={tab.v} className="gap-2 text-[10px] font-black uppercase transition-all data-[state=active]:bg-white data-[state=active]:shadow-lg data-[state=active]:text-red-600 rounded-xl">
               <tab.i className="w-4 h-4" /> {tab.l}
@@ -700,16 +714,49 @@ export const TacticalPlanEspumasSection: React.FC = () => {
              </div>
           </TabsContent>
 
-          <TabsContent value="grupos" className="animate-in fade-in duration-300">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 text-left">
-              {grupos.map(g => (
-                <Card key={g.codigo_grupo} className="relative overflow-hidden group hover:shadow-lg transition-all border border-slate-100 rounded-[2rem] bg-white p-6">
-                  <div className="absolute top-0 left-0 w-1.5 h-full bg-red-600 group-hover:bg-red-700" />
-                  <Badge className="bg-red-50 text-red-700 mb-3 font-black text-[9px] uppercase border-red-200">CENTRO {g.centro}</Badge>
-                  <h4 className="font-black text-slate-800 uppercase text-sm tracking-tighter">{g.nombre_grupo}</h4>
-                  <p className="text-[9px] font-mono font-bold text-slate-400 mt-2">IDENTIFICADOR: {g.codigo_grupo}</p>
-                </Card>
-              ))}
+          <TabsContent value="mantenimiento" className="animate-in fade-in duration-300 text-left space-y-4">
+            <div className="flex items-center gap-3 px-2">
+              <div className="p-2 bg-indigo-600 rounded-xl text-white shadow-lg"><Wrench className="w-4 h-4" /></div>
+              <h3 className="text-sm font-black uppercase tracking-widest text-slate-800">Carga de Mantenimiento Preventivo SAP</h3>
+            </div>
+            <div className="border border-slate-200 rounded-[2.5rem] overflow-hidden bg-white shadow-xl">
+              <div className="overflow-x-auto max-h-[600px]">
+                <table className="w-full text-center border-collapse text-[10px]">
+                  <thead className="bg-[#0f172a] text-white border-b border-white/5 uppercase font-black tracking-widest text-[8px] sticky top-0 z-10">
+                    <tr>
+                      <th className="px-6 py-5 border-r border-white/5">Planta</th>
+                      <th className="px-6 py-5 border-r border-white/5">Área</th>
+                      <th className="px-6 py-5 border-r border-white/5">ID OT</th>
+                      <th className="px-6 py-5 border-r border-white/5">Máquina</th>
+                      <th className="px-6 py-5 border-r border-white/5">Inicio</th>
+                      <th className="px-6 py-5 border-r border-white/5">Fin</th>
+                      <th className="px-6 py-5 text-indigo-300 bg-indigo-900/40">Duración (MIN)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-black text-[11px] text-slate-700">
+                    {mantenimientosSAP.length === 0 ? (
+                      <tr><td colSpan={7} className="py-24 text-slate-300 uppercase font-black tracking-widest italic opacity-50">Sin mantenimientos programados detectados</td></tr>
+                    ) : (
+                      mantenimientosSAP.map((row, i) => {
+                        const ini = new Date(getProp(row, ['FECHA_OT_PRG_INI']));
+                        const fin = new Date(getProp(row, ['FECHA_OT_PRG_FIN']));
+                        const diffMin = isValid(ini) && isValid(fin) ? Math.round((fin.getTime() - ini.getTime()) / 60000) : 0;
+                        return (
+                          <tr key={i} className="hover:bg-indigo-50/10 transition-colors">
+                            <td className="px-6 py-3 border-r border-dashed border-gray-100 uppercase">{getProp(row, ['ID_PLANTA'])}</td>
+                            <td className="px-6 py-3 border-r border-dashed border-gray-100 uppercase">{getProp(row, ['AREA'])}</td>
+                            <td className="px-6 py-3 border-r border-dashed border-gray-100 font-mono text-indigo-600">{getProp(row, ['OT_PRG_ID'])}</td>
+                            <td className="px-6 py-3 border-r border-dashed border-gray-100 uppercase">{getProp(row, ['ID_MAQUINA'])}</td>
+                            <td className="px-6 py-3 border-r border-dashed border-gray-100 font-mono">{getProp(row, ['FECHA_OT_PRG_INI'])}</td>
+                            <td className="px-6 py-3 border-r border-dashed border-gray-100 font-mono">{getProp(row, ['FECHA_OT_PRG_FIN'])}</td>
+                            <td className="px-6 py-3 font-mono text-indigo-700 bg-indigo-50/30">{diffMin}</td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </TabsContent>
         </div>
