@@ -58,8 +58,8 @@ interface UnifiedRow {
   alturaTotal: number;
   tIndiv: number;
   tTotal: number;
-  subBloques: number; // # Bloque decimal
-  nroCargas: number;  // Batches (Ceil)
+  subBloques: number; 
+  nroCargas: number;  
   undBatch: number;
   apertura: string;
   categoria: string;
@@ -181,7 +181,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const info = extractMaterialInfo(o);
       const qty = safeNum(getProp(o, ['CANTIDAD', 'CANTPROGRAMADA', 'CANTPENDIENTE']));
       const densVal = safeNum(info.dens);
-      const height = densVal < 28 ? 103 : 85;
+      const height = densVal < 30 ? 103 : 85;
       const hTotal = info.esp * qty;
       const subB = height > 0 ? hTotal / height : 0;
       
@@ -223,7 +223,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         stockKg
       };
     });
-  }, [extractMaterialInfo, inventarioSAP, tiemposCatalogo]);
+  }, [extractMaterialInfo, inventarioSAP, tiemposCatalogo, kpiLooperData]);
 
   const getAllowedResps = (centro: string) => {
     if (centro === '1000') return ['013', '038', '039', '044', '036'];
@@ -294,7 +294,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     }
   }, []);
 
-  useEffect(() => { setMounted(true); setViewDate(new Date()); }, []);
+  useEffect(() => { 
+    setMounted(true); 
+    const today = new Date();
+    setViewDate(today);
+    setSelectedDates(new Set([format(today, 'yyyy-MM-dd')]));
+  }, []);
+
   useEffect(() => { if (mounted) fetchDataAsync(); }, [mounted, fetchDataAsync]);
 
   const updateConfig = (planta: 'UIO' | 'GYE', machine: string, field: string, value: any) => {
@@ -339,7 +345,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         </div>
         
         <div className="p-4 space-y-4 flex-1">
-          {/* DÍA */}
           <div className="space-y-2">
             <select value={config.day} onChange={e => updateConfig(planta, id, 'day', e.target.value)} className="w-full bg-[#2a374a] text-yellow-400 font-black text-[10px] rounded px-2 py-1 outline-none border border-slate-700">
               {shiftOptions.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
@@ -354,7 +359,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             </select>
           </div>
 
-          {/* NOCHE */}
           <div className="space-y-2 pt-2 border-t border-slate-700/30">
             <select value={config.night} onChange={e => updateConfig(planta, id, 'night', e.target.value)} className="w-full bg-[#2a374a] text-purple-400 font-black text-[10px] rounded px-2 py-1 outline-none border border-slate-700">
               {nightShiftOptions.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
@@ -369,7 +373,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             </select>
           </div>
 
-          {/* PAROS */}
           <div className="space-y-2 pt-2 border-t border-slate-700/30">
              <div className="flex items-center gap-2 bg-[#1e293b] p-1.5 rounded border border-slate-700">
                 <span className="text-[7px] font-black text-amber-500 uppercase flex-1">PARO T1</span>
@@ -425,7 +428,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return (
       <div className="bg-[#1e293b] rounded-[2.5rem] shadow-2xl overflow-hidden mb-10 text-white text-left font-sans">
         <div className="grid grid-cols-12">
-          {/* Panel Lateral */}
           <div className="col-span-3 p-8 border-r border-slate-700/50 bg-slate-900/30 flex flex-col justify-between">
             <div className="space-y-8">
               <div>
@@ -457,7 +459,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             </div>
           </div>
 
-          {/* Columnas de Máquina */}
           <div className={cn("col-span-9 grid h-full", planta === 'UIO' ? 'grid-cols-4' : 'grid-cols-3')}>
             {machines.map(m => renderMachineCol(m.id, m.n, planta))}
           </div>
@@ -561,9 +562,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     );
   };
 
-  if (!mounted) {
-    return <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left" />;
-  }
+  if (!mounted) return <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left" />;
 
   if (isLoading) return (
     <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
