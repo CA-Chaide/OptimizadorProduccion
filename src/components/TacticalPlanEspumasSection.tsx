@@ -168,6 +168,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     { v: 'B21', l: '21:00 - 05:30', h: 8.5 }
   ];
 
+  // Helper para extracción de info de material
   const extractMaterialInfo = useCallback((item: any) => {
     const matStr = getProp(item, ['MATERIAL', 'Material', 'CodMaterial', 'MATERIAL_ID', 'CODIGO']);
     const nameStr = getProp(item, ['NOMBRE', 'NombreMaterial', 'Descripcion', 'NomMaterial', 'DESCRIPCION']);
@@ -178,12 +179,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return { code, desc, ...dims };
   }, []);
 
+  // Mapeador de auditoría técnica con lógica de redondeo superior industrial
   const auditMapper = useCallback((data: any[], centroId: string): UnifiedRow[] => {
     return data.map(o => {
       const info = extractMaterialInfo(o);
       const qty = safeNum(getProp(o, ['CANTIDAD', 'CANTPROGRAMADA', 'CANTPENDIENTE']));
       const densVal = safeNum(info.dens);
-      const height = densVal < 30 ? 103 : 85;
+      const height = densVal < 28 ? 103 : 85;
       const hTotal = info.esp * qty;
       const subB = height > 0 ? hTotal / height : 0;
       
@@ -198,7 +200,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         .filter(inv => cleanCode(inv.MATERIAL) === info.code)
         .reduce((sum, item) => sum + safeNum(item.LIBREUTILIZACION), 0);
       
-      const pesoUN = (info.ancho * info.largo * info.esp * densVal) / 1000000;
+      const looperMatch = kpiLooperData.find(k => cleanCode(k.Material) === info.code);
+      const pesoUN = looperMatch ? safeNum(looperMatch.PesoUN) : (info.ancho * info.largo * info.esp * densVal) / 1000000;
       const stockUN = pesoUN > 0 ? stockKg / pesoUN : 0;
 
       return {
@@ -212,7 +215,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         alturaTotal: hTotal,
         subBloques: subB,
         nroCargas: nBatches,
-        undBatch: (capGiro * height) / (info.esp || 1),
+        undBatch: capGiro > 0 ? (capGiro * height) / (info.esp || 1) : 0,
         tIndiv,
         tTotal: (tIndiv * qty) / 60,
         apertura: info.apertura,
@@ -225,7 +228,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         stockKg
       };
     });
-  }, [extractMaterialInfo, inventarioSAP, tiemposCatalogo]);
+  }, [extractMaterialInfo, inventarioSAP, tiemposCatalogo, kpiLooperData]);
 
   const getAllowedResps = (centro: string) => {
     if (centro === '1000') return ['013', '038', '039', '044', '036'];
@@ -251,13 +254,14 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const fertAuditGYE = useMemo(() => auditMapper(getFilteredData(ordenesFert, '2000'), '2000'), [auditMapper, getFilteredData, ordenesFert]);
 
   const calendarDaysList = useMemo(() => {
+    if (!mounted) return [];
     const start = startOfMonth(viewDate);
     const end = endOfMonth(viewDate);
     const days = eachDayOfInterval({ start, end });
     const startDay = getDay(start);
     const padding = startDay === 0 ? 6 : startDay - 1;
     return [...Array(padding).fill(null), ...days];
-  }, [viewDate]);
+  }, [viewDate, mounted]);
 
   const datesWithOrders = useMemo(() => {
     const dates = new Set<string>();
@@ -514,7 +518,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               <tbody className="divide-y divide-slate-100 font-bold text-slate-700">
                 {Object.entries(grouped).map(([key, items]) => {
                   const isExp = expandedGroups.has(key);
-                  const tKg = items.reduce((s, r) => s + r.peso, 0);
+                  const tKg = items.reduce((s, r) => s + r.weight, 0);
                   const tH = items.reduce((s, r) => s + r.tTotal, 0);
                   const tBatches = items.reduce((s, r) => s + r.nroCargas, 0);
                   return (
@@ -566,7 +570,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     );
   };
 
-  if (!mounted) return <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left" />;
+  if (!mounted) {
+    return <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left" />;
+  }
 
   if (isLoading) return (
     <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
