@@ -138,19 +138,19 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const [uioConfig, setUioConfig] = useState<any>({
     performance: 90,
     shifts: {
-      CR04: { day: 'H1', night: 'EMPTY', op1D: '', op2D: '', op1N: '', op2N: '', paro1: 0, paro2: 0 },
-      CR03: { day: 'H1', night: 'EMPTY', op1D: '', op2D: '', op1N: '', op2N: '', paro1: 0, paro2: 0 },
-      CR01: { day: 'H1', night: 'EMPTY', op1D: '', op2D: '', op1N: '', op2N: '', paro1: 0, paro2: 0 },
-      CNC01: { day: 'H1', night: 'EMPTY', op1D: '', op2D: '', op1N: '', op2N: '', paro1: 0, paro2: 0 }
+      CR04: { day: 'H1', night: 'EMPTY', op1D: '', op2D: '', op1N: '', op2N: '', paro1: 13, paro2: 13 },
+      CR03: { day: 'H1', night: 'EMPTY', op1D: '', op2D: '', op1N: '', op2N: '', paro1: 13, paro2: 13 },
+      CR01: { day: 'H1', night: 'EMPTY', op1D: '', op2D: '', op1N: '', op2N: '', paro1: 13, paro2: 13 },
+      CNC01: { day: 'H1', night: 'EMPTY', op1D: '', op2D: '', op1N: '', op2N: '', paro1: 13, paro2: 13 }
     }
   });
 
   const [gyeConfig, setGyeConfig] = useState<any>({
     performance: 75,
     shifts: {
-      CR02: { day: 'H1', night: 'EMPTY', op1D: '', op2D: '', op1N: '', op2N: '', paro1: 0, paro2: 0 },
-      CR01: { day: 'H1', night: 'EMPTY', op1D: '', op2D: '', op1N: '', op2N: '', paro1: 0, paro2: 0 },
-      LA02: { day: 'H1', night: 'EMPTY', op1D: '', op2D: '', op1N: '', op2N: '', paro1: 0, paro2: 0 }
+      CR02: { day: 'H1', night: 'EMPTY', op1D: '', op2D: '', op1N: '', op2N: '', paro1: 13, paro2: 13 },
+      CR01: { day: 'H1', night: 'EMPTY', op1D: '', op2D: '', op1N: '', op2N: '', paro1: 13, paro2: 13 },
+      LA02: { day: 'H1', night: 'EMPTY', op1D: '', op2D: '', op1N: '', op2N: '', paro1: 13, paro2: 13 }
     }
   });
 
@@ -315,6 +315,24 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     }));
   };
 
+  const getMttoTime = (machineId: string, planta: string) => {
+    const plantaKey = planta === 'UIO' ? 'QUITO' : 'GUAYAQUIL';
+    return mantenimientosSAP
+      .filter(m => {
+        const mId = String(getProp(m, ['ID_MAQUINA', 'MAQUINA'])).trim();
+        const pId = String(getProp(m, ['PLANTA'])).trim();
+        return (mId === machineId || machineId.includes(mId)) && pId.includes(plantaKey);
+      })
+      .reduce((sum, row) => {
+        const ini = new Date(getProp(row, ['FECHA_OT_PRG_INI']));
+        const fin = new Date(getProp(row, ['FECHA_OT_PRG_FIN']));
+        if (isValid(ini) && isValid(fin)) {
+          return sum + (fin.getTime() - ini.getTime()) / 60000;
+        }
+        return sum;
+      }, 0);
+  };
+
   const renderMachineCol = (id: string, name: string, planta: 'UIO' | 'GYE') => {
     const config = planta === 'UIO' ? uioConfig.shifts[id] : gyeConfig.shifts[id];
     const performance = planta === 'UIO' ? uioConfig.performance : gyeConfig.performance;
@@ -328,6 +346,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const allAudit = planta === 'UIO' ? [...provAuditUIO, ...fertAuditUIO] : [...provAuditGYE, ...fertAuditGYE];
     const plannedH = allAudit.filter(r => r.orden.includes(id) || r.responsable === id).reduce((s, r) => s + r.tTotal, 0);
     const occupancy = tTotal > 0 ? (plannedH / tTotal) * 100 : 0;
+    const mttoMin = getMttoTime(id, planta);
 
     return (
       <div key={id} className="col-span-1 border-r border-slate-700/50 flex flex-col font-sans">
@@ -336,6 +355,12 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <p className="text-[8px] font-bold text-slate-500 uppercase truncate">{name}</p>
         </div>
         <div className="p-4 space-y-4 flex-1 text-left">
+          <div className="space-y-1">
+             <p className="text-[7px] font-black text-slate-500 uppercase mb-1">MTTO PREVENTIVO</p>
+             <div className="bg-indigo-900/30 border border-indigo-500/30 rounded p-1.5 text-center">
+                <span className="text-[10px] font-black text-indigo-300">{mttoMin} MIN</span>
+             </div>
+          </div>
           <div className="space-y-2">
             <select value={config.day} onChange={e => updateConfig(planta, id, 'day', e.target.value)} className="w-full bg-[#2a374a] text-yellow-400 font-black text-[10px] rounded px-2 py-1 outline-none border border-slate-700">
               {shiftOptions.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
@@ -401,6 +426,15 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         return s + (((hD * (1 - c.paro1/100)) + (hN * (1 - c.paro2/100))) * (config.performance/100) * EFFICIENCY_FACTOR);
     }, 0);
 
+    const allAuditProv = planta === 'UIO' ? provAuditUIO : provAuditGYE;
+    const allAuditFert = planta === 'UIO' ? fertAuditUIO : fertAuditGYE;
+    const totalPlannedH = machines.reduce((sum, m) => {
+      const p = allAuditProv.filter(r => r.orden.includes(m.id) || r.responsable === m.id).reduce((s, r) => s + r.tTotal, 0);
+      const f = allAuditFert.filter(r => r.orden.includes(m.id) || r.responsable === m.id).reduce((s, r) => s + r.tTotal, 0);
+      return sum + p + f;
+    }, 0);
+    const globalOccupancy = totalH > 0 ? (totalPlannedH / totalH) * 100 : 0;
+
     return (
       <div className="bg-[#1e293b] rounded-[2.5rem] shadow-2xl overflow-hidden mb-10 text-white text-left font-sans">
         <div className="grid grid-cols-12">
@@ -416,9 +450,25 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                   className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-xl font-black text-emerald-400 outline-none focus:border-emerald-500" />
               </div>
             </div>
-            <div className="text-left">
-              <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">CAPACIDAD TOTAL</p>
-              <div className="flex items-baseline gap-2"><span className="text-5xl font-black text-yellow-400 tracking-tighter">{totalH.toFixed(1)}</span><span className="text-xs font-black text-slate-500 uppercase">HORAS</span></div>
+            
+            <div className="space-y-6">
+              <div className="text-left">
+                <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">CAPACIDAD TOTAL</p>
+                <div className="flex items-baseline gap-2"><span className="text-5xl font-black text-yellow-400 tracking-tighter">{totalH.toFixed(1)}</span><span className="text-xs font-black text-slate-500 uppercase">HORAS</span></div>
+              </div>
+              
+              <div className="text-left border-t border-slate-700/50 pt-4">
+                <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">CAPACIDAD PLANIFICADA</p>
+                <div className="flex items-baseline gap-2"><span className="text-3xl font-black text-emerald-400 tracking-tighter">{totalPlannedH.toFixed(1)}</span><span className="text-[10px] font-black text-slate-500 uppercase">H</span></div>
+              </div>
+
+              <div className="text-left">
+                <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-2">OCUPACIÓN GLOBAL</p>
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 h-3 bg-slate-800 rounded-full overflow-hidden border border-slate-700"><div className={cn("h-full transition-all duration-500", globalOccupancy > 100 ? "bg-red-500 shadow-[0_0_10px_#ef4444]" : "bg-emerald-500")} style={{ width: `${Math.min(globalOccupancy, 100)}%` }} /></div>
+                  <span className="text-sm font-black tabular-nums">{globalOccupancy.toFixed(1)}%</span>
+                </div>
+              </div>
             </div>
           </div>
           <div className={cn("col-span-9 grid h-full", planta === 'UIO' ? 'grid-cols-4' : 'grid-cols-3')}>{machines.map(m => renderMachineCol(m.id, m.n, planta))}</div>
@@ -449,7 +499,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                   <th className="px-2 py-4 border-r border-white/5">Largo</th>
                   <th className="px-2 py-4 border-r border-white/5">Esp.</th>
                   <th className="px-2 py-4 border-r border-white/5">Dens.</th>
-                  <th className="px-3 py-4 border-r border-white/5">Cant.</th>
+                  <th className="px-3 py-4 border-r border-white/5 font-black text-yellow-400">Cant.</th>
                   <th className="px-3 py-4 border-r border-white/5">Peso Kg</th>
                   <th className="px-3 py-4 border-r border-white/5 bg-slate-800">Alt. Total</th>
                   <th className="px-3 py-4 border-r border-white/5">Stock UN</th>
@@ -469,6 +519,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                 {Object.entries(grouped).map(([key, items]) => {
                   const isExp = expandedGroups.has(key);
                   const tKg = items.reduce((s, r) => s + r.peso, 0);
+                  const tCant = items.reduce((s, r) => s + r.cant, 0);
                   const tH = items.reduce((s, r) => s + r.tTotal, 0);
                   const tBatches = items.reduce((s, r) => s + r.nroCargas, 0);
                   return (
@@ -478,8 +529,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                            {isExp ? <Minus className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
                            {key.split('|')[0]} — {key.split('|')[1]}
                         </td>
-                        <td colSpan={6} className="text-right pr-6 italic opacity-30 uppercase font-black tracking-widest text-[9px]">Subtotales de Bloque:</td>
-                        <td className="px-3 py-3 font-black text-slate-900">{formatNum(tKg, 0)}</td>
+                        <td colSpan={5} className="text-right pr-6 italic opacity-30 uppercase font-black tracking-widest text-[9px]">Subtotales de Bloque:</td>
+                        <td className="px-3 py-3 font-black text-slate-900 bg-yellow-500/10 text-center">{formatNum(tCant, 0)}</td>
+                        <td className="px-3 py-3 font-black text-slate-400 opacity-40">{formatNum(tKg, 0)}</td>
                         <td colSpan={4} className="border-r border-slate-50"></td>
                         <td className="px-4 py-3 bg-indigo-600 text-white font-black">{tH.toFixed(2)}h</td>
                         <td className="px-3 py-3 bg-amber-500/10 text-amber-700 font-black">{tBatches}</td>
@@ -493,7 +545,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                           <td className="px-2 py-2 border-r border-slate-50">{row.largo}</td>
                           <td className="px-2 py-2 border-r border-slate-50 text-blue-600">{row.esp}</td>
                           <td className="px-2 py-2 border-r border-slate-50">{row.dens}</td>
-                          <td className="px-3 py-2 border-r border-slate-50 text-slate-900 font-black">{row.cant}</td>
+                          <td className="px-3 py-2 border-r border-slate-50 text-slate-900 font-black bg-yellow-500/5">{row.cant}</td>
                           <td className="px-3 py-2 border-r border-slate-50 text-slate-400">{formatNum(row.peso, 1)}</td>
                           <td className="px-3 py-2 border-r border-slate-50 bg-slate-50 text-slate-900 font-black">{row.alturaTotal.toFixed(1)}</td>
                           <td className="px-3 py-2 border-r border-slate-50">{formatNum(row.stockUN, 1)}</td>
