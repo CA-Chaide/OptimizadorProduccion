@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -40,7 +39,7 @@ import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 import { cn } from '@/lib/utils';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, parseISO, isValid } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, isValid } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 // --- CONSTANTES TÉCNICAS INGENIERÍA ---
@@ -169,63 +168,16 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     { v: 'H2', l: '21:00 - 05:30', h: 8.5 }
   ];
 
-  useEffect(() => { setMounted(true); setViewDate(new Date()); }, []);
-
-  const fetchData = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const [groupsRes, restrsRes, provsRes, fertsRes, invRes, maintRes, timesRes, skillsRes] = await Promise.all([
-        grupoService.getAll(),
-        restriccionService.getAll(),
-        serviciosService.OrdenesProvisionalesPaginados(1, 20000).catch(() => ({ data: [] })),
-        serviciosService.getOrdenesFert(1, 20000).catch(() => ({ data: [] })),
-        serviciosService.getInventarioAñoActual().catch(() => ({ data: [] })),
-        serviciosService.ListarMantenimientoPreventivosProgramados().catch(() => ({ data: [] })),
-        serviciosService.getTiemposEnsamblado(1, 20000).catch(() => ({ data: [] })),
-        serviciosService.getCuboHabilidadesOP().catch(() => ({ data: [] }))
-      ]);
-
-      setGrupos(groupsRes.data || []);
-      setRestricciones(restrsRes.data || []);
-      setOrdenesProvisionales(provsRes.data?.data || provsRes.data || []);
-      setOrdenesFert(fertsRes.data?.data || fertsRes.data || []);
-      setInventarioSAP(invRes.data || []);
-      setMantenimientos(maintRes.data || []);
-      setTiemposCatalogo(timesRes.data?.data || timesRes.data || []);
-      
-      const skills = Array.isArray(skillsRes.data) ? skillsRes.data : [];
-      setOperadoresCorte(skills.filter((s: any) => String(getProp(s, ['LineaProceso', 'LINEA_PROCESO'])).toUpperCase().includes('CORTE')));
-
-    } catch (e) {
-      logger.error('[Corte Espuma] Error de sincronización', e);
-    } finally {
-      setIsLoading(false);
-    }
+  const extractMaterialInfo = useCallback((item: any) => {
+    const matStr = getProp(item, ['MATERIAL', 'Material', 'CodMaterial']);
+    const nameStr = getProp(item, ['NOMBRE', 'NombreMaterial', 'Descripcion']);
+    const code = matStr.match(/^\d+/) ? matStr.match(/^\d+/)?.[0].slice(-8) : matStr.slice(-8);
+    const desc = nameStr || matStr.replace(/^\d+\s*/, '') || '—';
+    const dims = parseDimensions(desc);
+    return { code, desc, ...dims };
   }, []);
 
-  useEffect(() => { if (mounted) fetchData(); }, [mounted, fetchData]);
-
-  // --- FILTRADO DE RESPONSABLES POR PLANTA ---
-  const getAllowedResps = (centro: string) => {
-    if (centro === '1000') return ['013', '038', '039', '044', '036'];
-    if (centro === '2000') return ['002', '038', '039'];
-    return [];
-  };
-
-  const getFilteredData = (rawData: any[], centro: string, storeId: string) => {
-    const allowed = getAllowedResps(centro);
-    return rawData.filter(o => {
-      const c = String(getProp(o, ['Centro', 'CENTRO'])).trim();
-      const a = String(getProp(o, ['Almacen', 'ALMACEN'])).trim();
-      const r = String(getProp(o, ['RESPCONTROLPROD', 'RESPCTRLPROD', 'RespControlProd'])).trim();
-      const dateRaw = String(getProp(o, ['FECHAINICIO', 'FECHA'])).trim();
-      const date = dateRaw.includes('T') ? dateRaw.split('T')[0] : dateRaw;
-      
-      return c === centro && a === storeId && allowed.includes(r) && (selectedDates.size === 0 || selectedDates.has(date));
-    });
-  };
-
-  const auditMapper = (data: any[], centroId: string): UnifiedRow[] => {
+  const auditMapper = useCallback((data: any[], centroId: string): UnifiedRow[] => {
     return data.map(o => {
       const info = extractMaterialInfo(o);
       const qty = safeNum(getProp(o, ['CANTIDAD', 'CANTPROGRAMADA', 'CANTPENDIENTE']));
@@ -234,11 +186,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const hTotal = info.esp * qty;
       const subB = height > 0 ? hTotal / height : 0;
       
-      const circumference = 2 * Math.PI * 320;
       const gap = 15;
-      const capGiro = info.ancho > 0 ? Math.floor(circumference / (info.ancho + gap)) : 0;
+      const capGiro = info.ancho > 0 ? Math.floor(CAROUSEL_CIRCUMFERENCE / (info.ancho + gap)) : 0;
       const nBatchesRaw = capGiro > 0 ? subB / capGiro : 0;
-      const nBatches = Math.ceil(nBatchesRaw); // Redondeo Industrial Superior
+      const nBatches = Math.ceil(nBatchesRaw); 
 
       const tMatch = tiemposCatalogo.find(t => cleanCode(t.CodMaterial) === info.code && String(t.Centro).trim() === centroId);
       const tIndiv = tMatch ? safeNum(tMatch.Tiempo || tMatch.Tiempo_Min) : 0;
@@ -276,12 +227,31 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         stockKg
       };
     });
+  }, [extractMaterialInfo, inventarioSAP, tiemposCatalogo]);
+
+  const getAllowedResps = (centro: string) => {
+    if (centro === '1000') return ['013', '038', '039', '044', '036'];
+    if (centro === '2000') return ['002', '038', '039'];
+    return [];
   };
 
-  const provAuditUIO = useMemo(() => auditMapper(getFilteredData(ordenesProvisionales, '1000', '1006'), '1000'), [ordenesProvisionales, selectedDates, inventarioSAP, tiemposCatalogo]);
-  const provAuditGYE = useMemo(() => auditMapper(getFilteredData(ordenesProvisionales, '2000', '2006'), '2000'), [ordenesProvisionales, selectedDates, inventarioSAP, tiemposCatalogo]);
-  const fertAuditUIO = useMemo(() => auditMapper(getFilteredData(ordenesFert, '1000', '1006'), '1000'), [ordenesFert, selectedDates, inventarioSAP, tiemposCatalogo]);
-  const fertAuditGYE = useMemo(() => auditMapper(getFilteredData(ordenesFert, '2000', '2006'), '2000'), [ordenesFert, selectedDates, inventarioSAP, tiemposCatalogo]);
+  const getFilteredData = useCallback((rawData: any[], centro: string, storeId: string) => {
+    const allowed = getAllowedResps(centro);
+    return rawData.filter(o => {
+      const c = String(getProp(o, ['Centro', 'CENTRO'])).trim();
+      const a = String(getProp(o, ['Almacen', 'ALMACEN'])).trim();
+      const r = String(getProp(o, ['RESPCONTROLPROD', 'RESPCTRLPROD', 'RespControlProd'])).trim();
+      const dateRaw = String(getProp(o, ['FECHAINICIO', 'FECHA'])).trim();
+      const date = dateRaw.includes('T') ? dateRaw.split('T')[0] : dateRaw;
+      
+      return c === centro && a === storeId && allowed.includes(r) && (selectedDates.size === 0 || selectedDates.has(date));
+    });
+  }, [selectedDates]);
+
+  const provAuditUIO = useMemo(() => auditMapper(getFilteredData(ordenesProvisionales, '1000', '1006'), '1000'), [auditMapper, getFilteredData, ordenesProvisionales]);
+  const provAuditGYE = useMemo(() => auditMapper(getFilteredData(ordenesProvisionales, '2000', '2006'), '2000'), [auditMapper, getFilteredData, ordenesProvisionales]);
+  const fertAuditUIO = useMemo(() => auditMapper(getFilteredData(ordenesFert, '1000', '1006'), '1000'), [auditMapper, getFilteredData, ordenesFert]);
+  const fertAuditGYE = useMemo(() => auditMapper(getFilteredData(ordenesFert, '2000', '2006'), '2000'), [auditMapper, getFilteredData, ordenesFert]);
 
   const totalPlannedUIO = useMemo(() => provAuditUIO.reduce((s, r) => s + r.tTotal, 0) + fertAuditUIO.reduce((s, r) => s + r.tTotal, 0), [provAuditUIO, fertAuditUIO]);
   const totalPlannedGYE = useMemo(() => provAuditGYE.reduce((s, r) => s + r.tTotal, 0) + fertAuditGYE.reduce((s, r) => s + r.tTotal, 0), [provAuditGYE, fertAuditGYE]);
@@ -305,14 +275,40 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return dates;
   }, [ordenesProvisionales, ordenesFert]);
 
-  const extractMaterialInfo = (item: any) => {
-    const matStr = getProp(item, ['MATERIAL', 'Material', 'CodMaterial']);
-    const nameStr = getProp(item, ['NOMBRE', 'NombreMaterial', 'Descripcion']);
-    const code = matStr.match(/^\d+/) ? matStr.match(/^\d+/)?.[0].slice(-8) : matStr.slice(-8);
-    const desc = nameStr || matStr.replace(/^\d+\s*/, '') || '—';
-    const dims = parseDimensions(desc);
-    return { code, desc, ...dims };
-  };
+  const fetchData = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const [groupsRes, restrsRes, provsRes, fertsRes, invRes, maintRes, timesRes, skillsRes] = await Promise.all([
+        grupoService.getAll(),
+        restriccionService.getAll(),
+        serviciosService.OrdenesProvisionalesPaginados(1, 20000).catch(() => ({ data: [] })),
+        serviciosService.getOrdenesFert(1, 20000).catch(() => ({ data: [] })),
+        serviciosService.getInventarioAñoActual().catch(() => ({ data: [] })),
+        serviciosService.ListarMantenimientoPreventivosProgramados().catch(() => ({ data: [] })),
+        serviciosService.getTiemposEnsamblado(1, 20000).catch(() => ({ data: [] })),
+        serviciosService.getCuboHabilidadesOP().catch(() => ({ data: [] }))
+      ]);
+
+      setGrupos(groupsRes.data || []);
+      setRestricciones(restrsRes.data || []);
+      setOrdenesProvisionales(provsRes.data?.data || provsRes.data || []);
+      setOrdenesFert(fertsRes.data?.data || fertsRes.data || []);
+      setInventarioSAP(invRes.data || []);
+      setMantenimientos(maintRes.data || []);
+      setTiemposCatalogo(timesRes.data?.data || timesRes.data || []);
+      
+      const skills = Array.isArray(skillsRes.data) ? skillsRes.data : [];
+      setOperadoresCorte(skills.filter((s: any) => String(getProp(s, ['LineaProceso', 'LINEA_PROCESO'])).toUpperCase().includes('CORTE')));
+
+    } catch (e) {
+      logger.error('[Corte Espuma] Error de sincronización', e);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { setMounted(true); setViewDate(new Date()); }, []);
+  useEffect(() => { if (mounted) fetchData(); }, [mounted, fetchData]);
 
   const renderAuditTable = (data: UnifiedRow[], title: string) => {
     const grouped = data.reduce((acc, row) => {
@@ -355,7 +351,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-slate-100 font-bold text-slate-600">
                 {Object.entries(grouped).map(([key, items]) => {
-                  const [aperture, category] = key.split('|');
                   const isExp = expandedGroups.has(key);
                   const tKg = items.reduce((s, r) => s + r.peso, 0);
                   const tH = items.reduce((s, r) => s + r.tTotal, 0);
@@ -366,7 +361,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                       <tr className="bg-slate-50 cursor-pointer hover:bg-indigo-50 transition-colors" onClick={() => {const n = new Set(expandedGroups); isExp ? n.delete(key) : n.add(key); setExpandedGroups(n);}}>
                         <td className="px-4 py-3 text-left flex items-center gap-2 font-black text-indigo-900">
                            {isExp ? <Minus className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
-                           {aperture} — {category}
+                           {key.split('|')[0]} — {key.split('|')[1]}
                         </td>
                         <td colSpan={6} className="text-right pr-10 italic opacity-40">Subtotales de grupo:</td>
                         <td className="px-3 py-3 font-black text-slate-900">{formatNum(tKg, 0)}</td>
@@ -422,17 +417,14 @@ export const TacticalPlanEspumasSection: React.FC = () => {
            <p className="text-[10px] font-black text-indigo-400 uppercase tracking-tighter">{name}</p>
         </div>
         <div className="p-3 space-y-4">
-           {/* Turno 1 Paro */}
            <div className="space-y-1">
              <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest text-center">PARO T1 (%)</p>
              <input type="number" value={config.paros[id]} onChange={e => setConfig({ ...config, paros: { ...config.paros, [id]: safeNum(e.target.value) } })} className="w-full bg-slate-900 border border-slate-700 rounded px-1 py-1 text-center text-[10px] text-red-400 font-bold outline-none" />
            </div>
-           {/* Turno 2 Paro */}
            <div className="space-y-1">
              <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest text-center">PARO T2 (%)</p>
              <input type="number" value={config.parosT2[id]} onChange={e => setConfig({ ...config, parosT2: { ...config.parosT2, [id]: safeNum(e.target.value) } })} className="w-full bg-slate-900 border border-slate-700 rounded px-1 py-1 text-center text-[10px] text-red-400 font-bold outline-none" />
            </div>
-           {/* Personal */}
            <div className="space-y-2 border-t border-slate-700 pt-3">
              <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest text-center">PERSONAL DÍA</p>
              <select className="w-full bg-slate-900 border border-slate-700 rounded px-1 py-1 text-[9px] text-yellow-500 font-bold outline-none">
@@ -455,7 +447,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                {operadoresCorte.map((op, i) => <option key={i} value={getProp(op, ['CODIGO_OPERADOR'])}>{getProp(op, ['NOMBRE_OPERADOR'])}</option>)}
              </select>
            </div>
-           {/* Disponibilidad */}
            <div className="pt-3 border-t border-slate-700 text-center">
               <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-1">DISP. NETA (H)</p>
               <span className="text-xs font-black text-emerald-400 tabular-nums">{tDisponible.toFixed(2)}</span>
