@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -134,7 +135,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const [viewDate, setViewDate] = useState<Date>(new Date()); 
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
-  // --- CONFIGURACIÓN DASHBOARDS ---
+  // --- CONFIGURACIÓN DASHBOARDS (Paros default 13%) ---
   const [uioConfig, setUioConfig] = useState<any>({
     performance: 90,
     shifts: {
