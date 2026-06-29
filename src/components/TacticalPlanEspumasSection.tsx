@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -42,7 +41,7 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths,
 import { es } from 'date-fns/locale';
 
 // --- CONSTANTES TÉCNICAS PLANTA ---
-const CAROUSEL_CIRCUMFERENCE = Math.PI * 320; // 1005cm aprox
+const CAROUSEL_CIRCUMFERENCE_CM = 320; 
 const EFFICIENCY_FACTOR = 0.87;
 
 interface UnifiedRow {
@@ -123,7 +122,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const [activeTab, setActiveTab] = useState('resumen');
   const [isLoading, setIsLoading] = useState(true);
   const [ordenesProvisionales, setOrdenesProvisionales] = useState<any[]>([]);
-  const [ordenesFert, setOrdersFert] = useState<any[]>([]);
+  const [ordenesFert, setOrdenesFert] = useState<any[]>([]);
   const [inventarioSAP, setInventarioSAP] = useState<any[]>([]);
   const [kpiLooperData, setKpiLooperData] = useState<any[]>([]);
   const [mantenimientosSAP, setMantenimientosSAP] = useState<any[]>([]);
@@ -184,12 +183,12 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const info = extractMaterialInfo(o);
       const qty = safeNum(getProp(o, ['CANTIDAD', 'CANTPROGRAMADA', 'CANTPENDIENTE']));
       const densVal = safeNum(info.dens);
-      const height = densVal < 30 ? 103 : 85;
+      const usefulHeight = densVal < 30 ? 103 : 85;
       const hTotal = info.esp * qty;
-      const subB = height > 0 ? (info.ancho * info.largo * hTotal) / (height * 2000 * 100) : 0;
+      const subB = usefulHeight > 0 ? (info.ancho * info.largo * hTotal) / (usefulHeight * 2000 * 100) : 0;
       
       const gap = 15;
-      const capGiro = info.ancho > 0 ? Math.floor(CAROUSEL_CIRCUMFERENCE / (info.ancho + gap)) : 0;
+      const capGiro = info.ancho > 0 ? Math.floor(CAROUSEL_CIRCUMFERENCE_CM / (info.ancho + gap)) : 0;
       const nBatches = Math.ceil(capGiro > 0 ? subB / capGiro : (subB > 0 ? 1 : 0));
 
       const tMatch = tiemposCatalogo.find(t => cleanCode(t.CodMaterial) === info.code && String(t.Centro).trim() === centroId);
@@ -214,7 +213,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         alturaTotal: hTotal,
         subBloques: subB,
         nroCargas: nBatches,
-        undBatch: capGiro > 0 ? (capGiro * height) / (info.esp || 1) : 0,
+        undBatch: capGiro > 0 ? (capGiro * usefulHeight) / (info.esp || 1) : 0,
         tIndiv,
         tTotal: (tIndiv * qty) / 60,
         apertura: info.apertura,
@@ -232,7 +231,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const getFilteredData = useCallback((rawData: any[], centro: string) => {
     const allowed = centro === '1000' ? ['013', '038', '039', '044', '036'] : ['002', '038', '039'];
     return rawData.filter(o => {
-      const c = String(getProp(o, ['Centro', 'CENTRO'])).trim();
+      const c = String(getProp(o, ['Centro', 'CENTRO', 'centro'])).trim();
       const r = String(getProp(o, ['RESPCONTROLPROD', 'RESPCTRLPROD', 'RespControlProd', 'RESP_CONTROL_PROD', 'RESPONSABLE'])).trim();
       const dateRaw = String(getProp(o, ['FECHAINICIO', 'FECHA', 'FECHA_INICIO'])).trim();
       const date = dateRaw.includes('T') ? dateRaw.split('T')[0] : dateRaw;
@@ -266,6 +265,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const fetchDataAsync = useCallback(async () => {
     setIsLoading(true);
     try {
+      const groupsRes = await grupoService.getAll();
+      const filteredGroups = (groupsRes.data || []).filter(g => {
+        const name = (g.nombre_grupo || '').toLowerCase();
+        return (name.includes('corte y laminado') || name.includes('laminado'));
+      });
+      setGrupos(filteredGroups);
+      
       const [provsRes, fertsRes, invRes, timesRes, skillsRes, maintRes, kpiRes] = await Promise.all([
         serviciosService.OrdenesProvisionalesPaginados(1, 20000).catch(() => ({ data: [] })),
         serviciosService.getOrdenesFert(1, 20000).catch(() => ({ data: [] })),
