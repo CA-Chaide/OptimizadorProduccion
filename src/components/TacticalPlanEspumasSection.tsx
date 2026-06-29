@@ -58,8 +58,8 @@ interface UnifiedRow {
   alturaTotal: number;
   tIndiv: number;
   tTotal: number;
-  subBloques: number;
-  nroCargas: number;
+  subBloques: number; // # Bloque decimal
+  nroCargas: number;  // Batches (Ceil)
   undBatch: number;
   apertura: string;
   categoria: string;
@@ -167,8 +167,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   ];
 
   const extractMaterialInfo = useCallback((item: any) => {
-    const matStr = getProp(item, ['MATERIAL', 'Material', 'CodMaterial']);
-    const nameStr = getProp(item, ['NOMBRE', 'NombreMaterial', 'Descripcion']);
+    const matStr = getProp(item, ['MATERIAL', 'Material', 'CodMaterial', 'MATERIAL_ID', 'CODIGO']);
+    const nameStr = getProp(item, ['NOMBRE', 'NombreMaterial', 'Descripcion', 'NomMaterial', 'DESCRIPCION']);
     const match = matStr.match(/^(\d+)/);
     const code = match ? match[0].slice(-8) : matStr.slice(-8);
     const desc = nameStr || matStr.replace(/^\d+\s*/, '') || '—';
@@ -201,7 +201,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
       return {
         orden: getProp(o, ['ORDENPREVISIONAL', 'ORDEN']) || '—',
-        fecha: String(getProp(o, ['FECHAINICIO', 'FECHA'])).split('T')[0],
+        fecha: String(getProp(o, ['FECHAINICIO', 'FECHA', 'FECHA_INICIO'])).split('T')[0],
         material: info.code,
         descripcion: info.desc,
         ancho: info.ancho, largo: info.largo, esp: info.esp, dens: info.dens,
@@ -214,10 +214,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         tIndiv,
         tTotal: (tIndiv * qty) / 60,
         apertura: info.apertura,
-        categoria: getProp(o, ['CATEGORIA', 'Categoria']) || '—',
+        categoria: getProp(o, ['CATEGORIA', 'Categoria', 'CATEGORIA_DESC']) || '—',
         centro: centroId,
-        almacen: getProp(o, ['Almacen', 'ALMACEN']),
-        responsable: getProp(o, ['RESPCONTROLPROD', 'RESPCTRLPROD', 'RespControlProd']),
+        almacen: getProp(o, ['Almacen', 'ALMACEN', 'CENTRO']),
+        responsable: getProp(o, ['RESPCONTROLPROD', 'RESPCTRLPROD', 'RespControlProd', 'RESP_CONTROL_PROD', 'RESPONSABLE']),
         hasDeficit: stockUN < qty,
         stockUN,
         stockKg
@@ -235,8 +235,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const allowed = getAllowedResps(centro);
     return rawData.filter(o => {
       const c = String(getProp(o, ['Centro', 'CENTRO'])).trim();
-      const r = String(getProp(o, ['RESPCONTROLPROD', 'RESPCTRLPROD', 'RespControlProd'])).trim();
-      const dateRaw = String(getProp(o, ['FECHAINICIO', 'FECHA'])).trim();
+      const r = String(getProp(o, ['RESPCONTROLPROD', 'RESPCTRLPROD', 'RespControlProd', 'RESP_CONTROL_PROD', 'RESPONSABLE'])).trim();
+      const dateRaw = String(getProp(o, ['FECHAINICIO', 'FECHA', 'FECHA_INICIO'])).trim();
       const date = dateRaw.includes('T') ? dateRaw.split('T')[0] : dateRaw;
       
       return c === centro && allowed.includes(r) && (selectedDates.size === 0 || selectedDates.has(date));
@@ -260,7 +260,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const datesWithOrders = useMemo(() => {
     const dates = new Set<string>();
     [...ordenesProvisionales, ...ordenesFert].forEach(o => {
-      const d = String(getProp(o, ['FECHA', 'FECHAINICIO']) || '').trim();
+      const d = String(getProp(o, ['FECHA', 'FECHAINICIO', 'FECHA_INICIO']) || '').trim();
       if (d && d !== 'null') dates.add(d.split('T')[0]);
     });
     return dates;
@@ -324,13 +324,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     
     const getPlannedH = () => {
       const allAudit = planta === 'UIO' ? [...provAuditUIO, ...fertAuditUIO] : [...provAuditGYE, ...fertAuditGYE];
-      const match = allAudit.filter(r => r.orden.includes(id) || rowMatchesResource(r, id));
+      const match = allAudit.filter(r => r.orden.includes(id) || r.responsable === id);
       return match.reduce((s, r) => s + r.tTotal, 0);
-    };
-
-    const rowMatchesResource = (r: UnifiedRow, resId: string) => {
-      const maquina = r.orden; // Simple match for now
-      return false;
     };
 
     const plannedH = getPlannedH();
@@ -463,7 +458,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           </div>
 
           {/* Columnas de Máquina */}
-          <div className={`col-span-9 grid grid-cols-${machines.length} h-full`}>
+          <div className={cn("col-span-9 grid h-full", planta === 'UIO' ? 'grid-cols-4' : 'grid-cols-3')}>
             {machines.map(m => renderMachineCol(m.id, m.n, planta))}
           </div>
         </div>
@@ -566,7 +561,18 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     );
   };
 
-  if (!mounted) return <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left" />;
+  if (!mounted) {
+    return <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left" />;
+  }
+
+  if (isLoading) return (
+    <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
+      <div className="flex flex-col items-center justify-center p-20 gap-4">
+        <Loader2 className="w-10 h-10 animate-spin text-primary" />
+        <p className="text-xs font-bold text-gray-400 uppercase tracking-widest animate-pulse">Sincronizando SAP...</p>
+      </div>
+    </div>
+  );
 
   return (
     <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
