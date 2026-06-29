@@ -478,7 +478,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
       });
   }, [orders, selectedDates]);
   
-  const missingTimesCount = useMemo(() => {
+  const missingTimesInfo = useMemo(() => {
     const missing = new Set<string>();
     filteredOrders.forEach(order => {
       const materialCode = normalizeMaterialCode(order.MATERIAL);
@@ -486,7 +486,8 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
         missing.add(materialCode);
       }
     });
-    return missing.size;
+    const list = Array.from(missing).sort();
+    return { count: list.length, list };
   }, [filteredOrders, tiemposMap]);
 
   const planSummaryByDate = useMemo(() => {
@@ -633,18 +634,31 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
 
   return (
     <div className="space-y-4">
-      {displayMode === 'plan' && missingTimesCount > 0 && (
-        <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-4 flex items-center gap-4 shadow-md animate-pulse">
-          <div className="flex-shrink-0 bg-red-100 p-2 rounded-full">
-            <BellRing className="h-6 w-6 text-red-600" />
+      {displayMode === 'plan' && missingTimesInfo.count > 0 && (
+        <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-4 shadow-md animate-pulse">
+          <div className="flex items-center gap-4">
+            <div className="flex-shrink-0 bg-red-100 p-2 rounded-full">
+              <BellRing className="h-6 w-6 text-red-600" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-sm font-bold text-red-800 uppercase tracking-tight flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4" /> Alerta de Consistencia de Datos
+              </h3>
+              <p className="text-xs text-red-700 font-medium mt-0.5">
+                Se han detectado <span className="underline decoration-2">{missingTimesInfo.count}</span> materiales en la selección que <span className="font-bold">no tienen información de tiempo</span>.
+              </p>
+            </div>
           </div>
-          <div className="flex-1">
-            <h3 className="text-sm font-bold text-red-800 uppercase tracking-tight flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4" /> Alerta de Consistencia de Datos
-            </h3>
-            <p className="text-xs text-red-700 font-medium mt-0.5">
-              Se han detectado <span className="underline decoration-2">{missingTimesCount}</span> materiales en la selección que <span className="font-bold">no tienen información de tiempo</span>.
-            </p>
+          
+          <div className="mt-3 pt-3 border-t border-red-200">
+            <p className="text-[10px] text-red-600 font-bold uppercase mb-2">Números de material sin tiempo:</p>
+            <div className="flex flex-wrap gap-1.5">
+              {missingTimesInfo.list.map(code => (
+                <Badge key={code} variant="outline" className="bg-white text-red-700 border-red-300 text-[10px] py-0 px-2 font-mono h-5">
+                  {code}
+                </Badge>
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -730,7 +744,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
                   </div>
                 </div>
 
-                {/* Card 2: ESTADO DE ÓRDENES (Cronológico basado en planificación 3 días) */}
+                {/* Card 2: ESTADO DE ÓRDENES (CRONOLÓGICO) */}
                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 shadow-sm">
                   <h4 className="text-[13px] font-bold text-gray-800 mb-4 text-center uppercase tracking-wide flex items-center justify-center gap-2">
                     <History className="w-4 h-4 text-indigo-600" /> ESTADO DE ÓRDENES (CRONOLÓGICO)
