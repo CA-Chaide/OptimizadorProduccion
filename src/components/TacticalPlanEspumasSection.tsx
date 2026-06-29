@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -19,7 +20,6 @@ import {
   ChevronLeft, 
   ChevronRight, 
   Filter, 
-  Users,
   Activity,
   AlertCircle,
   Database,
@@ -32,17 +32,16 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { serviciosService } from '@/services/servicios.service';
-import { restriccionService } from '@/services/restriccion.service';
 import { grupoService } from '@/services/grupo.service';
 import { logger } from '@/services/LogService';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
-import type { Grupo, Restriccion } from '@/types/interfaces';
+import type { Grupo } from '@/types/interfaces';
 import { cn } from '@/lib/utils';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, isValid } from 'date-fns';
 import { es } from 'date-fns/locale';
 
-// --- CONSTANTES TÉCNICAS ---
+// --- CONSTANTES TÉCNICAS PLANTA ---
 const CAROUSEL_CIRCUMFERENCE = Math.PI * 320; // 1005cm aprox
 const EFFICIENCY_FACTOR = 0.87;
 
@@ -131,7 +130,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const [tiemposCatalogo, setTiemposCatalogo] = useState<any[]>([]);
   const [operadoresCorte, setOperadoresCorte] = useState<any[]>([]);
   const [grupos, setGrupos] = useState<Grupo[]>([]);
-  const [restriccionesArray, setRestriccionesArray] = useState<Restriccion[]>([]);
   
   const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set());
   const [viewDate, setViewDate] = useState<Date>(new Date()); 
@@ -188,7 +186,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const densVal = safeNum(info.dens);
       const height = densVal < 30 ? 103 : 85;
       const hTotal = info.esp * qty;
-      const subB = height > 0 ? hTotal / height : 0;
+      const subB = height > 0 ? (info.ancho * info.largo * hTotal) / (height * 2000 * 100) : 0;
       
       const gap = 15;
       const capGiro = info.ancho > 0 ? Math.floor(CAROUSEL_CIRCUMFERENCE / (info.ancho + gap)) : 0;
@@ -268,8 +266,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const fetchDataAsync = useCallback(async () => {
     setIsLoading(true);
     try {
-      const [groupsRes, provsRes, fertsRes, invRes, timesRes, skillsRes, maintRes, kpiRes] = await Promise.all([
-        grupoService.getAll(),
+      const [provsRes, fertsRes, invRes, timesRes, skillsRes, maintRes, kpiRes] = await Promise.all([
         serviciosService.OrdenesProvisionalesPaginados(1, 20000).catch(() => ({ data: [] })),
         serviciosService.getOrdenesFert(1, 20000).catch(() => ({ data: [] })),
         serviciosService.getInventarioAñoActual().catch(() => ({ data: [] })),
@@ -332,7 +329,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <p className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">{id}</p>
           <p className="text-[8px] font-bold text-slate-500 uppercase truncate">{name}</p>
         </div>
-        <div className="p-4 space-y-4 flex-1">
+        <div className="p-4 space-y-4 flex-1 text-left">
           <div className="space-y-2">
             <select value={config.day} onChange={e => updateConfig(planta, id, 'day', e.target.value)} className="w-full bg-[#2a374a] text-yellow-400 font-black text-[10px] rounded px-2 py-1 outline-none border border-slate-700">
               {shiftOptions.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
@@ -401,19 +398,19 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return (
       <div className="bg-[#1e293b] rounded-[2.5rem] shadow-2xl overflow-hidden mb-10 text-white text-left font-sans">
         <div className="grid grid-cols-12">
-          <div className="col-span-3 p-8 border-r border-slate-700/50 bg-slate-900/30 flex flex-col justify-between">
+          <div className="col-span-3 p-8 border-r border-slate-700/50 bg-slate-900/30 flex flex-col justify-between text-left">
             <div className="space-y-8">
               <div>
                 <p className="text-[9px] font-black uppercase text-indigo-400 tracking-widest mb-1">UBICACIÓN TÉCNICA</p>
                 <h3 className="text-4xl font-black tracking-tighter">{planta === 'UIO' ? 'QUITO' : 'GYE'}</h3>
               </div>
-              <div className="pt-8 border-t border-slate-700/50">
+              <div className="pt-8 border-t border-slate-700/50 text-left">
                 <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-2">RENDIMIENTO (%)</p>
                 <input type="number" value={config.performance} onChange={e => planta === 'UIO' ? setUioConfig({...uioConfig, performance: safeNum(e.target.value)}) : setGyeConfig({...gyeConfig, performance: safeNum(e.target.value)})}
                   className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-xl font-black text-emerald-400 outline-none focus:border-emerald-500" />
               </div>
             </div>
-            <div>
+            <div className="text-left">
               <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">CAPACIDAD TOTAL</p>
               <div className="flex items-baseline gap-2"><span className="text-5xl font-black text-yellow-400 tracking-tighter">{totalH.toFixed(1)}</span><span className="text-xs font-black text-slate-500 uppercase">HORAS</span></div>
             </div>
@@ -484,7 +481,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                       </tr>
                       {isExp && items.map((row, idx) => (
                         <tr key={idx} className="hover:bg-slate-50 transition-colors font-mono text-[9px]">
-                          <td className="px-4 py-2 border-r border-slate-50 text-indigo-600 font-black pl-8">{row.material}</td>
+                          <td className="px-4 py-2 border-r border-slate-50 text-indigo-600 font-black pl-8 text-left">{row.material}</td>
                           <td className="px-6 py-2 border-r border-slate-50 text-left uppercase truncate max-w-[200px]">{row.descripcion}</td>
                           <td className="px-2 py-2 border-r border-slate-50">{row.ancho}</td>
                           <td className="px-2 py-2 border-r border-slate-50">{row.largo}</td>
@@ -538,7 +535,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               <div className="bg-white p-5 font-sans text-left">
                 <div className="flex items-center justify-between mb-5">
                   <h3 className="text-xs font-black text-slate-800 capitalize">{format(viewDate, 'MMMM yyyy', { locale: es })}</h3>
-                  <div className="flex gap-1 bg-slate-50 p-1 rounded-xl">
+                  <div className="flex gap-1 bg-gray-50 p-1 rounded-xl">
                     <Button variant="ghost" size="icon" onClick={() => setViewDate(prev => subMonths(prev, 1))} className="h-8 w-8 hover:bg-white"><ChevronLeft className="w-4 h-4" /></Button>
                     <Button variant="ghost" size="icon" onClick={() => setViewDate(prev => addMonths(prev, 1))} className="h-8 w-8 hover:bg-white"><ChevronRight className="w-4 h-4" /></Button>
                   </div>
