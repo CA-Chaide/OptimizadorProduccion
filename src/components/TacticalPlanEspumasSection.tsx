@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -43,8 +42,8 @@ import { cn } from '@/lib/utils';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, isValid } from 'date-fns';
 import { es } from 'date-fns/locale';
 
-// --- CONSTANTES TÉCNICAS CORTE ---
-const CAROUSEL_CIRCUMFERENCE = Math.PI * 320; // Perímetro carrusel 3.2m
+// --- CONSTANTES TÉCNICAS ---
+const CAROUSEL_CIRCUMFERENCE = Math.PI * 320; // 1005cm aprox
 const EFFICIENCY_FACTOR = 0.87;
 
 interface UnifiedRow {
@@ -138,7 +137,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const [viewDate, setViewDate] = useState<Date>(new Date()); 
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
-  // --- DASHBOARD CONFIG ---
+  // --- CONFIGURACIÓN DASHBOARDS ---
   const [uioConfig, setUioConfig] = useState<any>({
     performance: 90,
     shifts: {
@@ -187,7 +186,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const info = extractMaterialInfo(o);
       const qty = safeNum(getProp(o, ['CANTIDAD', 'CANTPROGRAMADA', 'CANTPENDIENTE']));
       const densVal = safeNum(info.dens);
-      const height = densVal < 28 ? 103 : 85;
+      const height = densVal < 30 ? 103 : 85;
       const hTotal = info.esp * qty;
       const subB = height > 0 ? hTotal / height : 0;
       
@@ -280,8 +279,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         serviciosService.getKPIMAestroLooper().catch(() => ({ data: [] }))
       ]);
 
-      const filteredGroups = (groupsRes.data || []).filter(g => (g.nombre_grupo || '').toLowerCase().includes('corte'));
-      setGrupos(filteredGroups);
       setOrdenesProvisionales(provsRes.data?.data || provsRes.data || []);
       setOrdenesFert(fertsRes.data?.data || fertsRes.data || []);
       setInventarioSAP(invRes.data || []);
