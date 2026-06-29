@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -15,10 +16,10 @@ import {
   TrendingUp,
   Box,
   Info,
-  Calendar as CalendarIcon,
-  ChevronLeft,
-  ChevronRight,
-  Filter,
+  Calendar as CalendarIcon, 
+  ChevronLeft, 
+  ChevronRight, 
+  Filter, 
   Users,
   Activity,
   AlertCircle,
@@ -134,7 +135,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const [restriccionesArray, setRestriccionesArray] = useState<Restriccion[]>([]);
   
   const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set());
-  const [viewDate, setViewDate] = useState<Date>(new Date());
+  const [viewDate, setViewDate] = useState<Date>(new Date(2026, 5, 1)); 
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   // --- DASHBOARD CONFIG ---
@@ -257,14 +258,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const fertAuditGYE = useMemo(() => auditMapper(getFilteredData(ordenesFert, '2000'), '2000'), [auditMapper, getFilteredData, ordenesFert]);
 
   const calendarDaysList = useMemo(() => {
-    if (!mounted) return [];
     const start = startOfMonth(viewDate);
     const end = endOfMonth(viewDate);
     const days = eachDayOfInterval({ start, end });
     const startDay = getDay(start);
     const padding = startDay === 0 ? 6 : startDay - 1;
     return [...Array(padding).fill(null), ...days];
-  }, [viewDate, mounted]);
+  }, [viewDate]);
 
   const datesWithOrders = useMemo(() => {
     const dates = new Set<string>();
@@ -584,6 +584,15 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left" />;
   }
 
+  if (isLoading) return (
+    <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
+      <div className="flex flex-col items-center justify-center p-20 gap-4">
+        <Loader2 className="w-10 h-10 animate-spin text-red-600" />
+        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest animate-pulse">Sincronizando SAP...</p>
+      </div>
+    </div>
+  );
+
   return (
     <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
       <div className="flex items-center justify-between pb-4 border-b border-gray-100">
@@ -681,7 +690,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                       <th className="px-6 py-5 border-r border-white/5">Máquina</th>
                       <th className="px-6 py-5 border-r border-white/5">Inicio</th>
                       <th className="px-6 py-5 border-r border-white/5">Fin</th>
-                      <th className="px-6 py-5 text-indigo-300 bg-indigo-900/40">TIEMPO_MANTENIMIENTO (MIN)</th>
+                      <th className="px-6 py-5 text-indigo-300 bg-indigo-900/40 uppercase font-black">TIEMPO_MANTENIMIENTO (MIN)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-black text-[11px] text-slate-700">
