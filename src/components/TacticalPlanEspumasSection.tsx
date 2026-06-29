@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -124,6 +125,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const [ordenesProvisionales, setOrdenesProvisionales] = useState<any[]>([]);
   const [ordenesFert, setOrdenesFert] = useState<any[]>([]);
   const [inventarioSAP, setInventarioSAP] = useState<any[]>([]);
+  const [kpiLooperData, setKpiLooperData] = useState<any[]>([]);
   const [mantenimientosSAP, setMantenimientosSAP] = useState<any[]>([]);
   const [tiemposCatalogo, setTiemposCatalogo] = useState<any[]>([]);
   const [operadoresCorte, setOperadoresCorte] = useState<any[]>([]);
@@ -223,7 +225,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         stockKg
       };
     });
-  }, [extractMaterialInfo, inventarioSAP, tiemposCatalogo, kpiLooperData]);
+  }, [extractMaterialInfo, inventarioSAP, tiemposCatalogo]);
 
   const getAllowedResps = (centro: string) => {
     if (centro === '1000') return ['013', '038', '039', '044', '036'];
@@ -269,13 +271,14 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const fetchDataAsync = useCallback(async () => {
     setIsLoading(true);
     try {
-      const [provsRes, fertsRes, invRes, timesRes, skillsRes, maintRes] = await Promise.all([
+      const [provsRes, fertsRes, invRes, timesRes, skillsRes, maintRes, kpiRes] = await Promise.all([
         serviciosService.OrdenesProvisionalesPaginados(1, 20000).catch(() => ({ data: [] })),
         serviciosService.getOrdenesFert(1, 20000).catch(() => ({ data: [] })),
         serviciosService.getInventarioAñoActual().catch(() => ({ data: [] })),
         serviciosService.getTiemposEnsamblado(1, 20000).catch(() => ({ data: [] })),
         serviciosService.getCuboHabilidadesOP().catch(() => ({ data: [] })),
-        serviciosService.ListarMantenimientoPreventivosProgramados().catch(() => ({ data: [] }))
+        serviciosService.ListarMantenimientoPreventivosProgramados().catch(() => ({ data: [] })),
+        serviciosService.getKPIMAestroLooper().catch(() => ({ data: [] }))
       ]);
 
       setOrdenesProvisionales(provsRes.data?.data || provsRes.data || []);
@@ -283,6 +286,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       setInventarioSAP(invRes.data || []);
       setTiemposCatalogo(timesRes.data?.data || timesRes.data || []);
       setMantenimientosSAP(Array.isArray(maintRes.data) ? maintRes.data : []);
+      setKpiLooperData(kpiRes.data || []);
       
       const skills = Array.isArray(skillsRes.data) ? skillsRes.data : [];
       setOperadoresCorte(skills.filter((s: any) => String(getProp(s, ['LineaProceso', 'LINEA_PROCESO'])).toUpperCase().includes('CORTE')));
@@ -591,13 +595,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             <PopoverTrigger asChild>
               <button className="h-10 px-5 rounded-2xl border border-gray-200 bg-white hover:border-red-500/50 flex items-center gap-3 font-black text-[11px] uppercase shadow-sm transition-all">
                 <Filter className="w-4 h-4 text-red-500" /> 
-                {selectedDates.size === 0 ? 'Plan Maestro' : `${selectedDates.size} días`}
+                {selectedDates.size === 0 ? 'Plan Maestro' : `${selectedDates.size} días seleccionados`}
               </button>
             </PopoverTrigger>
             <PopoverContent className="w-[260px] p-0 border-none shadow-2xl rounded-2xl overflow-hidden mt-3" align="end">
-              <div className="bg-white p-5 font-sans text-left text-[11px]">
+              <div className="bg-white p-5 font-sans text-left">
                 <div className="flex items-center justify-between mb-5">
-                  <h3 className="font-black text-slate-800 capitalize">{format(viewDate, 'MMMM yyyy', { locale: es })}</h3>
+                  <h3 className="text-xs font-black text-slate-800 capitalize">{format(viewDate, 'MMMM yyyy', { locale: es })}</h3>
                   <div className="flex gap-1 bg-slate-50 p-1 rounded-xl">
                     <Button variant="ghost" size="icon" onClick={() => setViewDate(prev => subMonths(prev, 1))} className="h-8 w-8 hover:bg-white"><ChevronLeft className="w-4 h-4" /></Button>
                     <Button variant="ghost" size="icon" onClick={() => setViewDate(prev => addMonths(prev, 1))} className="h-8 w-8 hover:bg-white"><ChevronRight className="w-4 h-4" /></Button>
@@ -617,7 +621,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                     );
                   })}
                 </div>
-                <Button variant="ghost" size="sm" className="w-full text-[10px] font-black uppercase text-red-600 h-9 mt-1 rounded-xl tracking-widest" onClick={() => setSelectedDates(new Set())}>Ver Todo</Button>
+                <Button variant="ghost" size="sm" className="w-full text-[10px] font-black uppercase text-red-600 h-9 mt-1 rounded-xl tracking-widest" onClick={() => setSelectedDates(new Set())}>Ver Todo el Plan</Button>
               </div>
             </PopoverContent>
           </Popover>
@@ -630,7 +634,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             { v: 'resumen', l: 'Capacidad Operativa', i: LayoutDashboard },
             { v: 'ordenes', l: 'Provisionales', i: Package }, 
             { v: 'ordenesFert', l: 'Órdenes FERT', i: ShoppingCart },
-            { v: 'mantenimiento', l: 'Mantenimiento', i: Wrench }
+            { v: 'mantenimiento', l: 'Mantenimiento SAP', i: Wrench }
           ].map(tab => (
             <TabsTrigger key={tab.v} value={tab.v} className="gap-2 text-[10px] font-black uppercase transition-all data-[state=active]:bg-white data-[state=active]:shadow-lg data-[state=active]:text-red-600 rounded-xl">
               <tab.i className="w-4 h-4" /> {tab.l}
