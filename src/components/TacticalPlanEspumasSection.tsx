@@ -123,16 +123,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanEspumas');
   const { addNotification } = useAppContext();
 
-  // --- Funciones de Utilidad (Inyectadas al inicio para evitar errores de inicialización) ---
-  const extractMaterialInfo = useCallback((item: any) => {
-    const matStr = getProp(item, ['MATERIAL', 'Material', 'CodMaterial']);
-    const nameStr = getProp(item, ['NOMBRE', 'NombreMaterial', 'Descripcion']);
-    const code = matStr.match(/^\d+/) ? matStr.match(/^\d+/)?.[0].slice(-8) : matStr.slice(-8);
-    const desc = nameStr || matStr.replace(/^\d+\s*/, '') || '—';
-    const dims = parseDimensions(desc);
-    return { code, desc, ...dims };
-  }, []);
-
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState('resumen');
   const [isLoading, setIsLoading] = useState(true);
@@ -177,6 +167,15 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     { v: 'H1', l: '19:00 - 05:30', h: 10.5 },
     { v: 'H2', l: '21:00 - 05:30', h: 8.5 }
   ];
+
+  const extractMaterialInfo = useCallback((item: any) => {
+    const matStr = getProp(item, ['MATERIAL', 'Material', 'CodMaterial']);
+    const nameStr = getProp(item, ['NOMBRE', 'NombreMaterial', 'Descripcion']);
+    const code = matStr.match(/^\d+/) ? matStr.match(/^\d+/)?.[0].slice(-8) : matStr.slice(-8);
+    const desc = nameStr || matStr.replace(/^\d+\s*/, '') || '—';
+    const dims = parseDimensions(desc);
+    return { code, desc, ...dims };
+  }, []);
 
   const auditMapper = useCallback((data: any[], centroId: string): UnifiedRow[] => {
     return data.map(o => {
@@ -249,6 +248,15 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       return c === centro && a === storeId && allowed.includes(r) && (selectedDates.size === 0 || selectedDates.has(date));
     });
   }, [selectedDates]);
+
+  const calendarDaysList = useMemo(() => {
+    const start = startOfMonth(viewDate);
+    const end = endOfMonth(viewDate);
+    const days = eachDayOfInterval({ start, end });
+    const startDay = getDay(start);
+    const padding = startDay === 0 ? 6 : startDay - 1;
+    return [...Array(padding).fill(null), ...days];
+  }, [viewDate]);
 
   const provAuditUIO = useMemo(() => auditMapper(getFilteredData(ordenesProvisionales, '1000', '1006'), '1000'), [auditMapper, getFilteredData, ordenesProvisionales]);
   const provAuditGYE = useMemo(() => auditMapper(getFilteredData(ordenesProvisionales, '2000', '2006'), '2000'), [auditMapper, getFilteredData, ordenesProvisionales]);
