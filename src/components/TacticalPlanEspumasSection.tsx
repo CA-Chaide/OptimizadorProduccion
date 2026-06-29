@@ -40,11 +40,11 @@ import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 import { cn } from '@/lib/utils';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, isValid, parseISO } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, isValid } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 // --- CONSTANTES TÉCNICAS CORTE ---
-const CAROUSEL_CIRCUMFERENCE = Math.PI * 320; // 3.2m diámetro
+const CAROUSEL_CIRCUMFERENCE = Math.PI * 320; // Perímetro carrusel 3.2m
 const EFFICIENCY_FACTOR = 0.87;
 
 interface UnifiedRow {
@@ -135,7 +135,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const [restriccionesArray, setRestriccionesArray] = useState<Restriccion[]>([]);
   
   const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set());
-  const [viewDate, setViewDate] = useState<Date>(new Date(2026, 5, 1)); 
+  const [viewDate, setViewDate] = useState<Date>(new Date()); 
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   // --- DASHBOARD CONFIG ---
@@ -172,7 +172,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     { v: 'B21', l: '21:00 - 05:30', h: 8.5 }
   ];
 
-  // Helper para extracción de info de material
   const extractMaterialInfo = useCallback((item: any) => {
     const matStr = getProp(item, ['MATERIAL', 'Material', 'CodMaterial', 'MATERIAL_ID', 'CODIGO']);
     const nameStr = getProp(item, ['NOMBRE', 'NombreMaterial', 'Descripcion', 'NomMaterial', 'DESCRIPCION']);
@@ -183,7 +182,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return { code, desc, ...dims };
   }, []);
 
-  // Mapeador de auditoría técnica con lógica de redondeo superior industrial
   const auditMapper = useCallback((data: any[], centroId: string): UnifiedRow[] => {
     return data.map(o => {
       const info = extractMaterialInfo(o);
@@ -234,20 +232,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     });
   }, [extractMaterialInfo, inventarioSAP, tiemposCatalogo, kpiLooperData]);
 
-  const getAllowedResps = (centro: string) => {
-    if (centro === '1000') return ['013', '038', '039', '044', '036'];
-    if (centro === '2000') return ['002', '038', '039'];
-    return [];
-  };
-
   const getFilteredData = useCallback((rawData: any[], centro: string) => {
-    const allowed = getAllowedResps(centro);
+    const allowed = centro === '1000' ? ['013', '038', '039', '044', '036'] : ['002', '038', '039'];
     return rawData.filter(o => {
       const c = String(getProp(o, ['Centro', 'CENTRO'])).trim();
       const r = String(getProp(o, ['RESPCONTROLPROD', 'RESPCTRLPROD', 'RespControlProd', 'RESP_CONTROL_PROD', 'RESPONSABLE'])).trim();
       const dateRaw = String(getProp(o, ['FECHAINICIO', 'FECHA', 'FECHA_INICIO'])).trim();
       const date = dateRaw.includes('T') ? dateRaw.split('T')[0] : dateRaw;
-      
       return c === centro && allowed.includes(r) && (selectedDates.size === 0 || selectedDates.has(date));
     });
   }, [selectedDates]);
@@ -278,14 +269,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const fetchDataAsync = useCallback(async () => {
     setIsLoading(true);
     try {
-      const groupsRes = await grupoService.getAll();
-      const filteredGroups = (groupsRes.data || []).filter(g => {
-        const name = (g.nombre_grupo || '').toLowerCase();
-        return (name.includes('corte y laminado') || name.includes('laminado'));
-      });
-      setGrupos(filteredGroups);
-      
-      const [provsRes, fertsRes, invRes, timesRes, skillsRes, maintRes, kpiRes] = await Promise.all([
+      const [groupsRes, provsRes, fertsRes, invRes, timesRes, skillsRes, maintRes, kpiRes] = await Promise.all([
+        grupoService.getAll(),
         serviciosService.OrdenesProvisionalesPaginados(1, 20000).catch(() => ({ data: [] })),
         serviciosService.getOrdenesFert(1, 20000).catch(() => ({ data: [] })),
         serviciosService.getInventarioAñoActual().catch(() => ({ data: [] })),
@@ -295,6 +280,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         serviciosService.getKPIMAestroLooper().catch(() => ({ data: [] }))
       ]);
 
+      const filteredGroups = (groupsRes.data || []).filter(g => (g.nombre_grupo || '').toLowerCase().includes('corte'));
+      setGrupos(filteredGroups);
       setOrdenesProvisionales(provsRes.data?.data || provsRes.data || []);
       setOrdenesFert(fertsRes.data?.data || fertsRes.data || []);
       setInventarioSAP(invRes.data || []);
@@ -304,9 +291,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       
       const skills = Array.isArray(skillsRes.data) ? skillsRes.data : [];
       setOperadoresCorte(skills.filter((s: any) => String(getProp(s, ['LineaProceso', 'LINEA_PROCESO'])).toUpperCase().includes('CORTE')));
-
     } catch (e) {
-      logger.error('[Corte Espuma] Error sincronización', e);
+      console.error('Error sincronización', e);
     } finally {
       setIsLoading(false);
     }
@@ -322,17 +308,11 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   useEffect(() => { if (mounted) fetchDataAsync(); }, [mounted, fetchDataAsync]);
 
   const updateConfig = (planta: 'UIO' | 'GYE', machine: string, field: string, value: any) => {
-    if (planta === 'UIO') {
-      setUioConfig((prev: any) => ({
-        ...prev,
-        shifts: { ...prev.shifts, [machine]: { ...prev.shifts[machine], [field]: value } }
-      }));
-    } else {
-      setGyeConfig((prev: any) => ({
-        ...prev,
-        shifts: { ...prev.shifts, [machine]: { ...prev.shifts[machine], [field]: value } }
-      }));
-    }
+    const setFn = planta === 'UIO' ? setUioConfig : setGyeConfig;
+    setFn((prev: any) => ({
+      ...prev,
+      shifts: { ...prev.shifts, [machine]: { ...prev.shifts[machine], [field]: value } }
+    }));
   };
 
   const renderMachineCol = (id: string, name: string, planta: 'UIO' | 'GYE') => {
@@ -345,23 +325,16 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const p2 = (config.paro2 || 0) / 100;
     
     const tTotal = ((hDay * (1 - p1)) + (hNight * (1 - p2))) * (performance / 100) * EFFICIENCY_FACTOR;
-    
-    const getPlannedH = () => {
-      const allAudit = planta === 'UIO' ? [...provAuditUIO, ...fertAuditUIO] : [...provAuditGYE, ...fertAuditGYE];
-      const match = allAudit.filter(r => r.orden.includes(id) || r.responsable === id);
-      return match.reduce((s, r) => s + r.tTotal, 0);
-    };
-
-    const plannedH = getPlannedH();
+    const allAudit = planta === 'UIO' ? [...provAuditUIO, ...fertAuditUIO] : [...provAuditGYE, ...fertAuditGYE];
+    const plannedH = allAudit.filter(r => r.orden.includes(id) || r.responsable === id).reduce((s, r) => s + r.tTotal, 0);
     const occupancy = tTotal > 0 ? (plannedH / tTotal) * 100 : 0;
 
     return (
       <div key={id} className="col-span-1 border-r border-slate-700/50 flex flex-col font-sans">
         <div className="p-3 border-b border-slate-700/50 text-center">
           <p className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">{id}</p>
-          <p className="text-[8px] font-bold text-slate-500 uppercase truncate" title={name}>{name}</p>
+          <p className="text-[8px] font-bold text-slate-500 uppercase truncate">{name}</p>
         </div>
-        
         <div className="p-4 space-y-4 flex-1">
           <div className="space-y-2">
             <select value={config.day} onChange={e => updateConfig(planta, id, 'day', e.target.value)} className="w-full bg-[#2a374a] text-yellow-400 font-black text-[10px] rounded px-2 py-1 outline-none border border-slate-700">
@@ -376,7 +349,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               {operadoresCorte.map((op, i) => <option key={i} value={getProp(op, ['CODIGO_OPERADOR'])}>{getProp(op, ['NOMBRE_OPERADOR'])}</option>)}
             </select>
           </div>
-
           <div className="space-y-2 pt-2 border-t border-slate-700/30">
             <select value={config.night} onChange={e => updateConfig(planta, id, 'night', e.target.value)} className="w-full bg-[#2a374a] text-purple-400 font-black text-[10px] rounded px-2 py-1 outline-none border border-slate-700">
               {nightShiftOptions.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
@@ -385,12 +357,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               <option value="">— OP1 —</option>
               {operadoresCorte.map((op, i) => <option key={i} value={getProp(op, ['CODIGO_OPERADOR'])}>{getProp(op, ['NOMBRE_OPERADOR'])}</option>)}
             </select>
-            <select value={config.op2N} onChange={e => updateConfig(planta, id, 'op2N', e.target.value)} className="w-full bg-slate-900 text-slate-300 text-[9px] rounded px-2 py-1 outline-none border border-slate-700">
-              <option value="">— OP2 AYUD —</option>
-              {operadoresCorte.map((op, i) => <option key={i} value={getProp(op, ['CODIGO_OPERADOR'])}>{getProp(op, ['NOMBRE_OPERADOR'])}</option>)}
-            </select>
           </div>
-
           <div className="space-y-2 pt-2 border-t border-slate-700/30">
              <div className="flex items-center gap-2 bg-[#1e293b] p-1.5 rounded border border-slate-700">
                 <span className="text-[7px] font-black text-amber-500 uppercase flex-1">PARO T1</span>
@@ -404,24 +371,15 @@ export const TacticalPlanEspumasSection: React.FC = () => {
              </div>
           </div>
         </div>
-
         <div className="p-3 bg-slate-900/50 border-t border-slate-700 space-y-2 mt-auto">
            <div className="flex justify-between items-end">
-              <div className="text-left">
-                <p className="text-[7px] font-black text-slate-500 uppercase">TIEMPO TOTAL</p>
-                <p className="text-sm font-black text-white">{tTotal.toFixed(2)}</p>
-              </div>
-              <div className="text-right">
-                <p className="text-[7px] font-black text-emerald-500 uppercase">PLANIFICADO</p>
-                <p className="text-sm font-black text-emerald-400">{plannedH.toFixed(2)}</p>
-              </div>
+              <div className="text-left"><p className="text-[7px] font-black text-slate-500 uppercase">TIEMPO TOTAL</p><p className="text-sm font-black text-white">{tTotal.toFixed(2)}</p></div>
+              <div className="text-right"><p className="text-[7px] font-black text-emerald-500 uppercase">PLANIFICADO</p><p className="text-sm font-black text-emerald-400">{plannedH.toFixed(2)}</p></div>
            </div>
            <div className="pt-1">
               <p className="text-[7px] font-black text-slate-500 uppercase mb-0.5">OCUPACIÓN</p>
               <div className="flex items-center gap-2">
-                <div className="flex-1 h-1 bg-slate-800 rounded-full overflow-hidden">
-                  <div className={cn("h-full", occupancy > 100 ? "bg-red-500" : "bg-emerald-500")} style={{ width: `${Math.min(occupancy, 100)}%` }} />
-                </div>
+                <div className="flex-1 h-1 bg-slate-800 rounded-full overflow-hidden"><div className={cn("h-full", occupancy > 100 ? "bg-red-500" : "bg-emerald-500")} style={{ width: `${Math.min(occupancy, 100)}%` }} /></div>
                 <span className="text-[9px] font-black text-white">{occupancy.toFixed(1)}%</span>
               </div>
            </div>
@@ -451,35 +409,19 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               <div>
                 <p className="text-[9px] font-black uppercase text-indigo-400 tracking-widest mb-1">UBICACIÓN TÉCNICA</p>
                 <h3 className="text-4xl font-black tracking-tighter">{planta === 'UIO' ? 'QUITO' : 'GYE'}</h3>
-                <div className="mt-4 flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_10px_#10b981] animate-pulse" />
-                  <span className="text-[10px] font-black uppercase text-slate-400">PLANTA ACTIVA</span>
-                </div>
               </div>
-              
               <div className="pt-8 border-t border-slate-700/50">
                 <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-2">RENDIMIENTO (%)</p>
-                <input 
-                  type="number" 
-                  value={config.performance} 
-                  onChange={e => planta === 'UIO' ? setUioConfig({...uioConfig, performance: safeNum(e.target.value)}) : setGyeConfig({...gyeConfig, performance: safeNum(e.target.value)})}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-xl font-black text-emerald-400 outline-none focus:border-emerald-500"
-                />
+                <input type="number" value={config.performance} onChange={e => planta === 'UIO' ? setUioConfig({...uioConfig, performance: safeNum(e.target.value)}) : setGyeConfig({...gyeConfig, performance: safeNum(e.target.value)})}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-xl font-black text-emerald-400 outline-none focus:border-emerald-500" />
               </div>
             </div>
-
             <div>
               <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">CAPACIDAD TOTAL</p>
-              <div className="flex items-baseline gap-2">
-                <span className="text-5xl font-black text-yellow-400 tracking-tighter">{totalH.toFixed(1)}</span>
-                <span className="text-xs font-black text-slate-500 uppercase">HORAS</span>
-              </div>
+              <div className="flex items-baseline gap-2"><span className="text-5xl font-black text-yellow-400 tracking-tighter">{totalH.toFixed(1)}</span><span className="text-xs font-black text-slate-500 uppercase">HORAS</span></div>
             </div>
           </div>
-
-          <div className={cn("col-span-9 grid h-full", planta === 'UIO' ? 'grid-cols-4' : 'grid-cols-3')}>
-            {machines.map(m => renderMachineCol(m.id, m.n, planta))}
-          </div>
+          <div className={cn("col-span-9 grid h-full", planta === 'UIO' ? 'grid-cols-4' : 'grid-cols-3')}>{machines.map(m => renderMachineCol(m.id, m.n, planta))}</div>
         </div>
       </div>
     );
@@ -495,9 +437,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
     return (
       <div className="space-y-4 text-left">
-        <h3 className="text-xs font-black uppercase text-slate-800 tracking-widest flex items-center gap-2">
-          <div className="w-2.5 h-2.5 rounded-full bg-red-600" /> {title} ({data.length})
-        </h3>
+        <h3 className="text-xs font-black uppercase text-slate-800 tracking-widest flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full bg-red-600" /> {title} ({data.length})</h3>
         <div className="border border-slate-100 rounded-[2.5rem] overflow-hidden bg-white shadow-xl">
           <div className="overflow-x-auto max-h-[500px]">
             <table className="w-full text-center border-collapse text-[10px]">
@@ -548,7 +488,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                       {isExp && items.map((row, idx) => (
                         <tr key={idx} className="hover:bg-slate-50 transition-colors font-mono text-[9px]">
                           <td className="px-4 py-2 border-r border-slate-50 text-indigo-600 font-black pl-8">{row.material}</td>
-                          <td className="px-6 py-2 border-r border-slate-50 text-left uppercase truncate max-w-[200px]" title={row.descripcion}>{row.descripcion}</td>
+                          <td className="px-6 py-2 border-r border-slate-50 text-left uppercase truncate max-w-[200px]">{row.descripcion}</td>
                           <td className="px-2 py-2 border-r border-slate-50">{row.ancho}</td>
                           <td className="px-2 py-2 border-r border-slate-50">{row.largo}</td>
                           <td className="px-2 py-2 border-r border-slate-50 text-blue-600">{row.esp}</td>
@@ -580,39 +520,22 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     );
   };
 
-  if (!mounted) {
-    return <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left" />;
-  }
+  const headerStyles = "p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left";
 
-  if (isLoading) return (
-    <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
-      <div className="flex flex-col items-center justify-center p-20 gap-4">
-        <Loader2 className="w-10 h-10 animate-spin text-red-600" />
-        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest animate-pulse">Sincronizando SAP...</p>
-      </div>
-    </div>
-  );
+  if (!mounted) return <div className={headerStyles} />;
 
   return (
-    <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
+    <div className={headerStyles}>
       <div className="flex items-center justify-between pb-4 border-b border-gray-100">
         <div className="flex items-center space-x-3 text-left">
           <div className="p-2 bg-red-600/10 rounded-xl shadow-inner"><Scissors className="w-6 h-6 text-red-600" /></div>
-          <div>
-            <h2 className="text-xl font-black text-gray-800 uppercase tracking-tighter">Programación Táctica Corte Espuma</h2>
-            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Capacidad Carrusel 3.2m | Auditoría Técnica SAP</p>
-          </div>
+          <div><h2 className="text-xl font-black text-gray-800 uppercase tracking-tighter">Programación Táctica Corte Espuma</h2><p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Capacidad Carrusel 3.2m | Auditoría Técnica SAP</p></div>
         </div>
         <div className="flex items-center gap-3">
-           <Button onClick={fetchDataAsync} disabled={isLoading} className="bg-red-600 hover:bg-red-700 text-white rounded-xl h-10 px-6 text-[10px] font-black uppercase tracking-widest shadow-lg flex items-center gap-2">
-              {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} SINCRONIZAR SAP
-           </Button>
+           <Button onClick={fetchDataAsync} disabled={isLoading} className="bg-red-600 hover:bg-red-700 text-white rounded-xl h-10 px-6 text-[10px] font-black uppercase tracking-widest shadow-lg flex items-center gap-2">{isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} SINCRONIZAR SAP</Button>
            <Popover>
             <PopoverTrigger asChild>
-              <button className="h-10 px-5 rounded-2xl border border-gray-200 bg-white hover:border-red-500/50 flex items-center gap-3 font-black text-[11px] uppercase shadow-sm transition-all">
-                <Filter className="w-4 h-4 text-red-500" /> 
-                {selectedDates.size === 0 ? 'Plan Maestro' : `${selectedDates.size} días seleccionados`}
-              </button>
+              <button className="h-10 px-5 rounded-2xl border border-gray-200 bg-white hover:border-red-500/50 flex items-center gap-3 font-black text-[11px] uppercase shadow-sm transition-all"><Filter className="w-4 h-4 text-red-500" /> {selectedDates.size === 0 ? 'Plan Maestro' : `${selectedDates.size} días seleccionados`}</button>
             </PopoverTrigger>
             <PopoverContent className="w-[260px] p-0 border-none shadow-2xl rounded-2xl overflow-hidden mt-3" align="end">
               <div className="bg-white p-5 font-sans text-left">
@@ -646,57 +569,26 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid grid-cols-4 h-11 bg-gray-100/50 p-1.5 rounded-2xl border border-gray-200 mb-8">
-          {[ 
-            { v: 'resumen', l: 'Capacidad Operativa', i: LayoutDashboard },
-            { v: 'ordenes', l: 'Provisionales', i: Package }, 
-            { v: 'ordenesFert', l: 'Órdenes FERT', i: ShoppingCart },
-            { v: 'mantenimiento', l: 'Mantenimiento SAP', i: Wrench }
-          ].map(tab => (
-            <TabsTrigger key={tab.v} value={tab.v} className="gap-2 text-[10px] font-black uppercase transition-all data-[state=active]:bg-white data-[state=active]:shadow-lg data-[state=active]:text-red-600 rounded-xl">
-              <tab.i className="w-4 h-4" /> {tab.l}
-            </TabsTrigger>
+          {[ { v: 'resumen', l: 'Capacidad Operativa', i: LayoutDashboard }, { v: 'ordenes', l: 'Provisionales', i: Package }, { v: 'ordenesFert', l: 'Órdenes FERT', i: ShoppingCart }, { v: 'mantenimiento', l: 'Mantenimiento SAP', i: Wrench } ].map(tab => (
+            <TabsTrigger key={tab.v} value={tab.v} className="gap-2 text-[10px] font-black uppercase transition-all data-[state=active]:bg-white data-[state=active]:shadow-lg data-[state=active]:text-red-600 rounded-xl"><tab.i className="w-4 h-4" /> {tab.l}</TabsTrigger>
           ))}
         </TabsList>
-
         <div className="mt-6">
-          <TabsContent value="resumen" className="animate-in fade-in duration-300">
-            {renderDashboard('UIO')}
-            {renderDashboard('GYE')}
-          </TabsContent>
-
-          <TabsContent value="ordenes" className="animate-in fade-in duration-300 space-y-10">
-            {renderAuditTable(provAuditUIO, "AUDITORÍA TÉCNICA QUITO (1000) — PROVISIONALES")}
-            {renderAuditTable(provAuditGYE, "AUDITORÍA TÉCNICA GUAYAQUIL (2000) — PROVISIONALES")}
-          </TabsContent>
-
-          <TabsContent value="ordenesFert" className="animate-in fade-in duration-300 space-y-10">
-            {renderAuditTable(fertAuditUIO, "AUDITORÍA TÉCNICA QUITO (1000) — ÓRDENES FERT")}
-            {renderAuditTable(fertAuditGYE, "AUDITORÍA TÉCNICA GUAYAQUIL (2000) — ÓRDENES FERT")}
-          </TabsContent>
-
+          <TabsContent value="resumen" className="animate-in fade-in duration-300">{renderDashboard('UIO')}{renderDashboard('GYE')}</TabsContent>
+          <TabsContent value="ordenes" className="animate-in fade-in duration-300 space-y-10">{renderAuditTable(provAuditUIO, "AUDITORÍA TÉCNICA QUITO (1000) — PROVISIONALES")}{renderAuditTable(provAuditGYE, "AUDITORÍA TÉCNICA GUAYAQUIL (2000) — PROVISIONALES")}</TabsContent>
+          <TabsContent value="ordenesFert" className="animate-in fade-in duration-300 space-y-10">{renderAuditTable(fertAuditUIO, "AUDITORÍA TÉCNICA QUITO (1000) — ÓRDENES FERT")}{renderAuditTable(fertAuditGYE, "AUDITORÍA TÉCNICA GUAYAQUIL (2000) — ÓRDENES FERT")}</TabsContent>
           <TabsContent value="mantenimiento" className="animate-in fade-in duration-300 text-left space-y-4">
-            <div className="flex items-center gap-3 px-2">
-              <div className="p-2 bg-indigo-600 rounded-xl text-white shadow-lg"><Wrench className="w-4 h-4" /></div>
-              <h3 className="text-sm font-black uppercase tracking-widest text-slate-800">Carga de Mantenimiento Preventivo SAP</h3>
-            </div>
+            <div className="flex items-center gap-3 px-2"><div className="p-2 bg-indigo-600 rounded-xl text-white shadow-lg"><Wrench className="w-4 h-4" /></div><h3 className="text-sm font-black uppercase tracking-widest text-slate-800">Carga de Mantenimiento Preventivo SAP</h3></div>
             <div className="border border-slate-200 rounded-[2.5rem] overflow-hidden bg-white shadow-xl">
               <div className="overflow-x-auto max-h-[600px]">
                 <table className="w-full text-center border-collapse text-[10px]">
                   <thead className="bg-[#0f172a] text-white border-b border-white/5 uppercase font-black tracking-widest text-[8px] sticky top-0 z-10">
                     <tr>
-                      <th className="px-6 py-5 border-r border-white/5">Planta</th>
-                      <th className="px-6 py-5 border-r border-white/5">Área</th>
-                      <th className="px-6 py-5 border-r border-white/5">ID OT</th>
-                      <th className="px-6 py-5 border-r border-white/5">Máquina</th>
-                      <th className="px-6 py-5 border-r border-white/5">Inicio</th>
-                      <th className="px-6 py-5 border-r border-white/5">Fin</th>
-                      <th className="px-6 py-5 text-indigo-300 bg-indigo-900/40 uppercase font-black">TIEMPO_MANTENIMIENTO (MIN)</th>
+                      <th className="px-6 py-5 border-r border-white/5">Planta</th><th className="px-6 py-5 border-r border-white/5">ID OT</th><th className="px-6 py-5 border-r border-white/5">Máquina</th><th className="px-6 py-5 border-r border-white/5">Inicio</th><th className="px-6 py-5 border-r border-white/5">Fin</th><th className="px-6 py-5 text-indigo-300 bg-indigo-900/40 uppercase font-black tracking-tighter">TIEMPO_MANTENIMIENTO (MIN)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-black text-[11px] text-slate-700">
-                    {mantenimientosSAP.length === 0 ? (
-                      <tr><td colSpan={7} className="py-24 text-slate-300 uppercase font-black tracking-widest italic opacity-50 text-center">Sin mantenimientos programados detectados</td></tr>
-                    ) : (
+                    {mantenimientosSAP.length === 0 ? (<tr><td colSpan={6} className="py-24 text-slate-300 uppercase font-black tracking-widest italic opacity-50 text-center">Sin mantenimientos programados detectados</td></tr>) : (
                       mantenimientosSAP.map((row, i) => {
                         const iniStr = getProp(row, ['FECHA_OT_PRG_INI']);
                         const finStr = getProp(row, ['FECHA_OT_PRG_FIN']);
@@ -706,7 +598,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         return (
                           <tr key={i} className="hover:bg-indigo-50/10 transition-colors">
                             <td className="px-6 py-3 border-r border-dashed border-gray-100 uppercase">{getProp(row, ['PLANTA'])}</td>
-                            <td className="px-6 py-3 border-r border-dashed border-gray-100 uppercase">{getProp(row, ['AREA'])}</td>
                             <td className="px-6 py-3 border-r border-dashed border-gray-100 font-mono text-indigo-600">{getProp(row, ['OT_PRG_ID'])}</td>
                             <td className="px-6 py-3 border-r border-dashed border-gray-100 uppercase">{getProp(row, ['MAQUINA'])}</td>
                             <td className="px-6 py-3 border-r border-dashed border-gray-100 font-mono text-center">{iniStr}</td>
