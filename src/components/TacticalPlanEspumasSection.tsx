@@ -43,8 +43,8 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths,
 import { es } from 'date-fns/locale';
 
 // --- CONSTANTES TÉCNICAS INGENIERÍA ---
-const CAROUSEL_RADIO_CM = 320; 
-const CAROUSEL_CIRCUMFERENCE = 2 * Math.PI * CAROUSEL_RADIO_CM; // ~2010.6 cm
+const CAROUSEL_DIAMETER_CM = 320; 
+const CAROUSEL_CIRCUMFERENCE = Math.PI * CAROUSEL_DIAMETER_CM; // ~1005.3 cm
 const EFFICIENCY_FACTOR = 0.87;
 
 interface UnifiedRow {
@@ -123,7 +123,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanEspumas');
   const { addNotification } = useAppContext();
 
-  // --- Funciones de Utilidad (definidas antes del uso para evitar errores de inicialización) ---
+  // --- Funciones de Utilidad (Inyectadas al inicio para evitar errores de inicialización) ---
   const extractMaterialInfo = useCallback((item: any) => {
     const matStr = getProp(item, ['MATERIAL', 'Material', 'CodMaterial']);
     const nameStr = getProp(item, ['NOMBRE', 'NombreMaterial', 'Descripcion']);
@@ -190,7 +190,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const gap = 15;
       const capGiro = info.ancho > 0 ? Math.floor(CAROUSEL_CIRCUMFERENCE / (info.ancho + gap)) : 0;
       const nBatchesRaw = capGiro > 0 ? subB / capGiro : 0;
-      // REDONDEO SUPERIOR INDUSTRIAL SOLICITADO
+      // REDONDEO SUPERIOR INDUSTRIAL
       const nBatches = Math.ceil(nBatchesRaw); 
 
       const tMatch = tiemposCatalogo.find(t => cleanCode(t.CodMaterial) === info.code && String(t.Centro).trim() === centroId);
@@ -257,16 +257,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
   const totalPlannedUIO = useMemo(() => provAuditUIO.reduce((s, r) => s + r.tTotal, 0) + fertAuditUIO.reduce((s, r) => s + r.tTotal, 0), [provAuditUIO, fertAuditUIO]);
   const totalPlannedGYE = useMemo(() => provAuditGYE.reduce((s, r) => s + r.tTotal, 0) + fertAuditGYE.reduce((s, r) => s + r.tTotal, 0), [provAuditGYE, fertAuditGYE]);
-
-  const calendarDaysList = useMemo(() => {
-    if (!mounted) return [];
-    const start = startOfMonth(viewDate);
-    const end = endOfMonth(viewDate);
-    const days = eachDayOfInterval({ start, end });
-    const startDay = getDay(start);
-    const padding = startDay === 0 ? 6 : startDay - 1;
-    return [...Array(padding).fill(null), ...days];
-  }, [viewDate, mounted]);
 
   const datesWithOrders = useMemo(() => {
     const dates = new Set<string>();
@@ -413,7 +403,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const p2 = (config.parosT2[id] || 0) / 100;
     const performance = (config.performance || 0) / 100;
     
-    // Fórmula de disponibilidad industrial
     const tDisponible = ((diaShift * (1 - p1)) + (nightShift * (1 - p2))) * performance * EFFICIENCY_FACTOR;
 
     return (
@@ -464,7 +453,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const renderResumen = () => {
     return (
       <div className="space-y-12">
-        {/* --- PANEL QUITO 1000 --- */}
         <div className="bg-[#1e293b] border border-slate-700 rounded-3xl shadow-2xl overflow-hidden font-sans text-white">
           <div className="grid grid-cols-12">
             <div className="col-span-2 p-4 border-r border-slate-700 bg-slate-900/50 flex flex-col justify-between">
@@ -518,7 +506,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           </div>
         </div>
 
-        {/* --- PANEL GUAYAQUIL 2000 --- */}
         <div className="bg-[#1e293b] border border-slate-700 rounded-3xl shadow-2xl overflow-hidden font-sans text-white">
           <div className="grid grid-cols-12">
             <div className="col-span-2 p-4 border-r border-slate-700 bg-slate-900/50 flex flex-col justify-between">
