@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -123,6 +124,16 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanEspumas');
   const { addNotification } = useAppContext();
 
+  // --- Funciones de Utilidad (definidas antes del uso) ---
+  const extractMaterialInfo = useCallback((item: any) => {
+    const matStr = getProp(item, ['MATERIAL', 'Material', 'CodMaterial']);
+    const nameStr = getProp(item, ['NOMBRE', 'NombreMaterial', 'Descripcion']);
+    const code = matStr.match(/^\d+/) ? matStr.match(/^\d+/)?.[0].slice(-8) : matStr.slice(-8);
+    const desc = nameStr || matStr.replace(/^\d+\s*/, '') || '—';
+    const dims = parseDimensions(desc);
+    return { code, desc, ...dims };
+  }, []);
+
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState('resumen');
   const [isLoading, setIsLoading] = useState(true);
@@ -168,15 +179,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     { v: 'H2', l: '21:00 - 05:30', h: 8.5 }
   ];
 
-  const extractMaterialInfo = useCallback((item: any) => {
-    const matStr = getProp(item, ['MATERIAL', 'Material', 'CodMaterial']);
-    const nameStr = getProp(item, ['NOMBRE', 'NombreMaterial', 'Descripcion']);
-    const code = matStr.match(/^\d+/) ? matStr.match(/^\d+/)?.[0].slice(-8) : matStr.slice(-8);
-    const desc = nameStr || matStr.replace(/^\d+\s*/, '') || '—';
-    const dims = parseDimensions(desc);
-    return { code, desc, ...dims };
-  }, []);
-
   const auditMapper = useCallback((data: any[], centroId: string): UnifiedRow[] => {
     return data.map(o => {
       const info = extractMaterialInfo(o);
@@ -189,7 +191,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const gap = 15;
       const capGiro = info.ancho > 0 ? Math.floor(CAROUSEL_CIRCUMFERENCE / (info.ancho + gap)) : 0;
       const nBatchesRaw = capGiro > 0 ? subB / capGiro : 0;
-      const nBatches = Math.ceil(nBatchesRaw); 
+      const nBatches = Math.ceil(nBatchesRaw); // Redondeo superior industrial
 
       const tMatch = tiemposCatalogo.find(t => cleanCode(t.CodMaterial) === info.code && String(t.Centro).trim() === centroId);
       const tIndiv = tMatch ? safeNum(tMatch.Tiempo || tMatch.Tiempo_Min) : 0;
@@ -341,10 +343,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                   <th className="px-3 py-4 border-r border-white/5">Stock Kg</th>
                   <th className="px-3 py-4 border-r border-white/10 bg-indigo-500/20">T. Indiv</th>
                   <th className="px-4 py-4 border-r border-white/10 bg-indigo-600">T. Total H</th>
-                  <th className="px-3 py-4 border-r border-white/5 bg-amber-500/20 text-amber-300">Batches</th>
+                  <th className="px-3 py-4 border-r border-white/5 bg-amber-500/20 text-amber-300">Cargas</th>
                   <th className="px-3 py-4 border-r border-white/5">Und/Batch</th>
                   <th className="px-3 py-4 border-r border-white/5">SUB_Bloque</th>
-                  <th className="px-3 py-4 border-r border-white/5">Pla/ALM</th>
+                  <th className="px-3 py-4 border-r border-white/5">Planta/ALM</th>
                   <th className="px-3 py-4 border-r border-white/5">Resp. CP</th>
                   <th className="px-3 py-4">Orden</th>
                 </tr>
@@ -405,11 +407,14 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   };
 
   const renderMachineColumn = (id: string, name: string, config: any, setConfig: any) => {
-    const tTotal = (shiftOptions.find(o => o.v === config.shift)?.h || 0) + (nightShiftOptions.find(o => o.v === config.nightShift)?.h || 0);
+    const diaShift = shiftOptions.find(o => o.v === config.shift)?.h || 0;
+    const nightShift = nightShiftOptions.find(o => o.v === config.nightShift)?.h || 0;
     const p1 = (config.paros[id] || 0) / 100;
     const p2 = (config.parosT2[id] || 0) / 100;
     const performance = (config.performance || 0) / 100;
-    const tDisponible = tTotal * (1 - p1) * (1 - p2) * performance * EFFICIENCY_FACTOR;
+    
+    // Fórmula de disponibilidad industrial
+    const tDisponible = ((diaShift * (1 - p1)) + (nightShift * (1 - p2))) * performance * EFFICIENCY_FACTOR;
 
     return (
       <div key={id} className="flex flex-col border-r border-slate-700 last:border-r-0 min-w-[140px]">
@@ -619,7 +624,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     );
   };
 
-  if (!mounted) return <div className="p-4 md:p-6 min-h-screen bg-white" />;
+  if (!mounted) {
+    return <div className="p-4 md:p-6 min-h-screen bg-white rounded-xl border border-gray-100 shadow-sm" />;
+  }
 
   return (
     <div className="p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left">
