@@ -44,7 +44,7 @@ import { es } from 'date-fns/locale';
 
 // --- CONSTANTES TÉCNICAS INGENIERÍA ---
 const CAROUSEL_DIAMETER_CM = 320; 
-const CAROUSEL_CIRCUMFERENCE = Math.PI * CAROUSEL_DIAMETER_CM; // ~1005.3 cm
+const CAROUSEL_CIRCUMFERENCE = Math.PI * CAROUSEL_DIAMETER_CM; 
 const EFFICIENCY_FACTOR = 0.87;
 
 interface UnifiedRow {
@@ -143,14 +143,14 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const [uioConfig, setUioConfig] = useState({
     shift: 'H1', nightShift: 'EMPTY', performance: 90,
     paros: { CR04: 13, CR03: 13, CR01: 13, CNC01: 13 },
-    parosT2: { CR04: 0, CR03: 0, CR01: 0, CNC01: 0 },
+    parosT2: { CR04: 13, CR03: 13, CR01: 13, CNC01: 13 },
     personnel: {} as Record<string, any>
   });
 
   const [gyeConfig, setGyeConfig] = useState({
     shift: 'H1', nightShift: 'EMPTY', performance: 75,
     paros: { CR02: 13, CR01: 13, LA02: 13 },
-    parosT2: { CR02: 0, CR01: 0, LA02: 0 },
+    parosT2: { CR02: 13, CR01: 13, LA02: 13 },
     personnel: {} as Record<string, any>
   });
 
@@ -168,6 +168,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     { v: 'H2', l: '21:00 - 05:30', h: 8.5 }
   ];
 
+  // Fix: Move function definition up to avoid initialization error
   const extractMaterialInfo = useCallback((item: any) => {
     const matStr = getProp(item, ['MATERIAL', 'Material', 'CodMaterial']);
     const nameStr = getProp(item, ['NOMBRE', 'NombreMaterial', 'Descripcion']);
@@ -188,9 +189,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       
       const gap = 15;
       const capGiro = info.ancho > 0 ? Math.floor(CAROUSEL_CIRCUMFERENCE / (info.ancho + gap)) : 0;
-      const nBatchesRaw = capGiro > 0 ? subB / capGiro : 0;
-      // REDONDEO SUPERIOR INDUSTRIAL
-      const nBatches = Math.ceil(nBatchesRaw); 
+      
+      // LOGICA DE BATCH CON REDONDEO SUPERIOR
+      const nBatches = Math.ceil(capGiro > 0 ? subB / capGiro : 0);
 
       const tMatch = tiemposCatalogo.find(t => cleanCode(t.CodMaterial) === info.code && String(t.Centro).trim() === centroId);
       const tIndiv = tMatch ? safeNum(tMatch.Tiempo || tMatch.Tiempo_Min) : 0;
