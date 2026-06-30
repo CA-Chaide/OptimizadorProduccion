@@ -186,7 +186,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const densVal = safeNum(info.dens);
       const usefulHeight = densVal < 30 ? 103 : 85;
       const hTotal = info.esp * qty;
-      const subB = usefulHeight > 0 ? (info.ancho * info.largo * hTotal) / (usefulHeight * 2000 * 100) : 0;
+      const subB = usefulHeight > 0 ? (info.ancho * info.largo * hTotal) / (usefulHeight * BLOCK_LENGTH_METERS * 100) : 0;
       
       const gap = 15;
       const capGiro = info.ancho > 0 ? Math.floor(CAROUSEL_CIRCUMFERENCE_CM / (info.ancho + gap)) : 0;
@@ -577,6 +577,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
   if (!mounted) return <div className={headerStyles} />;
 
+  if (isLoading) return (
+    <div className="flex flex-col items-center justify-center p-20 gap-4">
+      <Loader2 className="w-10 h-10 animate-spin text-primary" />
+      <p className="text-xs font-bold text-gray-400 uppercase tracking-widest animate-pulse">Sincronizando SAP...</p>
+    </div>
+  );
+
   return (
     <div className={headerStyles}>
       <div className="flex items-center justify-between pb-4 border-b border-gray-100">
@@ -631,31 +638,41 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <TabsContent value="ordenes" className="animate-in fade-in duration-300 space-y-10">{renderAuditTable(provAuditUIO, "AUDITORÍA TÉCNICA QUITO (1000) — PROVISIONALES")}{renderAuditTable(provAuditGYE, "AUDITORÍA TÉCNICA GUAYAQUIL (2000) — PROVISIONALES")}</TabsContent>
           <TabsContent value="ordenesFert" className="animate-in fade-in duration-300 space-y-10">{renderAuditTable(fertAuditUIO, "AUDITORÍA TÉCNICA QUITO (1000) — ÓRDENES FERT")}{renderAuditTable(fertAuditGYE, "AUDITORÍA TÉCNICA GUAYAQUIL (2000) — ÓRDENES FERT")}</TabsContent>
           <TabsContent value="mantenimiento" className="animate-in fade-in duration-300 text-left space-y-4">
-            <div className="flex items-center gap-3 px-2"><div className="p-2 bg-indigo-600 rounded-xl text-white shadow-lg"><Wrench className="w-4 h-4" /></div><h3 className="text-sm font-black uppercase tracking-widest text-slate-800">Carga de Mantenimiento Preventivo SAP</h3></div>
+            <div className="flex items-center gap-3 px-2">
+              <div className="p-2 bg-indigo-600 rounded-xl text-white shadow-lg"><Wrench className="w-4 h-4" /></div>
+              <h3 className="text-sm font-black uppercase tracking-widest text-slate-800">Carga de Mantenimiento Preventivo SAP</h3>
+            </div>
             <div className="border border-slate-200 rounded-[2.5rem] overflow-hidden bg-white shadow-xl">
               <div className="overflow-x-auto max-h-[600px]">
                 <table className="w-full text-center border-collapse text-[10px]">
                   <thead className="bg-[#0f172a] text-white border-b border-white/5 uppercase font-black tracking-widest text-[8px] sticky top-0 z-10">
                     <tr>
-                      <th className="px-6 py-5 border-r border-white/5">Planta</th><th className="px-6 py-5 border-r border-white/5">ID OT</th><th className="px-6 py-5 border-r border-white/5">Máquina</th><th className="px-6 py-5 border-r border-white/5">Inicio</th><th className="px-6 py-5 border-r border-white/5">Fin</th><th className="px-6 py-5 text-indigo-300 bg-indigo-900/40 uppercase font-black tracking-tighter">TIEMPO_MANTENIMIENTO (MIN)</th>
+                      <th className="px-6 py-5 border-r border-white/5">Planta</th>
+                      <th className="px-6 py-5 border-r border-white/5">ID OT</th>
+                      <th className="px-6 py-5 border-r border-white/5">Máquina</th>
+                      <th className="px-6 py-5 border-r border-white/5">Inicio</th>
+                      <th className="px-6 py-5 border-r border-white/5">Fin</th>
+                      <th className="px-6 py-5 text-indigo-300 bg-indigo-900/40 uppercase font-black tracking-tighter">T_MTTO_PLANIFICADO (H)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-black text-[11px] text-slate-700">
-                    {mantenimientosSAP.length === 0 ? (<tr><td colSpan={6} className="py-24 text-slate-300 uppercase font-black tracking-widest italic opacity-50 text-center">Sin mantenimientos programados detectados</td></tr>) : (
+                    {mantenimientosSAP.length === 0 ? (
+                      <tr><td colSpan={6} className="py-24 text-slate-300 uppercase font-black tracking-widest italic opacity-50 text-center">Sin mantenimientos programados detectados</td></tr>
+                    ) : (
                       mantenimientosSAP.map((row, i) => {
                         const iniStr = getProp(row, ['FECHA_OT_PRG_INI']);
                         const finStr = getProp(row, ['FECHA_OT_PRG_FIN']);
                         const ini = new Date(iniStr);
                         const fin = new Date(finStr);
-                        const diffMin = isValid(ini) && isValid(fin) ? Math.round((fin.getTime() - ini.getTime()) / 60000) : 0;
+                        const diffHrs = isValid(ini) && isValid(fin) ? (fin.getTime() - ini.getTime()) / 3600000 : 0;
                         return (
                           <tr key={i} className="hover:bg-indigo-50/10 transition-colors">
                             <td className="px-6 py-3 border-r border-dashed border-gray-100 uppercase">{getProp(row, ['PLANTA'])}</td>
                             <td className="px-6 py-3 border-r border-dashed border-gray-100 font-mono text-indigo-600">{getProp(row, ['OT_PRG_ID'])}</td>
-                            <td className="px-6 py-3 border-r border-dashed border-gray-100 uppercase">{getProp(row, ['MAQUINA'])}</td>
+                            <td className="px-6 py-3 border-r border-dashed border-gray-100 uppercase font-black">{getProp(row, ['MAQUINA'])}</td>
                             <td className="px-6 py-3 border-r border-dashed border-gray-100 font-mono text-center">{iniStr}</td>
                             <td className="px-6 py-3 border-r border-dashed border-gray-100 font-mono text-center">{finStr}</td>
-                            <td className="px-6 py-3 font-mono text-indigo-700 bg-indigo-50/30 text-center">{diffMin}</td>
+                            <td className="px-6 py-3 font-mono text-indigo-700 bg-indigo-50/30 text-center font-black">{diffHrs.toFixed(2)}</td>
                           </tr>
                         );
                       })
