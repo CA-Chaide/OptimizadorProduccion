@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -43,6 +42,7 @@ import { es } from 'date-fns/locale';
 
 // --- CONSTANTES TÉCNICAS PLANTA ---
 const CAROUSEL_CIRCUMFERENCE_CM = 320; 
+const BLOCK_LENGTH_METERS = 20;
 const EFFICIENCY_FACTOR = 0.87;
 
 interface UnifiedRow {
@@ -244,15 +244,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const provAuditGYE = useMemo(() => auditMapper(getFilteredData(ordenesProvisionales, '2000'), '2000'), [auditMapper, getFilteredData, ordenesProvisionales]);
   const fertAuditUIO = useMemo(() => auditMapper(getFilteredData(ordenesFert, '1000'), '1000'), [auditMapper, getFilteredData, ordenesFert]);
   const fertAuditGYE = useMemo(() => auditMapper(getFilteredData(ordenesFert, '2000'), '2000'), [auditMapper, getFilteredData, ordenesFert]);
-
-  const calendarDaysList = useMemo(() => {
-    const start = startOfMonth(viewDate);
-    const end = endOfMonth(viewDate);
-    const days = eachDayOfInterval({ start, end });
-    const startDay = getDay(start);
-    const padding = startDay === 0 ? 6 : startDay - 1;
-    return [...Array(padding).fill(null), ...days];
-  }, [viewDate]);
 
   const datesWithOrders = useMemo(() => {
     const dates = new Set<string>();
@@ -530,7 +521,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                            {isExp ? <Minus className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
                            {key.split('|')[0]} — {key.split('|')[1]}
                         </td>
-                        <td colSpan={5} className="text-right pr-6 italic opacity-30 uppercase font-black tracking-widest text-[9px]">Subtotales de Bloque:</td>
+                        <td colSpan={4} className="text-right pr-6 italic opacity-30 uppercase font-black tracking-widest text-[9px]">Subtotales de Bloque:</td>
+                        <td className="border-r border-slate-50"></td>
                         <td className="px-3 py-3 font-black text-slate-900 bg-yellow-500/10 text-center">{formatNum(tCant, 0)}</td>
                         <td className="px-3 py-3 font-black text-slate-400 opacity-40">{formatNum(tKg, 0)}</td>
                         <td colSpan={4} className="border-r border-slate-50"></td>
