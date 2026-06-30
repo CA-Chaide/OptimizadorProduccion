@@ -1,14 +1,14 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { serviciosService } from '@/services/servicios.service';
 import { useAppContext } from '@/context/AppProvider';
-import { Package, Loader2, Search, Clock, Calendar, LayoutDashboard, History } from 'lucide-react';
+import { Package, Loader2, Search, Clock, Calendar, LayoutDashboard, History, PlayCircle, Settings2, CheckCircle2 } from 'lucide-react';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
 import type { Restriccion } from '@/types/interfaces';
 
@@ -17,20 +17,18 @@ interface ProvisionalOrdersAlphaTabProps {
   tiemposData?: any[];
 }
 
-interface PaginationState {
-  currentPage: number;
-  totalRegistros: number;
-  pageSize: number;
-  isExploring: boolean;
-  rowsPerPage: number;
-}
-
 const ROWS_PER_PAGE_OPTIONS = [20, 50, 100, 500];
 
 const normalizeMaterialCode = (code: string | number): string => {
   const codeStr = String(code).trim();
   return codeStr.slice(-8);
 };
+
+// Generar lista de mesas 1 a 14
+const WORK_TABLES = Array.from({ length: 14 }, (_, i) => ({
+  id: i + 1,
+  name: `MESA DE TRABAJO ${i + 1}`
+}));
 
 export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps> = ({ restricciones, tiemposData = [] }) => {
     const { addNotification } = useAppContext();
@@ -42,6 +40,9 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
     const [rowsPerPage, setRowsPerPage] = useState(100); 
     const [downloadProgress, setDownloadProgress] = useState({ current: 0, total: 0 });
     const [deliveryDatesMap, setDeliveryDatesMap] = useState<Map<string, string>>(new Map());
+    
+    // Estado para Mesas de Trabajo Habilitadas
+    const [activeTables, setActiveTables] = useState<Set<number>>(new Set(WORK_TABLES.map(t => t.id)));
 
     // Refs para el sistema de scrollbar doble
     const topScrollRef = useRef<HTMLDivElement>(null);
@@ -235,7 +236,6 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
         return filteredData.slice(start, start + rowsPerPage);
     }, [filteredData, currentPage, rowsPerPage]);
 
-    // Orden de columnas solicitado: Disponibilidad al lado de CANTIDAD
     const displayColumns = useMemo(() => {
       if (allRawData.length === 0) return [];
       
@@ -292,9 +292,74 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
         }
     };
 
+    const toggleTableSelection = (id: number) => {
+        setActiveTables(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    };
+
+    const handleRunPlanning = () => {
+        if (activeTables.size === 0) {
+            addNotification('warning', 'Debe seleccionar al menos una mesa de trabajo para ejecutar la planificación.');
+            return;
+        }
+        addNotification('info', 'Ejecutando proceso de planificación táctica...');
+        // Lógica futura se agregará aquí
+    };
+
     return (
         <div className="space-y-4">
-            <div className="flex flex-col space-y-4">
+            <div className="flex flex-col space-y-6">
+                
+                {/* SECCIÓN DE CONFIGURACIÓN DE CAPACIDAD (MESAS) */}
+                <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                    <div className="flex items-center gap-2 mb-4">
+                        <Settings2 className="w-5 h-5 text-indigo-600" />
+                        <h3 className="text-sm font-bold text-gray-800 uppercase tracking-tight">Configuración de Mesas de Trabajo Disponibles</h3>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+                        <div className="lg:col-span-3">
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-x-6 gap-y-3">
+                                {WORK_TABLES.map(table => (
+                                    <div key={table.id} className="flex items-center space-x-3 p-1 hover:bg-gray-50 rounded transition-colors group">
+                                        <Checkbox 
+                                            id={`table-${table.id}`} 
+                                            checked={activeTables.has(table.id)}
+                                            onCheckedChange={() => toggleTableSelection(table.id)}
+                                            className="data-[state=checked]:bg-indigo-600 border-gray-300"
+                                        />
+                                        <label 
+                                            htmlFor={`table-${table.id}`}
+                                            className="text-xs font-semibold text-gray-700 cursor-pointer select-none group-hover:text-indigo-600"
+                                        >
+                                            {table.name}
+                                        </label>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="flex flex-col justify-center gap-4 border-l pl-8 border-gray-100">
+                            <div className="text-center">
+                                <p className="text-[10px] font-bold text-gray-400 uppercase">Capacidad Habilitada</p>
+                                <p className="text-2xl font-black text-indigo-700">{activeTables.size} <span className="text-xs font-medium text-gray-500">Mesas</span></p>
+                            </div>
+                            <Button 
+                                onClick={handleRunPlanning}
+                                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold gap-2 py-6 shadow-indigo-200 shadow-lg"
+                                disabled={isLoading || allRawData.length === 0}
+                            >
+                                <PlayCircle className="w-5 h-5" />
+                                EJECUTAR PLANIFICACIÓN
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+
                 <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
                     <div className="flex flex-col gap-2 flex-1">
                         <div className="relative w-full md:w-96">
@@ -305,21 +370,6 @@ export const ProvisionalOrdersAlphaTab: React.FC<ProvisionalOrdersAlphaTabProps>
                                 value={searchTerm}
                                 onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
                             />
-                        </div>
-                        
-                        <div className="flex flex-wrap gap-4 items-center">
-                            {validRespCodes.length > 0 && (
-                                <div className="flex items-center gap-2">
-                                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Responsables:</span>
-                                    <div className="flex gap-1">
-                                        {validRespCodes.map(code => (
-                                            <Badge key={code} variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200 text-[10px] px-2 py-0">
-                                                {code}
-                                            </Badge>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
                         </div>
                     </div>
                     <Button 
