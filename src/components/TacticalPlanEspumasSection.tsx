@@ -327,6 +327,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         return (mId === machineId || machineId.includes(mId)) && pId.includes(plantaKey);
       })
       .reduce((sum, row) => {
+        const val = safeNum(getProp(row, ['T_MTTO_PLANIFICADO', 't_mtto_planificado']));
+        if (val > 0) return sum + (val * 60);
         const ini = new Date(getProp(row, ['FECHA_OT_PRG_INI']));
         const fin = new Date(getProp(row, ['FECHA_OT_PRG_FIN']));
         if (isValid(ini) && isValid(fin)) {
@@ -667,7 +669,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         const finStr = getProp(row, ['FECHA_OT_PRG_FIN']);
                         const ini = new Date(iniStr);
                         const fin = new Date(finStr);
-                        const diffHrs = isValid(ini) && isValid(fin) ? (fin.getTime() - ini.getTime()) / 3600000 : 0;
+                        const diffHrs = safeNum(getProp(row, ['T_MTTO_PLANIFICADO', 't_mtto_planificado'])) || (isValid(ini) && isValid(fin) ? (fin.getTime() - ini.getTime()) / 3600000 : 0);
                         return (
                           <tr key={i} className="hover:bg-indigo-50/10 transition-colors">
                             <td className="px-6 py-3 border-r border-dashed border-gray-100 uppercase">{getProp(row, ['PLANTA'])}</td>
