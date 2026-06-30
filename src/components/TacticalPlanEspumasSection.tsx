@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -37,7 +38,7 @@ import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
 import type { Grupo } from '@/types/interfaces';
 import { cn } from '@/lib/utils';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, isValid } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isValid } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 // --- CONSTANTES TÉCNICAS PLANTA ---
@@ -75,7 +76,7 @@ interface UnifiedRow {
 }
 
 const safeNum = (val: any): number => {
-  const n = Number(val);
+  const n = Number(String(val || '').replace(/[^0-9.-]/g, ''));
   return isNaN(n) ? 0 : n;
 };
 
@@ -329,8 +330,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       .reduce((sum, row) => {
         const val = safeNum(getProp(row, ['T_MTTO_PLANIFICADO', 't_mtto_planificado']));
         if (val > 0) return sum + (val * 60);
-        const ini = new Date(getProp(row, ['FECHA_OT_PRG_INI']));
-        const fin = new Date(getProp(row, ['FECHA_OT_PRG_FIN']));
+        const iniStr = getProp(row, ['FECHA_OT_PRG_INI']);
+        const finStr = getProp(row, ['FECHA_OT_PRG_FIN']);
+        const ini = new Date(iniStr);
+        const fin = new Date(finStr);
         if (isValid(ini) && isValid(fin)) {
           return sum + (fin.getTime() - ini.getTime()) / 60000;
         }
@@ -645,38 +648,47 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <TabsContent value="mantenimiento" className="animate-in fade-in duration-300 text-left space-y-4">
             <div className="flex items-center gap-3 px-2">
               <div className="p-2 bg-indigo-600 rounded-xl text-white shadow-lg"><Wrench className="w-4 h-4" /></div>
-              <h3 className="text-sm font-black uppercase tracking-widest text-slate-800">Carga de Mantenimiento Preventivo SAP</h3>
+              <h3 className="text-sm font-black uppercase tracking-widest text-slate-800">Mantenimientos Preventivos Programados (SAP)</h3>
             </div>
             <div className="border border-slate-200 rounded-[2.5rem] overflow-hidden bg-white shadow-xl">
               <div className="overflow-x-auto max-h-[600px]">
                 <table className="w-full text-center border-collapse text-[10px]">
                   <thead className="bg-[#0f172a] text-white border-b border-white/5 uppercase font-black tracking-widest text-[8px] sticky top-0 z-10">
                     <tr>
+                      <th className="px-4 py-5 border-r border-white/5">ID Planta</th>
                       <th className="px-6 py-5 border-r border-white/5">Planta</th>
-                      <th className="px-6 py-5 border-r border-white/5">ID OT</th>
+                      <th className="px-4 py-5 border-r border-white/5">ID Área</th>
+                      <th className="px-6 py-5 border-r border-white/5">Área</th>
+                      <th className="px-4 py-5 border-r border-white/5">ID Máquina</th>
                       <th className="px-6 py-5 border-r border-white/5">Máquina</th>
-                      <th className="px-6 py-5 border-r border-white/5">Inicio</th>
-                      <th className="px-6 py-5 border-r border-white/5">Fin</th>
-                      <th className="px-6 py-5 text-indigo-300 bg-indigo-900/40 uppercase font-black tracking-tighter">T_MTTO_PLANIFICADO (H)</th>
+                      <th className="px-4 py-5 border-r border-white/5">ID OT</th>
+                      <th className="px-5 py-5 border-r border-white/5">Inicio</th>
+                      <th className="px-5 py-5 border-r border-white/5">Fin</th>
+                      <th className="px-6 py-5 text-indigo-300 bg-indigo-900/40 uppercase font-black tracking-tighter">Tiempo (H)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-black text-[11px] text-slate-700">
                     {mantenimientosSAP.length === 0 ? (
-                      <tr><td colSpan={6} className="py-24 text-slate-300 uppercase font-black tracking-widest italic opacity-50 text-center">Sin mantenimientos programados detectados</td></tr>
+                      <tr><td colSpan={10} className="py-24 text-slate-300 uppercase font-black tracking-widest italic opacity-50 text-center">Sin mantenimientos programados detectados</td></tr>
                     ) : (
                       mantenimientosSAP.map((row, i) => {
-                        const iniStr = getProp(row, ['FECHA_OT_PRG_INI']);
-                        const finStr = getProp(row, ['FECHA_OT_PRG_FIN']);
+                        const iniStr = getProp(row, ['FECHA_OT_PRG_INI']).trim();
+                        const finStr = getProp(row, ['FECHA_OT_PRG_FIN']).trim();
                         const ini = new Date(iniStr);
                         const fin = new Date(finStr);
                         const diffHrs = safeNum(getProp(row, ['T_MTTO_PLANIFICADO', 't_mtto_planificado'])) || (isValid(ini) && isValid(fin) ? (fin.getTime() - ini.getTime()) / 3600000 : 0);
+                        
                         return (
                           <tr key={i} className="hover:bg-indigo-50/10 transition-colors">
+                            <td className="px-4 py-3 border-r border-dashed border-gray-100 uppercase opacity-40">{getProp(row, ['ID_PLANTA'])}</td>
                             <td className="px-6 py-3 border-r border-dashed border-gray-100 uppercase">{getProp(row, ['PLANTA'])}</td>
-                            <td className="px-6 py-3 border-r border-dashed border-gray-100 font-mono text-indigo-600">{getProp(row, ['OT_PRG_ID'])}</td>
-                            <td className="px-6 py-3 border-r border-dashed border-gray-100 uppercase font-black">{getProp(row, ['MAQUINA'])}</td>
-                            <td className="px-6 py-3 border-r border-dashed border-gray-100 font-mono text-center">{iniStr}</td>
-                            <td className="px-6 py-3 border-r border-dashed border-gray-100 font-mono text-center">{finStr}</td>
+                            <td className="px-4 py-3 border-r border-dashed border-gray-100 uppercase opacity-40">{getProp(row, ['ID_AREA'])}</td>
+                            <td className="px-6 py-3 border-r border-dashed border-gray-100 uppercase">{getProp(row, ['AREA'])}</td>
+                            <td className="px-4 py-3 border-r border-dashed border-gray-100 uppercase font-bold text-red-600">{getProp(row, ['ID_MAQUINA'])}</td>
+                            <td className="px-6 py-3 border-r border-dashed border-gray-100 uppercase font-black text-left">{getProp(row, ['MAQUINA'])}</td>
+                            <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-indigo-600">{getProp(row, ['OT_PRG_ID'])}</td>
+                            <td className="px-5 py-3 border-r border-dashed border-gray-100 font-mono text-center text-slate-400">{iniStr}</td>
+                            <td className="px-5 py-3 border-r border-dashed border-gray-100 font-mono text-center text-slate-400">{finStr}</td>
                             <td className="px-6 py-3 font-mono text-indigo-700 bg-indigo-50/30 text-center font-black">{diffHrs.toFixed(2)}</td>
                           </tr>
                         );
