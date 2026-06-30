@@ -139,7 +139,7 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
     loadData();
   }, [loadData]);
 
-  // Helper para mapear líneas según categoría (L1, L2, L3, L5)
+  // Helper para mapePerform mapear líneas según categoría (L1, L2, L3, L5)
   const mapOrderLine = (order: any): string => {
     const cat = String(order.CATEGORIA || order.Categoria || '').toUpperCase();
     if (cat.includes('L1')) return 'LINEA 1';
@@ -399,7 +399,7 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
           codigo_familia_grupo: 1, 
           valor: `Plan Táctico - Centro ${centerId}`,
           fecha_inicio_plan: now,
-          fecha_fin_plan: now,
+          fecha_inicio_plan: now,
           estado: 'A',
           fecha_creacion: now,
           usuario_creacion: 'Admin'
@@ -484,21 +484,14 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
           ))}
         </TabsList>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-5 gap-4 p-4 bg-gray-50 border rounded-xl shadow-sm mb-4">
-          <div className="flex flex-col gap-1">
+        <div className="flex flex-wrap gap-4 p-4 bg-gray-50 border rounded-xl shadow-sm mb-4">
+          <div className="flex flex-col gap-1 w-48">
             <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Fecha FERT:</label>
             <input type="date" value={programmingDate} onChange={e => setProgrammingDate(e.target.value)} className="text-xs border rounded-md px-2 py-2 outline-none h-9 font-medium text-indigo-700" />
           </div>
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1 w-48">
             <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Fecha PREV:</label>
             <input type="date" value={provisionalDate} onChange={e => setProvisionalDate(e.target.value)} className="text-xs border rounded-md px-2 py-2 outline-none h-9 font-medium text-indigo-700" />
-          </div>
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-2 flex items-center gap-2 lg:col-span-3">
-            <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0" />
-            <div className="text-[10px] text-blue-800 leading-tight">
-              <p><b>Balanceo Automático:</b> El sistema ajusta las cantidades de materiales <b>Ajustables</b> para que el Tiempo Total coincida con el Tiempo Disponible configurado.</p>
-              <p className="mt-0.5">Los totales al pie de la tabla se actualizan según los filtros aplicados.</p>
-            </div>
           </div>
         </div>
 
@@ -727,7 +720,7 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
         <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
         <div className="text-[11px] text-blue-800 space-y-1">
           <p><b>Asignación Técnica:</b> El sistema ahora vincula los pedidos únicamente a las líneas de fabricación definidas para cada material en el maestro de tiempos.</p>
-          <p><b>Balanceo Automático:</b> El ajuste de cantidades se aplica sobre los materiales <b>Ajustables</b> para que la carga horaria total no exceda la capacidad definida en Rev Capacidad.</p>
+          <p><b>Balanceo Automático:</b> El sistema ajusta las cantidades de materiales <b>Ajustables</b> para que el Tiempo Total coincida con el Tiempo Disponible configurado en Rev Capacidad. Los totales al pie de la tabla se actualizan según los filtros aplicados.</p>
           <p><b>Guardado Masivo:</b> El botón verde guardará el plan de <b>todos</b> los centros planificados (Quito y Guayaquil) simultáneamente.</p>
         </div>
       </div>
