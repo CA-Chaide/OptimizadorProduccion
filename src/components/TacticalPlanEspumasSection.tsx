@@ -44,6 +44,8 @@ import { es } from 'date-fns/locale';
 const CAROUSEL_CIRCUMFERENCE_CM = 320; 
 const BLOCK_LENGTH_METERS = 20;
 const EFFICIENCY_FACTOR = 0.87;
+const SETUP_TIME_PER_RUN = 128;
+const BLOCK_SIZE = 40;
 
 interface UnifiedRow {
   orden: string;
@@ -253,6 +255,15 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     });
     return dates;
   }, [ordenesProvisionales, ordenesFert]);
+
+  const calendarDaysList = useMemo(() => {
+    const start = startOfMonth(viewDate);
+    const end = endOfMonth(viewDate);
+    const days = eachDayOfInterval({ start, end });
+    const startDay = getDay(start);
+    const padding = startDay === 0 ? 6 : startDay - 1;
+    return [...Array(padding).fill(null), ...days];
+  }, [viewDate]);
 
   const fetchDataAsync = useCallback(async () => {
     setIsLoading(true);
