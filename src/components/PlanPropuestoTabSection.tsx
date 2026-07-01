@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -87,12 +86,14 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
   });
   
   // Parámetros de Simulación (desde localStorage)
-  const [programmingDate, setProgrammingDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [progDates, setProgDates] = useState<Record<string, string>>({});
   const [provisionalDate, setProvisionalDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [rendLinea1, setRendLinea1] = useState<number>(1.05);
-  const [rendLinea2, setRendLinea2] = useState<number>(1.08);
-  const [rendLinea3, setRendLinea3] = useState<number>(1.05);
-  const [rendLinea5, setRendLinea5] = useState<number>(1.05);
+  
+  // Rendimientos independientes por centro
+  const [rendimientosByCenter, setRendimientosByCenter] = useState<Record<string, Record<string, number>>>({
+    '1000': { L1: 1.05, L2: 1.08, L3: 1.05, L5: 1.05 },
+    '2000': { L1: 1.05, L2: 1.08, L3: 1.05, L5: 1.05 }
+  });
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
@@ -106,13 +107,15 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
       const centers = [...new Set((groupsRes?.data || []).map((g: any) => String(g.centro).trim()))].sort();
       setAvailableCenters(centers);
       
-      // Sincronizar fecha de programación desde localStorage si existe (Centro 1000)
+      // Sincronizar parámetros persistentes
       const savedProgDates = localStorage.getItem('sim_prog_dates');
       if (savedProgDates) {
-        try {
-          const parsed = JSON.parse(savedProgDates);
-          if (parsed['1000']) setProgrammingDate(parsed['1000']);
-        } catch(e) {}
+        try { setProgDates(JSON.parse(savedProgDates)); } catch(e) {}
+      }
+      
+      const savedRend = localStorage.getItem('sim_rendimientos_by_center');
+      if (savedRend) {
+        try { setRendimientosByCenter(JSON.parse(savedRend)); } catch(e) {}
       }
 
       let allTiempos: any[] = [];
@@ -139,7 +142,7 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
     loadData();
   }, [loadData]);
 
-  // Helper para mapePerform mapear líneas según categoría (L1, L2, L3, L5)
+  // Helper para mapear líneas según categoría (L1, L2, L3, L5)
   const mapOrderLine = (order: any): string => {
     const cat = String(order.CATEGORIA || order.Categoria || '').toUpperCase();
     if (cat.includes('L1')) return 'LINEA 1';
@@ -163,11 +166,12 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
     const simPuestosT2 = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('sim_puestos_t2') || '{}') : {};
     const savedH1 = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('sim_horas_t1_by_center') || '{}') : {};
     const savedH2 = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('sim_horas_t2_by_center') || '{}') : {};
-    const savedProgDates = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('sim_prog_dates') || '{}') : {};
+    
+    const centerProgDate = progDates[centerId] || new Date().toISOString().split('T')[0];
+    const centerRends = rendimientosByCenter[centerId] || { L1: 1.05, L2: 1.08, L3: 1.05, L5: 1.05 };
 
     const simHorasT1 = savedH1[centerId] ?? 8.75;
     const simHorasT2 = savedH2[centerId] ?? 0;
-    const centerProgDate = savedProgDates[centerId] || programmingDate;
 
     const lineTargetHours = new Map<string, number>();
     const lineCurrentFixedHours = new Map<string, number>();
@@ -219,10 +223,10 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
 
       const tUnit = Number(row.Tiempo_Min || 0);
       let rend = 1;
-      if (linea.includes('1')) rend = rendLinea1;
-      else if (linea.includes('2')) rend = rendLinea2;
-      else if (linea.includes('3')) rend = rendLinea3;
-      else if (linea.includes('5')) rend = rendLinea5;
+      if (linea.includes('1')) rend = centerRends.L1;
+      else if (linea.includes('2')) rend = centerRends.L2;
+      else if (linea.includes('3')) rend = centerRends.L3;
+      else if (linea.includes('5')) rend = centerRends.L5;
 
       const effectiveTUnit = (tUnit / 60) * rend;
 
@@ -284,7 +288,7 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
   // ALGORITMO DE BALANCEO MEJORADO PARA VISTA ACTUAL
   const proposedPlan = useMemo((): ProposedPlanRow[] => {
     return calculatePlanForCenter(selectedCenter);
-  }, [technicalData, fertOrders, provisionalOrders, selectedCenter, programmingDate, provisionalDate, rendLinea1, rendLinea2, rendLinea3, rendLinea5]);
+  }, [technicalData, fertOrders, provisionalOrders, selectedCenter, progDates, provisionalDate, rendimientosByCenter]);
 
   // FILTRADO DINÁMICO POR COLUMNAS
   const filteredResults = useMemo(() => {
@@ -352,10 +356,6 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
     });
   };
 
-  /**
-   * Proceso de guardado masivo encadenado:
-   * Itera sobre todos los centros, calcula su plan y los guarda en el backend.
-   */
   const handleSavePlan = async () => {
     if (availableCenters.length === 0) {
       addNotification('warning', 'No hay centros disponibles para guardar.');
@@ -370,9 +370,7 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
       let totalSuccessCount = 0;
       let totalFailCount = 0;
 
-      // Iteramos sobre todos los centros (ej. 1000 y 2000)
       for (const centerId of availableCenters) {
-        // Encontrar el grupo correspondiente al centro (buscando grupo de Ensamblado)
         const grupoEncontrado = groups.find(g => 
           String(g.centro).trim() === centerId && 
           g.nombre_grupo.toLowerCase().includes('ensamblado')
@@ -383,7 +381,6 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
           continue;
         }
 
-        // 1. Calcular el plan completo para este centro (sin filtros)
         const centerFullPlan = calculatePlanForCenter(centerId);
         
         if (centerFullPlan.length === 0) {
@@ -391,7 +388,6 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
           continue;
         }
 
-        // 2. Crear el objeto PlanGrupo para este centro
         const planGrupoPayload: any = {
           codigo_plan_grupo: 0,
           codigo_plan: 2, 
@@ -399,7 +395,7 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
           codigo_familia_grupo: 1, 
           valor: `Plan Táctico - Centro ${centerId}`,
           fecha_inicio_plan: now,
-          fecha_inicio_plan: now,
+          fecha_fin_plan: now,
           estado: 'A',
           fecha_creacion: now,
           usuario_creacion: 'Admin'
@@ -415,7 +411,6 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
 
         const newCodigoPlanGrupo = resPlanGrupo.data.codigo_plan_grupo;
 
-        // 3. Crear registros de DetalleTactico para cada item del plan de este centro
         for (const item of centerFullPlan) {
           const detallePayload: any = {
             codigo_detalle_tactico: 0,
@@ -455,6 +450,8 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
     }
   };
 
+  const currentProgrammingDate = progDates[selectedCenter] || new Date().toISOString().split('T')[0];
+
   return (
     <div className="space-y-6 relative">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -487,7 +484,19 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
         <div className="flex flex-wrap gap-4 p-4 bg-gray-50 border rounded-xl shadow-sm mb-4">
           <div className="flex flex-col gap-1 w-48">
             <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Fecha FERT:</label>
-            <input type="date" value={programmingDate} onChange={e => setProgrammingDate(e.target.value)} className="text-xs border rounded-md px-2 py-2 outline-none h-9 font-medium text-indigo-700" />
+            <input 
+              type="date" 
+              value={currentProgrammingDate} 
+              onChange={e => {
+                const val = e.target.value;
+                setProgDates(prev => {
+                  const next = { ...prev, [selectedCenter]: val };
+                  if (selectedCenter === '1000') next['2000'] = val;
+                  return next;
+                });
+              }}
+              className="text-xs border rounded-md px-2 py-2 outline-none h-9 font-medium text-indigo-700" 
+            />
           </div>
           <div className="flex flex-col gap-1 w-48">
             <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Fecha PREV:</label>
@@ -498,7 +507,7 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
         <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
           <div className="overflow-x-auto">
             <table className="min-w-full text-xs divide-y divide-gray-200 border-collapse">
-              <thead className="bg-gray-50 uppercase text-[10px] font-bold text-gray-500">
+              <thead className="bg-gray-50 uppercase text-[10px] font-bold text-gray-600">
                 <tr>
                   <th className="px-4 py-3 text-left border-b">Línea</th>
                   <th className="px-4 py-3 text-left border-b">Material</th>

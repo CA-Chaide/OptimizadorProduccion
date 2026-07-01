@@ -83,10 +83,11 @@ export const RevCapacidadTabSection: React.FC = () => {
   
   const [provisionalDate, setProvisionalDate] = useState<string>(new Date().toISOString().split('T')[0]);
   
-  const [rendLinea1, setRendLinea1] = useState<number>(1.05);
-  const [rendLinea2, setRendLinea2] = useState<number>(1.08);
-  const [rendLinea3, setRendLinea3] = useState<number>(1.05);
-  const [rendLinea5, setRendLinea5] = useState<number>(1.05);
+  // Rendimientos independientes por centro
+  const [rendimientosByCenter, setRendimientosByCenter] = useState<Record<string, Record<string, number>>>({
+    '1000': { L1: 1.05, L2: 1.08, L3: 1.05, L5: 1.05 },
+    '2000': { L1: 1.05, L2: 1.08, L3: 1.05, L5: 1.05 }
+  });
 
   const [editablePuestosT1, setEditablePuestosT1] = useState<Record<string, number>>({});
   const [editablePuestosT2, setEditablePuestosT2] = useState<Record<string, number>>({});
@@ -99,12 +100,14 @@ export const RevCapacidadTabSection: React.FC = () => {
     const savedH1 = localStorage.getItem('sim_horas_t1_by_center');
     const savedH2 = localStorage.getItem('sim_horas_t2_by_center');
     const savedProgDates = localStorage.getItem('sim_prog_dates');
+    const savedRend = localStorage.getItem('sim_rendimientos_by_center');
 
     if (savedT1) try { setEditablePuestosT1(JSON.parse(savedT1)); } catch(e) {}
     if (savedT2) try { setEditablePuestosT2(JSON.parse(savedT2)); } catch(e) {}
     if (savedH1) try { setHorasT1ByCenter(JSON.parse(savedH1)); } catch(e) {}
     if (savedH2) try { setHorasT2ByCenter(JSON.parse(savedH2)); } catch(e) {}
     if (savedProgDates) try { setProgDates(JSON.parse(savedProgDates)); } catch(e) {}
+    if (savedRend) try { setRendimientosByCenter(JSON.parse(savedRend)); } catch(e) {}
   }, []);
 
   const loadData = useCallback(async () => {
@@ -148,6 +151,7 @@ export const RevCapacidadTabSection: React.FC = () => {
   const programmingDate = progDates[selectedCenter] || new Date().toISOString().split('T')[0];
   const currentHorasT1 = horasT1ByCenter[selectedCenter] ?? 8.75;
   const currentHorasT2 = horasT2ByCenter[selectedCenter] ?? 8.75;
+  const currentRends = rendimientosByCenter[selectedCenter] || { L1: 1.05, L2: 1.08, L3: 1.05, L5: 1.05 };
 
   const fertSumMap = useMemo(() => {
     const map = new Map<string, number>();
@@ -228,10 +232,10 @@ export const RevCapacidadTabSection: React.FC = () => {
       const tUnit = Number(row.Tiempo_Min || 0);
 
       let rendFactor = 1;
-      if (lineNormalized.includes('1')) rendFactor = rendLinea1;
-      else if (lineNormalized.includes('2')) rendFactor = rendLinea2;
-      else if (lineNormalized.includes('3')) rendFactor = rendLinea3;
-      else if (lineNormalized.includes('5')) rendFactor = rendLinea5;
+      if (lineNormalized.includes('1')) rendFactor = currentRends.L1;
+      else if (lineNormalized.includes('2')) rendFactor = currentRends.L2;
+      else if (lineNormalized.includes('3')) rendFactor = currentRends.L3;
+      else if (lineNormalized.includes('5')) rendFactor = currentRends.L5;
 
       entry.cantOrdFab += qFab;
       entry.tiempoOrdFab += ((qFab * tUnit) / 60) * rendFactor;
@@ -242,7 +246,7 @@ export const RevCapacidadTabSection: React.FC = () => {
     });
 
     return Array.from(map.values()).sort((a, b) => a.linea.localeCompare(b.linea) || a.puesto.localeCompare(b.puesto));
-  }, [technicalData, selectedCenter, fertSumMap, prevSumMap, rendLinea1, rendLinea2, rendLinea3, rendLinea5]);
+  }, [technicalData, selectedCenter, fertSumMap, prevSumMap, currentRends]);
 
   // Sincronizar y guardar en localStorage
   useEffect(() => {
@@ -252,8 +256,9 @@ export const RevCapacidadTabSection: React.FC = () => {
       localStorage.setItem('sim_horas_t1_by_center', JSON.stringify(horasT1ByCenter));
       localStorage.setItem('sim_horas_t2_by_center', JSON.stringify(horasT2ByCenter));
       localStorage.setItem('sim_prog_dates', JSON.stringify(progDates));
+      localStorage.setItem('sim_rendimientos_by_center', JSON.stringify(rendimientosByCenter));
     }
-  }, [editablePuestosT1, editablePuestosT2, horasT1ByCenter, horasT2ByCenter, progDates, isMounted]);
+  }, [editablePuestosT1, editablePuestosT2, horasT1ByCenter, horasT2ByCenter, progDates, rendimientosByCenter, isMounted]);
 
   // Inicializar puestos vacíos
   useEffect(() => {
@@ -304,6 +309,16 @@ export const RevCapacidadTabSection: React.FC = () => {
   }, [summaryData, selectedCenter, editablePuestosT1, editablePuestosT2, currentHorasT1, currentHorasT2]);
 
   const hourOptions = [8.75, 10, 11, 12];
+
+  const handleRendChange = (lineKey: string, value: number) => {
+    setRendimientosByCenter(prev => ({
+      ...prev,
+      [selectedCenter]: {
+        ...(prev[selectedCenter] || {}),
+        [lineKey]: value
+      }
+    }));
+  };
 
   return (
     <div className="space-y-6">
@@ -365,10 +380,7 @@ export const RevCapacidadTabSection: React.FC = () => {
                 const val = e.target.value;
                 setProgDates(prev => {
                   const next = { ...prev, [selectedCenter]: val };
-                  // Sincronización: Si se cambia en Centro 1000, actualizar también el 2000
-                  if (selectedCenter === '1000') {
-                    next['2000'] = val;
-                  }
+                  if (selectedCenter === '1000') next['2000'] = val;
                   return next;
                 });
               }} 
@@ -399,22 +411,21 @@ export const RevCapacidadTabSection: React.FC = () => {
               {hourOptions.map(h => <option key={`t2-${h}`} value={h}>{h}</option>)}
             </select>
           </div>
-          {[rendLinea1, rendLinea2, rendLinea3, rendLinea5].map((val, i) => (
-            <div key={i} className="flex flex-col gap-1">
-              <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Rend L{[1,2,3,5][i]}:</label>
-              <input 
-                type="number" step="0.01" value={val} 
-                onChange={e => {
-                  const v = Number(e.target.value);
-                  if (i === 0) setRendLinea1(v);
-                  else if (i === 1) setRendLinea2(v);
-                  else if (i === 2) setRendLinea3(v);
-                  else setRendLinea5(v);
-                }}
-                className="text-xs border rounded-md px-2 py-1 h-9 font-bold text-indigo-700 bg-white" 
-              />
-            </div>
-          ))}
+          
+          {[1, 2, 3, 5].map((lineNum) => {
+            const key = `L${lineNum}`;
+            return (
+              <div key={key} className="flex flex-col gap-1">
+                <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Rend {key}:</label>
+                <input 
+                  type="number" step="0.01" 
+                  value={currentRends[key]} 
+                  onChange={e => handleRendChange(key, Number(e.target.value))}
+                  className="text-xs border rounded-md px-2 py-1 h-9 font-bold text-indigo-700 bg-white" 
+                />
+              </div>
+            );
+          })}
         </div>
 
         <div className="bg-white rounded-lg shadow-md border overflow-hidden">
@@ -458,7 +469,6 @@ export const RevCapacidadTabSection: React.FC = () => {
                           <td className="px-4 py-3 text-right font-bold border bg-indigo-50/5">{r.totalTiempo.toFixed(2)}</td>
                           <td className="px-4 py-3 text-right font-bold border text-blue-700 bg-blue-50/5">{isMounted ? calcPuestos.toFixed(2) : '-'}</td>
                           
-                          {/* Input T1 */}
                           <td className="px-0 py-0 border bg-white min-w-[80px]">
                             <input 
                               type="number" 
@@ -474,7 +484,6 @@ export const RevCapacidadTabSection: React.FC = () => {
                             />
                           </td>
                           
-                          {/* Input T2 */}
                           <td className="px-0 py-0 border bg-white min-w-[80px]">
                             <input 
                               type="number" 
@@ -530,8 +539,8 @@ export const RevCapacidadTabSection: React.FC = () => {
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-3">
         <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
         <div className="text-xs text-blue-800 space-y-1">
+          <p><b>Rendimientos Independientes:</b> Los factores "Rend L1", "Rend L2", etc., ahora se guardan de forma única para cada centro.</p>
           <p><b>Sincronización Día Prog:</b> Al cambiar la fecha en el <b>Centro 1000</b>, esta se replicará automáticamente en el <b>Centro 2000</b>.</p>
-          <p><b>Filtros Independientes:</b> "Horas T1" y "Horas T2" siguen siendo únicos para cada centro.</p>
           <p><b>Validación de Puestos:</b> Los valores ingresados no pueden exceder los <b>Puestos Objetivo</b>.</p>
           <p><b>Persistencia:</b> Todos los ajustes se guardan automáticamente en el navegador.</p>
         </div>
