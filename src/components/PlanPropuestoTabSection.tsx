@@ -20,7 +20,8 @@ import {
   ChevronRight,
   Filter,
   X,
-  LayoutGrid
+  LayoutGrid,
+  Eye
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -28,6 +29,16 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import * as XLSX from 'xlsx';
 import { Grupo, PlanGrupo, DetalleTactico } from '@/types/interfaces';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface ProposedPlanRow {
   material: string;
@@ -57,6 +68,14 @@ const normalizeDateISO = (dateStr: any): string | null => {
 
 const normalizeMaterialCode = (code: string | number): string => {
   return String(code || '').trim().slice(-8);
+};
+
+const normalizeKey = (text: string) => {
+  return String(text || '')
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toUpperCase();
 };
 
 export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = ({ groups = [] }) => {
@@ -95,6 +114,11 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
     '2000': { L1: 1.05, L2: 1.08, L3: 1.05, L5: 1.05 }
   });
 
+  // Estados para validación de planes existentes
+  const [existingPlans, setExistingPlans] = useState<PlanGrupo[]>([]);
+  const [showOverwriteDialog, setShowOverwriteDialog] = useState(false);
+  const [isViewMode, setIsViewMode] = useState(false);
+
   const loadData = useCallback(async () => {
     setIsLoading(true);
     try {
@@ -107,7 +131,6 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
       const centers = [...new Set((groupsRes?.data || []).map((g: any) => String(g.centro).trim()))].sort();
       setAvailableCenters(centers);
       
-      // Sincronizar parámetros persistentes
       const savedProgDates = localStorage.getItem('sim_prog_dates');
       if (savedProgDates) {
         try { setProgDates(JSON.parse(savedProgDates)); } catch(e) {}
@@ -142,7 +165,84 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
     loadData();
   }, [loadData]);
 
-  // Helper para mapear líneas según categoría (L1, L2, L3, L5)
+  // Función para buscar planes existentes
+  const checkExistingPlans = useCallback(async () => {
+    if (!selectedCenter || !provisionalDate) return;
+    
+    try {
+      const res = await planGrupoService.getAll();
+      const allPlans = res.data || [];
+      
+      const targetDateISO = normalizeDateISO(provisionalDate);
+      const pattern = `Plan Táctico - Centro ${selectedCenter} - P1`;
+      
+      const found = allPlans.filter(p => {
+        const planDateISO = normalizeDateISO(p.fecha_inicio_plan);
+        return p.estado === 'A' && 
+               planDateISO === targetDateISO && 
+               p.valor === pattern;
+      });
+      
+      if (found.length > 0) {
+        setExistingPlans(found);
+        setShowOverwriteDialog(true);
+        setIsViewMode(true); 
+      } else {
+        setExistingPlans([]);
+        setIsViewMode(false);
+      }
+    } catch (error) {
+      console.error('[PlanPropuesto] Error checking existing plans:', error);
+    }
+  }, [selectedCenter, provisionalDate]);
+
+  useEffect(() => {
+    if (provisionalDate) {
+      checkExistingPlans();
+    }
+  }, [provisionalDate, selectedCenter, checkExistingPlans]);
+
+  // Función para desactivar planes en cascada
+  const handleDeactivateExisting = async () => {
+    setIsSaving(true);
+    addNotification('info', 'Desactivando planes anteriores y sus detalles...');
+    
+    try {
+      const allDetailsRes = await detalleTacticoService.getAll();
+      const allDetails = allDetailsRes.data || [];
+      
+      for (const plan of existingPlans) {
+        // 1. Desactivar Cabecera (PlanGrupo)
+        await planGrupoService.save({
+          ...plan,
+          estado: 'I',
+          fecha_modificacion: new Date(),
+          usuario_modificacion: 'Admin'
+        });
+        
+        // 2. Desactivar Detalles (DetalleTactico)
+        const children = allDetails.filter(d => d.codigo_plan_grupo === plan.codigo_plan_grupo);
+        for (const child of children) {
+          await detalleTacticoService.save({
+            ...child,
+            estado: 'I',
+            fecha_modificacion: new Date(),
+            usuario_modificacion: 'Admin'
+          });
+        }
+      }
+      
+      addNotification('success', 'Planes anteriores desactivados correctamente. Ahora puede guardar el nuevo plan.');
+      setExistingPlans([]);
+      setIsViewMode(false);
+      setShowOverwriteDialog(false);
+    } catch (error) {
+      addNotification('error', `Error al desactivar planes existentes: ${(error as Error).message}`);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const mapOrderLine = (order: any): string => {
     const cat = String(order.CATEGORIA || order.Categoria || '').toUpperCase();
     if (cat.includes('L1')) return 'LINEA 1';
@@ -152,9 +252,6 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
     return String(order.LINEA || order.Linea || order.linea || '').trim().toUpperCase();
   };
 
-  /**
-   * Lógica central de cálculo para un centro específico
-   */
   const calculatePlanForCenter = (centerId: string): ProposedPlanRow[] => {
     if (!technicalData.length || !centerId) return [];
 
@@ -285,12 +382,10 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
     return results.sort((a, b) => a.linea.localeCompare(b.linea) || a.material.localeCompare(b.material));
   };
 
-  // ALGORITMO DE BALANCEO MEJORADO PARA VISTA ACTUAL
   const proposedPlan = useMemo((): ProposedPlanRow[] => {
     return calculatePlanForCenter(selectedCenter);
   }, [technicalData, fertOrders, provisionalOrders, selectedCenter, progDates, provisionalDate, rendimientosByCenter]);
 
-  // FILTRADO DINÁMICO POR COLUMNAS
   const filteredResults = useMemo(() => {
     return proposedPlan.filter(r => {
       const matchLinea = filters.linea === '' || r.linea.toLowerCase().includes(filters.linea.toLowerCase());
@@ -303,7 +398,6 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
     });
   }, [proposedPlan, filters]);
 
-  // TOTALES DINÁMICOS BASADOS EN FILTRO
   const grandTotals = useMemo(() => {
     return filteredResults.reduce((acc, r) => ({
       totalCantActual: acc.totalCantActual + r.cantidadOriginal,
@@ -313,8 +407,6 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
     }), { totalCantActual: 0, totalCantPropuesta: 0, totalDiferencia: 0, totalTime: 0 });
   }, [filteredResults]);
 
-  // Paginación
-  const totalPages = Math.max(1, Math.ceil(filteredResults.length / rowsPerPage));
   const paginatedResults = useMemo(() => {
     const start = (currentPage - 1) * rowsPerPage;
     return filteredResults.slice(start, start + rowsPerPage);
@@ -367,6 +459,7 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
 
     try {
       const now = new Date();
+      const planDate = provisionalDate ? new Date(provisionalDate + 'T12:00:00') : now;
       let totalSuccessCount = 0;
       let totalFailCount = 0;
 
@@ -393,9 +486,9 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
           codigo_plan: 2, 
           codigo_grupo: grupoEncontrado.codigo_grupo,
           codigo_familia_grupo: 1, 
-          valor: `Plan Táctico - Centro ${centerId}`,
-          fecha_inicio_plan: now,
-          fecha_fin_plan: now,
+          valor: `Plan Táctico - Centro ${centerId} - P1`,
+          fecha_inicio_plan: planDate,
+          fecha_fin_plan: planDate,
           estado: 'A',
           fecha_creacion: now,
           usuario_creacion: 'Admin'
@@ -441,6 +534,9 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
       } else {
         addNotification('warning', `Proceso completado con observaciones. ${totalSuccessCount} registros creados, ${totalFailCount} fallidos.`);
       }
+
+      // Revalidar para bloquear botón
+      checkExistingPlans();
 
     } catch (error) {
       console.error('[PlanPropuesto] Error en proceso masivo:', error);
@@ -500,8 +596,23 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
           </div>
           <div className="flex flex-col gap-1 w-48">
             <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Fecha PREV:</label>
-            <input type="date" value={provisionalDate} onChange={e => setProvisionalDate(e.target.value)} className="text-xs border rounded-md px-2 py-2 outline-none h-9 font-medium text-indigo-700" />
+            <input 
+              type="date" 
+              value={provisionalDate} 
+              onChange={e => setProvisionalDate(e.target.value)} 
+              className={cn(
+                "text-xs border rounded-md px-2 py-2 outline-none h-9 font-medium outline-none focus:ring-2 focus:ring-indigo-500",
+                isViewMode ? "text-amber-600 border-amber-300 bg-amber-50" : "text-indigo-700"
+              )} 
+            />
           </div>
+          
+          {isViewMode && (
+            <div className="flex items-center gap-2 px-3 py-1 bg-amber-100 border border-amber-200 rounded-lg text-amber-800">
+              <Eye className="w-4 h-4" />
+              <span className="text-[10px] font-bold uppercase">Modo Vista Activo</span>
+            </div>
+          )}
         </div>
 
         <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
@@ -712,14 +823,13 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
         )}
       </Tabs>
 
-      {/* Botón Flotante para Aplicar Plan con Guardado Encadenado */}
       <div className="fixed bottom-10 right-10 z-[100]">
         <Button 
           size="lg" 
-          disabled={isSaving || proposedPlan.length === 0}
+          disabled={isSaving || proposedPlan.length === 0 || isViewMode}
           className="bg-green-600 hover:bg-green-700 text-white rounded-full h-16 w-16 shadow-2xl flex items-center justify-center border-2 border-white transition-all hover:scale-110 active:scale-95 disabled:bg-gray-400"
           onClick={handleSavePlan}
-          title="Guardar Plan Propuesto (Todos los Centros)"
+          title={isViewMode ? "Modo Vista: Plan ya existe" : "Guardar Plan Propuesto (Todos los Centros)"}
         >
           {isSaving ? <Loader2 className="w-8 h-8 animate-spin" /> : <CheckCircle2 className="w-8 h-8" />}
         </Button>
@@ -728,11 +838,35 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-3 mt-4">
         <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
         <div className="text-[11px] text-blue-800 space-y-1">
-          <p><b>Asignación Técnica:</b> El sistema ahora vincula los pedidos únicamente a las líneas de fabricación definidas para cada material en el maestro de tiempos.</p>
-          <p><b>Balanceo Automático:</b> El sistema ajusta las cantidades de materiales <b>Ajustables</b> para que el Tiempo Total coincida con el Tiempo Disponible configurado en Rev Capacidad. Los totales al pie de la tabla se actualizan según los filtros aplicados.</p>
-          <p><b>Guardado Masivo:</b> El botón verde guardará el plan de <b>todos</b> los centros planificados (Quito y Guayaquil) simultáneamente.</p>
+          <p><b>Gestión de Versiones:</b> El sistema detecta automáticamente si ya existe un plan para la <b>Fecha PREV</b> seleccionada.</p>
+          <p><b>Modo Vista:</b> Si decide no eliminar los planes existentes, el botón de guardado se bloqueará automáticamente.</p>
+          <p><b>Eliminación en Cascada:</b> Al aceptar eliminar planes antiguos, se desactivarán tanto el encabezado como todos los materiales detallados asociados a ese plan.</p>
         </div>
       </div>
+
+      {/* Diálogo de Confirmación de Sobrescritura */}
+      <AlertDialog open={showOverwriteDialog} onOpenChange={setShowOverwriteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-amber-600 flex items-center gap-2">
+              <AlertCircle className="w-5 h-5" />
+              Planes Existentes Detectados
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-gray-700">
+              Existen planes asociados a esta fecha para el <b>Centro {selectedCenter}</b>. 
+              <br /><br />
+              ¿Desea eliminarlos (desactivarlos) para generar un nuevo plan? 
+              Si elige "No", entrará en modo de solo lectura.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setIsViewMode(true)}>No, mantener modo vista</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeactivateExisting} className="bg-red-600 hover:bg-red-700">
+              Sí, eliminar y continuar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
