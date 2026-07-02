@@ -5,7 +5,7 @@ import { serviciosService } from '@/services/servicios.service';
 import { grupoService } from '@/services/grupo.service';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
-import { Package, Loader2, Home, Search, X, Filter, Warehouse } from 'lucide-react';
+import { Package, Loader2, Home, Search, X, Filter } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -103,14 +103,10 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
   const currentCenterOrders = useMemo(() => {
     const term = searchTerm.toLowerCase().trim();
     return orders.filter(order => {
-      // FILTRO 1: Almacenes específicos (Hardcoded logic)
-      const almacen = String(order.Almacen || '').trim();
-      if (almacen !== '1001' && almacen !== '2001') return false;
-
-      // FILTRO 2: Centro seleccionado en la UI
+      // FILTRO 1: Centro seleccionado en la UI
       if (String(order.Centro || '').trim() !== selectedCenter) return false;
 
-      // FILTRO 3: Búsqueda por texto
+      // FILTRO 2: Búsqueda por texto
       if (term) {
         return (
           String(order.ORDENPREVISIONAL || '').toLowerCase().includes(term) ||
@@ -195,9 +191,6 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
           <Badge variant="secondary" className="bg-indigo-50 text-indigo-700 text-[10px] border-indigo-100 font-bold">
             CENTRO: {selectedCenter}
           </Badge>
-          <Badge variant="secondary" className="bg-blue-50 text-blue-700 text-[10px] border-blue-100 flex items-center gap-1 font-bold">
-            <Warehouse className="w-2.5 h-3" /> ALMACENES: 1001, 2001
-          </Badge>
           {searchTerm && (
             <Badge variant="secondary" className="bg-amber-50 text-amber-700 text-[10px] border-amber-100 font-bold flex items-center gap-1">
               BÚSQUEDA: "{searchTerm}"
@@ -226,7 +219,7 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
                   <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Máquina</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody className="divide-y divide-gray-100">
                 {displayedOrders.length > 0 ? displayedOrders.map((order, idx) => (
                   <tr key={`${order.ORDENPREVISIONAL}-${idx}`} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-indigo-600 font-mono">{order.ORDENPREVISIONAL}</td>
@@ -243,7 +236,7 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
                 )) : (
                   <tr>
                     <td colSpan={10} className="px-6 py-12 text-center text-gray-400 italic">
-                      No se encontraron órdenes para el centro {selectedCenter} con los criterios de almacén (1001/2001) y búsqueda actuales.
+                      No se encontraron órdenes para el centro {selectedCenter} con los criterios de búsqueda actuales.
                     </td>
                   </tr>
                 )}
