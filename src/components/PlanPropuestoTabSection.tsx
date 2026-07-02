@@ -539,7 +539,7 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
             cantidad_produccion_neta: String(item.cantidadPropuesta),
             resp_ctrl_prod: '', 
             clase_aprovisionamiento: 'E',
-            cantidad_aprovisionamiento: 'E',
+            cantidad_aprovisionamiento: '0', 
             estado: 'A',
             fecha_modificacion: new Date(),
             usuario_modificacion: 'Admin'

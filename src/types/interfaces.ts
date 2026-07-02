@@ -78,7 +78,7 @@ export interface DetalleTactico {
     cantidad_produccion_neta: string;
     resp_ctrl_prod: string;
     clase_aprovisionamiento: string;
-    cantidad_aprovisionamiento: string;
+    cantidad_aprovisionamiento: number;
     estado: string;
     fecha_modificacion: Date;
     usuario_modificacion: string;
