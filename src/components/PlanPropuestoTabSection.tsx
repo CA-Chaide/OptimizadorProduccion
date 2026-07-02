@@ -484,7 +484,10 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
 
       const codigoPlanGlobal = activeGlobalPlan.codigo_plan;
       const now = new Date();
+      
+      // USAR FECHA PREV PARA EL PLAN
       const planDate = provisionalDate ? new Date(provisionalDate + 'T12:00:00') : now;
+      
       let totalSuccessCount = 0;
       let totalFailCount = 0;
 
@@ -539,7 +542,7 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
             cantidad_produccion_neta: String(item.cantidadPropuesta),
             resp_ctrl_prod: '', 
             clase_aprovisionamiento: 'E',
-            cantidad_aprovisionamiento: '0', 
+            cantidad_aprovisionamiento: 0, // VALOR 0 TAL COMO SE SOLICITÓ
             estado: 'A',
             fecha_modificacion: new Date(),
             usuario_modificacion: 'Admin'
@@ -790,7 +793,7 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
               <span className="font-bold text-gray-400 uppercase">Mostrar:</span>
               <select
                 value={rowsPerPage}
-                onChange={(e) => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }}
+                onChange={(e) => { setRowsPerPage(Number(e.target.value)); setPage(1); }}
                 className="border rounded p-1 bg-white text-gray-700 font-bold outline-none"
               >
                 <option value={20}>20</option>
