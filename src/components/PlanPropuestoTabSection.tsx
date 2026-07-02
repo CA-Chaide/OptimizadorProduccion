@@ -21,7 +21,8 @@ import {
   Filter,
   X,
   LayoutGrid,
-  Eye
+  Eye,
+  Target
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -407,6 +408,8 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
     }), { totalCantActual: 0, totalCantPropuesta: 0, totalDiferencia: 0, totalTime: 0 });
   }, [filteredResults]);
 
+  const totalPages = Math.max(1, Math.ceil(filteredResults.length / rowsPerPage));
+
   const paginatedResults = useMemo(() => {
     const start = (currentPage - 1) * rowsPerPage;
     return filteredResults.slice(start, start + rowsPerPage);
@@ -513,7 +516,7 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
             cantidad_produccion_neta: String(item.cantidadPropuesta),
             resp_ctrl_prod: '', 
             clase_aprovisionamiento: 'E',
-            cantidad_aprovisionamiento: 0,
+            cantidad_aprovisionamiento: 'E',
             estado: 'A',
             fecha_modificacion: null,
             usuario_modificacion: null
