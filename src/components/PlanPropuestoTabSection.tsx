@@ -258,7 +258,13 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
 
     const matBalanceoRaw = typeof window !== 'undefined' ? localStorage.getItem('material_balanceo_lineas_data') : null;
     const matBalanceoPool = matBalanceoRaw ? JSON.parse(matBalanceoRaw) : [];
-    const enabledMaterials = new Set(matBalanceoPool.filter((m: any) => m.habilitado).map((m: any) => normalizeMaterialCode(m.material)));
+    
+    // FILTRADO POR CENTRO PARA EL BALANCEO
+    const enabledMaterials = new Set(
+      matBalanceoPool
+        .filter((m: any) => m.habilitado && String(m.centro).trim() === centerId)
+        .map((m: any) => normalizeMaterialCode(m.material))
+    );
 
     const simPuestosT1 = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('sim_puestos_t1') || '{}') : {};
     const simPuestosT2 = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('sim_puestos_t2') || '{}') : {};
@@ -278,8 +284,14 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
     const targetDateISO = normalizeDateISO(centerProgDate);
     const prevDateISO = normalizeDateISO(provisionalDate);
 
-    const mappedFertOrders = fertOrders.map(o => ({ ...o, _mappedLinea: mapOrderLine(o) }));
-    const mappedPrevOrders = provisionalOrders.map(o => ({ ...o, _mappedLinea: mapOrderLine(o) }));
+    // Mapeo dinámico de pedidos filtrando por el centro específico
+    const centerFertOrders = fertOrders
+      .map(o => ({ ...o, _mappedLinea: mapOrderLine(o) }))
+      .filter(o => String(o.CENTRO || '').trim() === centerId);
+      
+    const centerPrevOrders = provisionalOrders
+      .map(o => ({ ...o, _mappedLinea: mapOrderLine(o) }))
+      .filter(o => String(o.Centro || '').trim() === centerId);
 
     const centerTechnical = technicalData.filter(d => String(d.Centro || '').trim() === centerId);
     const allLines = ['LINEA 1', 'LINEA 2', 'LINEA 3', 'LINEA 5'];
@@ -300,20 +312,18 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
       if (puesto !== 'Armado') return;
 
       let qFixed = 0;
-      mappedFertOrders.forEach(o => {
+      centerFertOrders.forEach(o => {
         if (normalizeDateISO(o.FECHA || o.fecha) === targetDateISO && 
-            normalizeMaterialCode(o.MATERIAL) === material && 
-            String(o.CENTRO).trim() === centerId &&
+            normalizeMaterialCode(o.MATERIAL || o.CodMaterial) === material && 
             o._mappedLinea === linea) {
           qFixed += Number(o.CANTPENDIENTE || 0);
         }
       });
 
       let qFlex = 0;
-      mappedPrevOrders.forEach(o => {
+      centerPrevOrders.forEach(o => {
         if (normalizeDateISO(o.FECHAINICIO || o.fecha_inicio) === prevDateISO && 
             normalizeMaterialCode(o.MATERIAL || o.CodMaterial) === material && 
-            String(o.Centro).trim() === centerId &&
             o._mappedLinea === linea) {
           qFlex += Number(o.CANTIDAD || 0);
         }
@@ -486,9 +496,9 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
 
         const planGrupoPayload: any = {
           codigo_plan_grupo: 0,
-          codigo_plan: 2, 
+          codigo_plan: 0, 
           codigo_grupo: grupoEncontrado.codigo_grupo,
-          codigo_familia_grupo: 1, 
+          codigo_familia_grupo: 0, 
           valor: `Plan Táctico - Centro ${centerId} - P1`,
           fecha_inicio_plan: planDate,
           fecha_fin_plan: planDate,
@@ -507,8 +517,9 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
 
         const newCodigoPlanGrupo = resPlanGrupo.data.codigo_plan_grupo;
 
+        // GUARDADO DE DETALLES TÁCTICOS
         for (const item of centerFullPlan) {
-          const detallePayload: any = {
+          const detallePayload: DetalleTactico = {
             codigo_detalle_tactico: 0,
             codigo_plan_grupo: newCodigoPlanGrupo,
             codigo_material: parseInt(item.material) || 0,
@@ -518,8 +529,8 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
             clase_aprovisionamiento: 'E',
             cantidad_aprovisionamiento: 'E',
             estado: 'A',
-            fecha_modificacion: null,
-            usuario_modificacion: null
+            fecha_modificacion: new Date(),
+            usuario_modificacion: 'Admin'
           };
 
           try {
@@ -533,9 +544,9 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
       }
 
       if (totalFailCount === 0) {
-        addNotification('success', `Plan guardado exitosamente para todos los centros (${totalSuccessCount} registros).`);
+        addNotification('success', `Plan guardado exitosamente para todos los centros (${totalSuccessCount} detalles creados).`);
       } else {
-        addNotification('warning', `Proceso completado con observaciones. ${totalSuccessCount} registros creados, ${totalFailCount} fallidos.`);
+        addNotification('warning', `Proceso completado con observaciones. ${totalSuccessCount} detalles creados, ${totalFailCount} fallidos.`);
       }
 
       // Revalidar para bloquear botón
