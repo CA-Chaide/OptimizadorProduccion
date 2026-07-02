@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
@@ -172,7 +173,7 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
     
     try {
       const res = await planGrupoService.getAll();
-      const allPlans = res.data || [];
+      const allPlans = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
       
       const targetDateISO = normalizeDateISO(provisionalDate);
       const pattern = `Plan Táctico - Centro ${selectedCenter} - P1`;
@@ -210,7 +211,7 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
     
     try {
       const allDetailsRes = await detalleTacticoService.getAll();
-      const allDetails = allDetailsRes.data || [];
+      const allDetails = Array.isArray(allDetailsRes?.data) ? allDetailsRes.data : (Array.isArray(allDetailsRes) ? allDetailsRes : []);
       
       for (const plan of existingPlans) {
         // 1. Desactivar Cabecera (PlanGrupo)
@@ -509,13 +510,15 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
 
         const resPlanGrupo = await planGrupoService.save(planGrupoPayload);
         
-        if (!resPlanGrupo?.data?.codigo_plan_grupo) {
-          console.error(`[PlanPropuesto] Falló creación de PlanGrupo para ${centerId}`);
+        // El backend puede devolver el objeto directamente o dentro de .data
+        const createdPlan = (resPlanGrupo as any).data || resPlanGrupo;
+        const newCodigoPlanGrupo = createdPlan?.codigo_plan_grupo;
+
+        if (!newCodigoPlanGrupo) {
+          console.error(`[PlanPropuesto] Falló creación de PlanGrupo para ${centerId}`, resPlanGrupo);
           totalFailCount++;
           continue;
         }
-
-        const newCodigoPlanGrupo = resPlanGrupo.data.codigo_plan_grupo;
 
         // GUARDADO DE DETALLES TÁCTICOS
         for (const item of centerFullPlan) {
