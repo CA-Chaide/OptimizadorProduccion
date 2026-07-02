@@ -5,6 +5,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { serviciosService } from '@/services/servicios.service';
 import { grupoService } from '@/services/grupo.service';
 import { planGrupoService } from '@/services/plangrupo.service';
+import { planGlobalService } from '@/services/planglobal.service';
 import { detalleTacticoService } from '@/services/detalletactico.service';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
@@ -260,7 +261,6 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
     const matBalanceoRaw = typeof window !== 'undefined' ? localStorage.getItem('material_balanceo_lineas_data') : null;
     const matBalanceoPool = matBalanceoRaw ? JSON.parse(matBalanceoRaw) : [];
     
-    // FILTRADO POR CENTRO PARA EL BALANCEO
     const enabledMaterials = new Set(
       matBalanceoPool
         .filter((m: any) => m.habilitado && String(m.centro).trim() === centerId)
@@ -285,7 +285,6 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
     const targetDateISO = normalizeDateISO(centerProgDate);
     const prevDateISO = normalizeDateISO(provisionalDate);
 
-    // Mapeo dinámico de pedidos filtrando por el centro específico
     const centerFertOrders = fertOrders
       .map(o => ({ ...o, _mappedLinea: mapOrderLine(o) }))
       .filter(o => String(o.CENTRO || '').trim() === centerId);
@@ -472,6 +471,18 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
     addNotification('info', 'Iniciando proceso de guardado masivo para todos los centros...');
 
     try {
+      // 1. RECUPERAR EL PLAN GLOBAL ACTIVO (ESTADO 'A')
+      const globalsRes = await planGlobalService.getAll();
+      const allGlobals = Array.isArray(globalsRes?.data) ? globalsRes.data : (Array.isArray(globalsRes) ? globalsRes : []);
+      const activeGlobalPlan = allGlobals.find(p => p.estado === 'A');
+
+      if (!activeGlobalPlan) {
+        addNotification('error', 'No se encontró un Plan Global activo (Mediano Plazo). Por favor genere uno primero.');
+        setIsSaving(false);
+        return;
+      }
+
+      const codigoPlanGlobal = activeGlobalPlan.codigo_plan;
       const now = new Date();
       const planDate = provisionalDate ? new Date(provisionalDate + 'T12:00:00') : now;
       let totalSuccessCount = 0;
@@ -497,7 +508,7 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
 
         const planGrupoPayload: any = {
           codigo_plan_grupo: 0,
-          codigo_plan: 0, 
+          codigo_plan: codigoPlanGlobal, // HERENCIA DEL PLAN GLOBAL ACTIVO
           codigo_grupo: grupoEncontrado.codigo_grupo,
           codigo_familia_grupo: 0, 
           valor: `Plan Táctico - Centro ${centerId} - P1`,
@@ -509,8 +520,6 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
         };
 
         const resPlanGrupo = await planGrupoService.save(planGrupoPayload);
-        
-        // El backend puede devolver el objeto directamente o dentro de .data
         const createdPlan = (resPlanGrupo as any).data || resPlanGrupo;
         const newCodigoPlanGrupo = createdPlan?.codigo_plan_grupo;
 
@@ -547,12 +556,11 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
       }
 
       if (totalFailCount === 0) {
-        addNotification('success', `Plan guardado exitosamente para todos los centros (${totalSuccessCount} detalles creados).`);
+        addNotification('success', `Plan guardado exitosamente para todos los centros (${totalSuccessCount} detalles creados). Herencia de Plan Global: ${codigoPlanGlobal}`);
       } else {
         addNotification('warning', `Proceso completado con observaciones. ${totalSuccessCount} detalles creados, ${totalFailCount} fallidos.`);
       }
 
-      // Revalidar para bloquear botón
       checkExistingPlans();
 
     } catch (error) {
@@ -586,7 +594,7 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
       </div>
 
       <Tabs value={selectedCenter} onValueChange={setSelectedCenter} className="w-full">
-        <TabsList className="flex h-auto bg-gray-100/50 p-1 mb-4">
+        <TabsList className="flex h-auto bg-gray-100/50 p-1 mb-4 gap-1">
           {availableCenters.map(center => (
             <TabsTrigger key={center} value={center} className="px-6 py-2 text-xs font-bold uppercase data-[state=active]:bg-white data-[state=active]:text-indigo-700">
               <Home className="w-3 h-3 mr-2" /> Centro {center}
@@ -855,6 +863,7 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-3 mt-4">
         <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
         <div className="text-[11px] text-blue-800 space-y-1">
+          <p><b>Balanceo Automático:</b> El sistema ajusta dinámicamente los materiales marcados como <b>Ajustables</b> para que el tiempo total de carga coincida con la disponibilidad de puestos (T1/T2) configurada en Capacidad.</p>
           <p><b>Gestión de Versiones:</b> El sistema detecta automáticamente si ya existe un plan para la <b>Fecha PREV</b> seleccionada.</p>
           <p><b>Modo Vista:</b> Si decide no eliminar los planes existentes, el botón de guardado se bloqueará automáticamente.</p>
           <p><b>Eliminación en Cascada:</b> Al aceptar eliminar planes antiguos, se desactivarán tanto el encabezado como todos los materiales detallados asociados a ese plan.</p>

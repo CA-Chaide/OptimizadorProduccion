@@ -4,7 +4,7 @@ import type { BodyResponse } from "@/types/body-response";
 import { environment } from "@/environments/environments.prod";
 import { PlanGrupo } from "../types/interfaces";
 
-const API_URL = `${environment.apiURL}/PlanGrupo`;
+const API_URL = `${environment.apiURL}/plan_grupo`;
 
 export const planGrupoService = {
   async getAll(): Promise<BodyListResponse<PlanGrupo>> {
