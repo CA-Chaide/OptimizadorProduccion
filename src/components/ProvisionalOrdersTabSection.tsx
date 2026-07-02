@@ -3,43 +3,32 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { serviciosService } from '@/services/servicios.service';
 import { grupoService } from '@/services/grupo.service';
+import { restriccionService } from '@/services/restriccion.service';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
-import { Package, Loader2, Home, Search, X, Filter } from 'lucide-react';
+import { Package, Loader2, Home, Search, X, Filter, UserCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-
-interface ProvisionalOrder {
-  ORDENPREVISIONAL: string;
-  MATERIAL: string;
-  NOMBRE: string;
-  CATEGORIA: string;
-  LINEA?: string;
-  CANTIDAD: number;
-  UNIDAD: string;
-  FECHAINICIO: string;
-  FECHAFIN: string;
-  RESPCONTROLPROD: string;
-  Centro: string;
-  Almacen: string;
-  Maquina: string | null;
-  ClaseOrden: string;
-  CodMaterial: string;
-}
+import type { ProvisionalOrder } from '@/types/types';
+import type { Grupo, Restriccion } from '@/types/interfaces';
 
 export const ProvisionalOrdersTabSection: React.FC = () => {
   const inspector = useRuntimeInspector('ProvisionalOrdersTab');
   const { addNotification } = useAppContext();
   const hasStarted = useRef(false);
 
+  // Estados de Datos
   const [orders, setOrders] = useState<ProvisionalOrder[]>([]);
+  const [groups, setGroups] = useState<Grupo[]>([]);
+  const [restricciones, setRestricciones] = useState<Restriccion[]>([]);
   const [availableCenters, setAvailableCenters] = useState<string[]>([]);
   const [selectedCenter, setSelectedCenter] = useState<string>("");
+  
+  // UI States
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(20);
 
@@ -48,24 +37,30 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
   };
 
   const loadData = useCallback(async () => {
-    if (hasStarted.current) return;
-    hasStarted.current = true;
-
+    setIsLoading(true);
+    
     try {
-      setIsLoading(true);
-      
-      const [groupsRes, pageResponse] = await Promise.all([
+      const [groupsRes, restRes, pageResponse] = await Promise.all([
         grupoService.getAll(),
+        restriccionService.getAll(),
         serviciosService.OrdenesProvisionalesAlphaPaginados(1, 10000)
       ]);
 
-      const centersFromGroups = [...new Set((groupsRes?.data || []).map((g: any) => String(g.centro).trim()))].sort();
+      // 1. Procesar Grupos y Centros
+      const groupsData = Array.isArray(groupsRes?.data) ? groupsRes.data : [];
+      setGroups(groupsData);
+      
+      const centersFromGroups = [...new Set(groupsData.map((g: any) => String(g.centro).trim()))].sort();
       setAvailableCenters(centersFromGroups);
 
+      // 2. Procesar Restricciones
+      setRestricciones(Array.isArray(restRes?.data) ? restRes.data : []);
+
+      // 3. Procesar Órdenes
       if (pageResponse && pageResponse.data) {
         const rawOrders = Array.isArray(pageResponse.data) ? pageResponse.data : [];
         
-        // Lógica de mapeo dinámico para la columna LINEA basada en CATEGORIA
+        // Mapeo dinámico de LINEA basada en CATEGORIA
         const mappedOrders = rawOrders.map((o: any) => {
           const cat = String(o.CATEGORIA || '').toUpperCase();
           let calculatedLinea = '';
@@ -73,8 +68,7 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
           if (cat.includes('L1')) calculatedLinea = 'LINEA 1';
           else if (cat.includes('L2')) calculatedLinea = 'LINEA 2';
           else if (cat.includes('L3')) calculatedLinea = 'LINEA 3';
-          else if (cat.includes('L5')) calculatedLinea = 'LINEA 5';
-          else if (cat.includes('B-B')) calculatedLinea = 'LINEA 5';
+          else if (cat.includes('L5') || cat.includes('B-B')) calculatedLinea = 'LINEA 5';
           else calculatedLinea = String(o.LINEA || '').trim().toUpperCase();
 
           return {
@@ -89,24 +83,65 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
       if (centersFromGroups.length > 0 && !selectedCenter) {
         setSelectedCenter(centersFromGroups[0]);
       }
+
+      inspector.captureVariable('orders_loaded_count', orders.length);
+      inspector.captureVariable('restricciones_loaded_count', restricciones.length);
+
     } catch (err) {
-      addNotification('error', `Error al cargar datos: ${(err as Error).message}`);
+      addNotification('error', `Error al cargar datos previsionales: ${(err as Error).message}`);
     } finally {
       setIsLoading(false);
     }
-  }, [addNotification, selectedCenter]);
+  }, [addNotification, selectedCenter, inspector, orders.length, restricciones.length]);
 
   useEffect(() => {
-    loadData();
+    if (!hasStarted.current) {
+      hasStarted.current = true;
+      loadData();
+    }
   }, [loadData]);
+
+  // Obtener códigos de RespCtrlProd permitidos para el centro seleccionado
+  const allowedResponsables = useMemo(() => {
+    if (!selectedCenter || !restricciones.length || !groups.length) return [];
+    
+    // Buscar el grupo de "Ensamblado" para este centro
+    const centerGroup = groups.find(g => 
+      String(g.centro).trim() === selectedCenter && 
+      g.nombre_grupo.toLowerCase().includes('ensamblado')
+    );
+
+    if (!centerGroup) return [];
+
+    // Buscar restricción RespCtrlProd para ese grupo
+    const restriction = restricciones.find(r => 
+      r.codigo_grupo === centerGroup.codigo_grupo && 
+      r.nombre_restriccion === 'RespCtrlProd'
+    );
+
+    if (!restriction) return [];
+
+    // El valor suele ser "003" o "003, 004, 006"
+    return restriction.valor_restriccion
+      .split(/[,&]/)
+      .map(v => v.trim())
+      .filter(Boolean);
+  }, [selectedCenter, restricciones, groups]);
 
   const currentCenterOrders = useMemo(() => {
     const term = searchTerm.toLowerCase().trim();
+    
     return orders.filter(order => {
-      // FILTRO 1: Centro seleccionado en la UI
+      // FILTRO 1: Centro seleccionado
       if (String(order.Centro || '').trim() !== selectedCenter) return false;
 
-      // FILTRO 2: Búsqueda por texto
+      // FILTRO 2: RespCtrlProd (Restricción técnica)
+      if (allowedResponsables.length > 0) {
+        const orderResp = String(order.RESPCONTROLPROD || '').trim();
+        if (!allowedResponsables.includes(orderResp)) return false;
+      }
+
+      // FILTRO 3: Búsqueda por texto
       if (term) {
         return (
           String(order.ORDENPREVISIONAL || '').toLowerCase().includes(term) ||
@@ -118,7 +153,7 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
       }
       return true;
     });
-  }, [orders, searchTerm, selectedCenter]);
+  }, [orders, searchTerm, selectedCenter, allowedResponsables]);
 
   const totalPagesLocal = Math.max(1, Math.ceil(currentCenterOrders.length / rowsPerPage));
   const startIndex = (currentPage - 1) * rowsPerPage;
@@ -131,7 +166,7 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
     return (
       <div className="flex flex-col justify-center items-center py-20 bg-white rounded-lg border border-dashed">
         <Loader2 className="h-10 w-10 animate-spin text-indigo-500" />
-        <span className="mt-4 text-gray-600 font-medium">Cargando órdenes previsionales...</span>
+        <span className="mt-4 text-gray-600 font-medium">Cargando órdenes previsionales y restricciones...</span>
       </div>
     );
   }
@@ -143,7 +178,7 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
           <Package className="w-6 h-6 text-indigo-600" />
           <div>
             <h3 className="text-xl font-semibold text-gray-700">Órdenes Previsionales</h3>
-            <p className="text-xs text-gray-500">Centros operativos oficiales</p>
+            <p className="text-xs text-gray-500">Filtradas por responsabilidad técnica (RespCtrlProd)</p>
           </div>
         </div>
         
@@ -166,6 +201,9 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
               </button>
             )}
           </div>
+          <Button variant="outline" size="sm" onClick={() => { hasStarted.current = false; setOrders([]); loadData(); }}>
+            Actualizar
+          </Button>
         </div>
       </div>
 
@@ -183,22 +221,34 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
           ))}
         </TabsList>
 
-        {/* --- Sección de Filtros Activos --- */}
+        {/* --- Sección de Filtros Activos e Información de Restricciones --- */}
         <div className="flex flex-wrap gap-2 items-center mb-4 px-1">
-          <span className="text-[10px] font-bold text-gray-400 uppercase flex items-center gap-1">
-            <Filter className="w-3 h-3" /> Filtros Aplicados:
-          </span>
-          <Badge variant="secondary" className="bg-indigo-50 text-indigo-700 text-[10px] border-indigo-100 font-bold">
-            CENTRO: {selectedCenter}
-          </Badge>
-          {searchTerm && (
-            <Badge variant="secondary" className="bg-amber-50 text-amber-700 text-[10px] border-amber-100 font-bold flex items-center gap-1">
-              BÚSQUEDA: "{searchTerm}"
-              <X className="w-2.5 h-2.5 cursor-pointer" onClick={() => setSearchTerm('')} />
+          <div className="flex items-center gap-2 mr-4">
+            <span className="text-[10px] font-bold text-gray-400 uppercase flex items-center gap-1">
+              <Filter className="w-3 h-3" /> Centro Activo:
+            </span>
+            <Badge variant="secondary" className="bg-indigo-50 text-indigo-700 text-[10px] border-indigo-100 font-bold">
+              {selectedCenter}
             </Badge>
-          )}
+          </div>
+
+          <div className="flex items-center gap-2 mr-4">
+            <span className="text-[10px] font-bold text-gray-400 uppercase flex items-center gap-1">
+              <UserCheck className="w-3 h-3 text-emerald-500" /> Resp. Permitidos:
+            </span>
+            {allowedResponsables.length > 0 ? (
+              allowedResponsables.map(resp => (
+                <Badge key={resp} variant="outline" className="bg-emerald-50 text-emerald-700 text-[10px] border-emerald-200 font-mono">
+                  {resp}
+                </Badge>
+              ))
+            ) : (
+              <span className="text-[10px] text-amber-600 italic">No hay restricción RespCtrlProd definida</span>
+            )}
+          </div>
+
           <span className="text-[10px] text-gray-400 ml-auto">
-            Mostrando <b>{currentCenterOrders.length}</b> órdenes de un total de {orders.filter(o => o.Centro === selectedCenter).length} en el centro.
+            Mostrando <b>{currentCenterOrders.length}</b> órdenes para colchones.
           </span>
         </div>
 
@@ -213,8 +263,8 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
                   <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Material</th>
                   <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Nombre</th>
                   <th className="px-6 py-3 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider">Cantidad</th>
-                  <th className="px-6 py-3 text-center text-[10px] font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50/30">Almacén</th>
-                  <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Resp. Ctrl.</th>
+                  <th className="px-6 py-3 text-center text-[10px] font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50/30">Resp. Ctrl.</th>
+                  <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Almacén</th>
                   <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">F. Inicio</th>
                   <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Máquina</th>
                 </tr>
@@ -228,15 +278,15 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-600">{formatMaterial(order.CodMaterial || order.MATERIAL)}</td>
                     <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate" title={order.NOMBRE}>{order.NOMBRE}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-right text-indigo-600">{(Number(order.CANTIDAD) || 0).toLocaleString()}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-center font-bold text-indigo-700 bg-indigo-50/10">{order.Almacen}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{order.RESPCONTROLPROD}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-center font-bold text-indigo-700 bg-indigo-50/10">{order.RESPCONTROLPROD}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{order.Almacen}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{order.FECHAINICIO}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-mono text-xs">{order.Maquina || '-'}</td>
                   </tr>
                 )) : (
                   <tr>
                     <td colSpan={10} className="px-6 py-12 text-center text-gray-400 italic">
-                      No se encontraron órdenes para el centro {selectedCenter} con los criterios de búsqueda actuales.
+                      No se encontraron órdenes para el centro {selectedCenter} que cumplan con la restricción RespCtrlProd.
                     </td>
                   </tr>
                 )}
