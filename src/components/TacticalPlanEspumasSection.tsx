@@ -187,7 +187,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const qty = safeNum(getProp(o, ['CANTIDAD', 'CANTPROGRAMADA', 'CANTPENDIENTE']));
       const densVal = safeNum(info.dens);
       const resp = String(getProp(o, ['RESPCONTROLPROD', 'RESPCTRLPROD', 'RespControlProd', 'RESP_CONTROL_PROD', 'RESPONSABLE'])).trim();
-      const isAlterna = ['039', '036', '034'].includes(resp);
+      
+      // REGLA: Responsables de operación alterna (039, 036, 044)
+      const isAlterna = ['039', '036', '044'].includes(resp);
       
       // REGLA: densidad >28 = 85 altura de bloque; densidad <28=103
       const usefulHeight = densVal >= 28 ? 85 : 103; 
@@ -240,7 +242,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   }, [extractMaterialInfo, tiemposCatalogo, kpiLooperData]);
 
   const getFilteredData = useCallback((rawData: any[], centro: string) => {
-    const allowed = centro === '1000' ? ['013', '038', '039', '044', '036', '034'] : ['002', '038', '039', '036', '034'];
+    // Auditamos responsables de Corte (013, 038, 039, 044, 036, 034, 002)
+    const allowed = centro === '1000' ? ['013', '038', '039', '044', '036', '034'] : ['002', '038', '039', '044', '036', '034'];
     return rawData.filter(o => {
       const c = String(getProp(o, ['Centro', 'CENTRO', 'centro'])).trim();
       const r = String(getProp(o, ['RESPCONTROLPROD', 'RESPCTRLPROD', 'RespControlProd', 'RESP_CONTROL_PROD', 'RESPONSABLE'])).trim();
@@ -307,7 +310,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [inspector]);
+  }, []);
 
   useEffect(() => { 
     setMounted(true); 
@@ -446,6 +449,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const allAuditProv = planta === 'UIO' ? provAuditUIO : provAuditGYE;
     const allAuditFert = planta === 'UIO' ? fertAuditUIO : fertAuditGYE;
     
+    // REGLA: Capacidad planificada = suma integra de horas de órdenes para el centro
     const totalPlannedH = allAuditProv.reduce((s, r) => s + r.tTotal, 0) + allAuditFert.reduce((s, r) => s + r.tTotal, 0);
     const globalOccupancy = totalH > 0 ? (totalPlannedH / totalH) * 100 : 0;
 
@@ -521,7 +525,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                   <th className="px-3 py-4 border-r border-white/5 bg-amber-500/20 text-amber-300 font-black">Cargas</th>
                   <th className="px-3 py-4 border-r border-white/5">Und/Batch</th>
                   <th className="px-3 py-4 border-r border-white/5 font-black text-indigo-300"># SUB_Bloque</th>
-                  <th className="px-3 py-4 border-r border-white/5 bg-black/20 uppercase">Op. Alterna (39-36-34)</th>
+                  <th className="px-3 py-4 border-r border-white/5 bg-black/20 uppercase">Op. Alterna (39-36-44)</th>
                   <th className="px-3 py-4 border-r border-white/5 uppercase">Planta/ALM</th>
                   <th className="px-3 py-4 border-r border-white/5">Resp CP</th>
                   <th className="px-3 py-4 border-r border-white/5">Orden</th>
@@ -562,7 +566,16 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                           <td className="px-3 py-2 border-r border-slate-50 text-slate-900 font-black bg-yellow-500/5">{row.cant}</td>
                           <td className="px-3 py-2 border-r border-slate-50 text-slate-400">{formatNum(row.peso, 1)}</td>
                           <td className="px-3 py-2 border-r border-slate-50 bg-slate-50 text-slate-900 font-black">{row.alturaTotal.toFixed(1)}</td>
-                          <td className="px-3 py-2 border-r border-slate-50 text-indigo-400">{row.tIndiv.toFixed(2)}</td>
+                          
+                          {/* COLUMNA T. INDIV CON ALERTA SI ES 0 */}
+                          <td className={cn(
+                            "px-3 py-2 border-r border-slate-50",
+                            row.tIndiv === 0 ? "bg-red-500 text-white animate-pulse font-black" : "text-indigo-400"
+                          )}>
+                            {row.tIndiv.toFixed(2)}
+                            {row.tIndiv === 0 && <span className="block text-[6px]">⚠️ REVISAR</span>}
+                          </td>
+
                           <td className="px-4 py-2 border-r border-white/10 bg-indigo-50 text-indigo-800 font-black">{row.tTotal.toFixed(2)}</td>
                           <td className="px-3 py-2 border-r border-slate-50 bg-amber-50 text-amber-700 font-black">{row.nroCargas}</td>
                           <td className="px-3 py-2 border-r border-slate-50 font-black">{Math.round(row.undBatch)}</td>
@@ -605,7 +618,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               <button className="h-10 px-5 rounded-2xl border border-gray-200 bg-white hover:border-red-500/50 flex items-center gap-3 font-black text-[11px] uppercase shadow-sm transition-all"><Filter className="w-4 h-4 text-red-500" /> {selectedDates.size === 0 ? 'Plan Maestro' : `${selectedDates.size} días seleccionados`}</button>
             </PopoverTrigger>
             <PopoverContent className="w-[260px] p-0 border-none shadow-2xl rounded-2xl overflow-hidden mt-3" align="end">
-              <div className="bg-white p-5 font-sans text-left">
+              <div className="bg-white p-5 font-sans text-left text-[11px]">
                 <div className="flex items-center justify-between mb-5">
                   <h3 className="text-xs font-black text-slate-800 capitalize">{format(viewDate, 'MMMM yyyy', { locale: es })}</h3>
                   <div className="flex gap-1 bg-gray-50 p-1 rounded-xl">
