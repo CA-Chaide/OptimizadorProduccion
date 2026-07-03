@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -21,9 +22,7 @@ import {
   Filter, 
   Activity,
   AlertCircle,
-  Database,
-  ChevronsLeft,
-  ChevronsRight
+  Database
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -69,6 +68,7 @@ interface UnifiedRow {
   centro: string;
   almacen: string;
   responsable: string;
+  maquina: string;
   hasDeficit: boolean;
   stockUN: number;
   stockKg: number;
@@ -224,6 +224,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         centro: centroId,
         almacen: getProp(o, ['Almacen', 'ALMACEN', 'CENTRO']),
         responsable: getProp(o, ['RESPCONTROLPROD', 'RESPCTRLPROD', 'RespControlProd', 'RESP_CONTROL_PROD', 'RESPONSABLE']),
+        maquina: getProp(o, ['MAQUINA', 'RECURSO', 'ID_MAQUINA', 'Maquina']).trim(),
         hasDeficit: stockUN < qty,
         stockUN,
         stockKg
@@ -351,7 +352,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     
     const tTotal = ((hDay * (1 - p1)) + (hNight * (1 - p2))) * (performance / 100) * EFFICIENCY_FACTOR;
     const allAudit = planta === 'UIO' ? [...provAuditUIO, ...fertAuditUIO] : [...provAuditGYE, ...fertAuditGYE];
-    const plannedH = allAudit.filter(r => r.orden.includes(id) || r.responsable === id).reduce((s, r) => s + r.tTotal, 0);
+    const plannedH = allAudit.filter(r => r.maquina === id || r.maquina.includes(id) || r.responsable === id).reduce((s, r) => s + r.tTotal, 0);
     const occupancy = tTotal > 0 ? (plannedH / tTotal) * 100 : 0;
     const mttoMin = getMttoTime(id, planta);
 
@@ -374,11 +375,11 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             </select>
             <select value={config.op1D} onChange={e => updateConfig(planta, id, 'op1D', e.target.value)} className="w-full bg-slate-900 text-slate-300 text-[9px] rounded px-2 py-1 outline-none border border-slate-700">
               <option value="">— OP1 —</option>
-              {operadoresCorte.map((op, i) => <option key={i} value={getProp(op, ['CODIGO_OPERADOR'])}>{getProp(op, ['NOMBRE_OPERADOR'])}</option>)}
+              {operadoresCorte.map((op, i) => <option key={i} value={getProp(op, ['CodigoOperador ', 'CODIGO_OPERADOR'])}>{getProp(op, ['NombreOperador', 'NOMBRE_OPERADOR'])}</option>)}
             </select>
             <select value={config.op2D} onChange={e => updateConfig(planta, id, 'op2D', e.target.value)} className="w-full bg-slate-900 text-slate-300 text-[9px] rounded px-2 py-1 outline-none border border-slate-700">
               <option value="">— OP2 AYUD —</option>
-              {operadoresCorte.map((op, i) => <option key={i} value={getProp(op, ['CODIGO_OPERADOR'])}>{getProp(op, ['NOMBRE_OPERADOR'])}</option>)}
+              {operadoresCorte.map((op, i) => <option key={i} value={getProp(op, ['CodigoOperador ', 'CODIGO_OPERADOR'])}>{getProp(op, ['NombreOperador', 'NOMBRE_OPERADOR'])}</option>)}
             </select>
           </div>
           <div className="space-y-2 pt-2 border-t border-slate-700/30">
@@ -387,7 +388,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             </select>
             <select value={config.op1N} onChange={e => updateConfig(planta, id, 'op1N', e.target.value)} className="w-full bg-slate-900 text-slate-300 text-[9px] rounded px-2 py-1 outline-none border border-slate-700">
               <option value="">— OP1 —</option>
-              {operadoresCorte.map((op, i) => <option key={i} value={getProp(op, ['CODIGO_OPERADOR'])}>{getProp(op, ['NOMBRE_OPERADOR'])}</option>)}
+              {operadoresCorte.map((op, i) => <option key={i} value={getProp(op, ['CodigoOperador ', 'CODIGO_OPERADOR'])}>{getProp(op, ['NombreOperador', 'NOMBRE_OPERADOR'])}</option>)}
             </select>
           </div>
           <div className="space-y-2 pt-2 border-t border-slate-700/30">
@@ -436,8 +437,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const allAuditProv = planta === 'UIO' ? provAuditUIO : provAuditGYE;
     const allAuditFert = planta === 'UIO' ? fertAuditUIO : fertAuditGYE;
     const totalPlannedH = machines.reduce((sum, m) => {
-      const p = allAuditProv.filter(r => r.orden.includes(m.id) || r.responsable === m.id).reduce((s, r) => s + r.tTotal, 0);
-      const f = allAuditFert.filter(r => r.orden.includes(m.id) || r.responsable === m.id).reduce((s, r) => s + r.tTotal, 0);
+      const p = allAuditProv.filter(r => r.maquina === m.id || r.maquina.includes(m.id) || r.responsable === m.id).reduce((s, r) => s + r.tTotal, 0);
+      const f = allAuditFert.filter(r => r.maquina === m.id || r.maquina.includes(m.id) || r.responsable === m.id).reduce((s, r) => s + r.tTotal, 0);
       return sum + p + f;
     }, 0);
     const globalOccupancy = totalH > 0 ? (totalPlannedH / totalH) * 100 : 0;
@@ -663,7 +664,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                       <th className="px-4 py-5 border-r border-white/5">ID OT</th>
                       <th className="px-5 py-5 border-r border-white/5">Inicio</th>
                       <th className="px-5 py-5 border-r border-white/5">Fin</th>
-                      <th className="px-6 py-5 text-indigo-300 bg-indigo-900/40 uppercase font-black tracking-tighter">Tiempo (H)</th>
+                      <th className="px-6 py-5 text-indigo-300 bg-indigo-900/40 uppercase font-black tracking-tighter">T_MTTO_PLANIFICADO (H)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-black text-[11px] text-slate-700">
