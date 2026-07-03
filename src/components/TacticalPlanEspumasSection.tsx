@@ -22,7 +22,9 @@ import {
   Filter, 
   Activity,
   AlertCircle,
-  Database
+  Database,
+  ChevronsLeft,
+  ChevronsRight
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -69,6 +71,7 @@ interface UnifiedRow {
   almacen: string;
   responsable: string;
   maquina: string;
+  isAlterna: boolean;
 }
 
 const safeNum = (val: any): number => {
@@ -183,6 +186,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const info = extractMaterialInfo(o);
       const qty = safeNum(getProp(o, ['CANTIDAD', 'CANTPROGRAMADA', 'CANTPENDIENTE']));
       const densVal = safeNum(info.dens);
+      const resp = String(getProp(o, ['RESPCONTROLPROD', 'RESPCTRLPROD', 'RespControlProd', 'RESP_CONTROL_PROD', 'RESPONSABLE'])).trim();
+      const isAlterna = ['039', '036', '034'].includes(resp);
       
       // REGLA: densidad >28 = 85 altura de bloque; densidad <28=103
       const usefulHeight = densVal >= 28 ? 85 : 103; 
@@ -192,6 +197,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const subB = usefulHeight > 0 ? hTotal / usefulHeight : 0;
       
       const gap = 15;
+      // Capacidad de giro basada en circunferencia de 3.2m
       const capGiro = info.ancho > 0 ? Math.floor(CAROUSEL_CIRCUMFERENCE_CM / (info.ancho + gap)) : 0;
       const slicesPerBlock = info.esp > 0 ? Math.floor(usefulHeight / info.esp) : 0;
       
@@ -218,7 +224,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         peso: pesoUN * qty,
         alturaTotal: hTotal,
         subBloques: subB,
-        nroCargas: totalCycles,
+        nroCargas: nLoads,
         undBatch,
         tIndiv,
         tTotal: (tIndiv * totalCycles) / 60,
@@ -226,14 +232,15 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         categoria: getProp(o, ['CATEGORIA', 'Categoria', 'CATEGORIA_DESC']) || '—',
         centro: centroId,
         almacen: getProp(o, ['Almacen', 'ALMACEN', 'CENTRO']),
-        responsable: getProp(o, ['RESPCONTROLPROD', 'RESPCTRLPROD', 'RespControlProd', 'RESP_CONTROL_PROD', 'RESPONSABLE']),
+        responsable: resp,
         maquina: getProp(o, ['MAQUINA', 'RECURSO', 'ID_MAQUINA', 'Maquina']).trim(),
+        isAlterna
       };
     });
   }, [extractMaterialInfo, tiemposCatalogo, kpiLooperData]);
 
   const getFilteredData = useCallback((rawData: any[], centro: string) => {
-    const allowed = centro === '1000' ? ['013', '038', '039', '044', '036'] : ['002', '038', '039'];
+    const allowed = centro === '1000' ? ['013', '038', '039', '044', '036', '034'] : ['002', '038', '039', '036', '034'];
     return rawData.filter(o => {
       const c = String(getProp(o, ['Centro', 'CENTRO', 'centro'])).trim();
       const r = String(getProp(o, ['RESPCONTROLPROD', 'RESPCTRLPROD', 'RespControlProd', 'RESP_CONTROL_PROD', 'RESPONSABLE'])).trim();
@@ -504,7 +511,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                   <th className="px-6 py-4 border-r border-white/5 text-left min-w-[200px]">Descripción</th>
                   <th className="px-2 py-4 border-r border-white/5">Ancho</th>
                   <th className="px-2 py-4 border-r border-white/5">Largo</th>
-                  <th className="px-2 py-4 border-r border-white/5">Esp.</th>
+                  <th className="px-2 py-4 border-r border-white/5 text-blue-400">Esp.</th>
                   <th className="px-2 py-4 border-r border-white/5">Dens.</th>
                   <th className="px-3 py-4 border-r border-white/5 font-black text-yellow-400">Cant.</th>
                   <th className="px-3 py-4 border-r border-white/5">Peso Kg</th>
@@ -514,6 +521,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                   <th className="px-3 py-4 border-r border-white/5 bg-amber-500/20 text-amber-300 font-black">Cargas</th>
                   <th className="px-3 py-4 border-r border-white/5">Und/Batch</th>
                   <th className="px-3 py-4 border-r border-white/5 font-black text-indigo-300"># SUB_Bloque</th>
+                  <th className="px-3 py-4 border-r border-white/5 bg-black/20 uppercase">Op. Alterna (39-36-34)</th>
                   <th className="px-3 py-4 border-r border-white/5 uppercase">Planta/ALM</th>
                   <th className="px-3 py-4 border-r border-white/5">Resp CP</th>
                   <th className="px-3 py-4 border-r border-white/5">Orden</th>
@@ -536,12 +544,12 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         </td>
                         <td colSpan={4} className="text-right pr-6 italic opacity-30 uppercase font-black tracking-widest text-[9px]">Subtotales de Bloque:</td>
                         <td className="border-r border-slate-50"></td>
-                        <td className="px-3 py-3 font-black text-slate-900 bg-yellow-500/10 text-center">{formatNum(tCant, 0)}</td>
+                        <td className="px-3 py-3 font-black text-slate-900 bg-yellow-500/20 text-center text-[12px]">{formatNum(tCant, 0)}</td>
                         <td className="px-3 py-3 font-black text-slate-400 opacity-40">{formatNum(tKg, 0)}</td>
                         <td colSpan={2}></td>
                         <td className="px-4 py-3 bg-indigo-600 text-white font-black">{tH.toFixed(2)}h</td>
                         <td className="px-3 py-3 bg-amber-500/10 text-amber-700 font-black">{tBatches}</td>
-                        <td colSpan={6}></td>
+                        <td colSpan={7}></td>
                       </tr>
                       {isExp && items.map((row, idx) => (
                         <tr key={idx} className="hover:bg-slate-50 transition-colors font-mono text-[9px]">
@@ -549,7 +557,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                           <td className="px-6 py-2 border-r border-slate-50 text-left uppercase truncate max-w-[200px]">{row.descripcion}</td>
                           <td className="px-2 py-2 border-r border-slate-50">{row.ancho}</td>
                           <td className="px-2 py-2 border-r border-slate-50">{row.largo}</td>
-                          <td className="px-2 py-2 border-r border-slate-50 text-blue-600">{row.esp}</td>
+                          <td className="px-2 py-2 border-r border-slate-50 text-blue-600 font-black">{row.esp}</td>
                           <td className="px-2 py-2 border-r border-slate-50">{row.dens}</td>
                           <td className="px-3 py-2 border-r border-slate-50 text-slate-900 font-black bg-yellow-500/5">{row.cant}</td>
                           <td className="px-3 py-2 border-r border-slate-50 text-slate-400">{formatNum(row.peso, 1)}</td>
@@ -559,6 +567,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                           <td className="px-3 py-2 border-r border-slate-50 bg-amber-50 text-amber-700 font-black">{row.nroCargas}</td>
                           <td className="px-3 py-2 border-r border-slate-50 font-black">{Math.round(row.undBatch)}</td>
                           <td className="px-3 py-2 border-r border-slate-50 font-black text-indigo-900">{row.subBloques.toFixed(3)}</td>
+                          <td className="px-3 py-2 border-r border-slate-50 font-black text-slate-500 bg-slate-100/50">
+                             {row.isAlterna ? <Badge variant="secondary" className="bg-slate-800 text-white text-[7px] px-1 font-black">CARGA ALTERNA</Badge> : '—'}
+                          </td>
                           <td className="px-3 py-2 border-r border-slate-50 text-slate-400 font-black">{row.centro}/{row.almacen}</td>
                           <td className="px-3 py-2 border-r border-slate-50">{row.responsable}</td>
                           <td className="px-3 py-2 border-r border-slate-50 text-slate-400">{row.orden}</td>
