@@ -36,7 +36,7 @@ import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
 import type { Grupo } from '@/types/interfaces';
 import { cn } from '@/lib/utils';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, isValid } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, isValid, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 // --- CONSTANTES TÉCNICAS PLANTA ---
@@ -137,7 +137,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const [viewDate, setViewDate] = useState<Date>(new Date()); 
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
-  // --- CONFIGURACIÓN DASHBOARDS (Paros default 13%) ---
+  // --- CONFIGURACIÓN DASHBOARDS (Paros default 13% | OP1 y OP2 para ambos turnos) ---
   const [uioConfig, setUioConfig] = useState<any>({
     performance: 90,
     shifts: {
@@ -352,6 +352,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     
     const tTotal = ((hDay * (1 - p1)) + (hNight * (1 - p2))) * (performance / 100) * EFFICIENCY_FACTOR;
     const allAudit = planta === 'UIO' ? [...provAuditUIO, ...fertAuditUIO] : [...provAuditGYE, ...fertAuditGYE];
+    // Nota: Aunque el sidebar sume todo el centro, mantenemos la visualización individual por máquina si la data SAP tiene el campo maquina
     const plannedH = allAudit.filter(r => r.maquina === id || r.maquina.includes(id) || r.responsable === id).reduce((s, r) => s + r.tTotal, 0);
     const occupancy = tTotal > 0 ? (plannedH / tTotal) * 100 : 0;
     const mttoMin = getMttoTime(id, planta);
@@ -370,6 +371,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
              </div>
           </div>
           <div className="space-y-2">
+            <p className="text-[7px] font-black text-slate-500 uppercase">TURNO DÍA</p>
             <select value={config.day} onChange={e => updateConfig(planta, id, 'day', e.target.value)} className="w-full bg-[#2a374a] text-yellow-400 font-black text-[10px] rounded px-2 py-1 outline-none border border-slate-700">
               {shiftOptions.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
             </select>
@@ -383,11 +385,16 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             </select>
           </div>
           <div className="space-y-2 pt-2 border-t border-slate-700/30">
+            <p className="text-[7px] font-black text-slate-500 uppercase">TURNO NOCHE</p>
             <select value={config.night} onChange={e => updateConfig(planta, id, 'night', e.target.value)} className="w-full bg-[#2a374a] text-purple-400 font-black text-[10px] rounded px-2 py-1 outline-none border border-slate-700">
               {nightShiftOptions.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
             </select>
             <select value={config.op1N} onChange={e => updateConfig(planta, id, 'op1N', e.target.value)} className="w-full bg-slate-900 text-slate-300 text-[9px] rounded px-2 py-1 outline-none border border-slate-700">
               <option value="">— OP1 —</option>
+              {operadoresCorte.map((op, i) => <option key={i} value={getProp(op, ['CodigoOperador ', 'CODIGO_OPERADOR'])}>{getProp(op, ['NombreOperador', 'NOMBRE_OPERADOR'])}</option>)}
+            </select>
+            <select value={config.op2N} onChange={e => updateConfig(planta, id, 'op2N', e.target.value)} className="w-full bg-slate-900 text-slate-300 text-[9px] rounded px-2 py-1 outline-none border border-slate-700">
+              <option value="">— OP2 AYUD —</option>
               {operadoresCorte.map((op, i) => <option key={i} value={getProp(op, ['CodigoOperador ', 'CODIGO_OPERADOR'])}>{getProp(op, ['NombreOperador', 'NOMBRE_OPERADOR'])}</option>)}
             </select>
           </div>
@@ -405,12 +412,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           </div>
         </div>
         <div className="p-3 bg-slate-900/50 border-t border-slate-700 space-y-2 mt-auto">
-           <div className="flex justify-between items-end">
-              <div className="text-left"><p className="text-[7px] font-black text-slate-500 uppercase">TIEMPO TOTAL</p><p className="text-sm font-black text-white">{tTotal.toFixed(2)}</p></div>
-              <div className="text-right"><p className="text-[7px] font-black text-emerald-500 uppercase">PLANIFICADO</p><p className="text-sm font-black text-emerald-400">{plannedH.toFixed(2)}</p></div>
-           </div>
            <div className="pt-1">
-              <p className="text-[7px] font-black text-slate-500 uppercase mb-0.5">OCUPACIÓN</p>
+              <p className="text-[7px] font-black text-slate-500 uppercase mb-0.5">OCUPACIÓN RECURSO</p>
               <div className="flex items-center gap-2">
                 <div className="flex-1 h-1 bg-slate-800 rounded-full overflow-hidden"><div className={cn("h-full", occupancy > 100 ? "bg-red-500" : "bg-emerald-500")} style={{ width: `${Math.min(occupancy, 100)}%` }} /></div>
                 <span className="text-[9px] font-black text-white">{occupancy.toFixed(1)}%</span>
@@ -436,11 +439,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
     const allAuditProv = planta === 'UIO' ? provAuditUIO : provAuditGYE;
     const allAuditFert = planta === 'UIO' ? fertAuditUIO : fertAuditGYE;
-    const totalPlannedH = machines.reduce((sum, m) => {
-      const p = allAuditProv.filter(r => r.maquina === m.id || r.maquina.includes(m.id) || r.responsable === m.id).reduce((s, r) => s + r.tTotal, 0);
-      const f = allAuditFert.filter(r => r.maquina === m.id || r.maquina.includes(m.id) || r.responsable === m.id).reduce((s, r) => s + r.tTotal, 0);
-      return sum + p + f;
-    }, 0);
+    
+    // CORRECCIÓN: Capacidad Planificada = Suma total de tiempos de órdenes sin filtrar por máquina individual
+    const totalPlannedH = allAuditProv.reduce((s, r) => s + r.tTotal, 0) + allAuditFert.reduce((s, r) => s + r.tTotal, 0);
     const globalOccupancy = totalH > 0 ? (totalPlannedH / totalH) * 100 : 0;
 
     return (
