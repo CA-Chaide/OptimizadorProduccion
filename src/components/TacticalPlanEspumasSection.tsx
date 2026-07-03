@@ -69,9 +69,6 @@ interface UnifiedRow {
   almacen: string;
   responsable: string;
   maquina: string;
-  hasDeficit: boolean;
-  stockUN: number;
-  stockKg: number;
 }
 
 const safeNum = (val: any): number => {
@@ -137,7 +134,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const [viewDate, setViewDate] = useState<Date>(new Date()); 
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
-  // --- CONFIGURACIÓN DASHBOARDS (Paros default 13% | OP1 y OP2 para ambos turnos) ---
+  // --- CONFIGURACIÓN DASHBOARDS ---
   const [uioConfig, setUioConfig] = useState<any>({
     performance: 90,
     shifts: {
@@ -186,24 +183,30 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const info = extractMaterialInfo(o);
       const qty = safeNum(getProp(o, ['CANTIDAD', 'CANTPROGRAMADA', 'CANTPENDIENTE']));
       const densVal = safeNum(info.dens);
-      const usefulHeight = densVal < 30 ? 103 : 85;
+      
+      // REGLA: densidad >28 = 85 altura de bloque; densidad <28=103
+      const usefulHeight = densVal >= 28 ? 85 : 103; 
       const hTotal = info.esp * qty;
-      const subB = usefulHeight > 0 ? (info.ancho * info.largo * hTotal) / (usefulHeight * BLOCK_LENGTH_METERS * 100) : 0;
+      
+      // REGLA: división entre la altura total por referencia entre la alturadel bloque
+      const subB = usefulHeight > 0 ? hTotal / usefulHeight : 0;
       
       const gap = 15;
       const capGiro = info.ancho > 0 ? Math.floor(CAROUSEL_CIRCUMFERENCE_CM / (info.ancho + gap)) : 0;
-      const nBatches = Math.ceil(capGiro > 0 ? subB / capGiro : (subB > 0 ? 1 : 0));
+      const slicesPerBlock = info.esp > 0 ? Math.floor(usefulHeight / info.esp) : 0;
+      
+      // Unidades por batch total (todos los bloques en la mesa)
+      const undBatch = slicesPerBlock * capGiro;
+      const nLoads = undBatch > 0 ? Math.ceil(qty / undBatch) : 0;
+      
+      // REGLA: sumarle 4 ciclos por la cúpula al número de la cantidad para el cálculo
+      const totalCycles = qty + (nLoads * 4); 
 
       const tMatch = tiemposCatalogo.find(t => cleanCode(t.CodMaterial) === info.code && String(t.Centro).trim() === centroId);
       const tIndiv = tMatch ? safeNum(tMatch.Tiempo || tMatch.Tiempo_Min) : 0;
 
-      const stockKg = inventarioSAP
-        .filter(inv => cleanCode(inv.MATERIAL) === info.code)
-        .reduce((sum, item) => sum + safeNum(item.LIBREUTILIZACION), 0);
-      
       const looperMatch = kpiLooperData.find(k => cleanCode(k.Material) === info.code);
       const pesoUN = looperMatch ? safeNum(looperMatch.PesoUN) : (info.ancho * info.largo * info.esp * densVal) / 1000000;
-      const stockUN = pesoUN > 0 ? stockKg / pesoUN : 0;
 
       return {
         orden: getProp(o, ['ORDENPREVISIONAL', 'ORDEN']) || '—',
@@ -215,22 +218,19 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         peso: pesoUN * qty,
         alturaTotal: hTotal,
         subBloques: subB,
-        nroCargas: nBatches,
-        undBatch: capGiro > 0 ? (capGiro * usefulHeight) / (info.esp || 1) : 0,
+        nroCargas: totalCycles,
+        undBatch,
         tIndiv,
-        tTotal: (tIndiv * qty) / 60,
+        tTotal: (tIndiv * totalCycles) / 60,
         apertura: info.apertura,
         categoria: getProp(o, ['CATEGORIA', 'Categoria', 'CATEGORIA_DESC']) || '—',
         centro: centroId,
         almacen: getProp(o, ['Almacen', 'ALMACEN', 'CENTRO']),
         responsable: getProp(o, ['RESPCONTROLPROD', 'RESPCTRLPROD', 'RespControlProd', 'RESP_CONTROL_PROD', 'RESPONSABLE']),
         maquina: getProp(o, ['MAQUINA', 'RECURSO', 'ID_MAQUINA', 'Maquina']).trim(),
-        hasDeficit: stockUN < qty,
-        stockUN,
-        stockKg
       };
     });
-  }, [extractMaterialInfo, inventarioSAP, tiemposCatalogo, kpiLooperData]);
+  }, [extractMaterialInfo, tiemposCatalogo, kpiLooperData]);
 
   const getFilteredData = useCallback((rawData: any[], centro: string) => {
     const allowed = centro === '1000' ? ['013', '038', '039', '044', '036'] : ['002', '038', '039'];
@@ -300,7 +300,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [inspector]);
 
   useEffect(() => { 
     setMounted(true); 
@@ -352,7 +352,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     
     const tTotal = ((hDay * (1 - p1)) + (hNight * (1 - p2))) * (performance / 100) * EFFICIENCY_FACTOR;
     const allAudit = planta === 'UIO' ? [...provAuditUIO, ...fertAuditUIO] : [...provAuditGYE, ...fertAuditGYE];
-    // Nota: Aunque el sidebar sume todo el centro, mantenemos la visualización individual por máquina si la data SAP tiene el campo maquina
     const plannedH = allAudit.filter(r => r.maquina === id || r.maquina.includes(id) || r.responsable === id).reduce((s, r) => s + r.tTotal, 0);
     const occupancy = tTotal > 0 ? (plannedH / tTotal) * 100 : 0;
     const mttoMin = getMttoTime(id, planta);
@@ -440,7 +439,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const allAuditProv = planta === 'UIO' ? provAuditUIO : provAuditGYE;
     const allAuditFert = planta === 'UIO' ? fertAuditUIO : fertAuditGYE;
     
-    // CORRECCIÓN: Capacidad Planificada = Suma total de tiempos de órdenes sin filtrar por máquina individual
     const totalPlannedH = allAuditProv.reduce((s, r) => s + r.tTotal, 0) + allAuditFert.reduce((s, r) => s + r.tTotal, 0);
     const globalOccupancy = totalH > 0 ? (totalPlannedH / totalH) * 100 : 0;
 
@@ -511,8 +509,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                   <th className="px-3 py-4 border-r border-white/5 font-black text-yellow-400">Cant.</th>
                   <th className="px-3 py-4 border-r border-white/5">Peso Kg</th>
                   <th className="px-3 py-4 border-r border-white/5 bg-slate-800">Alt. Total</th>
-                  <th className="px-3 py-4 border-r border-white/5">Stock UN</th>
-                  <th className="px-3 py-4 border-r border-white/5">Stock Kg</th>
                   <th className="px-3 py-4 border-r border-white/10 bg-indigo-500/20">T. Indiv</th>
                   <th className="px-4 py-4 border-r border-white/10 bg-indigo-600 font-black">T. Total H</th>
                   <th className="px-3 py-4 border-r border-white/5 bg-amber-500/20 text-amber-300 font-black">Cargas</th>
@@ -542,7 +538,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <td className="border-r border-slate-50"></td>
                         <td className="px-3 py-3 font-black text-slate-900 bg-yellow-500/10 text-center">{formatNum(tCant, 0)}</td>
                         <td className="px-3 py-3 font-black text-slate-400 opacity-40">{formatNum(tKg, 0)}</td>
-                        <td colSpan={4} className="border-r border-slate-50"></td>
+                        <td colSpan={2}></td>
                         <td className="px-4 py-3 bg-indigo-600 text-white font-black">{tH.toFixed(2)}h</td>
                         <td className="px-3 py-3 bg-amber-500/10 text-amber-700 font-black">{tBatches}</td>
                         <td colSpan={6}></td>
@@ -558,8 +554,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                           <td className="px-3 py-2 border-r border-slate-50 text-slate-900 font-black bg-yellow-500/5">{row.cant}</td>
                           <td className="px-3 py-2 border-r border-slate-50 text-slate-400">{formatNum(row.peso, 1)}</td>
                           <td className="px-3 py-2 border-r border-slate-50 bg-slate-50 text-slate-900 font-black">{row.alturaTotal.toFixed(1)}</td>
-                          <td className="px-3 py-2 border-r border-slate-50">{formatNum(row.stockUN, 1)}</td>
-                          <td className="px-3 py-2 border-r border-slate-50 text-slate-400">{formatNum(row.stockKg, 0)}</td>
                           <td className="px-3 py-2 border-r border-slate-50 text-indigo-400">{row.tIndiv.toFixed(2)}</td>
                           <td className="px-4 py-2 border-r border-white/10 bg-indigo-50 text-indigo-800 font-black">{row.tTotal.toFixed(2)}</td>
                           <td className="px-3 py-2 border-r border-slate-50 bg-amber-50 text-amber-700 font-black">{row.nroCargas}</td>
@@ -585,13 +579,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const headerStyles = "p-4 md:p-6 space-y-6 bg-white min-h-screen rounded-xl border border-gray-100 shadow-sm font-sans text-left";
 
   if (!mounted) return <div className={headerStyles} />;
-
-  if (isLoading) return (
-    <div className="flex flex-col items-center justify-center p-20 gap-4">
-      <Loader2 className="w-10 h-10 animate-spin text-primary" />
-      <p className="text-xs font-bold text-gray-400 uppercase tracking-widest animate-pulse">Sincronizando SAP...</p>
-    </div>
-  );
 
   return (
     <div className={headerStyles}>
