@@ -1,6 +1,7 @@
 import type { BodyListResponse } from "@/types/body-list-response";
 import type { BodyResponse } from "@/types/body-response";
 import { environment } from "@/environments/environments.prod";
+import { detalleCalendarioService } from "./detallecalendario.service";
 
 const API_URL = `${environment.apiURL}/api/servicios`;
 
@@ -438,6 +439,43 @@ export const serviciosService = {
     if (!response.ok) {
       const errorBody = await response.json().catch(() => ({ message: "Error al consultar la explosión de materiales." }));
       throw new Error(errorBody.message || "Error al consultar la explosión de materiales.");
+    }
+    return response.json();
+  },
+
+  // Grupos: códigos de grupo concatenados por "&" (ej: "11&12&15")
+  // FechaProgramacion: fecha del plan en formato "YYYY-MM-DD"
+  async detallePlanTacticoPorGrupos(Grupos: string, FechaProgramacion: string): Promise<BodyResponse<any>> {
+    const response = await fetch(API_URL + "/detallesPlanGrupo", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        Grupos: Grupos,
+        FechaProgramacion: FechaProgramacion
+      }),
+    });
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({ message: "Error al consultar el plan táctico por grupos." }));
+      throw new Error(errorBody.message || "Error al consultar el plan táctico por grupos.");
+    }
+    return response.json();
+  },
+
+
+
+
+  async versionsFabricacionPorCentroYCodigoMaterial(Centro: string, CodigoMaterial: string): Promise<BodyResponse<any>> {
+    const response = await fetch(API_URL + "/versionesFabricacionMaterialPorCentro", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        Centro: Centro,
+        Codigo: CodigoMaterial
+      }),
+    });
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({ message: "Error al consultar el plan táctico por grupos." }));
+      throw new Error(errorBody.message || "Error al consultar el plan táctico por grupos.");
     }
     return response.json();
   },

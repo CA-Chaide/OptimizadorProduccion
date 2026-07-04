@@ -81,7 +81,6 @@ export interface DetalleTactico {
     estado: string;
     fecha_modificacion: Date;
     usuario_modificacion: string;
-    plan_grupo?: PlanGrupo;
 }
 
 export interface Detalles {
