@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { serviciosService } from '@/services/servicios.service';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { logger } from '@/services/LogService';
@@ -96,36 +96,6 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
     performExploration();
   }, [addNotification]);
 
-  // Load orders for current page
-  const loadOrdersForPage = useCallback(async (page: number) => {
-    try {
-      setIsLoading(true);
-      setError(null);
-      logger.log(`[ProvisionalOrdersTab] Cargando página ${page} con ${pagination.pageSize} registros por página...`);
-
-      const response = await serviciosService.OrdenesProvisionalesPaginados(page, pagination.pageSize);
-      
-      if (response.data) {
-        setOrders(response.data);
-        setPagination(prev => ({
-          ...prev,
-          currentPage: page,
-        }));
-        logger.log(`[ProvisionalOrdersTab] Página ${page} cargada con ${response.data.length} registros`);
-        inspector.captureVariable('loadedOrders', response.data.length);
-      } else {
-        throw new Error('No se obtuvieron datos');
-      }
-    } catch (err) {
-      const errorMessage = (err as Error).message;
-      logger.error(`[ProvisionalOrdersTab] Error al cargar página: ${errorMessage}`);
-      setError(errorMessage);
-      addNotification('error', `Error al cargar órdenes: ${errorMessage}`);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [pagination.pageSize, addNotification]);
-
   const totalPagesLocal = Math.ceil(orders.length / pagination.rowsPerPage);
   
   const startIndex = (pagination.currentPage - 1) * pagination.rowsPerPage;
@@ -148,13 +118,6 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
         currentPage: prev.currentPage + 1,
       }));
     }
-  };
-
-  const handleLoadPage = (page: number) => {
-    setPagination(prev => ({
-      ...prev,
-      currentPage: page,
-    }));
   };
 
   const handleRowsPerPageChange = (newRowsPerPage: number) => {

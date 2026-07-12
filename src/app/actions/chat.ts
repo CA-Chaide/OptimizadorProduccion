@@ -1,11 +1,11 @@
 
 'use server';
 
+import fs from 'fs';
 import { ai } from '@/ai/genkit';
 import { LogEntry } from '@/services/LogService';
 import { analysisTools } from './chat-tools';
 import { requestContext } from '@/lib/request-context';
-import { runtimeInspector } from '@/services/RuntimeInspector';
 import { dataStore } from '@/services/DataStore';
 
 export interface ChatMessage {
@@ -212,10 +212,9 @@ Keep your answers concise and actionable.`;
       console.error('[CHAT ERROR] Error details:', JSON.stringify(error, null, 2));
       
       // Log to file for debugging
-      const fs = require('fs');
       try {
         fs.appendFileSync('debug_error.log', `[${new Date().toISOString()}] Error: ${error.message}\nStack: ${error.stack}\nFull: ${JSON.stringify(error, null, 2)}\n\n`);
-      } catch (e) { /* ignore */ }
+      } catch { /* ignore */ }
       
       return { text: 'Sorry, I encountered an error processing your request.' };
     }

@@ -23,10 +23,9 @@ import {
   TacticalPlanMueblesSection,
   NeedsCalculationC2000Section,
 } from '@/components';
-import { ActiveView, viewConfig } from '@/constants/constants';
+import { ActiveView } from '@/constants/constants';
 import { useAppContext } from '@/context/AppProvider';
 import { Toaster } from "@/components/ui/toaster";
-import { ClientProvider } from '@/context/ClientProvider';
 import { MainNav } from '@/components/main-nav';
 
 
@@ -34,12 +33,9 @@ import { MainNav } from '@/components/main-nav';
 const ProductionOptimizerClient: React.FC = () => {
     const {
         activeView,
-        dispatch,
         handleDataImported,
         salesData,
         productionPlan,
-        handleGeneratePlan,
-        isLoading,
         constraints,
         setConstraints,
         employees,
@@ -53,10 +49,7 @@ const ProductionOptimizerClient: React.FC = () => {
         workShifts,
         setWorkShifts,
         handleGenerateTacticalPlan,
-        tacticalPlanResult,
         addNotification,
-        handleSyncAndValidate,
-        syncStatus,
     } = useAppContext();
 
     const renderActiveView = () => {

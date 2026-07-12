@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { safeNumber, normalizeMaterialCode } from './utils';
-import { TiempoCanonResult, TransferNeed, ViableTransfer, BottleneckAnalysisSectionProps } from './types';
+import { TransferNeed, BottleneckAnalysisSectionProps } from './types';
 import { BottleneckSummaryTable } from './BottleneckSummaryTable';
 import { BottleneckClassTable } from './BottleneckClassTable';
 import { bottleneckAnalysisService } from '@/services/BottleneckAnalysisService';

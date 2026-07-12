@@ -1,14 +1,13 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { ShoppingCart, Users, Lock, Package, Loader2, Clock, LayoutDashboard, ClipboardList, Layers, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, Activity, Scissors, TrendingUp, BarChart3, Box } from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/card';
+import { ShoppingCart, Users, Lock, Package, Loader2, Clock, LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, TrendingUp, Box } from 'lucide-react';
+import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from '@/components/ui/button';
 import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
 import { serviciosService } from '@/services/servicios.service';
-import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 import { Badge } from '@/components/ui/badge';
@@ -25,8 +24,7 @@ import {
 const PACKING_TIME_PER_UNIT_SECONDS = 15;
 
 export const TacticalPlanVentaExternaSection: React.FC = () => {
-  const inspector = useRuntimeInspector('TacticalPlanVentaExterna');
-  const { addNotification } = useAppContext();
+  useAppContext();
 
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState('resumen');
@@ -90,7 +88,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           const res = await serviciosService.getTiemposEnsambladobyCentroyCodigoGrupo(String(g.centro), g.codigo_grupo);
           const actualData = res.data?.data || res.data || [];
           if (Array.isArray(actualData)) allTiempos.push(...actualData);
-        } catch (e) {
+        } catch {
           console.warn(`Error cargando tiempos para grupo ${g.codigo_grupo}`);
         }
       }

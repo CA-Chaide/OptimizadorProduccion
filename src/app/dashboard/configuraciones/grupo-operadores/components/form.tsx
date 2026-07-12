@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -70,7 +70,6 @@ const agruparOperadores = (usuarios: any[]): OperadorAgrupado[] => {
 export default function GrupoOperadorForm({
   record,
   usuarios,
-  operadorRecords,
   onSuccess,
   onCancel,
 }: Readonly<GrupoOperadorFormProps>) {

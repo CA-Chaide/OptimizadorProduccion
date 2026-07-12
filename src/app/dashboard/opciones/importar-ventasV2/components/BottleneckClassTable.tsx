@@ -4,7 +4,7 @@
 import React, { useState, useMemo, useEffect, memo, useRef } from 'react';
 import { MONTH_NAMES, MONTH_NUMBERS } from './constants';
 import { safeNumber, exportToXLSX, normalizeMaterialCode } from './utils';
-import { TiempoCanonResult, TransferNeed, ViableTransfer, BottleneckClassTableProps } from './types';
+import { TiempoCanonResult, BottleneckClassTableProps } from './types';
 import { Download } from 'lucide-react';
 
 // Componente de fila optimizado con guarda de hidratación
@@ -88,9 +88,8 @@ const DataRow = memo(({ row, idx, linea, isCentro1000, showSaldos, isMounted }: 
 DataRow.displayName = 'DataRow';
 
 export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSaldos?: boolean }> = ({ 
-  datos, 
-  datosCompletos,
-  titulo, 
+  datos,
+  titulo,
   tiemposCanon, 
   onTransferNeedsCalculated,
   onComputedDataReady,
@@ -411,7 +410,7 @@ export const BottleneckClassTable: React.FC<BottleneckClassTableProps & { showSa
     
     return Array.from(new Set(nombres)).sort((a, b) => {
       const getNum = (name: string) => {
-        const entry = Object.entries(MONTH_NAMES).find(([_, v]) => v === name);
+        const entry = Object.entries(MONTH_NAMES).find(([, v]) => v === name);
         return entry ? parseInt(entry[0]) : 0;
       };
       return getNum(a) - getNum(b);

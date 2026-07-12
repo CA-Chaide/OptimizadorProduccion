@@ -60,7 +60,7 @@ function groupSalesBy(sales: any[], groupBy: string) {
       } else {
         saleDate = new Date();
       }
-    } catch (e) {
+    } catch {
       saleDate = new Date(); // Fallback a fecha actual en caso de error
     }
     
@@ -150,7 +150,7 @@ export const analyzeSalesTool = ai.defineTool({
         if (params.startDate && saleDate < new Date(params.startDate)) return false;
         if (params.endDate && saleDate > new Date(params.endDate)) return false;
         return true;
-      } catch (e) {
+      } catch {
         return true; // En caso de error, incluir el registro
       }
     });
@@ -236,7 +236,7 @@ export const analyzeProductionCapacityTool = ai.defineTool({
   const contextData = getRequestContext() || {};
   try {
     console.debug('[Tool analyzeProductionCapacity] context keys=', Object.keys(contextData || {}).join(','));
-  } catch (e) { /* ignore */ }
+  } catch { /* ignore */ }
   const plan = contextData.productionPlanFull || contextData.productionPlanSample || [];
   const maintenance = contextData.maintenanceFull || contextData.maintenanceSample || [];
   const constraints = contextData.constraintsSummary || {};
@@ -296,7 +296,7 @@ export const analyzeEmployeeAvailabilityTool = ai.defineTool({
   const contextData = getRequestContext() || {};
   try {
     console.debug('[Tool analyzeEmployeeAvailability] context keys=', Object.keys(contextData || {}).join(','));
-  } catch (e) { /* ignore */ }
+  } catch { /* ignore */ }
   const employees = contextData.employeesFull || contextData.employeesSample || [];
   const absenteeism = contextData.absenteeismFull || contextData.absenteeismSample || [];
   const shifts = contextData.workShiftsFull || contextData.workShiftSample || [];
@@ -354,7 +354,7 @@ export const analyzeBottlenecksTool = ai.defineTool({
   const contextData = getRequestContext() || {};
   try {
     console.debug('[Tool analyzeBottlenecks] context keys=', Object.keys(contextData || {}).join(','));
-  } catch (e) { /* ignore */ }
+  } catch { /* ignore */ }
   const plan = contextData.productionPlanFull || contextData.productionPlanSample || [];
   const constraints = contextData.constraintsSummary || {};
   
@@ -390,7 +390,7 @@ export const getSummaryStatsTool = ai.defineTool({
   const contextData = getRequestContext() || {};
   try {
     console.debug('[Tool getSummaryStats] context keys=', Object.keys(contextData || {}).join(','));
-  } catch (e) { /* ignore */ }
+  } catch { /* ignore */ }
   return {
     sales: {
       total: contextData.salesDataSample?.length || 0,

@@ -3,50 +3,49 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
-  Scissors, 
-  Package, 
-  Loader2, 
-  Clock, 
-  LayoutDashboard, 
-  ShoppingCart, 
-  RefreshCw, 
+  Scissors,
+  Package,
+  Loader2,
+  LayoutDashboard,
+  ShoppingCart,
+  RefreshCw,
   Wrench,
   Minus,
   Plus,
-  TrendingUp,
-  Box,
-  Info,
-  Calendar as CalendarIcon, 
-  ChevronLeft, 
-  ChevronRight, 
-  Filter, 
-  Activity,
+  ChevronLeft,
+  ChevronRight,
+  Filter,
   AlertCircle,
+  CheckCircle2,
   Database,
   ChevronsLeft,
   ChevronsRight
 } from 'lucide-react';
-import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { serviciosService } from '@/services/servicios.service';
 import { grupoService } from '@/services/grupo.service';
-import { logger } from '@/services/LogService';
-import { useRuntimeInspector } from '@/services/RuntimeInspector';
+import { restriccionService } from '@/services/restriccion.service';
+import { planGrupoService } from '@/services/plangrupo.service';
+import { detalleTacticoService } from '@/services/detalletactico.service';
 import { useAppContext } from '@/context/AppProvider';
 import type { Grupo } from '@/types/interfaces';
 import { cn } from '@/lib/utils';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, isValid, parseISO } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, isValid } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 // --- CONSTANTES TÉCNICAS PLANTA ---
-const CAROUSEL_CIRCUMFERENCE_CM = 320; 
-const BLOCK_LENGTH_METERS = 20;
+const CAROUSEL_DIAMETER_CM = 320;
 const EFFICIENCY_FACTOR = 0.87;
-const SETUP_TIME_PER_RUN = 128;
-const BLOCK_SIZE = 40;
+
+// Máquinas de cabecera del resumen (Capacidad Operativa), reutilizadas para vincular
+// cada registro de Mantenimiento SAP (ID_MAQUINA) con su tarjeta correspondiente.
+const MACHINES_BY_PLANTA: Record<'UIO' | 'GYE', { id: string; n: string }[]> = {
+  UIO: [{ id: 'CR04', n: 'CARRUSEL 4 FECKEN' }, { id: 'CR03', n: 'CARRUSEL 3 SCHMUZIGER' }, { id: 'CR01', n: 'CARRUSEL 1 SCHMUZIGER' }, { id: 'CNC01', n: 'CORTADORA CNC GIOTTO' }],
+  GYE: [{ id: 'CR02', n: 'CARRUSEL 2 FEMA' }, { id: 'CR01', n: 'CARRUSEL 1 SCHMUZIGER' }, { id: 'LA02', n: 'LAMINADORA REPOTENCIADA' }],
+};
 
 interface UnifiedRow {
   orden: string;
@@ -73,6 +72,63 @@ interface UnifiedRow {
   maquina: string;
   isAlterna: boolean;
 }
+
+interface NecesidadPlantaRow {
+  codigo_material: number;
+  cantidad_produccion_neta: string;
+  fecha_inicio: string;
+}
+
+const AreaNeedsTable: React.FC<{ area: string; rows: NecesidadPlantaRow[] }> = ({ area, rows }) => {
+  const [page, setPage] = useState(1);
+  const pageSize = 10;
+
+  useEffect(() => { setPage(1); }, [rows]);
+
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+  const paginated = useMemo(() => rows.slice((page - 1) * pageSize, page * pageSize), [rows, page]);
+
+  return (
+    <div className="space-y-4 text-left">
+      <h3 className="text-xs font-black uppercase text-slate-800 tracking-widest flex items-center gap-2">
+        <div className="w-2.5 h-2.5 rounded-full bg-red-600" /> {area} ({rows.length})
+      </h3>
+      <div className="border border-slate-100 rounded-[2.5rem] overflow-hidden bg-white shadow-xl">
+        <div className="overflow-x-auto max-h-[500px]">
+          <table className="w-full text-center border-collapse text-[10px]">
+            <thead className="bg-[#0f172a] text-white uppercase font-black tracking-tighter sticky top-0 z-20 border-b border-white/10">
+              <tr>
+                <th className="px-6 py-4 border-r border-white/5 text-left">Código Material</th>
+                <th className="px-6 py-4 border-r border-white/5 font-black text-yellow-400">Cantidad Producción Neta</th>
+                <th className="px-6 py-4 uppercase">Fecha Inicio</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 font-bold text-slate-700">
+              {paginated.length === 0 ? (
+                <tr><td colSpan={3} className="py-16 text-slate-300 uppercase font-black tracking-widest italic opacity-50 text-center">Sin registros</td></tr>
+              ) : paginated.map((row, idx) => (
+                <tr key={idx} className="hover:bg-slate-50 transition-colors font-mono text-[10px]">
+                  <td className="px-6 py-3 border-r border-slate-50 text-left text-indigo-600 font-black">{row.codigo_material}</td>
+                  <td className="px-6 py-3 border-r border-slate-50 text-slate-900 font-black bg-yellow-500/5">{row.cantidad_produccion_neta}</td>
+                  <td className="px-6 py-3 text-slate-400">{row.fecha_inicio}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-1 pt-2">
+          <button onClick={() => setPage(1)} disabled={page === 1} className="p-2 rounded-md text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors" title="Primera página"><ChevronsLeft className="w-4 h-4" /></button>
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="p-2 rounded-md text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors" title="Página anterior"><ChevronLeft className="w-4 h-4" /></button>
+          <span className="min-w-[90px] text-center text-[10px] font-black uppercase text-slate-500">Página {page} / {totalPages}</span>
+          <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="p-2 rounded-md text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors" title="Página siguiente"><ChevronRight className="w-4 h-4" /></button>
+          <button onClick={() => setPage(totalPages)} disabled={page === totalPages} className="p-2 rounded-md text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors" title="Última página"><ChevronsRight className="w-4 h-4" /></button>
+        </div>
+      )}
+    </div>
+  );
+};
 
 const safeNum = (val: any): number => {
   const n = Number(String(val || '').replace(/[^0-9.-]/g, ''));
@@ -118,20 +174,21 @@ const parseDimensions = (desc: string) => {
 };
 
 export const TacticalPlanEspumasSection: React.FC = () => {
-  const inspector = useRuntimeInspector('TacticalPlanEspumas');
-  const { addNotification } = useAppContext();
+  useAppContext();
 
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState('resumen');
   const [isLoading, setIsLoading] = useState(true);
   const [ordenesProvisionales, setOrdenesProvisionales] = useState<any[]>([]);
   const [ordenesFert, setOrdenesFert] = useState<any[]>([]);
-  const [inventarioSAP, setInventarioSAP] = useState<any[]>([]);
+  const [, setInventarioSAP] = useState<any[]>([]);
   const [kpiLooperData, setKpiLooperData] = useState<any[]>([]);
   const [mantenimientosSAP, setMantenimientosSAP] = useState<any[]>([]);
   const [tiemposCatalogo, setTiemposCatalogo] = useState<any[]>([]);
   const [operadoresCorte, setOperadoresCorte] = useState<any[]>([]);
-  const [grupos, setGrupos] = useState<Grupo[]>([]);
+  const [, setGrupos] = useState<Grupo[]>([]);
+  const [necesidadesPlantaData, setNecesidadesPlantaData] = useState<Record<string, NecesidadPlantaRow[]>>({});
+  const [necesidadesPlantaLoading, setNecesidadesPlantaLoading] = useState(false);
   
   const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set());
   const [viewDate, setViewDate] = useState<Date>(new Date()); 
@@ -198,14 +255,20 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       // REGLA: división entre la altura total por referencia entre la alturadel bloque
       const subB = usefulHeight > 0 ? hTotal / usefulHeight : 0;
       
-      const gap = 15;
-      // Capacidad de giro basada en circunferencia de 3.2m
-      const capGiro = info.ancho > 0 ? Math.floor(CAROUSEL_CIRCUMFERENCE_CM / (info.ancho + gap)) : 0;
+      const gap = 10;
+      // Capacidad de giro: nro de subbloques que caben en el carrusel como cuerdas de un polígono inscrito
+      // (no como división lineal de la circunferencia, que sobreestima la capacidad real)
+      const radioCarrusel = CAROUSEL_DIAMETER_CM / 2;
+      const cuerdaReq = info.ancho + gap;
+      const capGiro = cuerdaReq > 0 && cuerdaReq < 2 * radioCarrusel
+        ? Math.floor(Math.PI / Math.asin(cuerdaReq / (2 * radioCarrusel)))
+        : (cuerdaReq > 0 ? 1 : 0);
       const slicesPerBlock = info.esp > 0 ? Math.floor(usefulHeight / info.esp) : 0;
-      
+
       // Unidades por batch total (todos los bloques en la mesa)
       const undBatch = slicesPerBlock * capGiro;
-      const nLoads = undBatch > 0 ? Math.ceil(qty / undBatch) : 0;
+      // Cargas = nro de subbloques calculados / capacidad de subbloques por carga completa del carrusel
+      const nLoads = capGiro > 0 ? Math.ceil(subB / capGiro) : 0;
       
       // REGLA: sumarle 4 ciclos por la cúpula al número de la cantidad para el cálculo
       const totalCycles = qty + (nLoads * 4); 
@@ -312,14 +375,83 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     }
   }, []);
 
-  useEffect(() => { 
-    setMounted(true); 
+  const fetchNecesidadesPlanta = useCallback(async () => {
+    setNecesidadesPlantaLoading(true);
+    try {
+      const [restrsRes, gruposRes] = await Promise.all([
+        restriccionService.getAll(),
+        grupoService.getAll()
+      ]);
+
+      // 1. Restricción ALMACEN_CONSUMO: su valor contiene los nombres de grupo (sin espacios/tildes) a filtrar de la tabla de grupos
+      const normalizeName = (s: any) => String(s || '')
+        .normalize('NFD').replace(/[̀-ͯ]/g, '')
+        .replace(/\s+/g, '')
+        .toLowerCase();
+
+      const almacenConsumoNames = (restrsRes.data || [])
+        .filter((r: any) => r.nombre_restriccion === 'ALMACEN_CONSUMO')
+        .flatMap((r: any) => String(r.valor_restriccion || '').split(/[,&]/).map((v: string) => normalizeName(v)))
+        .filter((v: string) => v !== '');
+
+      const gruposFiltrados = (gruposRes.data || []).filter((g: any) => almacenConsumoNames.includes(normalizeName(g.nombre_grupo)));
+      const gruposCodigos = gruposFiltrados.map((g: any) => g.codigo_grupo);
+      const grupoPorCodigo = new Map(gruposFiltrados.map((g: any) => [g.codigo_grupo, g]));
+
+      if (gruposCodigos.length === 0) {
+        setNecesidadesPlantaData({});
+        return;
+      }
+
+      // 2. PlanGrupo activos cuyo valor coincide con "Plan Táctico - Centro <centro> - P2" y cuyo grupo esté en la lista anterior
+      const planGruposRes = await planGrupoService.getAll();
+      const planesActivos = (planGruposRes.data || []).filter((pg: any) => {
+        const valor = String(pg.valor || '').trim();
+        return pg.estado === 'A' && gruposCodigos.includes(pg.codigo_grupo) && /plan\s*t[aá]ctico.*centro.*p2/i.test(valor);
+      });
+
+      const planGrupoCodigos = planesActivos.map((pg: any) => pg.codigo_plan_grupo);
+      const planPorCodigo = new Map(planesActivos.map((pg: any) => [pg.codigo_plan_grupo, pg]));
+
+      if (planGrupoCodigos.length === 0) {
+        setNecesidadesPlantaData({});
+        return;
+      }
+
+      // 3. DetalleTactico asociado a los PlanGrupo encontrados
+      const detallesRes = await detalleTacticoService.getAll();
+      const detalles = (detallesRes.data || []).filter((d: any) => planGrupoCodigos.includes(d.codigo_plan_grupo));
+
+      const grouped: Record<string, NecesidadPlantaRow[]> = {};
+      detalles.forEach((d: any) => {
+        const plan = planPorCodigo.get(d.codigo_plan_grupo);
+        const grupo = plan ? grupoPorCodigo.get(plan.codigo_grupo) : undefined;
+        const area = grupo?.nombre_grupo || 'Sin Área Asignada';
+        if (!grouped[area]) grouped[area] = [];
+        grouped[area].push({
+          codigo_material: d.codigo_material,
+          cantidad_produccion_neta: d.cantidad_produccion_neta,
+          fecha_inicio: plan?.fecha_inicio_plan ? String(plan.fecha_inicio_plan).split('T')[0] : '—'
+        });
+      });
+
+      setNecesidadesPlantaData(grouped);
+    } catch (e) {
+      console.error('Error al recuperar necesidades de planta', e);
+      setNecesidadesPlantaData({});
+    } finally {
+      setNecesidadesPlantaLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    setMounted(true);
     const today = new Date();
     setViewDate(today);
     setSelectedDates(new Set([format(today, 'yyyy-MM-dd')]));
   }, []);
 
-  useEffect(() => { if (mounted) fetchDataAsync(); }, [mounted, fetchDataAsync]);
+  useEffect(() => { if (mounted) { fetchDataAsync(); fetchNecesidadesPlanta(); } }, [mounted, fetchDataAsync, fetchNecesidadesPlanta]);
 
   const updateConfig = (planta: 'UIO' | 'GYE', machine: string, field: string, value: any) => {
     const setFn = planta === 'UIO' ? setUioConfig : setGyeConfig;
@@ -329,26 +461,75 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     }));
   };
 
+  // Duración en horas de una fila de Mantenimiento SAP. El campo real es Duracion_Minutos
+  // (en minutos); T_MTTO_PLANIFICADO no existe en el endpoint pero se conserva como
+  // resguardo por si alguna variante del servicio lo llega a incluir (en horas).
+  const getMttoDurationH = (row: any): number => {
+    const durMin = safeNum(getProp(row, ['Duracion_Minutos']));
+    if (durMin > 0) return durMin / 60;
+    const legacyH = safeNum(getProp(row, ['T_MTTO_PLANIFICADO', 't_mtto_planificado']));
+    if (legacyH > 0) return legacyH;
+    const ini = new Date(getProp(row, ['FECHA_OT_PRG_INI']));
+    const fin = new Date(getProp(row, ['FECHA_OT_PRG_FIN']));
+    if (isValid(ini) && isValid(fin)) return (fin.getTime() - ini.getTime()) / 3600000;
+    return 0;
+  };
+
+  // El endpoint de SAP no expone un ID de orden (no existe OT_PRG_ID): la misma ventana de
+  // mantenimiento (misma máquina + mismo inicio/fin) se repite una vez por cada línea de
+  // proceso/responsable que usa esa máquina (fan-out del join de origen). Se deduplica por
+  // ID_MAQUINA + FECHA_OT_PRG_INI + FECHA_OT_PRG_FIN para quedarnos con una sola línea por
+  // ventana de mantenimiento real.
+  const uniqueMantenimientosSAP = useMemo(() => {
+    const seen = new Set<string>();
+    return mantenimientosSAP.filter(m => {
+      const key = [
+        getProp(m, ['ID_MAQUINA']),
+        getProp(m, ['FECHA_OT_PRG_INI']),
+        getProp(m, ['FECHA_OT_PRG_FIN']),
+      ].join('|').trim().toUpperCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [mantenimientosSAP]);
+
+  // Vincula un ID_MAQUINA de Mantenimiento SAP con la tarjeta de cabecera del resumen.
+  // El endpoint no expone PLANTA como texto: el campo confiable es Centro (1000 = UIO,
+  // 2000 = GYE). Si no viene informado, se busca en ambas listas de máquinas (el ID de la
+  // máquina ya acota el resultado salvo para CR01, que existe en ambas plantas).
+  const resolveMachineLink = (idMaquina: string, centro: string | number, plantaTexto?: string) => {
+    const id = String(idMaquina || '').trim().toUpperCase();
+    if (!id) return null;
+    const centroStr = String(centro ?? '').trim();
+    const pStr = String(plantaTexto || '').toUpperCase();
+    let candidates: ('UIO' | 'GYE')[];
+    if (centroStr === '1000') candidates = ['UIO'];
+    else if (centroStr === '2000') candidates = ['GYE'];
+    else if (pStr.includes('QUITO')) candidates = ['UIO'];
+    else if (pStr.includes('GUAYAQUIL')) candidates = ['GYE'];
+    else candidates = ['UIO', 'GYE'];
+    for (const planta of candidates) {
+      const match = MACHINES_BY_PLANTA[planta].find(m => m.id === id || id.includes(m.id));
+      if (match) return { ...match, planta };
+    }
+    return null;
+  };
+
   const getMttoTime = (machineId: string, planta: string) => {
-    const plantaKey = planta === 'UIO' ? 'QUITO' : 'GUAYAQUIL';
-    return mantenimientosSAP
+    const target = machineId.trim().toUpperCase();
+    return uniqueMantenimientosSAP
       .filter(m => {
-        const mId = String(getProp(m, ['ID_MAQUINA', 'MAQUINA'])).trim();
-        const pId = String(getProp(m, ['PLANTA'])).trim();
-        return (mId === machineId || machineId.includes(mId)) && pId.includes(plantaKey);
+        const idMaquina = getProp(m, ['ID_MAQUINA', 'MAQUINA']);
+        const link = resolveMachineLink(idMaquina, getProp(m, ['Centro', 'CENTRO']), getProp(m, ['PLANTA']));
+        if (!link || link.id !== target || link.planta !== planta) return false;
+        // Extracción de fecha (formato SAP ISO: 2026-07-09T19:00:00.000Z) para comparar contra los días
+        // seleccionados en el calendario, con el mismo criterio usado en getFilteredData.
+        const dateRaw = String(getProp(m, ['FECHA_OT_PRG_INI'])).trim();
+        const date = dateRaw.includes('T') ? dateRaw.split('T')[0] : dateRaw;
+        return selectedDates.size === 0 || selectedDates.has(date);
       })
-      .reduce((sum, row) => {
-        const val = safeNum(getProp(row, ['T_MTTO_PLANIFICADO', 't_mtto_planificado']));
-        if (val > 0) return sum + (val * 60);
-        const iniStr = getProp(row, ['FECHA_OT_PRG_INI']);
-        const finStr = getProp(row, ['FECHA_OT_PRG_FIN']);
-        const ini = new Date(iniStr);
-        const fin = new Date(finStr);
-        if (isValid(ini) && isValid(fin)) {
-          return sum + (fin.getTime() - ini.getTime()) / 60000;
-        }
-        return sum;
-      }, 0);
+      .reduce((sum, row) => sum + getMttoDurationH(row), 0);
   };
 
   const renderMachineCol = (id: string, name: string, planta: 'UIO' | 'GYE') => {
@@ -364,7 +545,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const allAudit = planta === 'UIO' ? [...provAuditUIO, ...fertAuditUIO] : [...provAuditGYE, ...fertAuditGYE];
     const plannedH = allAudit.filter(r => r.maquina === id || r.maquina.includes(id) || r.responsable === id).reduce((s, r) => s + r.tTotal, 0);
     const occupancy = tTotal > 0 ? (plannedH / tTotal) * 100 : 0;
-    const mttoMin = getMttoTime(id, planta);
+    const mttoHours = getMttoTime(id, planta);
 
     return (
       <div key={id} className="col-span-1 border-r border-slate-700/50 flex flex-col font-sans">
@@ -376,7 +557,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <div className="space-y-1">
              <p className="text-[7px] font-black text-slate-500 uppercase mb-1">MTTO PREVENTIVO</p>
              <div className="bg-indigo-900/30 border border-indigo-500/30 rounded p-1.5 text-center">
-                <span className="text-[10px] font-black text-indigo-300">{mttoMin} MIN</span>
+                <span className="text-[10px] font-black text-indigo-300">{mttoHours.toFixed(2)}H</span>
              </div>
           </div>
           <div className="space-y-2">
@@ -435,9 +616,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
   const renderDashboard = (planta: 'UIO' | 'GYE') => {
     const config = planta === 'UIO' ? uioConfig : gyeConfig;
-    const machines = planta === 'UIO' 
-      ? [{ id: 'CR04', n: 'CARRUSEL 4 FECKEN' }, { id: 'CR03', n: 'CARRUSEL 3 SCHMUZIGER' }, { id: 'CR01', n: 'CARRUSEL 1 SCHMUZIGER' }, { id: 'CNC01', n: 'CORTADORA CNC GIOTTO' }]
-      : [{ id: 'CR02', n: 'CARRUSEL 2 FEMA' }, { id: 'CR01', n: 'CARRUSEL 1 SCHMUZIGER' }, { id: 'LA02', n: 'LAMINADORA REPOTENCIADA' }];
+    const machines = MACHINES_BY_PLANTA[planta];
 
     const totalH = Object.keys(config.shifts).reduce((s, m) => {
         const c = config.shifts[m];
@@ -452,6 +631,17 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     // REGLA: Capacidad planificada = suma integra de horas de órdenes para el centro
     const totalPlannedH = allAuditProv.reduce((s, r) => s + r.tTotal, 0) + allAuditFert.reduce((s, r) => s + r.tTotal, 0);
     const globalOccupancy = totalH > 0 ? (totalPlannedH / totalH) * 100 : 0;
+
+    // REGLA: Desglose por proceso de corte — carruseles vs verticales
+    // Centro 2000 (GYE): carruseles 002-038, verticales 039. Centro 1000 (UIO): carruseles 013-038-044, verticales 036-039.
+    const CARRUSEL_RESP = planta === 'GYE' ? ['002', '038'] : ['013', '038', '044'];
+    const VERTICAL_RESP = planta === 'GYE' ? ['039'] : ['036', '039'];
+    const sumByResp = (resps: string[]) => allAuditProv.filter(r => resps.includes(r.responsable)).reduce((s, r) => s + r.tTotal, 0)
+      + allAuditFert.filter(r => resps.includes(r.responsable)).reduce((s, r) => s + r.tTotal, 0);
+    const plannedCarrusel = sumByResp(CARRUSEL_RESP);
+    const plannedVertical = sumByResp(VERTICAL_RESP);
+    const occCarrusel = totalH > 0 ? (plannedCarrusel / totalH) * 100 : 0;
+    const occVertical = totalH > 0 ? (plannedVertical / totalH) * 100 : 0;
 
     return (
       <div className="bg-[#1e293b] rounded-[2.5rem] shadow-2xl overflow-hidden mb-10 text-white text-left font-sans">
@@ -478,6 +668,16 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               <div className="text-left border-t border-slate-700/50 pt-4">
                 <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">CAPACIDAD PLANIFICADA</p>
                 <div className="flex items-baseline gap-2"><span className="text-3xl font-black text-emerald-400 tracking-tighter">{totalPlannedH.toFixed(1)}</span><span className="text-[10px] font-black text-slate-500 uppercase">H</span></div>
+                <div className="mt-2 space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[8px] font-black text-cyan-400 uppercase tracking-widest w-16">Carruseles</span>
+                    <span className="text-[11px] font-black tabular-nums text-white">{plannedCarrusel.toFixed(1)}h</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[8px] font-black text-fuchsia-400 uppercase tracking-widest w-16">Verticales</span>
+                    <span className="text-[11px] font-black tabular-nums text-white">{plannedVertical.toFixed(1)}h</span>
+                  </div>
+                </div>
               </div>
 
               <div className="text-left">
@@ -485,6 +685,18 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                 <div className="flex items-center gap-3">
                   <div className="flex-1 h-3 bg-slate-800 rounded-full overflow-hidden border border-slate-700"><div className={cn("h-full transition-all duration-500", globalOccupancy > 100 ? "bg-red-500 shadow-[0_0_10px_#ef4444]" : "bg-emerald-500")} style={{ width: `${Math.min(globalOccupancy, 100)}%` }} /></div>
                   <span className="text-sm font-black tabular-nums">{globalOccupancy.toFixed(1)}%</span>
+                </div>
+                <div className="mt-2 space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[8px] font-black text-cyan-400 uppercase tracking-widest w-16">Carruseles</span>
+                    <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden border border-slate-700"><div className="h-full bg-cyan-500 transition-all duration-500" style={{ width: `${Math.min(occCarrusel, 100)}%` }} /></div>
+                    <span className="text-[11px] font-black tabular-nums w-10 text-right">{occCarrusel.toFixed(1)}%</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[8px] font-black text-fuchsia-400 uppercase tracking-widest w-16">Verticales</span>
+                    <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden border border-slate-700"><div className="h-full bg-fuchsia-500 transition-all duration-500" style={{ width: `${Math.min(occVertical, 100)}%` }} /></div>
+                    <span className="text-[11px] font-black tabular-nums w-10 text-right">{occVertical.toFixed(1)}%</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -541,7 +753,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                   const tBatches = items.reduce((s, r) => s + r.nroCargas, 0);
                   return (
                     <React.Fragment key={key}>
-                      <tr className="bg-slate-50 cursor-pointer hover:bg-indigo-50 transition-colors" onClick={() => {const n = new Set(expandedGroups); isExp ? n.delete(key) : n.add(key); setExpandedGroups(n);}}>
+                      <tr className="bg-slate-50 cursor-pointer hover:bg-indigo-50 transition-colors" onClick={() => {const n = new Set(expandedGroups); if (isExp) { n.delete(key); } else { n.add(key); } setExpandedGroups(n);}}>
                         <td className="px-4 py-3 text-left flex items-center gap-2 font-black text-indigo-900 border-r border-white/5">
                            {isExp ? <Minus className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
                            {key.split('|')[0]} — {key.split('|')[1]}
@@ -612,7 +824,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <div><h2 className="text-xl font-black text-gray-800 uppercase tracking-tighter">Programación Táctica Corte Espuma</h2><p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Capacidad Carrusel 3.2m | Auditoría Técnica SAP</p></div>
         </div>
         <div className="flex items-center gap-3">
-           <Button onClick={fetchDataAsync} disabled={isLoading} className="bg-red-600 hover:bg-red-700 text-white rounded-xl h-10 px-6 text-[10px] font-black uppercase tracking-widest shadow-lg flex items-center gap-2">{isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} SINCRONIZAR SAP</Button>
+           <Button onClick={() => { fetchDataAsync(); fetchNecesidadesPlanta(); }} disabled={isLoading} className="bg-red-600 hover:bg-red-700 text-white rounded-xl h-10 px-6 text-[10px] font-black uppercase tracking-widest shadow-lg flex items-center gap-2">{isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} SINCRONIZAR SAP</Button>
            <Popover>
             <PopoverTrigger asChild>
               <button className="h-10 px-5 rounded-2xl border border-gray-200 bg-white hover:border-red-500/50 flex items-center gap-3 font-black text-[11px] uppercase shadow-sm transition-all"><Filter className="w-4 h-4 text-red-500" /> {selectedDates.size === 0 ? 'Plan Maestro' : `${selectedDates.size} días seleccionados`}</button>
@@ -633,7 +845,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                     const dStr = format(day, 'yyyy-MM-dd');
                     const isSelected = selectedDates.has(dStr);
                     return (
-                      <button key={dStr} onClick={() => { const n = new Set(selectedDates); isSelected ? n.delete(dStr) : n.add(dStr); setSelectedDates(n); }} className={cn("relative h-8 w-8 mx-auto rounded-xl flex items-center justify-center transition-all", isSelected ? "bg-red-600 text-white shadow-md shadow-red-200" : "hover:bg-slate-50")}>
+                      <button key={dStr} onClick={() => { const n = new Set(selectedDates); if (isSelected) { n.delete(dStr); } else { n.add(dStr); } setSelectedDates(n); }} className={cn("relative h-8 w-8 mx-auto rounded-xl flex items-center justify-center transition-all", isSelected ? "bg-red-600 text-white shadow-md shadow-red-200" : "hover:bg-slate-50")}>
                         <span className={cn("text-xs font-black", isSelected ? "text-white" : (datesWithOrders.has(dStr) ? "text-slate-800" : "text-slate-200"))}>{format(day, 'd')}</span>
                         {datesWithOrders.has(dStr) && !isSelected && <div className="absolute bottom-1.5 w-1 h-1 bg-red-400 rounded-full" />}
                       </button>
@@ -648,13 +860,24 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-4 h-11 bg-gray-100/50 p-1.5 rounded-2xl border border-gray-200 mb-8">
-          {[ { v: 'resumen', l: 'Capacidad Operativa', i: LayoutDashboard }, { v: 'ordenes', l: 'Provisionales', i: Package }, { v: 'ordenesFert', l: 'Órdenes FERT', i: ShoppingCart }, { v: 'mantenimiento', l: 'Mantenimiento SAP', i: Wrench } ].map(tab => (
+        <TabsList className="grid grid-cols-5 h-11 bg-gray-100/50 p-1.5 rounded-2xl border border-gray-200 mb-8">
+          {[ { v: 'resumen', l: 'Capacidad Operativa', i: LayoutDashboard }, { v: 'necesidadesPlanta', l: 'Necesidades Planta', i: Database }, { v: 'ordenes', l: 'Provisionales', i: Package }, { v: 'ordenesFert', l: 'Órdenes FERT', i: ShoppingCart }, { v: 'mantenimiento', l: 'Mantenimiento SAP', i: Wrench } ].map(tab => (
             <TabsTrigger key={tab.v} value={tab.v} className="gap-2 text-[10px] font-black uppercase transition-all data-[state=active]:bg-white data-[state=active]:shadow-lg data-[state=active]:text-red-600 rounded-xl"><tab.i className="w-4 h-4" /> {tab.l}</TabsTrigger>
           ))}
         </TabsList>
         <div className="mt-6">
           <TabsContent value="resumen" className="animate-in fade-in duration-300">{renderDashboard('UIO')}{renderDashboard('GYE')}</TabsContent>
+          <TabsContent value="necesidadesPlanta" className="animate-in fade-in duration-300 space-y-10 text-left">
+            {necesidadesPlantaLoading ? (
+              <div className="flex items-center justify-center py-24 text-slate-300"><Loader2 className="w-6 h-6 animate-spin" /></div>
+            ) : Object.keys(necesidadesPlantaData).length === 0 ? (
+              <div className="py-24 text-center text-slate-300 uppercase font-black tracking-widest italic opacity-50">Sin necesidades de planta detectadas</div>
+            ) : (
+              Object.entries(necesidadesPlantaData).map(([area, rows]) => (
+                <AreaNeedsTable key={area} area={area} rows={rows} />
+              ))
+            )}
+          </TabsContent>
           <TabsContent value="ordenes" className="animate-in fade-in duration-300 space-y-10">{renderAuditTable(provAuditUIO, "AUDITORÍA TÉCNICA QUITO (1000) — PROVISIONALES")}{renderAuditTable(provAuditGYE, "AUDITORÍA TÉCNICA GUAYAQUIL (2000) — PROVISIONALES")}</TabsContent>
           <TabsContent value="ordenesFert" className="animate-in fade-in duration-300 space-y-10">{renderAuditTable(fertAuditUIO, "AUDITORÍA TÉCNICA QUITO (1000) — ÓRDENES FERT")}{renderAuditTable(fertAuditGYE, "AUDITORÍA TÉCNICA GUAYAQUIL (2000) — ÓRDENES FERT")}</TabsContent>
           <TabsContent value="mantenimiento" className="animate-in fade-in duration-300 text-left space-y-4">
@@ -667,41 +890,55 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                 <table className="w-full text-center border-collapse text-[10px]">
                   <thead className="bg-[#0f172a] text-white border-b border-white/5 uppercase font-black tracking-widest text-[8px] sticky top-0 z-10">
                     <tr>
-                      <th className="px-4 py-5 border-r border-white/5">ID Planta</th>
+                      <th className="px-4 py-5 border-r border-white/5">Centro</th>
                       <th className="px-6 py-5 border-r border-white/5">Planta</th>
-                      <th className="px-4 py-5 border-r border-white/5">ID Área</th>
                       <th className="px-6 py-5 border-r border-white/5">Área</th>
                       <th className="px-4 py-5 border-r border-white/5">ID Máquina</th>
                       <th className="px-6 py-5 border-r border-white/5">Máquina</th>
-                      <th className="px-4 py-5 border-r border-white/5">ID OT</th>
+                      <th className="px-6 py-5 border-r border-white/5">Línea de Proceso</th>
                       <th className="px-5 py-5 border-r border-white/5">Inicio</th>
                       <th className="px-5 py-5 border-r border-white/5">Fin</th>
-                      <th className="px-6 py-5 text-indigo-300 bg-indigo-900/40 uppercase font-black tracking-tighter">T_MTTO_PLANIFICADO (H)</th>
+                      <th className="px-6 py-5 text-indigo-300 bg-indigo-900/40 uppercase font-black tracking-tighter">Duración (H)</th>
+                      <th className="px-6 py-5 text-emerald-300 bg-emerald-900/30 uppercase font-black tracking-tighter">Vínculo Resumen</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-black text-[11px] text-slate-700">
-                    {mantenimientosSAP.length === 0 ? (
+                    {uniqueMantenimientosSAP.length === 0 ? (
                       <tr><td colSpan={10} className="py-24 text-slate-300 uppercase font-black tracking-widest italic opacity-50 text-center">Sin mantenimientos programados detectados</td></tr>
                     ) : (
-                      mantenimientosSAP.map((row, i) => {
+                      uniqueMantenimientosSAP.map((row, i) => {
                         const iniStr = getProp(row, ['FECHA_OT_PRG_INI']).trim();
                         const finStr = getProp(row, ['FECHA_OT_PRG_FIN']).trim();
-                        const ini = new Date(iniStr);
-                        const fin = new Date(finStr);
-                        const diffHrs = safeNum(getProp(row, ['T_MTTO_PLANIFICADO', 't_mtto_planificado'])) || (isValid(ini) && isValid(fin) ? (fin.getTime() - ini.getTime()) / 3600000 : 0);
-                        
+                        const diffHrs = getMttoDurationH(row);
+                        const idMaquina = getProp(row, ['ID_MAQUINA']);
+                        const centro = getProp(row, ['Centro', 'CENTRO']);
+                        const link = resolveMachineLink(idMaquina, centro, getProp(row, ['PLANTA']));
+                        const plantaTexto = centro === '1000' ? 'QUITO' : centro === '2000' ? 'GUAYAQUIL' : (getProp(row, ['PLANTA']) || '—');
+
                         return (
                           <tr key={i} className="hover:bg-indigo-50/10 transition-colors">
-                            <td className="px-4 py-3 border-r border-dashed border-gray-100 uppercase opacity-40">{getProp(row, ['ID_PLANTA'])}</td>
-                            <td className="px-6 py-3 border-r border-dashed border-gray-100 uppercase">{getProp(row, ['PLANTA'])}</td>
-                            <td className="px-4 py-3 border-r border-dashed border-gray-100 uppercase opacity-40">{getProp(row, ['ID_AREA'])}</td>
+                            <td className="px-4 py-3 border-r border-dashed border-gray-100 uppercase opacity-40">{centro}</td>
+                            <td className="px-6 py-3 border-r border-dashed border-gray-100 uppercase">{plantaTexto}</td>
                             <td className="px-6 py-3 border-r border-dashed border-gray-100 uppercase">{getProp(row, ['AREA'])}</td>
-                            <td className="px-4 py-3 border-r border-dashed border-gray-100 uppercase font-bold text-red-600">{getProp(row, ['ID_MAQUINA'])}</td>
+                            <td className="px-4 py-3 border-r border-dashed border-gray-100 uppercase font-bold text-red-600">{idMaquina}</td>
                             <td className="px-6 py-3 border-r border-dashed border-gray-100 uppercase font-black text-left">{getProp(row, ['MAQUINA'])}</td>
-                            <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-indigo-600">{getProp(row, ['OT_PRG_ID'])}</td>
+                            <td className="px-6 py-3 border-r border-dashed border-gray-100 uppercase text-left">{getProp(row, ['LineaProceso'])}</td>
                             <td className="px-5 py-3 border-r border-dashed border-gray-100 font-mono text-center text-slate-400">{iniStr}</td>
                             <td className="px-5 py-3 border-r border-dashed border-gray-100 font-mono text-center text-slate-400">{finStr}</td>
                             <td className="px-6 py-3 font-mono text-indigo-700 bg-indigo-50/30 text-center font-black">{diffHrs.toFixed(2)}</td>
+                            <td className="px-6 py-3 bg-emerald-50/20 text-left">
+                              {link ? (
+                                <span className="inline-flex items-center gap-1.5 text-emerald-600">
+                                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                                  <span className="truncate">{link.id} · {link.n} ({link.planta})</span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1.5 text-red-500">
+                                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                                  <span>SIN VINCULAR</span>
+                                </span>
+                              )}
+                            </td>
                           </tr>
                         );
                       })

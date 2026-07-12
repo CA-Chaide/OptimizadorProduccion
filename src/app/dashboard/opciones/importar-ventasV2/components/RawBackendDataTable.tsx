@@ -1,10 +1,9 @@
 
 'use client';
 
-import React, { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
+import React, { useState, forwardRef, useImperativeHandle } from 'react';
 import { MONTH_NUMBERS, VISIBLE_COLUMNS } from './constants';
 import { computeNecesidades, normalizeMaterialCode } from './utils';
-import { MultiSelectDropdown } from './MultiSelectDropdown';
 import { serviciosService } from '@/services/servicios.service';
 
 interface RawBackendDataTableProps {
@@ -20,16 +19,16 @@ export interface RawBackendDataTableHandle {
 
 export const RawBackendDataTable = forwardRef<RawBackendDataTableHandle, RawBackendDataTableProps>(
   ({ año, meses, centros, onDataLoaded }, ref) => {
-    const [pageSize, setPageSize] = useState<number>(20);
+    const [pageSize] = useState<number>(20);
     const [page, setPage] = useState<number>(1);
     const [searchTerm, setSearchTerm] = useState<string>('');
     const [rawData, setRawData] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState<boolean>(false);
-    const [error, setError] = useState<string>('');
+    const [, setError] = useState<string>('');
     const [totalRecordsTarget, setTotalRecordsTarget] = useState<number>(0);
     const [processedRecords, setProcessedRecords] = useState<number>(0);
     const [loadingPhase, setLoadingPhase] = useState<'downloading' | 'calculating' | null>(null);
-    const [batchSize, setBatchSize] = useState<number>(10); 
+    const [batchSize] = useState<number>(10);
 
     const processInBatches = async <T, R>(
       items: T[],

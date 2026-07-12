@@ -106,7 +106,7 @@ function agruparEstaciones(estaciones: Estacion[]): EstacionAgrupada[] {
   
   // Procesar cada grupo
   const agrupadas: EstacionAgrupada[] = [];
-  grupos.forEach((estacionesDelGrupo, key) => {
+  grupos.forEach((estacionesDelGrupo) => {
     // Ordenar por codigo_estacion
     estacionesDelGrupo.sort((a, b) => a.codigo_estacion - b.codigo_estacion);
     

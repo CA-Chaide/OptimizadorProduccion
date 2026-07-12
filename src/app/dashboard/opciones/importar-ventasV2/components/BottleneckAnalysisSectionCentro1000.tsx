@@ -3,7 +3,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { exportToXLSX } from './utils';
-import { TransferNeed, BottleneckAnalysisSectionCentro1000Props } from './types';
+import { BottleneckAnalysisSectionCentro1000Props } from './types';
 import { BottleneckSummaryTable } from './BottleneckSummaryTable';
 import { BottleneckClassTable } from './BottleneckClassTable';
 import { bottleneckAnalysisService } from '@/services/BottleneckAnalysisService';
@@ -34,7 +34,7 @@ export const BottleneckAnalysisSectionCentro1000: React.FC<BottleneckAnalysisSec
   } = analysis || {};
 
   if (data.length === 0) {
-    return <div className="p-4 text-center text-gray-600">Carga datos primero desde la pestaña "Datos del Backend"</div>;
+    return <div className="p-4 text-center text-gray-600">Carga datos primero desde la pestaña &quot;Datos del Backend&quot;</div>;
   }
 
   if (filteredData.length === 0) {

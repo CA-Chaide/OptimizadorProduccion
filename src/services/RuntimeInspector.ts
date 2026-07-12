@@ -217,7 +217,7 @@ class RuntimeInspector {
   }
 
   private notifyListeners(event: any): void {
-    this.listeners.forEach(l => { try { l(event); } catch (e) {} });
+    this.listeners.forEach(l => { try { l(event); } catch {} });
   }
 }
 

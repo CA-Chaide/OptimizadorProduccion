@@ -2,10 +2,8 @@
 
 import React, { useState, useMemo } from 'react';
 import { serviciosService } from '@/services/servicios.service';
-import { useRuntimeInspector } from '@/services/RuntimeInspector';
-import { logger } from '@/services/LogService';
 import { useAppContext } from '@/context/AppProvider';
-import { ClipboardList, Loader2, DatabaseZap, PlayCircle, AlertCircle, FileText, Search, Activity, Scissors, Box } from 'lucide-react';
+import { ClipboardList, Loader2, DatabaseZap, PlayCircle, Activity, Scissors, Box } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from "@/components/ui/progress";
 import { cn } from '@/lib/utils';
@@ -25,13 +23,12 @@ interface ComponentRequirement {
 }
 
 export const MaestroMaterialesExplosionSection: React.FC<MaestroMaterialesExplosionSectionProps> = ({ ordenes }) => {
-  const inspector = useRuntimeInspector('ExplosionMasivaBOM');
   const { addNotification } = useAppContext();
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState({ current: 0, total: 0 });
   const [requirements, setRequirements] = useState<ComponentRequirement[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [, setError] = useState<string | null>(null);
 
   const extractCode = (matStr: string): string => {
     const match = String(matStr).trim().match(/^(\d+)/);

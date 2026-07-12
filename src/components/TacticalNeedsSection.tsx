@@ -20,7 +20,6 @@ import {
 import { Button } from '@/components/ui/button';
 import { Progress } from "@/components/ui/progress";
 import { cn } from '@/lib/utils';
-import { Badge } from '@/components/ui/badge';
 
 interface TacticalNeedsSectionProps {
   ordenes: any[];

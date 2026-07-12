@@ -1,4 +1,4 @@
-import type { ApiQuery, PresupuestoItem, TiempoEnsambleItem } from '@/types/types';
+import type { ApiQuery } from '@/types/types';
 
 // --- Configuración Central de API ---
 const API_TOKEN = 'SmGjjVAzURYKthfwGdY8riSK3U3mMCCBQBMiImGMRPuAo7BlUbwhyeemswWuP9kf721d3d';
@@ -31,7 +31,7 @@ const fetcher = async (url: string, method: 'GET' | 'POST', body?: any) => {
             try {
                 const parsed = JSON.parse(errorText);
                 serverMessage = parsed.message || parsed.error || errorText;
-            } catch (e) {
+            } catch {
                 serverMessage = errorText;
             }
             

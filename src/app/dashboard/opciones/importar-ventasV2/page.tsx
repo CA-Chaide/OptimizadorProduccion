@@ -5,10 +5,8 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { serviciosService } from '@/services/servicios.service';
 import { restriccionService } from '@/services/restriccion.service';
 import { bottleneckAnalysisService } from '@/services/BottleneckAnalysisService';
-import { logger } from '@/services/LogService';
 
 import {
-  MONTH_NUMBERS,
   getMesNumero,
   getMesNombre,
   calculateWorkDays,

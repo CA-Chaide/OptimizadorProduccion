@@ -6,7 +6,7 @@ import { useAppContext } from '@/context/AppProvider';
 import { queryApi } from '@/hooks/useApiData';
 import { Sheet, Loader2, Check, ChevronsUpDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { ProductionLine, WorkstationDefinition, PresupuestoItem } from '@/types/types';
+import { ProductionLine, PresupuestoItem } from '@/types/types';
 import { MONTH_NAMES } from '@/constants/constants';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from '@/components/ui/command';

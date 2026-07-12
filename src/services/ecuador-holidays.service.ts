@@ -178,12 +178,3 @@ function getEasterDateComponents(year: number): { month: number; day: number } {
   
   return { month, day };
 }
-
-/**
- * Algoritmo de Computus para calcular la fecha de Pascua
- * (Domingo de Resurrección)
- */
-function getEasterDate(year: number): Date {
-  const { month, day } = getEasterDateComponents(year);
-  return new Date(year, month - 1, day);
-}

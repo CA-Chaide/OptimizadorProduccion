@@ -566,9 +566,7 @@ export function consumirHorasExtras(
     
     // Si la fila ya está completamente consumida, saltar
     if (fila.consumido) continue;
-    
-    const horasDisponibles = fila.totalHoras - fila.horasConsumidas;
-    
+
     // Consumir de 2 en 2 horas (o según maxExtrasHoras)
     while (minutosRestantes > 0 && fila.horasConsumidas < fila.totalHoras) {
       // Calcular cuántas horas podemos consumir en esta iteración

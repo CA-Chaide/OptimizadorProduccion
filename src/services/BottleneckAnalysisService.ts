@@ -6,7 +6,6 @@
  * Corregido para preservar el stock máximo en agregaciones de Clase F.
  */
 
-import { dataStore } from './DataStore';
 import type { TiempoCanonResult, TransferNeed } from '@/app/dashboard/opciones/importar-ventasV2/components/types';
 import { normalizeMaterialCode } from '@/app/dashboard/opciones/importar-ventasV2/components/utils';
 
@@ -59,6 +58,7 @@ class BottleneckAnalysisService {
     return Number.isFinite(n) ? n : 0;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   public analyzeCenter2000(data: any[], tiemposCanon: TiempoCanonResult[]): Center2000Analysis {
     if (!this.isCacheValid(data)) this.clearCache();
     if (this.cache.center2000) return this.cache.center2000;
@@ -120,6 +120,7 @@ class BottleneckAnalysisService {
     return result;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   public analyzeCenter1000(data: any[], tiemposCanon: TiempoCanonResult[], traslados: TransferNeed[]): Center1000Analysis {
     if (!this.isCacheValid(data)) this.clearCache();
     if (this.cache.center1000) return this.cache.center1000;

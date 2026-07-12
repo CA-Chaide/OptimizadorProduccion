@@ -128,7 +128,7 @@ export default function OperadoresCalendarioModal({
   const toggleDepartamento = (dept: string) => {
     setExpandedDepts(prev => {
       const next = new Set(prev);
-      next.has(dept) ? next.delete(dept) : next.add(dept);
+      if (next.has(dept)) { next.delete(dept); } else { next.add(dept); }
       return next;
     });
   };
@@ -140,7 +140,7 @@ export default function OperadoresCalendarioModal({
   const toggleToRemove = (codigoOperador: number) => {
     setSelectedToRemove(prev => {
       const next = new Set(prev);
-      next.has(codigoOperador) ? next.delete(codigoOperador) : next.add(codigoOperador);
+      if (next.has(codigoOperador)) { next.delete(codigoOperador); } else { next.add(codigoOperador); }
       return next;
     });
   };

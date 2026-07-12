@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { queryApi } from '@/hooks/useApiData';
 import { TacticalSchedulingIcon } from '@/constants/constants';
-import { Package, Users, Loader2, ClipboardList, Search, Filter, Info, MapPin, Box } from 'lucide-react';
+import { Package, Users, Loader2, ClipboardList, Search, Info, MapPin, Box } from 'lucide-react';
 import { useAppContext } from '@/context/AppProvider';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TacticalPlanSection } from './TacticalPlanSection';
@@ -11,18 +11,12 @@ import { serviciosService } from '@/services/servicios.service';
 import { restriccionService } from '@/services/restriccion.service';
 import { grupoService } from '@/services/grupo.service';
 import { Badge } from '@/components/ui/badge';
-import { cn } from '@/lib/utils';
 
 interface InventoryMueblesItem {
     StockActual: number;
     StockSeguridad: number;
     Centro: string;
 }
-
-const safeNum = (val: any): number => {
-  const n = Number(val);
-  return isNaN(n) ? 0 : n;
-};
 
 export const TacticalPlanMueblesSection: React.FC = () => {
     const { addNotification, handleGenerateTacticalPlan } = useAppContext();
@@ -38,7 +32,7 @@ export const TacticalPlanMueblesSection: React.FC = () => {
         setIsLoading(true);
         setError(null);
         try {
-            const [inventoryRes, skillsRes, groupsRes, restrsRes, provsRes] = await Promise.all([
+            const [inventoryRes, skillsRes, , restrsRes, provsRes] = await Promise.all([
                 queryApi({
                     source: 'CuboInventarios',
                     operation: 'get_data',

@@ -1,6 +1,4 @@
-import type { BodyListResponse } from "@/types/body-list-response";
 import type { BodyResponse } from "@/types/body-response";
-import { environment } from "@/environments/environments.prod";
 
 // Utilizamos la ruta relativa que coincide con el proxy en next.config.ts para evitar errores de CORS
 const API_URL = `/Aplicativos/ApiOptimizadorProduccion/api/servicios`;
@@ -263,7 +261,7 @@ export const serviciosService = {
         return { data: [], length: 0, totalRegistros: 0 };
       }
       return response.json();
-    } catch (e) {
+    } catch {
       return { data: [], length: 0, totalRegistros: 0 };
     }
   },
@@ -292,7 +290,7 @@ export const serviciosService = {
         return { data: [], length: 0, totalRegistros: 0 };
       }
       return response.json();
-    } catch (e) {
+    } catch {
       return { data: [], length: 0, totalRegistros: 0 };
     }
   },

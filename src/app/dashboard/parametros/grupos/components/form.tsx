@@ -96,22 +96,6 @@ export default function GrupoForm({ record, onSuccess, onCancel }: GrupoFormProp
     }
   };
 
-  const handleDelete = async () => {
-    if (!record) return;
-    if (!confirm('¿Confirma eliminar este grupo?')) return;
-    setIsLoading(true);
-    try {
-      await grupoService.delete(record.codigo_grupo);
-      toast({ title: 'Eliminado', description: 'Grupo eliminado correctamente.' });
-      onSuccess();
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'No se pudo eliminar.';
-      toast({ title: 'Error al eliminar', description: errorMessage, variant: 'destructive' });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   return (
     <Card>
       <CardHeader>
