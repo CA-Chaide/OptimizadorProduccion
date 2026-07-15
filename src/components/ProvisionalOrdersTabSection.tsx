@@ -263,6 +263,7 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
                   <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Material</th>
                   <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Nombre</th>
                   <th className="px-6 py-3 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider">Cantidad</th>
+                  <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Pedido Ventas</th>
                   <th className="px-6 py-3 text-center text-[10px] font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50/30">Resp. Ctrl.</th>
                   <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Almacén</th>
                   <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">F. Inicio</th>
@@ -278,6 +279,7 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-600">{formatMaterial(order.CodMaterial || order.MATERIAL)}</td>
                     <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate" title={order.NOMBRE}>{order.NOMBRE}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-right text-indigo-600">{(Number(order.CANTIDAD) || 0).toLocaleString()}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-mono">{order.Pedidoventas || order.PEDIDOVENTAS || '-'}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-center font-bold text-indigo-700 bg-indigo-50/10">{order.RESPCONTROLPROD}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{order.Almacen}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{order.FECHAINICIO}</td>
@@ -285,7 +287,7 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
                   </tr>
                 )) : (
                   <tr>
-                    <td colSpan={10} className="px-6 py-12 text-center text-gray-400 italic">
+                    <td colSpan={11} className="px-6 py-12 text-center text-gray-400 italic">
                       No se encontraron órdenes para el centro {selectedCenter} que cumplan con la restricción RespCtrlProd.
                     </td>
                   </tr>

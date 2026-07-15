@@ -81,8 +81,6 @@ export const RevCapacidadTabSection: React.FC = () => {
   const [horasT1ByCenter, setHorasT1ByCenter] = useState<Record<string, number>>({});
   const [horasT2ByCenter, setHorasT2ByCenter] = useState<Record<string, number>>({});
   
-  const [provisionalDate, setProvisionalDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  
   // Rendimientos independientes por centro
   const [rendimientosByCenter, setRendimientosByCenter] = useState<Record<string, Record<string, number>>>({
     '1000': { L1: 1.05, L2: 1.08, L3: 1.05, L5: 1.05 },
@@ -178,7 +176,7 @@ export const RevCapacidadTabSection: React.FC = () => {
 
   const prevSumMap = useMemo(() => {
     const map = new Map<string, number>();
-    const targetDateISO = normalizeDateISO(provisionalDate);
+    const targetDateISO = normalizeDateISO(programmingDate);
     if (!targetDateISO || !selectedCenter) return map;
 
     provisionalOrders.forEach(o => {
@@ -197,7 +195,7 @@ export const RevCapacidadTabSection: React.FC = () => {
       }
     });
     return map;
-  }, [provisionalOrders, provisionalDate, selectedCenter]);
+  }, [provisionalOrders, programmingDate, selectedCenter]);
 
   const summaryData = useMemo((): SummaryRow[] => {
     const map = new Map<string, SummaryRow>();
@@ -389,7 +387,7 @@ export const RevCapacidadTabSection: React.FC = () => {
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Fecha Prev:</label>
-            <input type="date" value={provisionalDate} onChange={e => setProvisionalDate(e.target.value)} className="text-xs border rounded-md px-2 py-2 text-indigo-700 font-medium h-9 outline-none focus:ring-2 focus:ring-indigo-500" />
+            <input type="date" value={programmingDate} disabled className="text-xs border rounded-md px-2 py-2 text-gray-500 font-medium h-9 outline-none bg-gray-100 cursor-not-allowed" />
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Horas T1:</label>

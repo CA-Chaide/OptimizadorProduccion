@@ -109,7 +109,6 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
   
   // Parámetros de Simulación (desde localStorage)
   const [progDates, setProgDates] = useState<Record<string, string>>({});
-  const [provisionalDate, setProvisionalDate] = useState<string>(new Date().toISOString().split('T')[0]);
   
   // Rendimientos independientes por centro
   const [rendimientosByCenter, setRendimientosByCenter] = useState<Record<string, Record<string, number>>>({
@@ -121,6 +120,9 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
   const [existingPlans, setExistingPlans] = useState<PlanGrupo[]>([]);
   const [showOverwriteDialog, setShowOverwriteDialog] = useState(false);
   const [isViewMode, setIsViewMode] = useState(false);
+
+  // Fecha de programación sincronizada entre filtros
+  const currentProgrammingDate = progDates[selectedCenter] || new Date().toISOString().split('T')[0];
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
@@ -170,13 +172,13 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
 
   // Función para buscar planes existentes
   const checkExistingPlans = useCallback(async () => {
-    if (!selectedCenter || !provisionalDate) return;
+    if (!selectedCenter || !currentProgrammingDate) return;
     
     try {
       const res = await planGrupoService.getAll();
       const allPlans = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
       
-      const targetDateISO = normalizeDateISO(provisionalDate);
+      const targetDateISO = normalizeDateISO(currentProgrammingDate);
       const pattern = `Plan Táctico - Centro ${selectedCenter} - P1`;
       
       const found = allPlans.filter(p => {
@@ -197,13 +199,13 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
     } catch (error) {
       console.error('[PlanPropuesto] Error checking existing plans:', error);
     }
-  }, [selectedCenter, provisionalDate]);
+  }, [selectedCenter, currentProgrammingDate]);
 
   useEffect(() => {
-    if (provisionalDate) {
+    if (currentProgrammingDate) {
       checkExistingPlans();
     }
-  }, [provisionalDate, selectedCenter, checkExistingPlans]);
+  }, [currentProgrammingDate, selectedCenter, checkExistingPlans]);
 
   // Función para desactivar planes en cascada
   const handleDeactivateExisting = async () => {
@@ -283,7 +285,7 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
     const lineMaterials = new Map<string, { material: string, desc: string, puesto: string, fixedQty: number, flexQty: number, tUnit: number }[]>();
 
     const targetDateISO = normalizeDateISO(centerProgDate);
-    const prevDateISO = normalizeDateISO(provisionalDate);
+    const prevDateISO = normalizeDateISO(currentProgrammingDate);
 
     const centerFertOrders = fertOrders
       .map(o => ({ ...o, _mappedLinea: mapOrderLine(o) }))
@@ -395,7 +397,7 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
 
   const proposedPlan = useMemo((): ProposedPlanRow[] => {
     return calculatePlanForCenter(selectedCenter);
-  }, [technicalData, fertOrders, provisionalOrders, selectedCenter, progDates, provisionalDate, rendimientosByCenter]);
+  }, [technicalData, fertOrders, provisionalOrders, selectedCenter, progDates, currentProgrammingDate, rendimientosByCenter]);
 
   const filteredResults = useMemo(() => {
     return proposedPlan.filter(r => {
@@ -486,7 +488,7 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
       const now = new Date();
       
       // USAR FECHA PREV PARA EL PLAN
-      const planDate = provisionalDate ? new Date(provisionalDate + 'T12:00:00') : now;
+      const planDate = currentProgrammingDate ? new Date(currentProgrammingDate + 'T12:00:00') : now;
       
       let totalSuccessCount = 0;
       let totalFailCount = 0;
@@ -574,8 +576,6 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
     }
   };
 
-  const currentProgrammingDate = progDates[selectedCenter] || new Date().toISOString().split('T')[0];
-
   return (
     <div className="space-y-6 relative">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -626,12 +626,9 @@ export const PlanPropuestoTabSection: React.FC<PlanPropuestoTabSectionProps> = (
             <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Fecha PREV:</label>
             <input 
               type="date" 
-              value={provisionalDate} 
-              onChange={e => setProvisionalDate(e.target.value)} 
-              className={cn(
-                "text-xs border rounded-md px-2 py-2 outline-none h-9 font-medium outline-none focus:ring-2 focus:ring-indigo-500",
-                isViewMode ? "text-amber-600 border-amber-300 bg-amber-50" : "text-indigo-700"
-              )} 
+              value={currentProgrammingDate} 
+              disabled
+              className="text-xs border rounded-md px-2 py-2 text-gray-500 font-medium h-9 outline-none bg-gray-100 cursor-not-allowed" 
             />
           </div>
           

@@ -243,6 +243,7 @@ export const OrdenesFertTabSection: React.FC = () => {
                   <th className="px-4 py-3 text-right text-[10px] font-bold text-gray-700 uppercase bg-gray-100/50 min-w-[80px]">PROG</th>
                   <th className="px-4 py-3 text-right text-green-700 uppercase bg-green-50/30 min-w-[80px]">ENTREG</th>
                   <th className="px-4 py-3 text-right text-amber-700 uppercase bg-amber-50/30 min-w-[80px]">PENDIENTE</th>
+                  <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[100px]">Pedido</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -261,14 +262,15 @@ export const OrdenesFertTabSection: React.FC = () => {
                     <td className="px-4 py-2 text-right font-bold text-gray-700 bg-gray-100/10">{o.CANTPROGRAMADA.toLocaleString()}</td>
                     <td className="px-4 py-2 text-right font-bold text-green-600 bg-green-50/10">{o.CANTENTREGADA.toLocaleString()}</td>
                     <td className="px-4 py-2 text-right font-bold text-amber-600 bg-amber-50/20">{o.CANTPENDIENTE.toLocaleString()}</td>
+                    <td className="px-3 py-2 text-gray-600 font-mono">{o.PEDIDO || '-'}</td>
                   </tr>
                 )) : (
-                  <tr><td colSpan={13} className="px-6 py-12 text-center text-gray-400 italic">No se encontraron órdenes.</td></tr>
+                  <tr><td colSpan={14} className="px-6 py-12 text-center text-gray-400 italic">No se encontraron órdenes.</td></tr>
                 )}
               </tbody>
               <tfoot className="bg-gray-800 text-white font-bold text-[10px] sticky bottom-0 z-10">
                 <tr>
-                  <td colSpan={10} className="px-4 py-3 text-right uppercase border-r border-gray-700">TOTALES:</td>
+                  <td colSpan={11} className="px-4 py-3 text-right uppercase border-r border-gray-700">TOTALES:</td>
                   <td className="px-4 py-3 text-right">{totals.prog.toLocaleString()}</td>
                   <td className="px-4 py-3 text-right text-green-300">{totals.entreg.toLocaleString()}</td>
                   <td className="px-4 py-3 text-right text-amber-300">{totals.pend.toLocaleString()}</td>
