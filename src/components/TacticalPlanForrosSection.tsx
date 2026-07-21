@@ -35,7 +35,8 @@ import {
   CheckCircle2,
   AlertTriangle,
   Lock,
-  Pencil
+  Pencil,
+  History
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -421,6 +422,11 @@ const MachineCard = React.memo(({
 // porque en datos reales no siempre aparece)
 const PLAN_GRUPO_VALOR_REGEX = /plan\s*t[aá]ctico\s*-\s*centro\s*(1000|2000)(\s*-\s*p\d+)?/i;
 
+// Variantes que exigen el sufijo de paso exacto, usadas por la pestaña "Recuperación pasos P1.5-P3"
+// para distinguir el plan intermedio (P1.5) del plan del Paso 3 (P3) al recuperar planes guardados.
+const PLAN_GRUPO_VALOR_REGEX_P1_5 = /plan\s*t[aá]ctico\s*-\s*centro\s*(1000|2000)\s*-\s*p1\.5\b/i;
+const PLAN_GRUPO_VALOR_REGEX_P3 = /plan\s*t[aá]ctico\s*-\s*centro\s*(1000|2000)\s*-\s*p3\b/i;
+
 // Quita tildes y pasa a mayúsculas, para comparar nombres de componentes sin depender de acentos (ej: LÁMINA vs LAMINA)
 const DIACRITICS_REGEX = /[̀-ͯ]/g;
 const normalizeText = (s: string) => s.normalize('NFD').replace(DIACRITICS_REGEX, '').toUpperCase();
@@ -490,6 +496,245 @@ const NivelResumenTable: React.FC<{
           <Button variant="outline" size="icon" onClick={() => setPage(totalPages)} disabled={pageSafe === totalPages} className="h-7 w-7"><ChevronsRight className="h-3.5 w-3.5" /></Button>
         </div>
       </div>
+    </div>
+  );
+};
+
+const RECUPERACION_PASO_PAGE_SIZE = 10;
+
+// Panel de recuperación de un plan táctico guardado para un paso específico (P1.5 o P3):
+// resalta en el calendario las fechas con plan activo para ese paso, permite consultarlo
+// y muestra el detalle + resumen por línea. Réplica del patrón de "Planes Grupo Ensamblado"
+// (fetchPlanGrupoDetalle) pero acotado al sufijo de paso exacto vía `regex`.
+const RecuperacionPasoPanel: React.FC<{
+  paso: string;
+  regex: RegExp;
+  gruposCoincidentes: Grupo[];
+  addNotification: (type: 'success' | 'error' | 'warning' | 'info', message: string) => void;
+}> = ({ paso, regex, gruposCoincidentes, addNotification }) => {
+  const [fecha, setFecha] = useState('');
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const [detalleData, setDetalleData] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [hasFetched, setHasFetched] = useState(false);
+  const [page, setPage] = useState(1);
+  const [fechasConPlan, setFechasConPlan] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (gruposCoincidentes.length === 0) {
+      setFechasConPlan(new Set());
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const codigosGrupo = new Set(gruposCoincidentes.map(g => g.codigo_grupo));
+        const response = await planGrupoService.getAll();
+        const fechas = new Set<string>();
+        (response.data || []).forEach((pg: PlanGrupo) => {
+          if (
+            codigosGrupo.has(pg.codigo_grupo) &&
+            pg.estado === 'A' &&
+            pg.fecha_inicio_plan &&
+            regex.test(String(pg.valor || ''))
+          ) {
+            fechas.add(new Date(pg.fecha_inicio_plan).toISOString().split('T')[0]);
+          }
+        });
+        if (!cancelled) setFechasConPlan(fechas);
+      } catch (error: any) {
+        if (!cancelled) addNotification('error', `Error al consultar planes ${paso} existentes: ${error.message}`);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [gruposCoincidentes, regex, addNotification, paso]);
+
+  const fetchDetalle = useCallback(async (fechaOverride?: string) => {
+    const f = fechaOverride ?? fecha;
+    if (!f || gruposCoincidentes.length === 0) return;
+    setIsLoading(true);
+    setHasFetched(true);
+    setPage(1);
+    try {
+      const gruposParam = gruposCoincidentes.map(g => g.codigo_grupo).join('&');
+      const response = await serviciosService.detallePlanTacticoPorGrupos(gruposParam, f);
+      setDetalleData(response.data || []);
+    } catch (error: any) {
+      addNotification('error', `Error al consultar el plan táctico ${paso}: ${error.message}`);
+      setDetalleData([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [fecha, gruposCoincidentes, addNotification, paso]);
+
+  const detalleFiltrada = useMemo(
+    () => detalleData.filter(item => regex.test(String(item.valor || ''))),
+    [detalleData, regex]
+  );
+
+  const resumenLineaProduccion = useMemo(() => {
+    const map = new Map<string, number>();
+    detalleFiltrada.forEach(item => {
+      const linea = String(item.linea_produccion || 'Sin línea').trim() || 'Sin línea';
+      map.set(linea, (map.get(linea) || 0) + Number(item.cantidad_produccion_neta || 0));
+    });
+    return Array.from(map.entries())
+      .map(([linea_produccion, totalCantidadProdNeta]) => ({ linea_produccion, totalCantidadProdNeta }))
+      .sort((a, b) => b.totalCantidadProdNeta - a.totalCantidadProdNeta);
+  }, [detalleFiltrada]);
+
+  const totalPages = Math.max(1, Math.ceil(detalleFiltrada.length / RECUPERACION_PASO_PAGE_SIZE));
+  const paginated = useMemo(() => {
+    const start = (page - 1) * RECUPERACION_PASO_PAGE_SIZE;
+    return detalleFiltrada.slice(start, start + RECUPERACION_PASO_PAGE_SIZE);
+  }, [detalleFiltrada, page]);
+
+  return (
+    <div className="space-y-8">
+      <Card className="rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden shadow-sm border-none">
+        <CardHeader className="bg-slate-50/50 border-b border-slate-200 p-10">
+          <div className="flex items-center justify-between flex-wrap gap-4">
+            <div>
+              <CardTitle className="text-2xl font-black text-slate-900 uppercase">Plan Táctico — Paso {paso}</CardTitle>
+              <CardDescription className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-1">
+                Detalle del plan {paso} guardado para los grupos filtrados, en la fecha seleccionada
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <span className="text-[9px] font-black text-slate-400 uppercase">Fecha del Plan:</span>
+                <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      className="flex items-center gap-2 text-xs font-bold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 focus:ring-indigo-500 outline-none"
+                    >
+                      <CalendarIcon className="w-3.5 h-3.5 text-slate-400" />
+                      {fecha || 'Selecciona una fecha'}
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <DatePickerCalendar
+                      mode="single"
+                      selected={fecha ? new Date(`${fecha}T00:00:00`) : undefined}
+                      onSelect={(date) => {
+                        if (!date) return;
+                        const value = date.toISOString().split('T')[0];
+                        setFecha(value);
+                        setIsCalendarOpen(false);
+                        fetchDetalle(value);
+                      }}
+                      modifiers={{ conPlan: (date) => fechasConPlan.has(date.toISOString().split('T')[0]) }}
+                      modifiersClassNames={{ conPlan: 'font-black text-indigo-700 shadow-[inset_0_0_0_9999px_rgba(99,102,241,0.18)] rounded-md' }}
+                    />
+                    {fechasConPlan.size > 0 && (
+                      <div className="flex items-center gap-2 px-4 pb-3 text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+                        <span className="inline-block w-3 h-3 rounded bg-indigo-200" /> Fecha con plan {paso} recuperable
+                      </div>
+                    )}
+                  </PopoverContent>
+                </Popover>
+              </div>
+              <Button
+                onClick={() => fetchDetalle()}
+                disabled={!fecha || gruposCoincidentes.length === 0 || isLoading}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-black uppercase tracking-widest text-[9px] px-5 py-2 rounded-xl disabled:opacity-40"
+              >
+                {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Consultar Plan'}
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          {isLoading ? (
+            <div className="py-20 text-center text-slate-400 uppercase font-black tracking-widest text-xs flex items-center justify-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin" /> Cargando plan táctico {paso}...
+            </div>
+          ) : !hasFetched ? (
+            <div className="py-20 text-center text-slate-400 uppercase font-black tracking-widest text-xs opacity-40">
+              Selecciona una fecha y consulta el plan táctico {paso} de los grupos filtrados
+            </div>
+          ) : detalleFiltrada.length > 0 ? (
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full text-[11px] border-collapse">
+                  <thead className="bg-slate-900 sticky top-0 z-10 text-white text-left uppercase tracking-widest font-black">
+                    <tr>
+                      <th className="px-6 py-4 text-[10px]">Grupo</th>
+                      <th className="px-6 py-4 text-[10px]">Línea Producción</th>
+                      <th className="px-6 py-4 text-[10px]">Material</th>
+                      <th className="px-6 py-4 text-[10px] text-right">Cant. Prod. Neta</th>
+                      <th className="px-6 py-4 text-[10px]">Clase Aprov.</th>
+                      <th className="px-6 py-4 text-[10px] text-right">Cant. Aprov.</th>
+                      <th className="px-6 py-4 text-[10px]">Resp. Ctrl. Prod.</th>
+                      <th className="px-6 py-4 text-[10px] text-center">Estado</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {paginated.map((item, i) => (
+                      <tr key={item.codigo_detalle_tactico ?? i} className="hover:bg-slate-50 transition-colors text-[10px]">
+                        <td className="px-6 py-4 font-mono font-bold text-slate-600">{item.codigo_plan_grupo}</td>
+                        <td className="px-6 py-4 font-black text-slate-800 uppercase">{item.linea_produccion || '—'}</td>
+                        <td className="px-6 py-4 font-mono font-bold text-indigo-700">{item.codigo_material}</td>
+                        <td className="px-6 py-4 text-right font-mono font-black text-slate-800">{Number(item.cantidad_produccion_neta || 0).toLocaleString()}</td>
+                        <td className="px-6 py-4 font-bold text-slate-600">{item.clase_aprovisionamiento || '—'}</td>
+                        <td className="px-6 py-4 text-right font-mono font-bold text-slate-600">{Number(item.cantidad_aprovisionamiento || 0).toLocaleString()}</td>
+                        <td className="px-6 py-4 font-bold text-slate-600">{item.resp_ctrl_prod || '—'}</td>
+                        <td className="px-6 py-4 text-center">
+                          <Badge className={cn(
+                            'font-black text-[9px] px-2 py-0.5 rounded-md border-none',
+                            item.estado === 'A' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'
+                          )}>
+                            {item.estado || '—'}
+                          </Badge>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex items-center justify-between px-6 py-4 border-t border-slate-200 bg-slate-50/50">
+                <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                  {detalleFiltrada.length} registro{detalleFiltrada.length === 1 ? '' : 's'}
+                </div>
+                <div className="flex items-center gap-1">
+                  <Button variant="outline" size="icon" onClick={() => setPage(1)} disabled={page === 1} className="h-8 w-8"><ChevronsLeft className="h-4 w-4" /></Button>
+                  <Button variant="outline" size="icon" onClick={() => setPage(p => p - 1)} disabled={page === 1} className="h-8 w-8"><ChevronLeft className="h-4 w-4" /></Button>
+                  <div className="px-4 text-[11px] font-bold text-gray-700 min-w-[120px] text-center border-x py-1 bg-white rounded">Página {page} de {totalPages}</div>
+                  <Button variant="outline" size="icon" onClick={() => setPage(p => p + 1)} disabled={page === totalPages} className="h-8 w-8"><ChevronRight className="h-4 w-4" /></Button>
+                  <Button variant="outline" size="icon" onClick={() => setPage(totalPages)} disabled={page === totalPages} className="h-8 w-8"><ChevronsRight className="h-4 w-4" /></Button>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="py-20 text-center text-slate-400 uppercase font-black tracking-widest text-xs opacity-40">
+              Sin plan {paso} guardado para la fecha seleccionada
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {resumenLineaProduccion.length > 0 && (
+        <Card className="rounded-2xl bg-white ring-1 ring-slate-100 overflow-hidden shadow-sm border-none w-full max-w-xs">
+          <CardHeader className="bg-slate-50/50 border-b border-slate-200 p-4">
+            <CardTitle className="text-xs font-black text-slate-900 uppercase tracking-widest">Resumen por Línea</CardTitle>
+            <CardDescription className="text-slate-400 font-bold uppercase text-[8px] tracking-widest mt-0.5">
+              Cant. Prod. Neta
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
+            <ul className="divide-y divide-slate-100">
+              {resumenLineaProduccion.map(row => (
+                <li key={row.linea_produccion} className="flex items-center justify-between gap-3 px-4 py-2 text-[10px] hover:bg-slate-50 transition-colors">
+                  <span className="font-black text-slate-700 uppercase truncate">{row.linea_produccion}</span>
+                  <span className="font-mono font-black text-slate-800 shrink-0">{Math.round(row.totalCantidadProdNeta).toLocaleString()}</span>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };
@@ -1366,6 +1611,16 @@ useEffect(() => {
     return Array.from(map.values()).sort((a, b) => b.cantidadTotal - a.cantidadTotal);
   }, [nivel4LaminaComponentes]);
 
+  // Lista temporal en memoria con los materiales de las explosiones de Niveles 1, 2 y 3
+  // (FORRO + TAPA + ACOLCHADO), acumulada mientras se corren esas explosiones y consumida
+  // al presionar "Guardar Plan" (Nivel 4) para guardar el plan intermedio P1.5.
+  const listaNiveles1a3 = useMemo(() => (
+    [...nivel1ForroResumen, ...nivel2TapaResumen, ...nivel3AcolchadoResumen].map(row => ({
+      codigo_material: Number(row.material),
+      cantidad: Math.round(row.cantidadTotal),
+    }))
+  ), [nivel1ForroResumen, nivel2TapaResumen, nivel3AcolchadoResumen]);
+
   const [isSavingPlanNivel4, setIsSavingPlanNivel4] = useState(false);
 
   const handleGuardarPlanNivel4 = useCallback(async () => {
@@ -1398,6 +1653,45 @@ useEffect(() => {
       const detallesGuardados: number[] = [];
 
       for (const grupo of forrosGruposList) {
+        if (listaNiveles1a3.length > 0) {
+          const nuevoPlanGrupoP15: PlanGrupo = {
+            codigo_plan_grupo: 0,
+            codigo_plan: codigoPlan,
+            codigo_grupo: grupo.codigo_grupo,
+            codigo_familia_grupo: 0,
+            valor: `Plan Táctico - Centro ${grupo.centro} - P1.5`,
+            fecha_inicio_plan: new Date(planGrupoFecha),
+            fecha_fin_plan: new Date(planGrupoFecha),
+            estado: 'A',
+            fecha_creacion: new Date(),
+            usuario_creacion: 'admin',
+          };
+          const planGrupoP15Guardado = await planGrupoService.save(nuevoPlanGrupoP15);
+          const codigoPlanGrupoP15 = planGrupoP15Guardado.data?.codigo_plan_grupo;
+          if (!codigoPlanGrupoP15) {
+            throw new Error(`No se recibió codigo_plan_grupo al guardar el plan P1.5 del grupo ${grupo.nombre_grupo}.`);
+          }
+          planesGuardados.push({ codigo_plan_grupo: codigoPlanGrupoP15, nombre_grupo: grupo.nombre_grupo });
+
+          for (const item of listaNiveles1a3) {
+            const nuevoDetalleP15: DetalleTactico = {
+              codigo_detalle_tactico: 0,
+              codigo_plan_grupo: codigoPlanGrupoP15,
+              codigo_material: item.codigo_material,
+              cantidad_produccion_neta: String(item.cantidad),
+              resp_ctrl_prod: '',
+              clase_aprovisionamiento: '',
+              cantidad_aprovisionamiento: '0',
+              estado: 'A',
+              usuario_modificacion: '',
+            } as DetalleTactico;
+            const detalleP15Guardado = await detalleTacticoService.save(nuevoDetalleP15);
+            if (detalleP15Guardado.data?.codigo_detalle_tactico) {
+              detallesGuardados.push(detalleP15Guardado.data.codigo_detalle_tactico);
+            }
+          }
+        }
+
         const nuevoPlanGrupo: PlanGrupo = {
           codigo_plan_grupo: 0,
           codigo_plan: codigoPlan,
@@ -1444,7 +1738,7 @@ useEffect(() => {
     } finally {
       setIsSavingPlanNivel4(false);
     }
-  }, [nivel4LaminaResumen, planGrupoDetalleFiltrada, planGrupoFecha, forrosGruposList, addNotification]);
+  }, [nivel4LaminaResumen, listaNiveles1a3, planGrupoDetalleFiltrada, planGrupoFecha, forrosGruposList, addNotification]);
 
   const resetExplosionPlanP2 = useCallback(() => {
     setNivelExplosionData([]);
@@ -3715,6 +4009,9 @@ useEffect(() => {
         <TabsList className="flex w-full h-auto bg-white border border-slate-200 p-2 rounded-[2rem] mb-10 shadow-sm overflow-x-auto justify-start">
           <TabsTrigger value="planes-grupo-ensamblado" className="px-6 py-3 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[10px] font-black uppercase tracking-widest text-slate-500">
             <Boxes className="w-4 h-4 mr-2" /> PLANES GRUPO ENSAMBLADO
+          </TabsTrigger>
+          <TabsTrigger value="recuperacion-p15-p3" className="px-6 py-3 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[10px] font-black uppercase tracking-widest text-slate-500">
+            <History className="w-4 h-4 mr-2" /> Recuperación pasos P1.5-P3
           </TabsTrigger>
           <TabsTrigger value="personal-turnos" className="px-6 py-3 data-[state=active]:bg-slate-950 data-[state=active]:text-white rounded-2xl transition-all text-[10px] font-black uppercase tracking-widest text-slate-500">
             <UserPlus className="w-4 h-4 mr-2" /> Personal & Turnos
@@ -6428,6 +6725,53 @@ useEffect(() => {
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
+        </TabsContent>
+
+        <TabsContent value="recuperacion-p15-p3" className="space-y-8 pb-20">
+          <Card className="rounded-[2.5rem] bg-white ring-1 ring-slate-100 overflow-hidden shadow-sm border-none">
+            <CardHeader className="bg-slate-50/50 border-b border-slate-200 p-10">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-2xl font-black text-slate-900 uppercase">Recuperación Pasos P1.5 - P3</CardTitle>
+                  <CardDescription className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-1">
+                    Consulta los planes tácticos guardados por paso intermedio (P1.5) y por Paso 3 (P3)
+                  </CardDescription>
+                </div>
+                <div className="bg-slate-950 p-3 rounded-2xl text-white shadow-lg">
+                  <History className="w-6 h-6" />
+                </div>
+              </div>
+            </CardHeader>
+          </Card>
+
+          <Tabs defaultValue="paso-p1-5" className="w-full">
+            <TabsList className="flex w-full h-auto bg-white border border-slate-200 p-2 rounded-[2rem] mb-8 shadow-sm overflow-x-auto justify-start">
+              <TabsTrigger value="paso-p1-5" className="px-6 py-3 data-[state=active]:bg-indigo-600 data-[state=active]:text-white rounded-2xl transition-all text-[10px] font-black uppercase tracking-widest text-slate-500">
+                <History className="w-4 h-4 mr-2" /> P1.5
+              </TabsTrigger>
+              <TabsTrigger value="paso-p3" className="px-6 py-3 data-[state=active]:bg-indigo-600 data-[state=active]:text-white rounded-2xl transition-all text-[10px] font-black uppercase tracking-widest text-slate-500">
+                <History className="w-4 h-4 mr-2" /> P3
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="paso-p1-5">
+              <RecuperacionPasoPanel
+                paso="P1.5"
+                regex={PLAN_GRUPO_VALOR_REGEX_P1_5}
+                gruposCoincidentes={gruposCoincidentes}
+                addNotification={addNotification}
+              />
+            </TabsContent>
+
+            <TabsContent value="paso-p3">
+              <RecuperacionPasoPanel
+                paso="P3"
+                regex={PLAN_GRUPO_VALOR_REGEX_P3}
+                gruposCoincidentes={gruposCoincidentes}
+                addNotification={addNotification}
+              />
+            </TabsContent>
+          </Tabs>
         </TabsContent>
       </Tabs>
     </div>
