@@ -1,14 +1,13 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  Plus, 
-  Trash2, 
-  LayoutGrid, 
-  Download, 
+import {
+  Plus,
+  Trash2,
+  LayoutGrid,
+  Download,
   AlertCircle,
-  Loader2,
-  Building2
+  Loader2
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -18,11 +17,12 @@ import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import * as XLSX from 'xlsx';
 import { serviciosService } from '@/services/servicios.service';
+import { materialesBalanceoService } from '@/services/materialesBalanceo.service';
+import type { MaterialesBalanceoGrupo } from '@/types/interfaces';
 
 interface MaterialBalanceoRow {
   id: string;
-  centro: string;
-  linea: string;
+  codigoMaterialBalanceo?: number;
   material: string;
   descripcion: string;
   habilitado: boolean;
@@ -32,6 +32,8 @@ interface MaterialBalanceoRow {
 }
 
 interface DisplayRow extends MaterialBalanceoRow {
+  centro: string;
+  linea: string;
   puestoTrabajo: string;
   tiempoMin: number;
   esFilaTecnica: boolean;
@@ -41,23 +43,17 @@ const STORAGE_KEY = 'material_balanceo_lineas_data';
 const PRESUPUESTO_DATA_KEY = 'presupuesto_consolidado_data';
 
 const INITIAL_DATA: MaterialBalanceoRow[] = [
-  { id: '1', centro: '1000', linea: 'LINEA 1', material: '20007201', descripcion: 'CHN ZAFIRO 135X190X029', habilitado: true, minimo: 0, maximo: 100, cantPresupuesto: 0 },
-  { id: '2', centro: '1000', linea: 'LINEA 1', material: '20004463', descripcion: 'CHN ZAFIRO 135X190X024', habilitado: true, minimo: 0, maximo: 100, cantPresupuesto: 0 },
-  { id: '3', centro: '1000', linea: 'LINEA 1', material: '20004462', descripcion: 'CHN ZAFIRO 105X190X024', habilitado: true, minimo: 0, maximo: 100, cantPresupuesto: 0 },
-  { id: '4', centro: '1000', linea: 'LINEA 1', material: '20007200', descripcion: 'CHN ZAFIRO 105X190X029', habilitado: true, minimo: 0, maximo: 100, cantPresupuesto: 0 },
-  { id: '5', centro: '1000', linea: 'LINEA 1', material: '20003642', descripcion: 'CHN IMPERIAL 31 135X190X31', habilitado: true, minimo: 0, maximo: 100, cantPresupuesto: 0 },
-  { id: '6', centro: '1000', linea: 'LINEA 1', material: '20006132', descripcion: 'CHN ALTERNATIVA ESPUMA 080X190X011', habilitado: false, minimo: 0, maximo: 100, cantPresupuesto: 0 },
-  { id: '7', centro: '1000', linea: 'LINEA 1', material: '20003275', descripcion: 'CHN ALTERNATIVA ESPUMA 080X190X015', habilitado: false, minimo: 0, maximo: 100, cantPresupuesto: 0 },
-  { id: '8', centro: '1000', linea: 'LINEA 1', material: '20006133', descripcion: 'CHN ALTERNATIVA ESPUMA 105X190X011', habilitado: false, minimo: 0, maximo: 100, cantPresupuesto: 0 },
-  { id: '9', centro: '1000', linea: 'LINEA 1', material: '20003277', descripcion: 'CHN ALTERNATIVA ESPUMA 105X190X015', habilitado: true, minimo: 0, maximo: 100, cantPresupuesto: 0 },
-  { id: '10', centro: '1000', linea: 'LINEA 1', material: '20006134', descripcion: 'CHN ALTERNATIVA ESPUMA 135X190X011', habilitado: true, minimo: 0, maximo: 100, cantPresupuesto: 0 },
-  { id: '11', centro: '1000', linea: 'LINEA 1', material: '20003278', descripcion: 'CHN ALTERNATIVA ESPUMA 135X190X015', habilitado: true, minimo: 0, maximo: 100, cantPresupuesto: 0 },
-  { id: '12', centro: '2000', linea: 'LINEA 3', material: '20006132', descripcion: 'CHN ALTERNATIVA ESPUMA 080X190X011', habilitado: true, minimo: 0, maximo: 100, cantPresupuesto: 0 },
-  { id: '13', centro: '2000', linea: 'LINEA 3', material: '20003275', descripcion: 'CHN ALTERNATIVA ESPUMA 080X190X015', habilitado: true, minimo: 0, maximo: 100, cantPresupuesto: 0 },
-  { id: '14', centro: '2000', linea: 'LINEA 3', material: '20006133', descripcion: 'CHN ALTERNATIVA ESPUMA 105X190X011', habilitado: true, minimo: 0, maximo: 100, cantPresupuesto: 0 },
-  { id: '15', centro: '2000', linea: 'LINEA 3', material: '20003277', descripcion: 'CHN ALTERNATIVA ESPUMA 105X190X015', habilitado: false, minimo: 0, maximo: 100, cantPresupuesto: 0 },
-  { id: '16', centro: '2000', linea: 'LINEA 3', material: '20006134', descripcion: 'CHN ALTERNATIVA ESPUMA 135X190X011', habilitado: false, minimo: 0, maximo: 100, cantPresupuesto: 0 },
-  { id: '17', centro: '2000', linea: 'LINEA 3', material: '20003278', descripcion: 'CHN ALTERNATIVA ESPUMA 135X190X015', habilitado: false, minimo: 0, maximo: 100, cantPresupuesto: 0 },
+  { id: '1', material: '20007201', descripcion: 'CHN ZAFIRO 135X190X029', habilitado: true, minimo: 0, maximo: 100, cantPresupuesto: 0 },
+  { id: '2', material: '20004463', descripcion: 'CHN ZAFIRO 135X190X024', habilitado: true, minimo: 0, maximo: 100, cantPresupuesto: 0 },
+  { id: '3', material: '20004462', descripcion: 'CHN ZAFIRO 105X190X024', habilitado: true, minimo: 0, maximo: 100, cantPresupuesto: 0 },
+  { id: '4', material: '20007200', descripcion: 'CHN ZAFIRO 105X190X029', habilitado: true, minimo: 0, maximo: 100, cantPresupuesto: 0 },
+  { id: '5', material: '20003642', descripcion: 'CHN IMPERIAL 31 135X190X31', habilitado: true, minimo: 0, maximo: 100, cantPresupuesto: 0 },
+  { id: '6', material: '20006132', descripcion: 'CHN ALTERNATIVA ESPUMA 080X190X011', habilitado: false, minimo: 0, maximo: 100, cantPresupuesto: 0 },
+  { id: '7', material: '20003275', descripcion: 'CHN ALTERNATIVA ESPUMA 080X190X015', habilitado: false, minimo: 0, maximo: 100, cantPresupuesto: 0 },
+  { id: '8', material: '20006133', descripcion: 'CHN ALTERNATIVA ESPUMA 105X190X011', habilitado: false, minimo: 0, maximo: 100, cantPresupuesto: 0 },
+  { id: '9', material: '20003277', descripcion: 'CHN ALTERNATIVA ESPUMA 105X190X015', habilitado: true, minimo: 0, maximo: 100, cantPresupuesto: 0 },
+  { id: '10', material: '20006134', descripcion: 'CHN ALTERNATIVA ESPUMA 135X190X011', habilitado: true, minimo: 0, maximo: 100, cantPresupuesto: 0 },
+  { id: '11', material: '20003278', descripcion: 'CHN ALTERNATIVA ESPUMA 135X190X015', habilitado: true, minimo: 0, maximo: 100, cantPresupuesto: 0 },
 ];
 
 export const MaterialBalanceoLineasTabSection: React.FC = () => {
@@ -67,6 +63,7 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
   const [presupuestoRefData, setPresupuestoRefData] = useState<any[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
   const [isLoadingTech, setIsLoadingTech] = useState(false);
+  const [materialesBalanceoApi, setMaterialesBalanceoApi] = useState<MaterialesBalanceoGrupo[]>([]);
 
   const normalizeMaterialCode = (code: string | number): string => {
     return String(code || '').trim().slice(-8);
@@ -96,6 +93,17 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
     }
   };
 
+  // Cargar los materiales de balanceo configurados por grupo (vista de administración)
+  const fetchMaterialesBalanceoApi = async () => {
+    try {
+      const response = await materialesBalanceoService.getAll();
+      setMaterialesBalanceoApi((response.data || []) as MaterialesBalanceoGrupo[]);
+    } catch (error) {
+      console.error('Error loading materiales de balanceo:', error);
+      toast({ title: "Error", description: "No se pudieron cargar los materiales de balanceo.", variant: "destructive" });
+    }
+  };
+
   // Cargar datos del localStorage al montar
   useEffect(() => {
     // 1. Cargar configuración de filas de balanceo
@@ -105,7 +113,6 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
         const parsed = JSON.parse(stored);
         const migrated = parsed.map((r: any) => ({
           ...r,
-          centro: r.centro || '1000',
           minimo: r.minimo !== undefined ? r.minimo : 0,
           maximo: r.maximo !== undefined ? r.maximo : 100,
           cantPresupuesto: r.cantPresupuesto !== undefined ? r.cantPresupuesto : 0
@@ -130,7 +137,29 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
 
     setIsLoaded(true);
     fetchTechnicalData();
+    fetchMaterialesBalanceoApi();
   }, []);
+
+  // Incorporar a la tabla los materiales de balanceo administrados desde Grupos
+  useEffect(() => {
+    if (!isLoaded || materialesBalanceoApi.length === 0) return;
+    setRows(prevRows => {
+      const existentes = new Set(prevRows.map(r => r.codigoMaterialBalanceo).filter((v): v is number => v !== undefined));
+      const nuevas: MaterialBalanceoRow[] = materialesBalanceoApi
+        .filter(m => !existentes.has(m.codigo_material_balanceo))
+        .map(m => ({
+          id: `api-${m.codigo_material_balanceo}`,
+          codigoMaterialBalanceo: m.codigo_material_balanceo,
+          material: String(m.codigo_material),
+          descripcion: '',
+          habilitado: m.estado === 'A',
+          minimo: m.porc_minimo_balanceo,
+          maximo: m.porc_maximo_balanceo,
+          cantPresupuesto: 0,
+        }));
+      return nuevas.length > 0 ? [...prevRows, ...nuevas] : prevRows;
+    });
+  }, [materialesBalanceoApi, isLoaded]);
 
   // Guardar datos en localStorage cuando cambian
   useEffect(() => {
@@ -142,8 +171,6 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
   const handleAddRow = () => {
     const newRow: MaterialBalanceoRow = {
       id: Date.now().toString(),
-      centro: '1000',
-      linea: '',
       material: '',
       descripcion: '',
       habilitado: true,
@@ -162,41 +189,38 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
     setRows(rows.map(r => r.id === id ? { ...r, [field]: value } : r));
   };
 
-  // LÓGICA DE UNIÓN: Expandir filas por puestos de trabajo técnicos y vincular presupuesto
+  // LÓGICA DE UNIÓN: Centro y Línea se resuelven automáticamente por Material contra los puestos de
+  // trabajo técnicos (ya no se seleccionan a mano); cada puesto de trabajo encontrado genera su propia fila.
   const expandedRows = useMemo(() => {
     const results: DisplayRow[] = [];
 
     rows.forEach(baseRow => {
       const materialNorm = normalizeMaterialCode(baseRow.material);
-      const lineaNorm = baseRow.linea.trim().toUpperCase();
-      const centroNorm = String(baseRow.centro).trim();
 
-      // VINCULACIÓN DE PRESUPUESTO: Buscar coincidencia en los datos de la pestaña Presupuesto
-      const presuMatch = presupuestoRefData.find(p => 
-        normalizeMaterialCode(p.codigo_material) === materialNorm &&
-        String(p.centro || '').trim() === centroNorm &&
-        String(p.linea_produccion || '').trim().toUpperCase() === lineaNorm
-      );
-
-      // Si hay coincidencia, el valor de Cant Presupuesto es el del Presupuesto (prioridad automática)
-      const cantPresupuestoFinal = presuMatch 
-        ? Number(presuMatch.cantidad_proyectada || 0) 
-        : baseRow.cantPresupuesto;
-
-      // Buscar coincidencias en technicalData filtrando por Centro, Linea y Material
-      const matches = technicalData.filter(tech => {
-        const techMaterial = normalizeMaterialCode(tech.CodMaterial);
-        const techLinea = String(tech.Linea || '').trim().toUpperCase();
-        const techCentro = String(tech.Centro || '').trim();
-        return techMaterial === materialNorm && 
-               (techLinea === lineaNorm || techLinea.includes(lineaNorm)) &&
-               techCentro === centroNorm;
-      });
+      // Buscar coincidencias en technicalData únicamente por Material
+      const matches = technicalData.filter(tech => normalizeMaterialCode(tech.CodMaterial) === materialNorm);
 
       if (matches.length > 0) {
         matches.forEach(match => {
+          const centro = String(match.Centro || '').trim();
+          const linea = String(match.Linea || '').trim();
+
+          // VINCULACIÓN DE PRESUPUESTO: Buscar coincidencia en los datos de la pestaña Presupuesto
+          const presuMatch = presupuestoRefData.find(p =>
+            normalizeMaterialCode(p.codigo_material) === materialNorm &&
+            String(p.centro || '').trim() === centro &&
+            String(p.linea_produccion || '').trim().toUpperCase() === linea.toUpperCase()
+          );
+
+          // Si hay coincidencia, el valor de Cant Presupuesto es el del Presupuesto (prioridad automática)
+          const cantPresupuestoFinal = presuMatch
+            ? Number(presuMatch.cantidad_proyectada || 0)
+            : baseRow.cantPresupuesto;
+
           results.push({
             ...baseRow,
+            centro,
+            linea,
             cantPresupuesto: cantPresupuestoFinal,
             puestoTrabajo: String(match.PuestoTrabajo || '-'),
             tiempoMin: Number(match.Tiempo_Min || 0),
@@ -204,10 +228,11 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
           });
         });
       } else {
-        // Si no hay datos técnicos, mostrar fila base con valores vacíos
+        // Sin datos técnicos aún: no hay Centro/Línea que resolver
         results.push({
           ...baseRow,
-          cantPresupuesto: cantPresupuestoFinal,
+          centro: '-',
+          linea: '-',
           puestoTrabajo: '-',
           tiempoMin: 0,
           esFilaTecnica: false
@@ -292,23 +317,11 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
                   </tr>
                 ) : expandedRows.map((row, idx) => (
                   <tr key={`${row.id}-${idx}`} className={cn("hover:bg-gray-50 transition-colors", !row.habilitado && "bg-gray-50/50 opacity-70")}>
-                    <td className="px-2 py-1.5 border-r">
-                      <select 
-                        value={row.centro} 
-                        onChange={(e) => handleUpdateRow(row.id, 'centro', e.target.value)}
-                        className="w-full h-8 text-xs border border-transparent bg-transparent hover:border-gray-200 rounded focus:ring-1 focus:ring-indigo-500 font-bold"
-                      >
-                        <option value="1000">1000</option>
-                        <option value="2000">2000</option>
-                      </select>
+                    <td className="px-4 py-1.5 border-r font-bold text-gray-700">
+                      {row.centro}
                     </td>
-                    <td className="px-2 py-1.5 border-r">
-                      <Input 
-                        value={row.linea} 
-                        onChange={(e) => handleUpdateRow(row.id, 'linea', e.target.value.toUpperCase())}
-                        placeholder="Ej: LINEA 1"
-                        className="h-8 text-xs border-none shadow-none focus-visible:ring-1 focus-visible:ring-indigo-500 font-bold"
-                      />
+                    <td className="px-4 py-1.5 border-r font-bold text-gray-700">
+                      {row.linea}
                     </td>
                     <td className="px-2 py-1.5 border-r">
                       <Input 

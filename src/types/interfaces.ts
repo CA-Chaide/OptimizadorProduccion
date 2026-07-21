@@ -208,3 +208,25 @@ export interface Turno {
     fecha_modificacion: Date;
     usuario_modificacion: string;
 }
+
+export interface MaterialesBalanceo {
+    codigo_material_balanceo: number;
+    codigo_material: number;
+    porc_maximo_balanceo: number;
+    porc_minimo_balanceo: number;
+    prioridad: number;
+    estado: string;
+    fecha_modificacion: Date;
+    usuario_modificacion: string;
+}
+
+export interface MaterialesBalanceoGrupo extends Grupo {
+    codigo_material_balanceo: number;
+    codigo_material: number;
+    porc_maximo_balanceo: number;
+    porc_minimo_balanceo: number;
+    prioridad: number;
+    estado: string;
+    fecha_modificacion: Date;
+    usuario_modificacion: string;
+}
