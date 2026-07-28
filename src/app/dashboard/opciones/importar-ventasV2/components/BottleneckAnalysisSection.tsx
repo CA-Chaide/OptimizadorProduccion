@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { safeNumber, normalizeMaterialCode } from './utils';
-import { TransferNeed, BottleneckAnalysisSectionProps } from './types';
+import { TransferNeed, BottleneckAnalysisSectionProps, BottleneckDataRow } from './types';
 import { BottleneckSummaryTable } from './BottleneckSummaryTable';
 import { BottleneckClassTable } from './BottleneckClassTable';
 import { bottleneckAnalysisService } from '@/services/BottleneckAnalysisService';
@@ -21,7 +21,7 @@ export const BottleneckAnalysisSection: React.FC<BottleneckAnalysisSectionProps>
   trasladosViables = []
 }) => {
   const [transferNeedsEX, setTransferNeedsEX] = useState<TransferNeed[]>([]);
-  const [computedDataEX, setComputedDataEX] = useState<any[]>([]);
+  const [computedDataEX, setComputedDataEX] = useState<BottleneckDataRow[]>([]);
 
   // Usar el servicio centralizado
   const analysis = useMemo(() => {
@@ -30,7 +30,7 @@ export const BottleneckAnalysisSection: React.FC<BottleneckAnalysisSectionProps>
   }, [data, tiemposCanon]);
 
   // Extraer datos del análisis
-  const { dataEX = [], dataF = [], transferNeedsF = [], filteredDataCentro2000 = [] } = analysis || {};
+  const { dataEX = [], dataF = [], transferNeedsF = [], filteredData: filteredDataCentro2000 = [] } = analysis || {};
 
   // Consolidar transferencias INCLUYENDO MES
   const transferNeedsConsolidated = useMemo(() => {
@@ -120,7 +120,8 @@ export const BottleneckAnalysisSection: React.FC<BottleneckAnalysisSectionProps>
               <tbody>
                 {dataF.map((row, idx) => {
                   const nec = safeNumber(row._Necesidades);
-                  const mesDisplay = !isNaN(parseInt(row.Mes)) ? (MONTH_NAMES[parseInt(row.Mes)] || row.Mes) : row.Mes;
+                  const mesNum = parseInt(String(row.Mes ?? ''));
+                  const mesDisplay = !isNaN(mesNum) ? (MONTH_NAMES[mesNum] || row.Mes) : row.Mes;
                   return (
                     <tr key={idx} className="border-b border-amber-50">
                       <td className="px-2 py-1 font-bold text-indigo-900">{mesDisplay}</td>

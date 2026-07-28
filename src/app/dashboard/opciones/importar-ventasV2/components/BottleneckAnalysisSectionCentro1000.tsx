@@ -3,7 +3,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { exportToXLSX } from './utils';
-import { BottleneckAnalysisSectionCentro1000Props } from './types';
+import { BottleneckAnalysisSectionCentro1000Props, BottleneckDataRow } from './types';
 import { BottleneckSummaryTable } from './BottleneckSummaryTable';
 import { BottleneckClassTable } from './BottleneckClassTable';
 import { bottleneckAnalysisService } from '@/services/BottleneckAnalysisService';
@@ -19,7 +19,7 @@ export const BottleneckAnalysisSectionCentro1000: React.FC<BottleneckAnalysisSec
   onComputedDataReady
 }) => {
   // Estado para capturar los datos calculados finales del motor de la tabla
-  const [computedData, setComputedData] = useState<any[]>([]);
+  const [computedData, setComputedData] = useState<BottleneckDataRow[]>([]);
 
   // Usar el servicio centralizado para el filtrado inicial
   const analysis = useMemo(() => {
