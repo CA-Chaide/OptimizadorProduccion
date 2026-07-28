@@ -42,7 +42,7 @@ import { restriccionService } from '@/services/restriccion.service';
 import { grupoService } from '@/services/grupo.service';
 import type { Restriccion, Grupo } from '@/types/interfaces';
 import { z } from 'zod';
-import { useForm } from 'react-hook-form';
+import { useForm, type UseFormReturn } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 
 interface RestriccionesModalProps {
@@ -70,6 +70,12 @@ const formatDateForSQLServer = (date: Date): string => {
   const ms = date.getMilliseconds().toString().padStart(3, '0');
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${ms}`;
 };
+
+// restriccionService.save sends fecha_modificacion as a pre-formatted SQL
+// Server string (see formatDateForSQLServer above), not the `Date` declared on
+// the shared `Restriccion` interface, and codigo_restriccion is only included
+// when editing/forcing a specific record.
+type RestriccionSavePayload = Partial<Omit<Restriccion, 'fecha_modificacion'>> & { fecha_modificacion?: string };
 
 export default function RestriccionesModal({
   grupo,
@@ -167,7 +173,7 @@ export default function RestriccionesModal({
       if (values.aplicarATodos && !selectedRestriccion) {
         const timestamp = formatDateForSQLServer(new Date());
         for (const g of allGrupos) {
-          const data: any = {
+          const data: RestriccionSavePayload = {
             codigo_grupo: g.codigo_grupo,
             nombre_restriccion: values.nombre_restriccion,
             valor_restriccion: values.valor_restriccion,
@@ -176,7 +182,7 @@ export default function RestriccionesModal({
             usuario_modificacion: user?.name || 'admin',
             fecha_modificacion: timestamp,
           };
-          await restriccionService.save(data);
+          await restriccionService.save(data as unknown as Restriccion);
         }
 
         toast({
@@ -184,7 +190,7 @@ export default function RestriccionesModal({
           description: `Restricción creada en ${allGrupos.length} grupo(s) correctamente.`,
         });
       } else {
-        const data: any = {
+        const data: RestriccionSavePayload = {
           codigo_grupo: grupo.codigo_grupo,
           nombre_restriccion: values.nombre_restriccion,
           valor_restriccion: values.valor_restriccion,
@@ -198,7 +204,7 @@ export default function RestriccionesModal({
         data.usuario_modificacion = user?.name || 'admin';
         data.fecha_modificacion = formatDateForSQLServer(new Date());
 
-        await restriccionService.save(data);
+        await restriccionService.save(data as unknown as Restriccion);
         toast({
           title: 'Éxito',
           description: `Restricción ${selectedRestriccion ? 'actualizada' : 'creada'} correctamente.`,
@@ -243,7 +249,7 @@ export default function RestriccionesModal({
       // Copy each restriction
       let count = 0;
       for (const r of sourceRestrictions) {
-        const payload: any = {
+        const payload: RestriccionSavePayload = {
           codigo_restriccion: 0, // Force new record
           codigo_grupo: grupo.codigo_grupo,
           nombre_restriccion: r.nombre_restriccion,
@@ -253,7 +259,7 @@ export default function RestriccionesModal({
           usuario_modificacion: username,
           fecha_modificacion: timestamp,
         };
-        await restriccionService.save(payload);
+        await restriccionService.save(payload as unknown as Restriccion);
         count++;
       }
 
@@ -527,7 +533,7 @@ function RestrictionsList({
 }
 
 interface RestrictionFormProps {
-  form: any;
+  form: UseFormReturn<z.infer<typeof formSchema>>;
   onSubmit: (values: z.infer<typeof formSchema>) => Promise<void>;
   isLoading: boolean;
   selectedRestriccion: Restriccion | null;

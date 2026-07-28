@@ -686,7 +686,7 @@ export const generateProductionPlan = async (
                         for(const need of needsForLine) {
                             if (lineCapacityToday <= 0) break;
 
-                            const ppi = constraints.productProcessInfos.find(p => p.productId === need.productId && ppi.productionLineId === line.id);
+                            const ppi = constraints.productProcessInfos.find(p => p.productId === need.productId && p.productionLineId === line.id);
                             if (!ppi) continue;
 
                             const timePerUnit = ppi.totalManufacturingTimeHours;

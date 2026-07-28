@@ -45,7 +45,6 @@ const ProductionOptimizerClient: React.FC = () => {
         maintenanceEvents,
         setMaintenanceEvents,
         absenteeismEvents,
-        setAbsenteeismEvents,
         workShifts,
         setWorkShifts,
         handleGenerateTacticalPlan,
@@ -71,7 +70,7 @@ const ProductionOptimizerClient: React.FC = () => {
             case ActiveView.MAINTENANCE:
                 return <MaintenanceSection events={maintenanceEvents} setEvents={setMaintenanceEvents} constraints={constraints} onConstraintsUpdate={setConstraints} addNotification={addNotification} />;
             case ActiveView.ABSENTEEISM:
-                return <AbsenteeismSection events={absenteeismEvents} setEvents={setAbsenteeismEvents} employees={employees} />;
+                return <AbsenteeismSection />;
             case ActiveView.PRODUCTION_PLAN:
                 return <ProductionPlanSection />;
             case ActiveView.TACTICAL_SCHEDULING:

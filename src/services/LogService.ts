@@ -47,9 +47,9 @@ class LogService {
   public info(message: string): void { this.log(message, 'info'); }
   public warn(message: string): void { this.log(message, 'warning'); }
   public success(message: string): void { this.log(message, 'success'); }
-  public error(message: string, error?: any): void { 
-    const detailedMessage = error ? `${message} - DETALLE: ${error.message || String(error)}` : message;
-    this.log(detailedMessage, 'error'); 
+  public error(message: string, error?: unknown): void {
+    const detailedMessage = error ? `${message} - DETALLE: ${error instanceof Error ? error.message : String(error)}` : message;
+    this.log(detailedMessage, 'error');
   }
 }
 

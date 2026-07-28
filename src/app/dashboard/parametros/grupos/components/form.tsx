@@ -54,6 +54,11 @@ interface GrupoFormProps {
   onCancel: () => void;
 }
 
+// grupoService.save sends fecha_modificacion as a pre-formatted SQL Server
+// string (see formatDateForSQLServer below), not the `Date` declared on the
+// shared `Grupo` interface, and only includes it when editing an existing record.
+type GrupoSavePayload = Partial<Omit<Grupo, 'fecha_modificacion'>> & { fecha_modificacion?: string };
+
 export default function GrupoForm({ record, onSuccess, onCancel }: GrupoFormProps) {
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
@@ -71,7 +76,7 @@ export default function GrupoForm({ record, onSuccess, onCancel }: GrupoFormProp
 
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
     setIsLoading(true);
-    const data: any = {
+    const data: GrupoSavePayload = {
       codigo_grupo: values.codigo_grupo || 0,
       centro: String(values.centro || ''),
       nombre_grupo: values.nombre_grupo,
@@ -85,7 +90,7 @@ export default function GrupoForm({ record, onSuccess, onCancel }: GrupoFormProp
     }
 
     try {
-      await grupoService.save(data);
+      await grupoService.save(data as unknown as Grupo);
       toast({ title: 'Éxito', description: `Grupo ${record ? 'actualizado' : 'creado'} correctamente.` });
       onSuccess();
     } catch (error) {

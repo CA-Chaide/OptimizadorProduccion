@@ -5,14 +5,14 @@ import { useToast } from '@/hooks/use-toast';
 import GrupoOperadorForm from './components/form';
 import GrupoOperadorTable from './components/table';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import type { Operador, Grupo, Calendario } from '@/types/interfaces';
+import type { Operador, Grupo, Calendario, User } from '@/types/interfaces';
 import { operadorService } from '@/services/operador.service';
 import { authService } from '@/services/auth.service';
 
 export default function GrupoOperadoresPage() {
   const [records, setRecords] = useState<Operador[]>([]);
   const [grupos] = useState<Grupo[]>([]);
-  const [usuarios, setUsuarios] = useState<any[]>([]);
+  const [usuarios, setUsuarios] = useState<User[]>([]);
   const [calendarios] = useState<Calendario[]>([]);
   const [selectedRecord, setSelectedRecord] = useState<Operador | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -83,7 +83,7 @@ export default function GrupoOperadoresPage() {
     return grupos.find(g => g.codigo_grupo === codigo_grupo)?.nombre_grupo || '-';
   };
 
-  const getUsuarioInfo = (identificador: string): any => {
+  const getUsuarioInfo = (identificador: string): User | undefined => {
     return usuarios.find(u => u.CODIGO === identificador);
   };
 

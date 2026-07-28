@@ -12,12 +12,13 @@ export interface VariableSnapshot {
   section: string;
   scope: string; // 'component', 'function', 'api', 'calculation'
   name: string;
-  value: any;
+  value: unknown;
   type: string; // typeof value
   metadata?: {
     source?: string; // de dónde viene (API, usuario, cálculo)
     dependencies?: string[]; // variables de las que depende
     description?: string;
+    count?: number; // tamaño de la colección capturada, cuando aplica
   };
 }
 
@@ -27,8 +28,8 @@ export interface ExecutionContext {
   section: string;
   action: string; // 'load', 'filter', 'calculate', 'submit', 'transform'
   status: 'started' | 'running' | 'completed' | 'failed';
-  inputs?: Record<string, any>;
-  outputs?: Record<string, any>;
+  inputs?: Record<string, unknown>;
+  outputs?: Record<string, unknown>;
   duration?: number;
   error?: string;
   stackTrace?: string[];
@@ -37,15 +38,25 @@ export interface ExecutionContext {
 export interface StateSnapshot {
   section: string;
   timestamp: Date;
-  state: Record<string, any> | string;
-  props?: Record<string, any> | string;
-  computed?: Record<string, any> | string;
+  state: Record<string, unknown> | string;
+  props?: Record<string, unknown> | string;
+  computed?: Record<string, unknown> | string;
 }
 
-type InspectorListener = (event: {
+export interface InspectorEvent {
   type: 'variable' | 'context' | 'state';
   data: VariableSnapshot | ExecutionContext | StateSnapshot;
-}) => void;
+}
+
+export interface RuntimeInspectorSummary {
+  totalVariables: number;
+  totalContexts: number;
+  activeContexts: number;
+  sections: string[];
+  recentActivity: Array<{ section: string; action: string; timestamp: Date }>;
+}
+
+type InspectorListener = (event: InspectorEvent) => void;
 
 class RuntimeInspector {
   private static instance: RuntimeInspector;
@@ -76,7 +87,7 @@ class RuntimeInspector {
     section: string,
     scope: string,
     name: string,
-    value: any,
+    value: unknown,
     metadata?: VariableSnapshot['metadata']
   ): void {
     const snapshot: VariableSnapshot = {
@@ -100,7 +111,7 @@ class RuntimeInspector {
     this.notifyListeners({ type: 'variable', data: snapshot });
   }
 
-  public startContext(section: string, action: string, inputs?: Record<string, any>): string {
+  public startContext(section: string, action: string, inputs?: Record<string, unknown>): string {
     const contextId = `ctx-${Date.now()}-${Math.random().toString(36).substring(7)}`;
     const context: ExecutionContext = {
       id: contextId,
@@ -108,7 +119,7 @@ class RuntimeInspector {
       section,
       action,
       status: 'started',
-      inputs: inputs ? this.serializeValue(inputs) : undefined,
+      inputs: inputs ? this.serializeValue(inputs) as Record<string, unknown> : undefined,
     };
     this.activeContexts.set(contextId, context);
     this.contexts.push(context);
@@ -120,7 +131,7 @@ class RuntimeInspector {
   public updateContext(
     contextId: string,
     status: ExecutionContext['status'],
-    data?: { outputs?: Record<string, any>; error?: string; stackTrace?: string[] }
+    data?: { outputs?: Record<string, unknown>; error?: string; stackTrace?: string[] }
   ): void {
     const context = this.activeContexts.get(contextId);
     if (!context) return;
@@ -130,7 +141,7 @@ class RuntimeInspector {
       ...context,
       status,
       duration,
-      outputs: data?.outputs ? this.serializeValue(data.outputs) : context.outputs,
+      outputs: data?.outputs ? this.serializeValue(data.outputs) as Record<string, unknown> : context.outputs,
       error: data?.error,
       stackTrace: data?.stackTrace,
     };
@@ -146,7 +157,7 @@ class RuntimeInspector {
     this.notifyListeners({ type: 'context', data: updated });
   }
 
-  public captureState(section: string, state: Record<string, any>, props?: Record<string, any>, computed?: Record<string, any>): void {
+  public captureState(section: string, state: Record<string, unknown>, props?: Record<string, unknown>, computed?: Record<string, unknown>): void {
     const snapshot: StateSnapshot = {
       section,
       timestamp: new Date(),
@@ -165,6 +176,16 @@ class RuntimeInspector {
     return allVars.slice(-limit);
   }
 
+  // Búsqueda por coincidencia parcial (case-insensitive) de nombre de variable, opcionalmente
+  // acotada a una sección. Usada por la herramienta del asistente IA "inspectVariables" cuando el
+  // usuario busca una variable específica por nombre en vez de listar todas.
+  public searchVariables(query: string, section?: string): VariableSnapshot[] {
+    const q = query.trim().toLowerCase();
+    const pool = section ? (this.variables.get(section) || []) : this.getVariables(undefined, Infinity);
+    if (!q) return pool;
+    return pool.filter(v => v.name.toLowerCase().includes(q));
+  }
+
   public getContexts(section?: string, limit: number = 50): ExecutionContext[] {
     if (section) return this.contexts.filter(c => c.section === section).slice(-limit);
     return this.contexts.slice(-limit);
@@ -176,11 +197,18 @@ class RuntimeInspector {
     return result;
   }
 
+  // Estado capturado de UNA sección puntual. Usada por la herramienta del asistente IA
+  // "inspectState" cuando el usuario pide el estado de un componente/sección específico, en vez de
+  // todos (ver getAllStates).
+  public getState(section: string): StateSnapshot | undefined {
+    return this.states.get(section);
+  }
+
   public getActiveContexts(): ExecutionContext[] {
     return Array.from(this.activeContexts.values());
   }
 
-  public getSummary(): any {
+  public getSummary(): RuntimeInspectorSummary {
     const sectionNames = new Set<string>();
     let totalVars = 0;
     this.variables.forEach((vars, section) => { sectionNames.add(section); totalVars += vars.length; });
@@ -195,7 +223,7 @@ class RuntimeInspector {
     };
   }
 
-  private serializeValue(value: any, depth = 0): any {
+  private serializeValue(value: unknown, depth = 0): unknown {
     try {
       if (depth > 5) return '[Depth Limit]';
       if (value === null || value === undefined) return value;
@@ -208,15 +236,15 @@ class RuntimeInspector {
       if (typeof value === 'object') {
         const keys = Object.keys(value);
         if (keys.length > 50) return `[Object with ${keys.length} keys]`;
-        const serialized: any = {};
-        for (const key of keys) serialized[key] = this.serializeValue(value[key], depth + 1);
+        const serialized: Record<string, unknown> = {};
+        for (const key of keys) serialized[key] = this.serializeValue((value as Record<string, unknown>)[key], depth + 1);
         return serialized;
       }
       return value;
     } catch { return '[Error]'; }
   }
 
-  private notifyListeners(event: any): void {
+  private notifyListeners(event: InspectorEvent): void {
     this.listeners.forEach(l => { try { l(event); } catch {} });
   }
 }
@@ -225,16 +253,16 @@ export const runtimeInspector = RuntimeInspector.getInstance();
 
 export function useRuntimeInspector(section: string) {
   return React.useMemo(() => ({
-    captureVariable: (name: string, value: any, metadata?: any) => {
+    captureVariable: (name: string, value: unknown, metadata?: VariableSnapshot['metadata']) => {
       runtimeInspector.captureVariable(section, 'component', name, value, metadata);
     },
-    captureState: (state: any, props?: any, computed?: any) => {
+    captureState: (state: Record<string, unknown>, props?: Record<string, unknown>, computed?: Record<string, unknown>) => {
       runtimeInspector.captureState(section, state, props, computed);
     },
-    startContext: (action: string, inputs?: any) => {
+    startContext: (action: string, inputs?: Record<string, unknown>) => {
       return runtimeInspector.startContext(section, action, inputs);
     },
-    updateContext: (id: string, status: any, data?: any) => {
+    updateContext: (id: string, status: ExecutionContext['status'], data?: { outputs?: Record<string, unknown>; error?: string; stackTrace?: string[] }) => {
       runtimeInspector.updateContext(id, status, data);
     },
   }), [section]);

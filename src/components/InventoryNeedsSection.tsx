@@ -237,10 +237,10 @@ export const InventoryNeedsSection: React.FC = () => {
             const transformedData = Array.from(allProductCenterPairs).map(key => {
                 const [productId, centerId] = key.split('---');
 
-                const cuboItem = cuboData.find(i => normalizeMaterialCode(i.Material) === productId && String(i.Centro).trim() === centerId) || {};
+                const cuboItem = cuboData.find(i => normalizeMaterialCode(i.Material) === productId && String(i.Centro).trim() === centerId);
                 
                 const stockCenter = centerId;
-                const sector = cuboItem.Sector || 'Sin Sector';
+                const sector = cuboItem?.Sector || 'Sin Sector';
                 
                 let producingCenter = stockCenter;
                 const primaryEntry = cuboData.find(i => normalizeMaterialCode(i.Material) === productId && String(i.Centro).trim() === stockCenter);
@@ -292,8 +292,8 @@ export const InventoryNeedsSection: React.FC = () => {
                     }
                 }
 
-                const stockActual = parseFloat(String(cuboItem.StockActual || '0'));
-                const stockSeguridad = parseFloat(String(cuboItem.StockSeguridad || '0'));
+                const stockActual = parseFloat(String(cuboItem?.StockActual || '0'));
+                const stockSeguridad = parseFloat(String(cuboItem?.StockSeguridad || '0'));
                 const necesidad = Math.max(0, Math.round(stockSeguridad) - Math.round(stockActual));
                 
                 const salesDemand = presupuestoData
@@ -312,8 +312,8 @@ export const InventoryNeedsSection: React.FC = () => {
                 return {
                     CentroStock: stockCenter,
                     CentroProduccion: producingCenter,
-                    ClaseAprovisionam: cuboItem.ClaseAprovisionam || null,
-                    Descripcion: cuboItem.Descripcion,
+                    ClaseAprovisionam: cuboItem?.ClaseAprovisionam || null,
+                    Descripcion: cuboItem?.Descripcion,
                     Material: productId,
                     Sector: sector,
                     StockActual: Math.round(stockActual),

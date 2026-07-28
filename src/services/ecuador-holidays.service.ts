@@ -28,7 +28,7 @@ export const ecuadorHolidaysService = {
       // La API de Nager.Date devuelve `localName` (nombre en idioma local)
       // y `name` (nombre en inglés). Preferimos `localName` para mostrar
       // los feriados en español cuando esté disponible.
-      return data.map((holiday: any) => ({
+      return data.map((holiday: { date: string; localName?: string; name: string }) => ({
         date: holiday.date,
         name: holiday.localName || holiday.name,
         type: 'feriado',

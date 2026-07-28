@@ -239,11 +239,11 @@ export const analyzeProductionCapacityTool = ai.defineTool({
   } catch { /* ignore */ }
   const plan = contextData.productionPlanFull || contextData.productionPlanSample || [];
   const maintenance = contextData.maintenanceFull || contextData.maintenanceSample || [];
-  const constraints = contextData.constraintsSummary || {};
-  
+  const constraints = (contextData.constraintsSummary || {}) as Record<string, unknown>;
+
   // Calcular capacidad teórica
-  const workCenter = params.workCenterId 
-    ? constraints.workCenters?.find((wc: any) => wc.id === params.workCenterId)
+  const workCenter = params.workCenterId
+    ? (constraints.workCenters as any[] | undefined)?.find((wc: any) => wc.id === params.workCenterId)
     : null;
   
   const theoreticalCapacity = workCenter?.capacity || 'Unknown';
@@ -606,7 +606,9 @@ When user asks about "lines", "production lines", "work centers", use key='const
       };
     }
     
-    let dataToReturn = snapshot.data;
+    // snapshot.data es `unknown` a propósito (DataStore cachea snapshots de forma arbitraria); el
+    // resto de esta función ya trata su contenido dinámicamente (`(line: any)`, `(l: any)`, etc.).
+    let dataToReturn = snapshot.data as any;
     
     // Aplicar filtros especiales para constraints.productionLines
     if (params.key === 'constraints' && params.filter && dataToReturn.productionLines) {

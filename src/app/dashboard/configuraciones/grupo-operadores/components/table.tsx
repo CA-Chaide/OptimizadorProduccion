@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { MoreHorizontal, Edit, Plus, Trash } from 'lucide-react';
 import { operadorService } from '@/services/operador.service';
-import type { Operador } from '@/types/interfaces';
+import type { Operador, User } from '@/types/interfaces';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useState, useMemo } from 'react';
@@ -29,7 +29,7 @@ interface GrupoOperadorTableProps {
   onEdit: (record: Operador) => void;
   onAddNew: () => void;
   getGrupoNombre?: (codigo_grupo: number) => string;
-  getUsuarioInfo?: (identificador: string) => any;
+  getUsuarioInfo?: (identificador: string) => User | undefined;
   getCalendarioNombre?: (codigo_calendario: number) => string;
 }
 
@@ -40,7 +40,7 @@ export default function GrupoOperadorTable({
   isLoading,
   onEdit,
   onAddNew,
-  getUsuarioInfo = () => ({}),
+  getUsuarioInfo = () => undefined,
 }: Readonly<GrupoOperadorTableProps>) {
   const [page, setPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(PAGE_SIZE_OPTIONS[0]);
