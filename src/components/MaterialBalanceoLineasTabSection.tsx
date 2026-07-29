@@ -7,12 +7,14 @@ import {
   LayoutGrid,
   Download,
   AlertCircle,
-  Loader2
+  Loader2,
+  Home
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import * as XLSX from 'xlsx';
@@ -42,6 +44,9 @@ interface DisplayRow extends MaterialBalanceoRow {
 const STORAGE_KEY = 'material_balanceo_lineas_data';
 const PRESUPUESTO_DATA_KEY = 'presupuesto_consolidado_data';
 
+const CENTROS = ["1000", "2000"] as const;
+type Centro = typeof CENTROS[number];
+
 const INITIAL_DATA: MaterialBalanceoRow[] = [
   { id: '1', material: '20007201', descripcion: 'CHN ZAFIRO 135X190X029', habilitado: true, minimo: 0, maximo: 100, cantPresupuesto: 0 },
   { id: '2', material: '20004463', descripcion: 'CHN ZAFIRO 135X190X024', habilitado: true, minimo: 0, maximo: 100, cantPresupuesto: 0 },
@@ -61,9 +66,11 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
   const [rows, setRows] = useState<MaterialBalanceoRow[]>([]);
   const [technicalData, setTechnicalData] = useState<any[]>([]);
   const [presupuestoRefData, setPresupuestoRefData] = useState<any[]>([]);
+  const [fertData, setFertData] = useState<any[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
   const [isLoadingTech, setIsLoadingTech] = useState(false);
   const [materialesBalanceoApi, setMaterialesBalanceoApi] = useState<MaterialesBalanceoGrupo[]>([]);
+  const [activeCentroTab, setActiveCentroTab] = useState<Centro>("1000");
 
   const normalizeMaterialCode = (code: string | number): string => {
     return String(code || '').trim().slice(-8);
@@ -90,6 +97,27 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
       toast({ title: "Error", description: "No se pudieron cargar los tiempos técnicos.", variant: "destructive" });
     } finally {
       setIsLoadingTech(false);
+    }
+  };
+
+  // Cargar datos de Fert para vincular la columna "Línea" por coincidencia de Material
+  const fetchFertData = async () => {
+    try {
+      let allFert: any[] = [];
+      let page = 1;
+      let hasMore = true;
+      const pageSize = 5000;
+
+      while (hasMore && page <= 10) {
+        const response = await serviciosService.getOrdenesFert(page, pageSize);
+        const raw = Array.isArray(response?.data) ? response.data : [];
+        allFert = [...allFert, ...raw];
+        if (raw.length < pageSize) hasMore = false; else page++;
+      }
+      setFertData(allFert);
+    } catch (error) {
+      console.error('Error loading Fert data:', error);
+      toast({ title: "Error", description: "No se pudieron cargar los datos de Fert para vincular la Línea.", variant: "destructive" });
     }
   };
 
@@ -137,6 +165,7 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
 
     setIsLoaded(true);
     fetchTechnicalData();
+    fetchFertData();
     fetchMaterialesBalanceoApi();
   }, []);
 
@@ -189,13 +218,35 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
     setRows(rows.map(r => r.id === id ? { ...r, [field]: value } : r));
   };
 
-  // LÓGICA DE UNIÓN: Centro y Línea se resuelven automáticamente por Material contra los puestos de
-  // trabajo técnicos (ya no se seleccionan a mano); cada puesto de trabajo encontrado genera su propia fila.
+  // Mapa Material -> Línea construido desde la pestaña Fert (coincidencia únicamente por Material)
+  const fertLineaByMaterial = useMemo(() => {
+    const map = new Map<string, string>();
+    fertData.forEach(f => {
+      const matNorm = normalizeMaterialCode(f.MATERIAL);
+      if (!matNorm || map.has(matNorm)) return;
+
+      const cat = String(f.CATEGORIA || '').toUpperCase();
+      let linea = '';
+      if (cat.includes('L1')) linea = 'LINEA 1';
+      else if (cat.includes('L2')) linea = 'LINEA 2';
+      else if (cat.includes('L3')) linea = 'LINEA 3';
+      else if (cat.includes('L5') || cat.includes('B-B')) linea = 'LINEA 5';
+      else linea = String(f.LINEA || '').trim().toUpperCase();
+
+      if (linea) map.set(matNorm, linea);
+    });
+    return map;
+  }, [fertData]);
+
+  // LÓGICA DE UNIÓN: Centro se resuelve automáticamente por Material contra los puestos de trabajo
+  // técnicos (ya no se selecciona a mano); cada puesto de trabajo encontrado genera su propia fila.
+  // Línea se resuelve por Material contra la pestaña Fert (independiente del Centro).
   const expandedRows = useMemo(() => {
     const results: DisplayRow[] = [];
 
     rows.forEach(baseRow => {
       const materialNorm = normalizeMaterialCode(baseRow.material);
+      const linea = fertLineaByMaterial.get(materialNorm) || '-';
 
       // Buscar coincidencias en technicalData únicamente por Material
       const matches = technicalData.filter(tech => normalizeMaterialCode(tech.CodMaterial) === materialNorm);
@@ -203,7 +254,6 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
       if (matches.length > 0) {
         matches.forEach(match => {
           const centro = String(match.Centro || '').trim();
-          const linea = String(match.Linea || '').trim();
 
           // VINCULACIÓN DE PRESUPUESTO: Buscar coincidencia en los datos de la pestaña Presupuesto
           const presuMatch = presupuestoRefData.find(p =>
@@ -212,9 +262,9 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
             String(p.linea_produccion || '').trim().toUpperCase() === linea.toUpperCase()
           );
 
-          // Si hay coincidencia, el valor de Cant Presupuesto es el del Presupuesto (prioridad automática)
+          // Si hay coincidencia, el valor de Cant Presupuesto es "Cant. a Producir" del Presupuesto (prioridad automática)
           const cantPresupuestoFinal = presuMatch
-            ? Number(presuMatch.cantidad_proyectada || 0)
+            ? Number(presuMatch.cantidad_a_producir ?? 0)
             : baseRow.cantPresupuesto;
 
           results.push({
@@ -228,11 +278,11 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
           });
         });
       } else {
-        // Sin datos técnicos aún: no hay Centro/Línea que resolver
+        // Sin datos técnicos aún: no hay Centro que resolver
         results.push({
           ...baseRow,
           centro: '-',
-          linea: '-',
+          linea,
           puestoTrabajo: '-',
           tiempoMin: 0,
           esFilaTecnica: false
@@ -241,7 +291,23 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
     });
 
     return results;
-  }, [rows, technicalData, presupuestoRefData]);
+  }, [rows, technicalData, presupuestoRefData, fertLineaByMaterial]);
+
+  // Separa las filas expandidas ESTRICTAMENTE por el valor de la columna Centro (1000 o 2000).
+  // Cada fila pertenece a un único centro: nada se duplica entre sub-pestañas.
+  const rowsByCentro = useMemo(() => {
+    const result: Record<Centro, DisplayRow[]> = { "1000": [], "2000": [] };
+    expandedRows.forEach(row => {
+      if (row.centro === '1000' || row.centro === '2000') {
+        result[row.centro].push(row);
+      }
+    });
+    return result;
+  }, [expandedRows]);
+
+  // Filas cuyo material aún no coincide con ningún dato técnico (Centro = "-"): no pertenecen a ningún
+  // centro todavía, por lo que se muestran aparte para poder seguir editándolas.
+  const pendingRows = useMemo(() => expandedRows.filter(row => row.centro === '-'), [expandedRows]);
 
   const handleExport = () => {
     const dataToExport = expandedRows.map(r => ({
@@ -265,6 +331,120 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
     toast({ title: "Éxito", description: "Plan de balanceo exportado a Excel." });
   };
 
+  const renderTable = (rowsForCentro: DisplayRow[]) => (
+    <Card className="border shadow-sm overflow-hidden">
+      <CardContent className="p-0">
+        <div className="overflow-x-auto max-h-[70vh]">
+          <table className="min-w-full divide-y divide-gray-200 text-xs">
+            <thead className="bg-gray-50 sticky top-0 z-10">
+              <tr>
+                <th className="px-4 py-3 text-left font-bold text-gray-600 uppercase tracking-wider w-24 border-r">Centro</th>
+                <th className="px-4 py-3 text-left font-bold text-gray-600 uppercase tracking-wider w-32 border-r">Línea</th>
+                <th className="px-4 py-3 text-left font-bold text-gray-600 uppercase tracking-wider w-40 border-r">Material</th>
+                <th className="px-4 py-3 text-left font-bold text-gray-600 uppercase tracking-wider border-r">Descripción</th>
+                <th className="px-4 py-3 text-left font-bold text-indigo-700 uppercase tracking-wider border-r bg-indigo-50/20">Puesto Trabajo</th>
+                <th className="px-4 py-3 text-right font-bold text-indigo-700 uppercase tracking-wider border-r bg-indigo-50/20">tiempo (min)</th>
+                <th className="px-4 py-3 text-center font-bold text-gray-600 uppercase tracking-wider w-24 border-r">Habilitado</th>
+                <th className="px-4 py-3 text-center font-bold text-gray-600 uppercase tracking-wider w-16 border-r">Acción</th>
+                <th className="px-4 py-3 text-center font-bold text-indigo-700 uppercase tracking-wider w-24 border-r bg-indigo-50/30">Cant Presupuesto</th>
+                <th className="px-4 py-3 text-center font-bold text-indigo-700 uppercase tracking-wider w-24 border-r bg-indigo-50/30">Mínimo (%)</th>
+                <th className="px-4 py-3 text-center font-bold text-indigo-700 uppercase tracking-wider w-24 bg-indigo-50/30">Máximo (%)</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {isLoadingTech && rowsForCentro.length === 0 ? (
+                <tr>
+                  <td colSpan={11} className="px-6 py-12 text-center text-gray-400">
+                    <div className="flex flex-col items-center gap-2">
+                      <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
+                      <span>Sincronizando información técnica de puestos...</span>
+                    </div>
+                  </td>
+                </tr>
+              ) : rowsForCentro.map((row, idx) => (
+                <tr key={`${row.id}-${idx}`} className={cn("hover:bg-gray-50 transition-colors", !row.habilitado && "bg-gray-50/50 opacity-70")}>
+                  <td className="px-4 py-1.5 border-r font-bold text-gray-700">
+                    {row.centro}
+                  </td>
+                  <td className="px-4 py-1.5 border-r font-bold text-gray-700">
+                    {row.linea}
+                  </td>
+                  <td className="px-2 py-1.5 border-r">
+                    <Input
+                      value={row.material}
+                      onChange={(e) => handleUpdateRow(row.id, 'material', e.target.value)}
+                      placeholder="Código SAP"
+                      className="h-8 text-xs border-none shadow-none focus-visible:ring-1 focus-visible:ring-indigo-500 font-mono"
+                    />
+                  </td>
+                  <td className="px-2 py-1.5 border-r">
+                    <Input
+                      value={row.descripcion}
+                      onChange={(e) => handleUpdateRow(row.id, 'descripcion', e.target.value.toUpperCase())}
+                      placeholder="Descripción del material"
+                      className="h-8 text-xs border-none shadow-none focus-visible:ring-1 focus-visible:ring-indigo-500"
+                    />
+                  </td>
+                  <td className="px-4 py-1.5 border-r font-medium text-indigo-800 bg-indigo-50/10">
+                    {row.puestoTrabajo}
+                  </td>
+                  <td className="px-4 py-1.5 border-r text-right font-mono font-bold text-indigo-700 bg-indigo-50/10">
+                    {row.tiempoMin > 0 ? row.tiempoMin.toLocaleString(undefined, { minimumFractionDigits: 3 }) : '-'}
+                  </td>
+                  <td className="px-2 py-1.5 border-r text-center">
+                    <div className="flex items-center justify-center">
+                      <Checkbox
+                        checked={row.habilitado}
+                        onCheckedChange={(val) => handleUpdateRow(row.id, 'habilitado', !!val)}
+                        className="h-5 w-5 data-[state=checked]:bg-indigo-600"
+                      />
+                    </div>
+                  </td>
+                  <td className="px-2 py-1.5 border-r text-center">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleRemoveRow(row.id)}
+                      className="h-8 w-8 text-red-400 hover:text-red-700 hover:bg-red-50"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </td>
+                  <td className="px-4 py-1.5 border-r text-center font-mono font-bold text-indigo-700 bg-indigo-50/10">
+                    {Number(row.cantPresupuesto || 0).toLocaleString()}
+                  </td>
+                  <td className="px-2 py-1.5 border-r text-center bg-indigo-50/5">
+                    <Input
+                      type="number"
+                      value={row.minimo}
+                      onChange={(e) => handleUpdateRow(row.id, 'minimo', Number(e.target.value))}
+                      className="h-8 text-xs text-center border-none shadow-none focus-visible:ring-1 focus-visible:ring-indigo-500 font-bold text-indigo-700"
+                    />
+                  </td>
+                  <td className="px-2 py-1.5 text-center bg-indigo-50/5">
+                    <Input
+                      type="number"
+                      value={row.maximo}
+                      onChange={(e) => handleUpdateRow(row.id, 'maximo', Number(e.target.value))}
+                      className="h-8 text-xs text-center border-none shadow-none focus-visible:ring-1 focus-visible:ring-indigo-500 font-bold text-indigo-700"
+                    />
+                  </td>
+                </tr>
+              ))}
+              {rowsForCentro.length === 0 && !isLoadingTech && (
+                <tr>
+                  <td colSpan={11} className="px-6 py-12 text-center text-gray-400 italic">
+                    No hay materiales configurados para este centro. Haga clic en "Añadir Línea" para comenzar.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </CardContent>
+    </Card>
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -286,127 +466,38 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
         </div>
       </div>
 
-      <Card className="border shadow-sm overflow-hidden">
-        <CardContent className="p-0">
-          <div className="overflow-x-auto max-h-[70vh]">
-            <table className="min-w-full divide-y divide-gray-200 text-xs">
-              <thead className="bg-gray-50 sticky top-0 z-10">
-                <tr>
-                  <th className="px-4 py-3 text-left font-bold text-gray-600 uppercase tracking-wider w-24 border-r">Centro</th>
-                  <th className="px-4 py-3 text-left font-bold text-gray-600 uppercase tracking-wider w-32 border-r">Línea</th>
-                  <th className="px-4 py-3 text-left font-bold text-gray-600 uppercase tracking-wider w-40 border-r">Material</th>
-                  <th className="px-4 py-3 text-left font-bold text-gray-600 uppercase tracking-wider border-r">Descripción</th>
-                  <th className="px-4 py-3 text-left font-bold text-indigo-700 uppercase tracking-wider border-r bg-indigo-50/20">Puesto Trabajo</th>
-                  <th className="px-4 py-3 text-right font-bold text-indigo-700 uppercase tracking-wider border-r bg-indigo-50/20">tiempo (min)</th>
-                  <th className="px-4 py-3 text-center font-bold text-gray-600 uppercase tracking-wider w-24 border-r">Habilitado</th>
-                  <th className="px-4 py-3 text-center font-bold text-gray-600 uppercase tracking-wider w-16 border-r">Acción</th>
-                  <th className="px-4 py-3 text-center font-bold text-indigo-700 uppercase tracking-wider w-24 border-r bg-indigo-50/30">Cant Presupuesto</th>
-                  <th className="px-4 py-3 text-center font-bold text-indigo-700 uppercase tracking-wider w-24 border-r bg-indigo-50/30">Mínimo (%)</th>
-                  <th className="px-4 py-3 text-center font-bold text-indigo-700 uppercase tracking-wider w-24 bg-indigo-50/30">Máximo (%)</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {isLoadingTech && expandedRows.length === 0 ? (
-                  <tr>
-                    <td colSpan={11} className="px-6 py-12 text-center text-gray-400">
-                      <div className="flex flex-col items-center gap-2">
-                        <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
-                        <span>Sincronizando información técnica de puestos...</span>
-                      </div>
-                    </td>
-                  </tr>
-                ) : expandedRows.map((row, idx) => (
-                  <tr key={`${row.id}-${idx}`} className={cn("hover:bg-gray-50 transition-colors", !row.habilitado && "bg-gray-50/50 opacity-70")}>
-                    <td className="px-4 py-1.5 border-r font-bold text-gray-700">
-                      {row.centro}
-                    </td>
-                    <td className="px-4 py-1.5 border-r font-bold text-gray-700">
-                      {row.linea}
-                    </td>
-                    <td className="px-2 py-1.5 border-r">
-                      <Input 
-                        value={row.material} 
-                        onChange={(e) => handleUpdateRow(row.id, 'material', e.target.value)}
-                        placeholder="Código SAP"
-                        className="h-8 text-xs border-none shadow-none focus-visible:ring-1 focus-visible:ring-indigo-500 font-mono"
-                      />
-                    </td>
-                    <td className="px-2 py-1.5 border-r">
-                      <Input 
-                        value={row.descripcion} 
-                        onChange={(e) => handleUpdateRow(row.id, 'descripcion', e.target.value.toUpperCase())}
-                        placeholder="Descripción del material"
-                        className="h-8 text-xs border-none shadow-none focus-visible:ring-1 focus-visible:ring-indigo-500"
-                      />
-                    </td>
-                    <td className="px-4 py-1.5 border-r font-medium text-indigo-800 bg-indigo-50/10">
-                      {row.puestoTrabajo}
-                    </td>
-                    <td className="px-4 py-1.5 border-r text-right font-mono font-bold text-indigo-700 bg-indigo-50/10">
-                      {row.tiempoMin > 0 ? row.tiempoMin.toLocaleString(undefined, { minimumFractionDigits: 3 }) : '-'}
-                    </td>
-                    <td className="px-2 py-1.5 border-r text-center">
-                      <div className="flex items-center justify-center">
-                        <Checkbox 
-                          checked={row.habilitado} 
-                          onCheckedChange={(val) => handleUpdateRow(row.id, 'habilitado', !!val)}
-                          className="h-5 w-5 data-[state=checked]:bg-indigo-600"
-                        />
-                      </div>
-                    </td>
-                    <td className="px-2 py-1.5 border-r text-center">
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        onClick={() => handleRemoveRow(row.id)}
-                        className="h-8 w-8 text-red-400 hover:text-red-700 hover:bg-red-50"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </td>
-                    <td className="px-2 py-1.5 border-r text-center bg-indigo-50/5">
-                      <Input 
-                        type="number"
-                        value={row.cantPresupuesto} 
-                        onChange={(e) => handleUpdateRow(row.id, 'cantPresupuesto', Number(e.target.value))}
-                        className="h-8 text-xs text-center border-none shadow-none focus-visible:ring-1 focus-visible:ring-indigo-500 font-bold text-indigo-700"
-                      />
-                    </td>
-                    <td className="px-2 py-1.5 border-r text-center bg-indigo-50/5">
-                      <Input 
-                        type="number"
-                        value={row.minimo} 
-                        onChange={(e) => handleUpdateRow(row.id, 'minimo', Number(e.target.value))}
-                        className="h-8 text-xs text-center border-none shadow-none focus-visible:ring-1 focus-visible:ring-indigo-500 font-bold text-indigo-700"
-                      />
-                    </td>
-                    <td className="px-2 py-1.5 text-center bg-indigo-50/5">
-                      <Input 
-                        type="number"
-                        value={row.maximo} 
-                        onChange={(e) => handleUpdateRow(row.id, 'maximo', Number(e.target.value))}
-                        className="h-8 text-xs text-center border-none shadow-none focus-visible:ring-1 focus-visible:ring-indigo-500 font-bold text-indigo-700"
-                      />
-                    </td>
-                  </tr>
-                ))}
-                {expandedRows.length === 0 && !isLoadingTech && (
-                  <tr>
-                    <td colSpan={11} className="px-6 py-12 text-center text-gray-400 italic">
-                      No hay materiales configurados. Haga clic en "Añadir Línea" para comenzar.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
+      <Tabs value={activeCentroTab} onValueChange={(val) => setActiveCentroTab(val as Centro)} className="w-full">
+        <TabsList className="flex h-auto bg-gray-100/50 p-1 mb-4">
+          {CENTROS.map(centro => (
+            <TabsTrigger
+              key={centro}
+              value={centro}
+              className="data-[state=active]:bg-white data-[state=active]:text-indigo-700 data-[state=active]:shadow-sm px-6 py-2 text-xs font-bold uppercase tracking-wider"
+            >
+              <Home className="w-3 h-3 mr-2" />
+              Centro {centro}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+
+        <TabsContent value="1000">{renderTable(rowsByCentro["1000"])}</TabsContent>
+        <TabsContent value="2000">{renderTable(rowsByCentro["2000"])}</TabsContent>
+      </Tabs>
+
+      {pendingRows.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wider flex items-center gap-1">
+            <AlertCircle className="w-3 h-3" /> Materiales sin vincular a un centro (pendientes de datos técnicos)
+          </p>
+          {renderTable(pendingRows)}
+        </div>
+      )}
 
       <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg text-blue-800">
         <AlertCircle className="w-4 h-4 flex-shrink-0" />
         <p className="text-xs">
-          <b>Nota:</b> Los valores de <b>Cant Presupuesto</b> se sincronizan automáticamente con los datos de la pestaña Presupuesto basándose en la coincidencia de Centro, Línea y Material.
+          <b>Nota:</b> La columna <b>Línea</b> se vincula automáticamente por coincidencia de Material contra la pestaña Fert.
+          Los valores de <b>Cant Presupuesto</b> toman el dato de <b>Cant. a Producir</b> de la pestaña Presupuesto, sincronizado automáticamente basándose en la coincidencia de Centro, Línea y Material.
         </p>
       </div>
     </div>
