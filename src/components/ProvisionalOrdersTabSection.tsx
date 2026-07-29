@@ -155,6 +155,27 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
     });
   }, [orders, searchTerm, selectedCenter, allowedResponsables]);
 
+  const summaryByDateLine = useMemo(() => {
+    const map = new Map<string, Map<string, number>>();
+    const linesSet = new Set<string>();
+
+    currentCenterOrders.forEach(order => {
+      const date = String(order.FECHAINICIO || '').trim() || 'Sin Fecha';
+      const line = String(order.LINEA || '').trim() || 'Sin Línea';
+      const qty = Number(order.CANTIDAD) || 0;
+
+      linesSet.add(line);
+      if (!map.has(date)) map.set(date, new Map());
+      const lineMap = map.get(date)!;
+      lineMap.set(line, (lineMap.get(line) || 0) + qty);
+    });
+
+    const dates = Array.from(map.keys()).sort();
+    const lines = Array.from(linesSet).sort();
+
+    return { map, dates, lines };
+  }, [currentCenterOrders]);
+
   const totalPagesLocal = Math.max(1, Math.ceil(currentCenterOrders.length / rowsPerPage));
   const startIndex = (currentPage - 1) * rowsPerPage;
   const endIndex = startIndex + rowsPerPage;
@@ -220,6 +241,75 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
             </TabsTrigger>
           ))}
         </TabsList>
+
+        {/* --- Resumen de Cantidades por Fecha y Línea --- */}
+        {summaryByDateLine.dates.length > 0 && (
+          <div className="bg-white rounded-lg shadow-sm border overflow-hidden mb-4">
+            <div className="px-4 py-2 bg-indigo-50/60 border-b flex items-center gap-2">
+              <Package className="w-3.5 h-3.5 text-indigo-600" />
+              <span className="text-[11px] font-bold text-indigo-700 uppercase tracking-wider">
+                Resumen de Cantidades por Fecha y Línea
+              </span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-2 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Fecha</th>
+                    {summaryByDateLine.lines.map(line => (
+                      <th key={line} className="px-4 py-2 text-right text-[10px] font-bold text-indigo-700 uppercase tracking-wider">
+                        {line}
+                      </th>
+                    ))}
+                    <th className="px-4 py-2 text-right text-[10px] font-bold text-gray-700 uppercase tracking-wider bg-gray-100">Total</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {summaryByDateLine.dates.map(date => {
+                    const lineMap = summaryByDateLine.map.get(date)!;
+                    const rowTotal = summaryByDateLine.lines.reduce((sum, line) => sum + (lineMap.get(line) || 0), 0);
+                    return (
+                      <tr key={date} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-4 py-2 whitespace-nowrap text-xs font-medium text-gray-600">{date}</td>
+                        {summaryByDateLine.lines.map(line => {
+                          const qty = lineMap.get(line) || 0;
+                          return (
+                            <td key={line} className="px-4 py-2 whitespace-nowrap text-xs text-right text-gray-600 font-mono">
+                              {qty > 0 ? qty.toLocaleString() : '-'}
+                            </td>
+                          );
+                        })}
+                        <td className="px-4 py-2 whitespace-nowrap text-xs text-right font-bold text-indigo-700 bg-gray-50 font-mono">
+                          {rowTotal.toLocaleString()}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  <tr className="bg-indigo-50/40 border-t-2 border-indigo-100">
+                    <td className="px-4 py-2 whitespace-nowrap text-xs font-bold text-gray-700 uppercase">Total</td>
+                    {summaryByDateLine.lines.map(line => {
+                      const colTotal = summaryByDateLine.dates.reduce(
+                        (sum, date) => sum + (summaryByDateLine.map.get(date)!.get(line) || 0),
+                        0
+                      );
+                      return (
+                        <td key={line} className="px-4 py-2 whitespace-nowrap text-xs text-right font-bold text-indigo-700 font-mono">
+                          {colTotal.toLocaleString()}
+                        </td>
+                      );
+                    })}
+                    <td className="px-4 py-2 whitespace-nowrap text-xs text-right font-bold text-indigo-800 bg-indigo-100/60 font-mono">
+                      {summaryByDateLine.dates.reduce((sum, date) => {
+                        const lineMap = summaryByDateLine.map.get(date)!;
+                        return sum + summaryByDateLine.lines.reduce((s, line) => s + (lineMap.get(line) || 0), 0);
+                      }, 0).toLocaleString()}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
         {/* --- Sección de Filtros Activos e Información de Restricciones --- */}
         <div className="flex flex-wrap gap-2 items-center mb-4 px-1">
