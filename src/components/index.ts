@@ -29,6 +29,7 @@ export * from './InventoryNeedsSection';
 export * from './TacticalPlanMueblesSection';
 export * from './NeedsCalculationC2000Section';
 export * from './PresupuestoProdSemanalTabSection';
+export * from './ExplosionMaterialesTabSection';
 export * from './RevCapacidadTabSection';
 export { PlanPropuestoTabSection } from './PlanPropuestoTabSection';
 export { MaterialBalanceoLineasTabSection } from './MaterialBalanceoLineasTabSection';

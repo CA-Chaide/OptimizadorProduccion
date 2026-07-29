@@ -15,7 +15,8 @@ import {
   CalendarRange,
   Activity,
   CheckCircle2,
-  LayoutGrid
+  LayoutGrid,
+  Boxes
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -26,6 +27,7 @@ import { OrdenesFertTabSection } from './OrdenesFertTabSection';
 import { HabilidadesOpTabSection } from './HabilidadesOpTabSection';
 import { TiemposEnsambladoTabSection } from './TiemposEnsambladoTabSection';
 import { PresupuestoProdSemanalTabSection } from './PresupuestoProdSemanalTabSection';
+import { ExplosionMaterialesTabSection } from './ExplosionMaterialesTabSection';
 import { RevCapacidadTabSection } from './RevCapacidadTabSection';
 import { PlanPropuestoTabSection } from './PlanPropuestoTabSection';
 import { MaterialBalanceoLineasTabSection } from './MaterialBalanceoLineasTabSection';
@@ -122,6 +124,10 @@ export const TacticalPlan2Section: React.FC = () => {
           <TabsTrigger value="tiempos" className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold uppercase tracking-tight transition-all data-[state=active]:bg-white data-[state=active]:text-indigo-700 data-[state=active]:shadow-sm rounded-lg">
             <Clock className="w-3.5 h-3.5" />
             Tiempos
+          </TabsTrigger>
+          <TabsTrigger value="explosion_materiales" className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold uppercase tracking-tight transition-all data-[state=active]:bg-white data-[state=active]:text-indigo-700 data-[state=active]:shadow-sm rounded-lg">
+            <Boxes className="w-3.5 h-3.5" />
+            Explosion Materiales
           </TabsTrigger>
           <TabsTrigger value="presupuesto_semanal" className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold uppercase tracking-tight transition-all data-[state=active]:bg-white data-[state=active]:text-indigo-700 data-[state=active]:shadow-sm rounded-lg">
             <CalendarRange className="w-3.5 h-3.5" />
@@ -257,6 +263,18 @@ export const TacticalPlan2Section: React.FC = () => {
             </CardHeader>
             <CardContent>
               <TiemposEnsambladoTabSection />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="explosion_materiales">
+          <Card>
+            <CardHeader>
+              <CardTitle>Explosion Materiales</CardTitle>
+              <CardDescription>Datos de la tabla ReporteExplosionMateriales.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ExplosionMaterialesTabSection />
             </CardContent>
           </Card>
         </TabsContent>

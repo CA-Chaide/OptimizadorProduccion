@@ -274,4 +274,16 @@ export const serviciosService = {
     }
     return response.json();
   },
+
+  async getExplosionMateriales(page: number, rowsPerPage: number): Promise<BodyResponse<any>> {
+    const response = await fetch(API_URL + "/ExplosionMaterialesPaginadas", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ page: page, rowsPerPage: rowsPerPage }),
+    });
+    if (!response.ok) {
+      throw new Error(`Error ${response.status}: Failed to fetch Explosion Materiales`);
+    }
+    return response.json();
+  },
 };
