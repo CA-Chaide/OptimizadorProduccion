@@ -52,6 +52,16 @@ interface TiemposEnsambladoTabSectionProps {
  * Normaliza una cadena de fecha a formato YYYY-MM-DD
  * Soporta DD/MM/YYYY y YYYY-MM-DD
  */
+const MAT_BALANCEO_LINK_KEY = 'material_balanceo_expanded_data';
+
+interface MatBalanceoLink {
+  centro: string;
+  linea: string;
+  material: string;
+  puestoTrabajo: string;
+  cantPresupuesto: number;
+}
+
 const normalizeDateISO = (dateStr: any): string | null => {
   if (!dateStr) return null;
   const s = String(dateStr).trim();
@@ -97,10 +107,31 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
   
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(20);
+  const [matBalanceoLink, setMatBalanceoLink] = useState<MatBalanceoLink[]>([]);
 
   const normalizeMaterialCode = (code: string | number): string => {
     return String(code || '').trim().slice(-8);
   };
+
+  // Cargar la relación Centro + Línea + Material + Puesto Trabajo -> Cant Presupuesto publicada por Mat Balanceo
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = localStorage.getItem(MAT_BALANCEO_LINK_KEY);
+      if (raw) setMatBalanceoLink(JSON.parse(raw));
+    } catch (e) {
+      console.error('[TiemposEnsambladoTab] Error al cargar datos de Mat Balanceo:', e);
+    }
+  }, []);
+
+  const cantPresupMap = useMemo(() => {
+    const map = new Map<string, number>();
+    matBalanceoLink.forEach(item => {
+      const key = `${item.centro}|${item.linea}|${item.material}|${item.puestoTrabajo}`;
+      map.set(key, (map.get(key) || 0) + (Number(item.cantPresupuesto) || 0));
+    });
+    return map;
+  }, [matBalanceoLink]);
 
   // VINCULACIÓN CON REV CAPACIDAD (CENTRO 1000)
   useEffect(() => {
@@ -517,9 +548,11 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
                       <th className="px-4 py-3 text-right text-[10px] font-bold text-emerald-700 uppercase tracking-wider bg-emerald-50/30">Cant ordFab</th>
                       <th className="px-4 py-3 text-right text-[10px] font-bold text-amber-700 uppercase tracking-wider bg-amber-50/30">Cant ordPrev</th>
                       <th className="px-4 py-3 text-right text-[10px] font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50/30">Total Cantidad</th>
+                      <th className="px-4 py-3 text-right text-[10px] font-bold text-violet-700 uppercase tracking-wider bg-violet-50/30">CantPresup</th>
                       <th className="px-4 py-3 text-right text-[10px] font-bold text-emerald-800 uppercase tracking-wider bg-emerald-100/20">Tiempo ordFab</th>
                       <th className="px-4 py-3 text-right text-[10px] font-bold text-amber-800 uppercase tracking-wider bg-amber-100/20">Tiempo ordPrev</th>
                       <th className="px-4 py-3 text-right text-[10px] font-bold text-indigo-800 uppercase tracking-wider bg-indigo-100/20">Tiempo Total</th>
+                      <th className="px-4 py-3 text-right text-[10px] font-bold text-violet-800 uppercase tracking-wider bg-violet-100/20">Tiempo CantPresup</th>
                     </>
                   )}
                   {!isCompact && (
@@ -543,11 +576,17 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
                   const cantOrdFab = fertSumMap.get(key) || 0;
                   const cantOrdPrev = provisionalSumMap.get(key) || 0;
                   const totalCantidad = cantOrdFab + cantOrdPrev;
-                  
+
                   // Cálculos de tiempo en horas: (tiempo_min * cantidad) / 60
                   const tiempoOrdFab = (Number(row.Tiempo_Min || 0) * cantOrdFab) / 60;
                   const tiempoOrdPrev = (Number(row.Tiempo_Min || 0) * cantOrdPrev) / 60;
                   const tiempoTotalHoras = tiempoOrdFab + tiempoOrdPrev;
+
+                  // Cant Presupuesto vinculada desde Mat Balanceo (Centro + Línea + Material + Puesto Trabajo)
+                  const puestoNorm = String(row.PuestoTrabajo || '').trim().toUpperCase().replace(/\s+/g, ' ');
+                  const centroRow = String(row.Centro || '').trim();
+                  const cantPresup = cantPresupMap.get(`${centroRow}|${line}|${material}|${puestoNorm}`) || 0;
+                  const tiempoCantPresup = (Number(row.Tiempo_Min || 0) / 60) * cantPresup;
 
                   return (
                     <tr key={`${row.CodMaterial}-${idx}`} className="hover:bg-gray-50 transition-colors">
@@ -568,6 +607,9 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
                           <td className="px-4 py-3 whitespace-nowrap text-xs font-bold text-right text-indigo-700 bg-indigo-50/5">
                             {totalCantidad > 0 ? totalCantidad.toLocaleString() : '0'}
                           </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-xs font-bold text-right text-violet-700 bg-violet-50/5">
+                            {cantPresup > 0 ? cantPresup.toLocaleString() : '0'}
+                          </td>
                           <td className="px-4 py-3 whitespace-nowrap text-xs font-bold text-right text-emerald-800 bg-emerald-100/10">
                             {tiempoOrdFab > 0 ? tiempoOrdFab.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0'}
                           </td>
@@ -576,6 +618,9 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap text-xs font-bold text-right text-indigo-800 bg-indigo-100/10">
                             {tiempoTotalHoras > 0 ? tiempoTotalHoras.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0'}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-xs font-bold text-right text-violet-800 bg-violet-100/10">
+                            {tiempoCantPresup > 0 ? tiempoCantPresup.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0'}
                           </td>
                         </>
                       )}
@@ -597,7 +642,7 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
                   );
                 }) : (
                   <tr>
-                    <td colSpan={isCompact ? 10 : 10} className="px-6 py-12 text-center text-gray-400 italic">
+                    <td colSpan={isCompact ? 12 : 10} className="px-6 py-12 text-center text-gray-400 italic">
                       <div className="flex flex-col items-center justify-center gap-2">
                         <AlertCircle className="w-8 h-8 text-gray-300" />
                         <span>No se encontraron registros técnicos para el centro seleccionado.</span>
@@ -614,7 +659,7 @@ export const TiemposEnsambladoTabSection: React.FC<TiemposEnsambladoTabSectionPr
               <span className="font-medium text-gray-500 uppercase">Ver:</span>
               <select
                 value={rowsPerPage}
-                onChange={(e) => { setRowsPerPage(Number(e.target.value)); setPage(1); }}
+                onChange={(e) => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }}
                 className="border rounded p-1 bg-white"
               >
                 <option value={10}>10</option>

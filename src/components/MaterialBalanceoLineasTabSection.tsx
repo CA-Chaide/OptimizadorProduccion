@@ -43,6 +43,7 @@ interface DisplayRow extends MaterialBalanceoRow {
 
 const STORAGE_KEY = 'material_balanceo_lineas_data';
 const PRESUPUESTO_DATA_KEY = 'presupuesto_consolidado_data';
+const EXPANDED_DATA_KEY = 'material_balanceo_expanded_data';
 
 const CENTROS = ["1000", "2000"] as const;
 type Centro = typeof CENTROS[number];
@@ -74,6 +75,25 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
 
   const normalizeMaterialCode = (code: string | number): string => {
     return String(code || '').trim().slice(-8);
+  };
+
+  // Un material solo puede estar ingresado una vez: Línea y Puesto Trabajo se derivan siempre del
+  // mismo Material (vía Fert/Tiempos), así que controlar duplicados de Material evita duplicar
+  // la combinación Línea + Material + Puesto Trabajo en la tabla.
+  const dedupeRowsByMaterial = (list: MaterialBalanceoRow[]): MaterialBalanceoRow[] => {
+    const seen = new Set<string>();
+    const result: MaterialBalanceoRow[] = [];
+    list.forEach(r => {
+      const norm = normalizeMaterialCode(r.material);
+      if (!norm) {
+        result.push(r);
+        return;
+      }
+      if (seen.has(norm)) return;
+      seen.add(norm);
+      result.push(r);
+    });
+    return result;
   };
 
   // Cargar datos técnicos de la API
@@ -145,7 +165,7 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
           maximo: r.maximo !== undefined ? r.maximo : 100,
           cantPresupuesto: r.cantPresupuesto !== undefined ? r.cantPresupuesto : 0
         }));
-        setRows(migrated);
+        setRows(dedupeRowsByMaterial(migrated));
       } catch (e) {
         setRows(INITIAL_DATA);
       }
@@ -173,9 +193,10 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
   useEffect(() => {
     if (!isLoaded || materialesBalanceoApi.length === 0) return;
     setRows(prevRows => {
-      const existentes = new Set(prevRows.map(r => r.codigoMaterialBalanceo).filter((v): v is number => v !== undefined));
+      const existentesCodigo = new Set(prevRows.map(r => r.codigoMaterialBalanceo).filter((v): v is number => v !== undefined));
+      const existentesMaterial = new Set(prevRows.map(r => normalizeMaterialCode(r.material)).filter(Boolean));
       const nuevas: MaterialBalanceoRow[] = materialesBalanceoApi
-        .filter(m => !existentes.has(m.codigo_material_balanceo))
+        .filter(m => !existentesCodigo.has(m.codigo_material_balanceo) && !existentesMaterial.has(normalizeMaterialCode(String(m.codigo_material))))
         .map(m => ({
           id: `api-${m.codigo_material_balanceo}`,
           codigoMaterialBalanceo: m.codigo_material_balanceo,
@@ -186,7 +207,7 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
           maximo: m.porc_maximo_balanceo,
           cantPresupuesto: 0,
         }));
-      return nuevas.length > 0 ? [...prevRows, ...nuevas] : prevRows;
+      return nuevas.length > 0 ? dedupeRowsByMaterial([...prevRows, ...nuevas]) : prevRows;
     });
   }, [materialesBalanceoApi, isLoaded]);
 
@@ -215,6 +236,20 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
   };
 
   const handleUpdateRow = (id: string, field: keyof MaterialBalanceoRow, value: any) => {
+    if (field === 'material') {
+      const norm = normalizeMaterialCode(value);
+      if (norm) {
+        const isDuplicate = rows.some(r => r.id !== id && normalizeMaterialCode(r.material) === norm);
+        if (isDuplicate) {
+          toast({
+            title: "Material duplicado",
+            description: `El material ${value} ya está ingresado. Cada material solo puede registrarse una vez.`,
+            variant: "destructive"
+          });
+          return;
+        }
+      }
+    }
     setRows(rows.map(r => r.id === id ? { ...r, [field]: value } : r));
   };
 
@@ -238,9 +273,9 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
     return map;
   }, [fertData]);
 
-  // LÓGICA DE UNIÓN: Centro se resuelve automáticamente por Material contra los puestos de trabajo
-  // técnicos (ya no se selecciona a mano); cada puesto de trabajo encontrado genera su propia fila.
-  // Línea se resuelve por Material contra la pestaña Fert (independiente del Centro).
+  // LÓGICA DE UNIÓN: Línea se resuelve por Material contra la pestaña Fert. Puesto Trabajo, Tiempo (min)
+  // y Centro se resuelven contra la pestaña Tiempos, cruzando esa Línea junto con el Material; cada
+  // puesto de trabajo encontrado para esa combinación Línea+Material genera su propia fila.
   const expandedRows = useMemo(() => {
     const results: DisplayRow[] = [];
 
@@ -248,8 +283,11 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
       const materialNorm = normalizeMaterialCode(baseRow.material);
       const linea = fertLineaByMaterial.get(materialNorm) || '-';
 
-      // Buscar coincidencias en technicalData únicamente por Material
-      const matches = technicalData.filter(tech => normalizeMaterialCode(tech.CodMaterial) === materialNorm);
+      // Buscar coincidencias en technicalData (Tiempos) por Línea + Material
+      const matches = linea === '-' ? [] : technicalData.filter(tech =>
+        normalizeMaterialCode(tech.CodMaterial) === materialNorm &&
+        String(tech.Linea || '').trim().toUpperCase() === linea.toUpperCase()
+      );
 
       if (matches.length > 0) {
         matches.forEach(match => {
@@ -278,7 +316,7 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
           });
         });
       } else {
-        // Sin datos técnicos aún: no hay Centro que resolver
+        // Sin Línea (Fert) o sin coincidencia Línea+Material en Tiempos: no hay Centro que resolver
         results.push({
           ...baseRow,
           centro: '-',
@@ -292,6 +330,22 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
 
     return results;
   }, [rows, technicalData, presupuestoRefData, fertLineaByMaterial]);
+
+  // Publicar la relación Centro + Línea + Material + Puesto Trabajo -> Cant Presupuesto para que otras
+  // pestañas (como Prog Tiempos) puedan tomar ese valor directamente, diferenciado por centro.
+  useEffect(() => {
+    if (!isLoaded) return;
+    const linkData = expandedRows
+      .filter(r => r.esFilaTecnica)
+      .map(r => ({
+        centro: String(r.centro || '').trim(),
+        linea: String(r.linea || '').trim().toUpperCase(),
+        material: normalizeMaterialCode(r.material),
+        puestoTrabajo: String(r.puestoTrabajo || '').trim().toUpperCase().replace(/\s+/g, ' '),
+        cantPresupuesto: Number(r.cantPresupuesto || 0)
+      }));
+    localStorage.setItem(EXPANDED_DATA_KEY, JSON.stringify(linkData));
+  }, [expandedRows, isLoaded]);
 
   // Separa las filas expandidas ESTRICTAMENTE por el valor de la columna Centro (1000 o 2000).
   // Cada fila pertenece a un único centro: nada se duplica entre sub-pestañas.
