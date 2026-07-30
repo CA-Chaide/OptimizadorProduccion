@@ -801,8 +801,9 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
                               <tbody>
                                 {daySummary.mesas.map((mesa) => {
                                   const capMesa = (mesa.tiempoRequeridoH / TIEMPO_DISPONIBLE_POR_MESA) * 100;
+                                  const sinProductos = mesa.cantProgramada === 0;
                                   return (
-                                    <tr key={mesa.code} className="border-b last:border-0">
+                                    <tr key={mesa.code} className={cn("border-b last:border-0", sinProductos && "bg-red-100")}>
                                       <td className="px-3 py-1 font-semibold border-r">{mesa.name}</td>
                                       <td className="px-3 py-1 border-r text-blue-600 truncate max-w-[150px]">{mesa.assignedTapicero}</td>
                                       <td className="px-2 py-1 text-center font-mono border-r">{mesa.cantProgramada}</td>

@@ -1,22 +1,82 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { serviciosService } from '@/services/servicios.service';
 import { Loader2 } from 'lucide-react';
 import { useAppContext } from '@/context/AppProvider';
+import type { Restriccion } from '@/types/interfaces';
 
 interface MantenimientoProgramado {
   [key: string]: any;
 }
 
+interface MantenimientoProgramadoSectionProps {
+  restricciones?: Restriccion[];
+}
+
 const ROWS_PER_PAGE = 20;
 
-export const MantenimientoProgramadoSection: React.FC = () => {
+export const MantenimientoProgramadoSection: React.FC<MantenimientoProgramadoSectionProps> = ({ restricciones = [] }) => {
   const { addNotification } = useAppContext();
-  const [mantenimientos, setMantenimientos] = useState<MantenimientoProgramado[]>([]);
+  const [mantenimientosRaw, setMantenimientosRaw] = useState<MantenimientoProgramado[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [columns, setColumns] = useState<string[]>([]);
+
+  // Responsables de Control de Producción habilitados para Muebles (restricción "RespCtrlProd")
+  const validRespCodes = useMemo(() => {
+    const respRestriccion = restricciones.find(r => r.nombre_restriccion === 'RespCtrlProd');
+    if (!respRestriccion || !respRestriccion.valor_restriccion) return [];
+
+    return respRestriccion.valor_restriccion
+      .split(/[&,]/)
+      .map(code => String(code).trim())
+      .filter(Boolean);
+  }, [restricciones]);
+
+  // Máquinas excluidas por responsable (restricción "HRNP")
+  const forbiddenMachinesMap = useMemo(() => {
+    const hrnpRestriccion = restricciones.find(r => r.nombre_restriccion === 'HRNP');
+    if (!hrnpRestriccion || !hrnpRestriccion.valor_restriccion) return new Map<string, string[]>();
+
+    const map = new Map<string, string[]>();
+    const regex = /\[([^:]+):\{([^}]+)\}\]/g;
+    let match;
+
+    const rawValue = hrnpRestriccion.valor_restriccion;
+    while ((match = regex.exec(rawValue)) !== null) {
+      const respCode = match[1].trim();
+      const machines = match[2].split(',').map(m => m.trim()).filter(Boolean);
+      map.set(respCode, machines);
+    }
+    return map;
+  }, [restricciones]);
+
+  const mantenimientos = useMemo(() => {
+    return mantenimientosRaw.filter(row => {
+      const rowResp = String(row.RespCtrlProd || '').trim();
+
+      if (validRespCodes.length > 0 && !validRespCodes.includes(rowResp)) {
+        return false;
+      }
+
+      if (forbiddenMachinesMap.has(rowResp)) {
+        const rowMachine = String(row.MaquinaSismac || row.MAQUINA || '').trim();
+        const forbiddenOnes = forbiddenMachinesMap.get(rowResp);
+        if (forbiddenOnes?.includes(rowMachine)) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [mantenimientosRaw, validRespCodes, forbiddenMachinesMap]);
+
+  // Si el filtrado reduce la cantidad de páginas, evita quedar atrapado en una página vacía
+  useEffect(() => {
+    const maxPage = Math.max(1, Math.ceil(mantenimientos.length / ROWS_PER_PAGE));
+    setCurrentPage(prev => Math.min(prev, maxPage));
+  }, [mantenimientos.length]);
 
   useEffect(() => {
     fetchMantenimientos();
@@ -28,19 +88,19 @@ export const MantenimientoProgramadoSection: React.FC = () => {
       const response = await serviciosService.ListarMantenimientoPreventivosProgramados();
       if (response && response.data) {
         const dataArray = Array.isArray(response.data) ? response.data : [response.data];
-        setMantenimientos(dataArray);
-        
+        setMantenimientosRaw(dataArray);
+
         // Extraer columnas del primer registro
         if (dataArray.length > 0) {
           setColumns(Object.keys(dataArray[0]));
         }
       } else {
-        setMantenimientos([]);
+        setMantenimientosRaw([]);
         addNotification('warning', 'No se encontraron mantenimientos programados');
       }
     } catch (error) {
       addNotification('error', `Error al cargar mantenimientos: ${(error as Error).message}`);
-      setMantenimientos([]);
+      setMantenimientosRaw([]);
     } finally {
       setIsLoading(false);
     }

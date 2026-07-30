@@ -32,6 +32,8 @@ export * from './HabilidadesMueblesTab';
 export * from './TacticalPlanPlanchasMixtasSection';
 export * from './PendientesTotalesTab';
 export * from './ProvisionalOrdersAlphaTab';
+export * from './ProvisionalOrdersPlanchasMixtasTab';
+export * from './PlanGrupoRecuperadoTab';
 
 // Widgets y paneles
 export { default as FloatingChatWidget } from './FloatingChatWidget';

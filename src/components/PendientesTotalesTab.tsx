@@ -15,6 +15,9 @@ interface PendienteItem {
 
 const ROWS_PER_PAGE_OPTIONS = [20, 50, 100];
 
+// Solo se muestran pendientes cuya fecha de entrega (ANIOENTREGA) sea este año o posterior
+const TARGET_ANIO_ENTREGA = 2026;
+
 export const PendientesTotalesTab: React.FC = () => {
     const { addNotification } = useAppContext();
     const [isMounted, setIsMounted] = useState(false);
@@ -22,7 +25,6 @@ export const PendientesTotalesTab: React.FC = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [columns, setColumns] = useState<string[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
-    const [totalRecords, setTotalRecords] = useState(0);
     const [currentPage, setCurrentPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(ROWS_PER_PAGE_OPTIONS[0]);
 
@@ -37,18 +39,31 @@ export const PendientesTotalesTab: React.FC = () => {
         setIsMounted(true);
     }, []);
 
-    const fetchData = async (page: number, rows: number) => {
+    // Descarga el set completo (paginado internamente) y filtra por ANIOENTREGA = 2026
+    const fetchData = async () => {
         setIsLoading(true);
         try {
-            const response = await serviciosService.getPendientesTotales(page, rows);
-            if (response && response.data) {
-                const dataArray = Array.isArray(response.data) ? response.data : [response.data];
-                setData(dataArray);
-                setTotalRecords(response.totalRegistros || response.length || dataArray.length);
-                
-                if (dataArray.length > 0 && columns.length === 0) {
-                    setColumns(Object.keys(dataArray[0]));
+            const explore = await serviciosService.getPendientesTotales(1, 1);
+            const total = explore.totalRegistros || 0;
+
+            let combined: PendienteItem[] = [];
+            if (total > 0) {
+                const BATCH_SIZE = 20000;
+                const totalPages = Math.ceil(total / BATCH_SIZE);
+                for (let i = 1; i <= totalPages; i++) {
+                    const res = await serviciosService.getPendientesTotales(i, BATCH_SIZE);
+                    if (res && res.data) {
+                        const batch = Array.isArray(res.data) ? res.data : [res.data];
+                        combined = combined.concat(batch);
+                    }
                 }
+            }
+
+            const filtered = combined.filter(item => Number(item.ANIOENTREGA) >= TARGET_ANIO_ENTREGA);
+            setData(filtered);
+
+            if (filtered.length > 0) {
+                setColumns(Object.keys(filtered[0]));
             }
         } catch (error) {
             console.error('Error al cargar pendientes:', error);
@@ -60,22 +75,29 @@ export const PendientesTotalesTab: React.FC = () => {
 
     useEffect(() => {
         if (isMounted) {
-            fetchData(currentPage, rowsPerPage);
+            fetchData();
         }
-    }, [currentPage, rowsPerPage, isMounted]);
+    }, [isMounted]);
 
-    // Filtrado local sobre los datos de la página actual
-    const filteredData = useMemo(() => {
+    // Filtrado local por término de búsqueda, sobre el set ya filtrado por año
+    const searchedData = useMemo(() => {
         if (!searchTerm.trim()) return data;
         const term = searchTerm.toLowerCase();
-        return data.filter(row => 
-            Object.values(row).some(val => 
+        return data.filter(row =>
+            Object.values(row).some(val =>
                 String(val).toLowerCase().includes(term)
             )
         );
     }, [data, searchTerm]);
 
+    const totalRecords = searchedData.length;
     const totalPages = Math.max(1, Math.ceil(totalRecords / rowsPerPage));
+
+    // Paginación client-side sobre el set ya filtrado (por año + búsqueda)
+    const filteredData = useMemo(() => {
+        const start = (currentPage - 1) * rowsPerPage;
+        return searchedData.slice(start, start + rowsPerPage);
+    }, [searchedData, currentPage, rowsPerPage]);
 
     // Sincronización de scrollbars
     useEffect(() => {
@@ -117,15 +139,15 @@ export const PendientesTotalesTab: React.FC = () => {
                 <div className="relative w-full md:w-96">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                     <Input 
-                        placeholder="Buscar en esta página..." 
+                        placeholder="Buscar en todos los pendientes de 2026 en adelante..."
                         className="pl-10"
                         value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
+                        onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
                     />
                 </div>
                 <div className="flex items-center gap-2 text-sm text-gray-500">
                     <ClipboardList className="w-4 h-4" />
-                    <span>Total Registros: <strong>{totalRecords.toLocaleString()}</strong></span>
+                    <span>Total Registros (Año Entrega {TARGET_ANIO_ENTREGA}+): <strong>{totalRecords.toLocaleString()}</strong></span>
                 </div>
             </div>
 

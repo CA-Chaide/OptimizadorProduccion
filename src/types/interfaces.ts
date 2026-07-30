@@ -81,7 +81,7 @@ export interface DetalleTactico {
     estado: string;
     fecha_modificacion: Date;
     usuario_modificacion: string;
-    plan_grupo?: PlanGrupo;
+    codigo_plan_grupo_padre?: number; 
 }
 
 export interface Detalles {
@@ -124,6 +124,9 @@ export interface Grupo {
     codigo_grupo: number;
     centro: string;
     nombre_grupo: string;
+    // Descripción/alias del área a la que mapea el grupo (ej. "PRENSADO QUITO"), usada para buscar
+    // grupos por texto además de nombre_grupo
+    departamentos_mapea?: string;
     estado: string;
     fecha_modificacion: Date;
     usuario_modificacion: string;

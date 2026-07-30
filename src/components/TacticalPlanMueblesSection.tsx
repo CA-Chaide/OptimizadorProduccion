@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { TacticalSchedulingIcon } from '@/constants/constants';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -15,7 +15,9 @@ import { CuboInventariosTelasTab } from './CuboInventariosTelasTab';
 import { CuboInventariosGeneralTab } from './CuboInventariosGeneralTab';
 import { HabilidadesMueblesTab } from './HabilidadesMueblesTab';
 import { PendientesTotalesTab } from './PendientesTotalesTab';
-import { ProvisionalOrdersAlphaTab } from './ProvisionalOrdersAlphaTab';
+import { ProvisionalOrdersAlphaTab, ProvisionalOrdersAlphaTabHandle } from './ProvisionalOrdersAlphaTab';
+import { MantenimientoProgramadoSection } from './MantenimientoProgramadoSection';
+import { PlanGrupoRecuperadoTab } from './PlanGrupoRecuperadoTab';
 import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
 import { serviciosService } from '@/services/servicios.service';
@@ -111,6 +113,15 @@ export const TacticalPlanMueblesSection: React.FC = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [tiemposMueblesData, setTiemposMueblesData] = useState<any[]>([]);
     const [isTiemposLoading, setIsTiemposLoading] = useState(true);
+    const [activeTab, setActiveTab] = useState('plan');
+    const provisionalOrdersAlphaRef = useRef<ProvisionalOrdersAlphaTabHandle>(null);
+
+    // Le permite a "Plan Grupo Recuperado" (cuando ya no hay déficit de espuma) llevar al usuario
+    // directamente a la pestaña "PLAN TÁCTICO" y disparar "Actualizar Datos" para generar el Paso 3.
+    const handleIrAPasoFinal = () => {
+        setActiveTab('planTactivo');
+        provisionalOrdersAlphaRef.current?.refreshData();
+    };
 
     useEffect(() => {
         setMounted(true);
@@ -210,7 +221,7 @@ export const TacticalPlanMueblesSection: React.FC = () => {
         <h2 className="text-2xl font-semibold text-gray-700">Programación Táctica muebles</h2>
       </div>
 
-      <Tabs defaultValue="plan" className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="grid w-full grid-cols-6 h-auto p-2 bg-muted border border-dashed border-gray-300 rounded-lg gap-2">
               <TabsTrigger value="grupos" className="text-xs py-2 px-1">Grupos</TabsTrigger>
               <TabsTrigger value="restricciones" className="text-xs py-2 px-1">Restricciones</TabsTrigger>
@@ -222,7 +233,9 @@ export const TacticalPlanMueblesSection: React.FC = () => {
               <TabsTrigger value="cascos" className="text-xs py-2 px-1">Cascos</TabsTrigger>
               <TabsTrigger value="telas" className="text-xs py-2 px-1">Telas</TabsTrigger>
               <TabsTrigger value="pendientes" className="text-xs py-2 px-1">PEND TOTALES</TabsTrigger>
+              <TabsTrigger value="mantenimiento" className="text-xs py-2 px-1">Mantenimiento</TabsTrigger>
               <TabsTrigger value="planTactivo" className="text-xs py-2 px-1">PLAN TÁCTICO</TabsTrigger>
+              <TabsTrigger value="planGrupoRecuperado" className="text-xs py-2 px-1">Plan Grupo Recuperado</TabsTrigger>
               <TabsTrigger value="plan" className="text-xs py-2 px-1 font-bold col-span-2">PLAN</TabsTrigger>
           </TabsList>
           
@@ -329,7 +342,10 @@ export const TacticalPlanMueblesSection: React.FC = () => {
                   </CardContent>
               </Card>
           </TabsContent>
-          <TabsContent value="planTactivo" className="mt-4">
+          <TabsContent value="mantenimiento" className="mt-4">
+              <MantenimientoProgramadoSection restricciones={restriccionesMuebles} />
+          </TabsContent>
+          <TabsContent value="planTactivo" className="mt-4 data-[state=inactive]:hidden" forceMount>
               <Card>
                   <CardHeader>
                       <CardTitle>Plan Táctico (Alpha)</CardTitle>
@@ -338,12 +354,16 @@ export const TacticalPlanMueblesSection: React.FC = () => {
                       </CardDescription>
                   </CardHeader>
                   <CardContent>
-                      <ProvisionalOrdersAlphaTab 
-                        restricciones={restriccionesMuebles} 
+                      <ProvisionalOrdersAlphaTab
+                        ref={provisionalOrdersAlphaRef}
+                        restricciones={restriccionesMuebles}
                         tiemposData={tiemposMueblesData}
                       />
                   </CardContent>
               </Card>
+          </TabsContent>
+          <TabsContent value="planGrupoRecuperado" className="mt-4">
+              <PlanGrupoRecuperadoTab onIrAPasoFinal={handleIrAPasoFinal} />
           </TabsContent>
           <TabsContent value="plan" className="mt-4">
               <Card>

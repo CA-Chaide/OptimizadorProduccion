@@ -5,7 +5,7 @@ import { serviciosService } from '@/services/servicios.service';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { logger } from '@/services/LogService';
 import { useAppContext } from '@/context/AppProvider';
-import { Package, Check, ChevronsUpDown, Calendar, LayoutDashboard } from 'lucide-react';
+import { Package, Check, ChevronsUpDown, Calendar, LayoutDashboard, RefreshCw, Loader2 } from 'lucide-react';
 import type { ProvisionalOrder } from '@/types/interfaces';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -13,8 +13,29 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from '
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 
+const normalizeMaterialCode = (code: string | number): string => {
+  const codeStr = String(code).trim();
+  return codeStr.slice(-8);
+};
+
+// Duraciones de jornada posibles en Planchas Mixtas (mismos valores que SHIFT_DURATIONS_PM en
+// ProvisionalOrdersPlanchasMixtasTab.tsx), usadas solo para el vistazo inicial de utilización por turno
+const TURNO_DURACIONES_VISTAZO = [8.7, 9.7, 10.7, 11.7];
+
+// Fecha "hoy + offsetDays" en formato "YYYY-MM-DD" (mismo helper que ProvisionalOrdersPlanchasMixtasTab.tsx)
+const getDateKeyOffset = (offsetDays: number): string => {
+  const d = new Date();
+  d.setDate(d.getDate() + offsetDays);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+
 interface ProvisionalOrdersTabSectionProps {
   respCodes?: string[];
+  // Cuando se especifica, solo se muestran las órdenes de ese Centro (ej. "1000" para Quito)
+  centroFilter?: string;
 }
 
 interface PaginationState {
@@ -99,11 +120,14 @@ const MultiSelect: React.FC<{
   );
 };
 
-export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionProps> = ({ respCodes }) => {
+export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionProps> = ({ respCodes, centroFilter }) => {
   const inspector = useRuntimeInspector('ProvisionalOrdersTab');
   const { addNotification } = useAppContext();
 
   const [orders, setOrders] = useState<ProvisionalOrder[]>([]);
+  // Tiempos de Ensamblado (global, por Material), usados para calcular el "Total Horas" de las órdenes
+  // filtradas — da un primer vistazo de cuántas horas de capacidad (y por ende qué turno) se necesitan
+  const [globalTiemposMap, setGlobalTiemposMap] = useState<Map<string, number>>(new Map());
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
   const [pagination, setPagination] = useState<PaginationState>({
     currentPage: 1,
@@ -126,40 +150,79 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
     'FECHAFIN', 'RESPCONTROLPROD', 'Centro', 'Almacen', 'ClaseOrden', 'CodMaterial', 'CATEGORIA'
   ];
 
-  useEffect(() => {
-    const performExploration = async () => {
-      try {
-        setIsLoading(true);
-        setError(null);
-        
-        const response = await serviciosService.OrdenesProvisionalesPaginados(1, 1);
-        
-        if (response.data && response.data.length > 0) {
-          const total = response.totalRegistros || 0;
-          setPagination(prev => ({
-            ...prev,
-            totalRegistros: total,
-            isExploring: false,
-          }));
+  const fetchOrders = async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
 
-          const BATCH_SIZE = 20000;
-          const pageResponse = await serviciosService.OrdenesProvisionalesPaginados(1, BATCH_SIZE);
-          if (pageResponse.data) {
-            const dataArray = Array.isArray(pageResponse.data) ? pageResponse.data : [pageResponse.data];
-            setOrders(dataArray);
+      const response = await serviciosService.OrdenesProvisionalesPaginados(1, 1);
+
+      if (response.data && response.data.length > 0) {
+        const total = response.totalRegistros || 0;
+        setPagination(prev => ({
+          ...prev,
+          totalRegistros: total,
+          isExploring: false,
+        }));
+
+        const BATCH_SIZE = 20000;
+        const pageResponse = await serviciosService.OrdenesProvisionalesPaginados(1, BATCH_SIZE);
+        if (pageResponse.data) {
+          const dataArray = Array.isArray(pageResponse.data) ? pageResponse.data : [pageResponse.data];
+          setOrders(dataArray);
+        }
+      }
+    } catch (err) {
+      const errorMessage = (err as Error).message;
+      setError(errorMessage);
+      addNotification('error', `Error al cargar órdenes: ${errorMessage}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchOrders();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const fetchTiempos = async () => {
+    try {
+      const tiemposExplore = await serviciosService.getTiemposEnsamblado(1, 1);
+      const totalTiempos = tiemposExplore.totalRegistros || 0;
+      if (totalTiempos > 0) {
+        const BATCH = 20000;
+        const pages = Math.ceil(totalTiempos / BATCH);
+        const tMap = new Map<string, number>();
+        for (let i = 1; i <= pages; i++) {
+          const res = await serviciosService.getTiemposEnsamblado(i, BATCH);
+          if (res.data) {
+            const items = Array.isArray(res.data) ? res.data : [res.data];
+            items.forEach((item: any) => {
+              const material = normalizeMaterialCode(item.CodMaterial || item.Material || '');
+              const tiempo = Number(item.Tiempo_Min ?? item.Tiempo ?? 0);
+              if (material && tiempo > 0 && !tMap.has(material)) {
+                tMap.set(material, tiempo);
+              }
+            });
           }
         }
-      } catch (err) {
-        const errorMessage = (err as Error).message;
-        setError(errorMessage);
-        addNotification('error', `Error al cargar órdenes: ${errorMessage}`);
-      } finally {
-        setIsLoading(false);
+        setGlobalTiemposMap(tMap);
       }
-    };
+    } catch (error) {
+      console.error('Error al cargar Tiempos de Ensamblado:', error);
+    }
+  };
 
-    performExploration();
-  }, [addNotification, pagination.pageSize]);
+  useEffect(() => {
+    fetchTiempos();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleRefreshOrders = async () => {
+    await fetchOrders();
+    addNotification('success', 'Órdenes Previsionales actualizadas.');
+  };
 
   // Extract unique dates for the dropdown
   const uniqueDates = useMemo(() => {
@@ -171,19 +234,62 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
   // Filter logic
   const filteredOrders = useMemo(() => {
     const validCodes = respCodes || ['026', '033', '042', '037', '036', '044'];
-    
+
     return orders.filter(order => {
       const respCode = String(order.RESPCONTROLPROD || '').trim();
       const codeMatch = validCodes.includes(respCode);
       const dateMatch = selectedDates.length === 0 || selectedDates.includes(order.FECHAINICIO);
-      return codeMatch && dateMatch;
+      const centroMatch = !centroFilter || String((order as any).Centro || '').trim() === centroFilter;
+      return codeMatch && dateMatch && centroMatch;
     });
-  }, [orders, respCodes, selectedDates]);
+  }, [orders, respCodes, selectedDates, centroFilter]);
+
+  // Órdenes MTO (con PEDIDOVENTAS) que cumplen el parámetro acordado para Planchas Mixtas: FECHAINICIO =
+  // mañana o pasado mañana (mismo criterio que "pmOrders" en ProvisionalOrdersPlanchasMixtasTab.tsx). Es
+  // un filtro FIJO, independiente del Filtro de Fecha manual — así las MTO siempre se contabilizan en el
+  // Resumen Informativo aunque el usuario no haya seleccionado esas fechas específicas en el filtro.
+  const mtoOrders = useMemo(() => {
+    const validCodes = respCodes || ['026', '033', '042', '037', '036', '044'];
+    const tomorrowKey = getDateKeyOffset(1);
+    const dayAfterTomorrowKey = getDateKeyOffset(2);
+
+    return orders.filter(order => {
+      const respCode = String(order.RESPCONTROLPROD || '').trim();
+      if (!validCodes.includes(respCode)) return false;
+      const centroMatch = !centroFilter || String((order as any).Centro || '').trim() === centroFilter;
+      if (!centroMatch) return false;
+      const esMTO = !!String((order as any).PEDIDOVENTAS || '').trim();
+      if (!esMTO) return false;
+      const fechaKey = String(order.FECHAINICIO || '').trim().slice(0, 10);
+      return fechaKey === tomorrowKey || fechaKey === dayAfterTomorrowKey;
+    });
+  }, [orders, respCodes, centroFilter]);
+
+  // Unión de las órdenes filtradas (respetan el Filtro de Fecha manual) con las MTO de mañana/pasado
+  // mañana (fijas), sin duplicar si una misma orden ya estaba en ambos conjuntos — es la base real del
+  // Resumen Informativo.
+  const summaryOrders = useMemo(() => {
+    const map = new Map<string, ProvisionalOrder>();
+    filteredOrders.forEach(o => map.set(String(o.ORDENPREVISIONAL), o));
+    mtoOrders.forEach(o => map.set(String(o.ORDENPREVISIONAL), o));
+    return Array.from(map.values());
+  }, [filteredOrders, mtoOrders]);
 
   // Summary logic
   const totalCantidadPlanchas = useMemo(() => {
-    return filteredOrders.reduce((sum, order) => sum + (Number(order.CANTIDAD) || 0), 0);
-  }, [filteredOrders]);
+    return summaryOrders.reduce((sum, order) => sum + (Number(order.CANTIDAD) || 0), 0);
+  }, [summaryOrders]);
+
+  // Total de horas de fabricación correspondiente a las órdenes filtradas (según el Filtro de Fecha) más
+  // las MTO de mañana/pasado mañana, para dar un primer vistazo de qué turno (duración de jornada) conviene trabajar
+  const totalHorasPlanchas = useMemo(() => {
+    return summaryOrders.reduce((sum, order) => {
+      const material = normalizeMaterialCode((order as any).MATERIAL || (order as any).CodMaterial || '');
+      const tiempoUnitMin = globalTiemposMap.get(material) ?? 0;
+      const cantidad = Number(order.CANTIDAD) || 0;
+      return sum + (tiempoUnitMin * cantidad) / 60;
+    }, 0);
+  }, [summaryOrders, globalTiemposMap]);
 
   const totalPagesLocal = Math.ceil(filteredOrders.length / pagination.rowsPerPage);
   const startIndex = (pagination.currentPage - 1) * pagination.rowsPerPage;
@@ -250,6 +356,18 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
 
   return (
     <div className="space-y-6">
+      <div className="flex justify-end">
+        <Button
+          onClick={handleRefreshOrders}
+          disabled={isLoading}
+          size="sm"
+          className="h-8 bg-indigo-600 hover:bg-indigo-700 text-white gap-1.5 text-xs"
+        >
+          {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+          Actualizar Datos
+        </Button>
+      </div>
+
       {/* Filters and Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Date Filter Dropdown */}
@@ -268,15 +386,127 @@ export const ProvisionalOrdersTabSection: React.FC<ProvisionalOrdersTabSectionPr
           />
         </div>
 
-        {/* Quantity Summary Card */}
+        {/* Quantity/Hours Summary Card */}
         <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 shadow-sm">
           <h4 className="text-[13px] font-bold text-gray-800 mb-2 uppercase tracking-wide flex items-center gap-2">
             <LayoutDashboard className="w-4 h-4 text-indigo-600" /> Resumen Informativo
           </h4>
-          <div className="bg-white border rounded-md p-3 h-full flex flex-col justify-center text-center">
-            <p className="text-[11px] text-gray-500 font-semibold uppercase">TOTAL PLANCHAS (CANTIDAD)</p>
-            <p className="text-2xl font-bold text-indigo-700">{totalCantidadPlanchas.toLocaleString()}</p>
+          <div className="grid grid-cols-2 gap-2 h-full">
+            <div className="bg-white border rounded-md p-3 flex flex-col justify-center text-center">
+              <p className="text-[11px] text-gray-500 font-semibold uppercase">Total Planchas (Cantidad)</p>
+              <p className="text-2xl font-bold text-indigo-700">{totalCantidadPlanchas.toLocaleString()}</p>
+            </div>
+            <div className="bg-white border rounded-md p-3 flex flex-col justify-center text-center">
+              <p className="text-[11px] text-gray-500 font-semibold uppercase">Total Horas (Capacidad)</p>
+              <p className="text-2xl font-bold text-emerald-700">{totalHorasPlanchas.toFixed(2)} h</p>
+            </div>
+            <div className="bg-white border rounded-md p-3 flex flex-col justify-center text-center col-span-2">
+              <p className="text-[11px] text-gray-500 font-semibold uppercase mb-1.5">Horas por Mesa — Vistazo Inicial de Capacidad</p>
+              <div className="grid grid-cols-3 gap-2">
+                {[3, 4, 5].map(mesas => {
+                  const horasPorMesa = totalHorasPlanchas / mesas;
+                  return (
+                    <div key={mesas} className="border-l first:border-l-0 border-dashed border-gray-200 px-1">
+                      <p className="text-[10px] text-gray-400">{mesas} mesas</p>
+                      <p className="text-lg font-bold text-cyan-700">{horasPorMesa.toFixed(2)} h</p>
+                      <div className="mt-1.5 space-y-0.5 border-t border-dashed border-gray-200 pt-1.5">
+                        {TURNO_DURACIONES_VISTAZO.map(turnoHoras => {
+                          const utilizacionPct = turnoHoras > 0 ? (horasPorMesa / turnoHoras) * 100 : 0;
+                          return (
+                            <div key={turnoHoras} className="flex items-center justify-between text-[10px]">
+                              <span className="text-gray-400">{turnoHoras}h:</span>
+                              <span className={cn(
+                                "font-bold",
+                                utilizacionPct > 105 ? "text-red-600" : utilizacionPct < 85 ? "text-amber-600" : "text-emerald-600"
+                              )}>
+                                {utilizacionPct.toFixed(1)}%
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
+        </div>
+      </div>
+
+      {/* Tabla de Órdenes MTO (Mañana / Pasado Mañana) — parámetro acordado, se suman siempre al Resumen Informativo */}
+      <div className="bg-white rounded-lg shadow-lg overflow-hidden border border-purple-200">
+        <div className="px-4 py-3 bg-purple-50 border-b border-purple-200">
+          <h4 className="text-[13px] font-bold text-purple-800 uppercase tracking-wide">
+            Órdenes MTO — Mañana ({getDateKeyOffset(1)}) o Pasado Mañana ({getDateKeyOffset(2)})
+          </h4>
+          <p className="text-[11px] text-purple-600 mt-0.5">
+            Parámetro acordado para Planchas Mixtas: las MTO se toman en cuenta con FECHAINICIO de mañana o pasado mañana (no hoy).
+            Se incluyen siempre en el Resumen Informativo de arriba, aunque el Filtro de Fecha no tenga esas fechas seleccionadas.
+          </p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-purple-50/60">
+              <tr>
+                {['N° Orden', 'Material', 'Nombre', 'Fecha Inicio', 'Cantidad', 'Unidad', 'Horas'].map((col, index) => (
+                  <th
+                    key={col}
+                    className={cn(
+                      "px-4 py-2 text-center text-xs font-medium text-purple-700 uppercase tracking-wider",
+                      index < 6 && "border-r border-dashed border-purple-200"
+                    )}
+                  >
+                    {col}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
+              {mtoOrders.length > 0 ? mtoOrders.map((order, index) => {
+                const material = normalizeMaterialCode((order as any).MATERIAL || (order as any).CodMaterial || '');
+                const tiempoUnitMin = globalTiemposMap.get(material) ?? 0;
+                const cantidad = Number(order.CANTIDAD) || 0;
+                const horas = (tiempoUnitMin * cantidad) / 60;
+                return (
+                  <tr key={`${order.ORDENPREVISIONAL}-${index}`} className="hover:bg-purple-50/40 transition-colors">
+                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-600 text-center border-r border-dashed border-gray-200">{order.ORDENPREVISIONAL}</td>
+                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-600 text-center border-r border-dashed border-gray-200">{material}</td>
+                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-600 text-center border-r border-dashed border-gray-200">{order.NOMBRE}</td>
+                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-600 text-center border-r border-dashed border-gray-200 font-mono">{order.FECHAINICIO}</td>
+                    <td className="px-4 py-2 whitespace-nowrap text-sm font-bold text-indigo-700 text-center border-r border-dashed border-gray-200">{cantidad.toLocaleString()}</td>
+                    <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-600 text-center border-r border-dashed border-gray-200">{order.UNIDAD}</td>
+                    <td className="px-4 py-2 whitespace-nowrap text-sm font-bold text-emerald-700 text-center">{horas.toFixed(2)} h</td>
+                  </tr>
+                );
+              }) : (
+                <tr>
+                  <td colSpan={7} className="px-6 py-6 text-center text-gray-500 italic">
+                    No se encontraron órdenes MTO con fecha de mañana o pasado mañana.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+            {mtoOrders.length > 0 && (
+              <tfoot className="bg-purple-50/60 border-t-2 border-purple-200">
+                <tr>
+                  <td colSpan={4} className="px-4 py-2 text-right text-xs font-extrabold text-purple-800 uppercase border-r border-dashed border-purple-200">Total</td>
+                  <td className="px-4 py-2 text-center text-sm font-extrabold text-indigo-800 border-r border-dashed border-purple-200">
+                    {mtoOrders.reduce((s, o) => s + (Number(o.CANTIDAD) || 0), 0).toLocaleString()}
+                  </td>
+                  <td className="border-r border-dashed border-purple-200"></td>
+                  <td className="px-4 py-2 text-center text-sm font-extrabold text-emerald-800">
+                    {mtoOrders.reduce((s, o) => {
+                      const material = normalizeMaterialCode((o as any).MATERIAL || (o as any).CodMaterial || '');
+                      const tiempoUnitMin = globalTiemposMap.get(material) ?? 0;
+                      const cantidad = Number(o.CANTIDAD) || 0;
+                      return s + (tiempoUnitMin * cantidad) / 60;
+                    }, 0).toFixed(2)} h
+                  </td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
         </div>
       </div>
 
