@@ -59,7 +59,7 @@ import { es } from 'date-fns/locale';
 // GET /api/grupo. Es el único PlanGrupo/DetalleTactico que este módulo crea y edita.
 const CODIGO_GRUPO_LAMINADO = 8;
 const BLOCK_SIZE = 40;
-const SETUP_TIME_PER_RUN = 45; // 45 min por corrida física: ingreso de bloques + colocar adhesivo (medido en prueba en vivo)
+const SETUP_TIME_PER_RUN = 55; // 55 min por corrida física: ingreso de bloques + colocar adhesivo + limpieza (ajustado desde 45 min)
 // Proceso "lámina convoluted": 1 lámina base pasada por el proceso alterno (otra máquina) devuelve
 // 2 láminas CONV de menor espesor del mismo recorrido. La necesidad/plan de la variante CONV se
 // deriva multiplicando por este factor la de su lámina base, en vez de calcularse por participación propia.
