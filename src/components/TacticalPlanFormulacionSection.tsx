@@ -34,6 +34,7 @@ import { serviciosService } from '@/services/servicios.service';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
+import type { CuboInventariosItem } from '@/types/types';
 import { cn } from '@/lib/utils';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -47,24 +48,50 @@ const RESPONSABLES_POR_CENTRO: Record<string, string[]> = {
   '2000': ['002', '039']
 };
 
-const safeNum = (val: any): number => {
+// Fila cruda proveniente de endpoints SAP/servicios internos: los nombres de columna varían de
+// mayúsculas/minúsculas y de endpoint a endpoint, por eso se accede siempre vía getProp/cleanCode/safeNum.
+type RawApiRow = Record<string, unknown>;
+
+// Fila cruda del árbol de explosión de materiales (getMaestroMaterialesExplosion)
+interface MaterialExplosionRow {
+  NIVEL?: string | number;
+  CENTRO?: string;
+  FERT_PRINCIPAL?: string;
+  DESCRIPCION_FERT?: string;
+  MATERIAL_PADRE?: string;
+  COMPONENTE?: string;
+  DESCRIPCION_COMPONENTE?: string;
+  CANTIDAD_UNITARIA?: number | string;
+  CANTIDAD_ACUMULADA?: number | string;
+}
+
+interface MaterialDimensions {
+  dens: string;
+  ancho: string;
+  largo: string;
+  esp: string;
+  apertura: string;
+  tipo: string;
+}
+
+const safeNum = (val: unknown): number => {
   const n = Number(val);
   return isNaN(n) ? 0 : n;
 };
 
-const cleanCode = (code: any): string => {
+const cleanCode = (code: unknown): string => {
   return String(code || '').replace(/^0+/, '').trim();
 };
 
-const formatNum = (val: any, decimals: number = 0): string => {
+const formatNum = (val: unknown, decimals: number = 0): string => {
   const n = safeNum(val);
-  return n.toLocaleString(undefined, { 
-    minimumFractionDigits: decimals, 
-    maximumFractionDigits: decimals 
+  return n.toLocaleString(undefined, {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals
   });
 };
 
-const getProp = (obj: any, keys: string[]): string => {
+const getProp = (obj: Record<string, unknown> | null | undefined, keys: string[]): string => {
   if (!obj) return '';
   const rowKeys = Object.keys(obj);
   for (const k of keys) {
@@ -105,7 +132,7 @@ const CURADO_SPACES: CuradoSpaceConfig[] = [
   },
 ];
 
-const matchesCuradoSpace = (row: any, space: CuradoSpaceConfig): boolean => {
+const matchesCuradoSpace = (row: RawApiRow, space: CuradoSpaceConfig): boolean => {
   const estado = getProp(row, ['estadoTras', 'ESTADOTRAS', 'ESTADO']).trim().toUpperCase();
   const maquina = getProp(row, ['Maquina', 'MAQUINA']).trim().toUpperCase();
   if (estado !== space.estado || maquina !== space.maquina) return false;
@@ -157,12 +184,42 @@ interface ConsumoBloqueRow {
   respCtrlProd: string;
 }
 
+// Una orden individual (provisional o FERT) que consume un Bloque Formulado del grupo agregado.
+interface FormuladoFertEntry {
+  code: string;
+  desc: string;
+  qty: number;
+  kg: number;
+  bloques: number;
+  origin: 'prov' | 'fert';
+}
+
+// Fila agregada del Resumen (tab "Salida de Datos"): un Bloque Formulado con su necesidad,
+// stock y plan de reposición, agrupado por apertura/densidad.
+interface FormuladoSummaryRow {
+  blockCode: string;
+  blockDesc: string;
+  dens: string;
+  apertura: string;
+  totalBloquesProv: number;
+  totalBloquesFert: number;
+  planReposicion: number;
+  stockKg: number;
+  stockUN: number;
+  stockEnCuradoUN: number;
+  stockUtilUN: number;
+  pesoBloque: number;
+  kgTotal: number;
+  unidades: number;
+  ferts: FormuladoFertEntry[];
+}
+
 // Recorre la explosión BOM (getMaestroMaterialesExplosion) de una orden y, por cada material
 // "BLOQUE FORMULADO" encontrado, sube un nivel (MATERIAL_PADRE) para identificar el componente
 // intermedio que lo consume, y otro nivel más para el componente final. CANTIDAD_ACUMULADA ya
 // viene expresada por unidad de la orden, tal como se usa en el resto de trazas BOM de este módulo.
 const traceBloqueFormuladoConsumption = (
-  bomData: any[],
+  bomData: MaterialExplosionRow[],
   fertCode: string,
   ordenNum: string,
   origin: 'prov' | 'fert',
@@ -208,15 +265,15 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   const [activeTab, setActiveTab] = useState('resumen');
   const [, setGrupos] = useState<Grupo[]>([]);
   const [, setRestricciones] = useState<Restriccion[]>([]);
-  const [ordenes, setOrders] = useState<any[]>([]);
-  const [ordenesFert, setOrdersFert] = useState<any[]>([]);
-  const [cuboInventarios, setCuboInventarios] = useState<any[]>([]);
-  const [curadoData, setCuradoData] = useState<any[]>([]);
+  const [ordenes, setOrders] = useState<RawApiRow[]>([]);
+  const [ordenesFert, setOrdersFert] = useState<RawApiRow[]>([]);
+  const [cuboInventarios, setCuboInventarios] = useState<CuboInventariosItem[]>([]);
+  const [curadoData, setCuradoData] = useState<RawApiRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  
+
   const [isProcessingResumen, setIsProcessingResumen] = useState(false);
   const [resumenProgress, setResumenProgress] = useState({ current: 0, total: 0 });
-  const [unifiedSummaryData, setUnifiedSummaryData] = useState<any[]>([]);
+  const [unifiedSummaryData, setUnifiedSummaryData] = useState<FormuladoSummaryRow[]>([]);
   const [consumoBloqueFormulado, setConsumoBloqueFormulado] = useState<ConsumoBloqueRow[]>([]);
 
   const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set());
@@ -230,16 +287,16 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     setSelectedDates(new Set([format(today, 'yyyy-MM-dd')]));
   }, []);
 
-  const extractMaterialInfo = useCallback((item: any) => {
+  const extractMaterialInfo = useCallback((item: RawApiRow) => {
     const matStr = getProp(item, ['MATERIAL', 'Material', 'CodMaterial', 'MATERIAL_ID', 'CODIGO']);
     const nameStr = getProp(item, ['NOMBRE', 'NombreMaterial', 'Descripcion', 'NomMaterial', 'DESCRIPCION']);
     const catStr = getProp(item, ['CATEGORIA', 'Categoria', 'CATEGORIA_DESC']);
-    
+
     const match = matStr.match(/^(\d+)/);
     const code = match ? match[1].slice(-8) : matStr.slice(-8);
     const desc = nameStr || matStr.replace(/^\d+\s*/, '') || '—';
 
-    const dimensions: any = { dens: '—', ancho: '—', largo: '—', esp: '—', apertura: '—', tipo: '—' };
+    const dimensions: MaterialDimensions = { dens: '—', ancho: '—', largo: '—', esp: '—', apertura: '—', tipo: '—' };
     const techPattern = catStr.match(/D(\d+)([a-zA-Z]*)/i) || desc.match(/D-?(\d+)([a-zA-Z]*)/i);
     if (techPattern) {
       dimensions.dens = techPattern[1]; 
@@ -335,7 +392,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   // responsable de Control de Producción está autorizado para el centro (RESPONSABLES_POR_CENTRO)
   // — una orden de un responsable no listado no debe inflar la necesidad de Formulación.
   const handleProcessResumen = useCallback(async () => {
-    const buildEntry = (o: any, origin: 'prov' | 'fert') => ({
+    const buildEntry = (o: RawApiRow, origin: 'prov' | 'fert') => ({
       order: o,
       origin,
       centro: getProp(o, ['CENTRO', 'Centro']).trim(),
@@ -351,7 +408,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       return;
     }
     setIsProcessingResumen(true);
-    const groupsMap = new Map<string, any>();
+    const groupsMap = new Map<string, FormuladoSummaryRow>();
     const consumoRows: ConsumoBloqueRow[] = [];
     setResumenProgress({ current: 0, total: allOrders.length });
 
@@ -493,15 +550,15 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         serviciosService.getOrdenesFert(1, 20000).catch(() => ({ data: [] })),
         serviciosService.getCuboInventarios(1, 50000).catch(() => ({ data: [] }))
       ]);
-      setRestricciones((restrsRes.data || []).filter((r: any) => groupsIds.includes(r.codigo_grupo)));
+      setRestricciones((restrsRes.data || []).filter((r) => groupsIds.includes(r.codigo_grupo)));
       setOrders(provsRes.data?.data || provsRes.data || []);
       setOrdersFert(fertsRes.data?.data || fertsRes.data || []);
       setCuboInventarios(Array.isArray(cuboRes.data) ? cuboRes.data : []);
-      
-      const rawCurado = curadoRes.data || [];
+
+      const rawCurado: RawApiRow[] = curadoRes.data || [];
       setCuradoData(rawCurado);
 
-      const uniqueStatuses = [...new Set(rawCurado.map((r: any) => String(getProp(r, ['estadoTras', 'ESTADOTRAS']) || 'EMPTY').trim()))];
+      const uniqueStatuses = [...new Set(rawCurado.map((r) => String(getProp(r, ['estadoTras', 'ESTADOTRAS']) || 'EMPTY').trim()))];
       inspector.captureVariable('unique_estadoTras_statuses', uniqueStatuses, { description: 'Lista global de estatus detectados en columna estadoTras' });
 
       // Diagnóstico: combinaciones reales de Maquina/estadoTras/estado/corridaproceso en
@@ -509,7 +566,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       // corresponde a LEADER (línea continua) y cuál a COFAMA (combinación) antes de ajustar los
       // filtros de renderCuradoSpace (case 'curado').
       const comboCounts = new Map<string, number>();
-      rawCurado.forEach((r: any) => {
+      rawCurado.forEach((r) => {
         const m = getProp(r, ['Maquina', 'MAQUINA']) || '—';
         const et = getProp(r, ['estadoTras', 'ESTADOTRAS']) || '—';
         const e2 = getProp(r, ['estado2']) || '—';
@@ -528,7 +585,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       // — no excluyen ninguna fila; el único filtro real es ESTADO/MAQUINA/CORRIDAPROCESO. Esto
       // sirve para confirmar si un día concreto (ej. el 06) está quedando fuera por ese filtro.
       const porFecha = new Map<string, { total: number; matched: number }>();
-      rawCurado.forEach((r: any) => {
+      rawCurado.forEach((r) => {
         const fecha = getProp(r, ['fecha', 'FECHA', 'FECHA_INICIO', 'FECHA_FABRICACION', 'FECHA_OT_PRG_INI']) || '—';
         const entry = porFecha.get(fecha) || { total: 0, matched: 0 };
         entry.total += 1;
@@ -580,19 +637,19 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           </h3>
           <Badge variant="outline" className="text-[10px] font-black border-slate-200 bg-slate-50">T. CONSUMO: {formatNum(total, 1)}</Badge>
         </div>
-        <div className="border-2 border-gray-100 rounded-[2rem] shadow-xl overflow-hidden bg-white text-left">
+        <div className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white text-left">
           <div className="overflow-x-auto max-h-[500px]">
             <table className="w-full border-collapse text-center font-sans text-[10px] text-gray-700">
-              <thead className="bg-[#1e293b] text-white uppercase font-black tracking-widest text-[8px] sticky top-0 z-20 border-b-2 border-white/10">
+              <thead className="bg-gray-50 sticky top-0 text-[9px] font-bold uppercase text-gray-400 tracking-widest z-20">
                 <tr>
-                  <th className="px-4 py-4 text-left border-r border-white/5">FORMULADO</th>
-                  <th className="px-6 py-4 text-left border-r border-white/5">NOMBRECOMPONENTE</th>
-                  <th className="px-4 py-4 border-r border-white/5">COMPONENTE</th>
-                  <th className="px-6 py-4 text-left border-r border-white/5">NOMBRE</th>
-                  <th className="px-4 py-4 border-r border-white/5">MATERIAL</th>
-                  <th className="px-4 py-4 border-r border-white/5">ORDEN</th>
-                  <th className="px-3 py-4 border-r border-white/5">UN</th>
-                  <th className="px-4 py-4 bg-indigo-600 font-black">Total</th>
+                  <th className="px-4 py-4 text-left border-r border-gray-100">FORMULADO</th>
+                  <th className="px-6 py-4 text-left border-r border-gray-100">NOMBRECOMPONENTE</th>
+                  <th className="px-4 py-4 border-r border-gray-100">COMPONENTE</th>
+                  <th className="px-6 py-4 text-left border-r border-gray-100">NOMBRE</th>
+                  <th className="px-4 py-4 border-r border-gray-100">MATERIAL</th>
+                  <th className="px-4 py-4 border-r border-gray-100">ORDEN</th>
+                  <th className="px-3 py-4 border-r border-gray-100">UN</th>
+                  <th className="px-4 py-4 bg-indigo-50 text-indigo-700 font-black">Total</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50 font-bold">
@@ -634,7 +691,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     );
   };
 
-  const renderSummaryTable = (data: any[], title: string, icon: any) => {
+  const renderSummaryTable = (data: FormuladoSummaryRow[], title: string, icon: React.ComponentType<{ className?: string }>) => {
     const tStockKg = data.reduce((s, r) => s + r.stockKg, 0);
     const tStockUn = data.reduce((s, r) => s + r.stockUN, 0);
 
@@ -650,22 +707,22 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
             <Badge variant="outline" className="text-[10px] font-black border-slate-200 bg-slate-50">T. UNIDADES: {Math.round(tStockUn)} UN</Badge>
           </div>
         </div>
-        <div className="border-2 border-gray-100 rounded-[2rem] shadow-xl overflow-hidden bg-white text-left">
+        <div className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white text-left">
           <div className="overflow-x-auto max-h-[500px]">
             <table className="w-full border-collapse text-center font-sans text-[10px] text-gray-700">
-              <thead className="bg-[#1e293b] text-white uppercase font-black tracking-widest text-[8px] sticky top-0 z-20 border-b-2 border-white/10">
+              <thead className="bg-gray-50 sticky top-0 text-[9px] font-bold uppercase text-gray-400 tracking-widest z-20">
                 <tr>
-                  <th className="px-6 py-4 text-left border-r border-white/5 w-32">Bloque Formulado</th>
-                  <th className="px-6 py-4 text-left border-r border-white/5">Descripción Técnica SAP</th>
-                  <th className="px-3 py-4 border-r border-white/5">Dens.</th>
-                  <th className="px-3 py-4 border-r border-white/5">Apert.</th>
-                  <th className="px-4 py-4 border-r border-white/5">Nec. Prov (Bloq)</th>
-                  <th className="px-4 py-4 border-r border-white/5">Nec. Proceso/FERT (Bloq)</th>
-                  <th className="px-6 py-4 border-r border-white/5 text-emerald-400 bg-black/10">Stock (Kg)</th>
-                  <th className="px-4 py-4 border-r border-white/5 text-emerald-400 bg-black/10 font-black">Stock (UN)</th>
-                  <th className="px-4 py-4 border-r border-white/5 text-amber-500 bg-black/10">En Curado (UN)</th>
-                  <th className="px-4 py-4 border-r border-white/5 text-emerald-300 bg-black/10 font-black">Stock Útil (UN)</th>
-                  <th className="px-6 py-4 text-right bg-yellow-500/20 text-yellow-300 font-black">Plan Reposición (UN)</th>
+                  <th className="px-6 py-4 text-left border-r border-gray-100 w-32">Bloque Formulado</th>
+                  <th className="px-6 py-4 text-left border-r border-gray-100">Descripción Técnica SAP</th>
+                  <th className="px-3 py-4 border-r border-gray-100">Dens.</th>
+                  <th className="px-3 py-4 border-r border-gray-100">Apert.</th>
+                  <th className="px-4 py-4 border-r border-gray-100">Nec. Prov (Bloq)</th>
+                  <th className="px-4 py-4 border-r border-gray-100">Nec. Proceso/FERT (Bloq)</th>
+                  <th className="px-6 py-4 border-r border-gray-100 text-emerald-700 bg-emerald-50/50">Stock (Kg)</th>
+                  <th className="px-4 py-4 border-r border-gray-100 text-emerald-700 bg-emerald-50/50 font-black">Stock (UN)</th>
+                  <th className="px-4 py-4 border-r border-gray-100 text-amber-700 bg-amber-50/50">En Curado (UN)</th>
+                  <th className="px-4 py-4 border-r border-gray-100 text-emerald-700 bg-emerald-50/50 font-black">Stock Útil (UN)</th>
+                  <th className="px-6 py-4 text-right bg-yellow-50/50 text-yellow-700 font-black">Plan Reposición (UN)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50 font-bold">
@@ -689,7 +746,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                         <td className="px-4 py-3 border-r border-gray-100 text-right font-mono font-black text-emerald-800 bg-emerald-50/30">{row.stockUtilUN.toFixed(1)}</td>
                         <td className="px-6 py-3 text-right font-mono font-black text-yellow-700 bg-yellow-50/30">{row.planReposicion}</td>
                       </tr>
-                      {isExp && row.ferts.map((f: any, fIdx: number) => (
+                      {isExp && row.ferts.map((f, fIdx: number) => (
                         <tr key={`${idx}-${fIdx}`} className="bg-slate-50/50 text-[9px] text-slate-400 font-medium">
                           <td className="px-6 py-1.5 text-left pl-10 italic">{f.code}</td>
                           <td className="px-6 py-1.5 text-left uppercase italic truncate max-w-[300px]">{f.desc}</td>
@@ -705,11 +762,11 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                   );
                 })}
               </tbody>
-              <tfoot className="bg-[#0f172a] text-white font-black text-[9px] uppercase sticky bottom-0 z-20">
+              <tfoot className="bg-gray-100 text-gray-800 font-black text-[9px] uppercase border-t-2 border-gray-200 sticky bottom-0 z-20">
                 <tr>
-                  <td colSpan={6} className="px-6 py-4 text-right tracking-widest border-r border-white/5">Totales de Sección</td>
-                  <td className="px-6 py-4 border-r border-white/5 font-mono text-emerald-300 bg-emerald-500/10">{formatNum(tStockKg, 0)}</td>
-                  <td className="px-4 py-4 font-mono text-emerald-300 bg-emerald-500/10">{Math.round(tStockUn)}</td>
+                  <td colSpan={6} className="px-6 py-4 text-right tracking-widest border-r border-gray-200">Totales de Sección</td>
+                  <td className="px-6 py-4 border-r border-gray-200 font-mono text-emerald-700 bg-emerald-50">{formatNum(tStockKg, 0)}</td>
+                  <td className="px-4 py-4 font-mono text-emerald-700 bg-emerald-50">{Math.round(tStockUn)}</td>
                   <td colSpan={3} className="px-6 py-4"></td>
                 </tr>
               </tfoot>
@@ -723,7 +780,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   // Filtra data por el criterio de `space` (ver CURADO_SPACES) y agrega Fecha Disponible
   // (fabricación + CURADO_DIAS_ESPERA) y Estado a cada registro, sin perder ninguna de las
   // columnas originales que trae la fuente SAP.
-  const renderCuradoSpace = (data: any[], space: CuradoSpaceConfig) => {
+  const renderCuradoSpace = (data: RawApiRow[], space: CuradoSpaceConfig) => {
     const todayStr = format(new Date(), 'yyyy-MM-dd');
     const filtered = data.filter(row => matchesCuradoSpace(row, space)).map(row => {
       const fechaRaw = getProp(row, ['fecha', 'FECHA', 'FECHA_INICIO', 'FECHA_FABRICACION', 'FECHA_OT_PRG_INI']);
@@ -770,15 +827,15 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{space.title} ({filtered.length})</h4>
           <p className="text-[9px] font-bold text-slate-300 uppercase tracking-widest">Filtro: {filterLabel}</p>
         </div>
-        <div className="border-2 border-gray-100 rounded-[2rem] shadow-xl overflow-hidden bg-white text-left mb-8">
+        <div className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white text-left mb-8">
           <div className="overflow-x-auto max-h-[500px]">
             <table className="w-full border-collapse text-center font-sans text-[10px] text-gray-700">
-              <thead className="bg-[#0f172a] text-white uppercase font-black tracking-widest text-[8px] sticky top-0 z-10 border-b-2 border-white/10">
+              <thead className="bg-gray-50 sticky top-0 text-[9px] font-bold uppercase text-gray-400 tracking-widest z-10">
                 <tr>
-                  <th className="px-4 py-4 border-r border-white/5 whitespace-nowrap bg-indigo-900/60 text-indigo-200">Fecha Disponible (+{CURADO_DIAS_ESPERA}d)</th>
-                  <th className="px-4 py-4 border-r border-white/5 whitespace-nowrap bg-indigo-900/60 text-indigo-200">Estado</th>
+                  <th className="px-4 py-4 border-r border-gray-100 whitespace-nowrap bg-indigo-50/50 text-indigo-700">Fecha Disponible (+{CURADO_DIAS_ESPERA}d)</th>
+                  <th className="px-4 py-4 border-r border-gray-100 whitespace-nowrap bg-indigo-50/50 text-indigo-700">Estado</th>
                   {keys.map((k, i) => (
-                    <th key={i} className="px-4 py-4 border-r border-white/5 whitespace-nowrap uppercase">
+                    <th key={i} className="px-4 py-4 border-r border-gray-100 whitespace-nowrap uppercase">
                       {headerMapping[k.toUpperCase()] || k}
                     </th>
                   ))}
@@ -826,18 +883,18 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Evaluación Stock / En Curado / Stock Útil por Material</h4>
           <p className="text-[9px] font-bold text-slate-300 uppercase tracking-widest">Stock (UN) = Stock (KG) ÷ Lote Mínimo (igual que Inventarios)</p>
         </div>
-        <div className="border-2 border-gray-100 rounded-[2rem] shadow-xl overflow-hidden bg-white text-left mb-8">
+        <div className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white text-left mb-8">
           <div className="overflow-x-auto max-h-[500px]">
             <table className="w-full border-collapse text-center font-sans text-[10px] text-gray-700">
-              <thead className="bg-[#0f172a] text-white uppercase font-black tracking-widest text-[8px] sticky top-0 z-10 border-b-2 border-white/10">
+              <thead className="bg-gray-50 sticky top-0 text-[9px] font-bold uppercase text-gray-400 tracking-widest z-10">
                 <tr>
-                  <th className="px-4 py-4 text-left border-r border-white/5">Material</th>
-                  <th className="px-6 py-4 text-left border-r border-white/5">Descripción</th>
-                  <th className="px-4 py-4 border-r border-white/5">Lote Mín. (KG)</th>
-                  <th className="px-4 py-4 border-r border-white/5 text-emerald-400 bg-black/10">Stock (KG)</th>
-                  <th className="px-4 py-4 border-r border-white/5 text-emerald-400 bg-black/10 font-black">Stock (UN)</th>
-                  <th className="px-4 py-4 border-r border-white/5 text-amber-500 bg-black/10">En Curado (UN)</th>
-                  <th className="px-4 py-4 text-emerald-300 bg-black/10 font-black">Stock Útil (UN)</th>
+                  <th className="px-4 py-4 text-left border-r border-gray-100">Material</th>
+                  <th className="px-6 py-4 text-left border-r border-gray-100">Descripción</th>
+                  <th className="px-4 py-4 border-r border-gray-100">Lote Mín. (KG)</th>
+                  <th className="px-4 py-4 border-r border-gray-100 text-emerald-700 bg-emerald-50/50">Stock (KG)</th>
+                  <th className="px-4 py-4 border-r border-gray-100 text-emerald-700 bg-emerald-50/50 font-black">Stock (UN)</th>
+                  <th className="px-4 py-4 border-r border-gray-100 text-amber-700 bg-amber-50/50">En Curado (UN)</th>
+                  <th className="px-4 py-4 text-emerald-700 bg-emerald-50/50 font-black">Stock Útil (UN)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50 font-bold">
@@ -858,13 +915,13 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                 )}
               </tbody>
               {data.length > 0 && (
-                <tfoot className="bg-[#0f172a] text-white font-black text-[9px] uppercase sticky bottom-0 z-10">
+                <tfoot className="bg-gray-100 text-gray-800 font-black text-[9px] uppercase border-t-2 border-gray-200 sticky bottom-0 z-10">
                   <tr>
-                    <td colSpan={3} className="px-4 py-4 text-right tracking-widest border-r border-white/5">Totales</td>
-                    <td className="px-4 py-4 border-r border-white/5 font-mono text-emerald-300 bg-emerald-500/10">{formatNum(tStockKg, 0)}</td>
-                    <td className="px-4 py-4 border-r border-white/5 font-mono text-emerald-300 bg-emerald-500/10">{tStockUN.toFixed(1)}</td>
-                    <td className="px-4 py-4 border-r border-white/5 font-mono text-amber-300 bg-amber-500/10">{tEnCuradoUN.toFixed(1)}</td>
-                    <td className="px-4 py-4 font-mono text-emerald-300 bg-emerald-500/10">{tUtilUN.toFixed(1)}</td>
+                    <td colSpan={3} className="px-4 py-4 text-right tracking-widest border-r border-gray-200">Totales</td>
+                    <td className="px-4 py-4 border-r border-gray-200 font-mono text-emerald-700 bg-emerald-50">{formatNum(tStockKg, 0)}</td>
+                    <td className="px-4 py-4 border-r border-gray-200 font-mono text-emerald-700 bg-emerald-50">{tStockUN.toFixed(1)}</td>
+                    <td className="px-4 py-4 border-r border-gray-200 font-mono text-amber-700 bg-amber-50">{tEnCuradoUN.toFixed(1)}</td>
+                    <td className="px-4 py-4 font-mono text-emerald-700 bg-emerald-50">{tUtilUN.toFixed(1)}</td>
                   </tr>
                 </tfoot>
               )}
@@ -919,17 +976,17 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       );
       case 'ordenes': return (
         <div className="animate-in fade-in duration-300 text-left">
-           <Card className="border-2 border-gray-100 rounded-[2.5rem] shadow-xl overflow-hidden bg-white">
+           <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
               <div className="overflow-x-auto">
                 <table className="min-w-full text-[10px] text-center border-collapse">
-                  <thead className="bg-[#1e293b] text-white uppercase font-black tracking-widest text-[8px] border-b border-white/5 sticky top-0 z-10">
+                  <thead className="bg-gray-50 sticky top-0 text-[9px] font-bold uppercase text-gray-400 tracking-widest z-10">
                     <tr>
-                      <th className="px-6 py-5 text-left border-r border-white/5">Orden</th>
-                      <th className="px-6 py-5 text-left border-r border-white/5">Material / Descripción</th>
-                      <th className="px-4 py-5 border-r border-white/5">Apertura</th>
-                      <th className="px-4 py-5 border-r border-white/5 bg-black/10">Dens.</th>
-                      <th className="px-6 py-5 border-r border-white/5 text-right font-black">Cant. Prog.</th>
-                      <th className="px-4 py-5 border-r border-white/5">Máquina</th>
+                      <th className="px-6 py-5 text-left border-r border-gray-100">Orden</th>
+                      <th className="px-6 py-5 text-left border-r border-gray-100">Material / Descripción</th>
+                      <th className="px-4 py-5 border-r border-gray-100">Apertura</th>
+                      <th className="px-4 py-5 border-r border-gray-100 bg-gray-100/50">Dens.</th>
+                      <th className="px-6 py-5 border-r border-gray-100 text-right font-black">Cant. Prog.</th>
+                      <th className="px-4 py-5 border-r border-gray-100">Máquina</th>
                       <th className="px-4 py-5">Almacén</th>
                     </tr>
                   </thead>
@@ -964,16 +1021,16 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       );
       case 'ordenesProd': return (
         <div className="animate-in fade-in duration-300 text-left">
-          <Card className="border-2 border-gray-100 rounded-[2.5rem] shadow-xl overflow-hidden bg-white">
+          <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
             <div className="overflow-x-auto">
               <table className="min-w-full text-[10px] text-center border-collapse">
-                <thead className="bg-[#1e293b] text-white uppercase font-black tracking-widest text-[8px] border-b border-white/5 sticky top-0 z-10">
+                <thead className="bg-gray-50 sticky top-0 text-[9px] font-bold uppercase text-gray-400 tracking-widest z-10">
                   <tr>
-                    <th className="px-6 py-5 text-left border-r border-white/5">Orden FERT</th>
-                    <th className="px-6 py-5 text-left border-r border-white/5">Material / Descripción</th>
-                    <th className="px-6 py-5 border-r border-white/5 text-right font-black">Cant.</th>
-                    <th className="px-4 py-5 border-r border-white/5">Responsable</th>
-                    <th className="px-4 py-5 border-r border-white/5">Máquina</th>
+                    <th className="px-6 py-5 text-left border-r border-gray-100">Orden FERT</th>
+                    <th className="px-6 py-5 text-left border-r border-gray-100">Material / Descripción</th>
+                    <th className="px-6 py-5 border-r border-gray-100 text-right font-black">Cant.</th>
+                    <th className="px-4 py-5 border-r border-gray-100">Responsable</th>
+                    <th className="px-4 py-5 border-r border-gray-100">Máquina</th>
                     <th className="px-4 py-5">Almacén</th>
                   </tr>
                 </thead>
@@ -1009,7 +1066,7 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       );
       case 'inventario': return (
         <div className="animate-in fade-in duration-300 text-left">
-          <Card className="rounded-[2.5rem] border-2 border-gray-100 shadow-xl overflow-hidden bg-white">
+          <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
             <div className="px-6 pt-5 pb-3 flex items-start gap-2 text-slate-400">
               <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
               <p className="text-[10px] leading-relaxed">
@@ -1019,23 +1076,23 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
             </div>
             <div className="overflow-x-auto max-h-[600px] relative">
               <table className="w-full border-collapse text-center font-sans text-[10px]">
-                <thead className="bg-[#1e293b] text-white border-b border-gray-100 uppercase font-black tracking-widest text-[8px] sticky top-0 z-10">
+                <thead className="bg-gray-50 sticky top-0 text-[9px] font-bold uppercase text-gray-400 tracking-widest z-10">
                   <tr>
-                    <th className="px-6 py-5 border-r border-white/5">Material</th>
-                    <th className="px-6 py-5 border-r border-white/10 text-left">Descripción del Bloque (SAP)</th>
-                    <th className="px-4 py-5 border-r border-white/10 text-left text-indigo-300">Categoría</th>
-                    <th className="px-3 py-5 border-r border-white/5">Centro</th>
-                    <th className="px-3 py-5 border-r border-white/5 text-purple-300">Clase Aprov.</th>
-                    <th className="px-3 py-5 border-r border-white/5 bg-green-500/30 text-green-300">
+                    <th className="px-6 py-5 border-r border-gray-100">Material</th>
+                    <th className="px-6 py-5 border-r border-gray-100 text-left">Descripción del Bloque (SAP)</th>
+                    <th className="px-4 py-5 border-r border-gray-100 text-left text-indigo-700">Categoría</th>
+                    <th className="px-3 py-5 border-r border-gray-100">Centro</th>
+                    <th className="px-3 py-5 border-r border-gray-100 text-purple-700">Clase Aprov.</th>
+                    <th className="px-3 py-5 border-r border-gray-100 bg-green-50/50 text-green-700">
                       Stock (KG)
-                      <span className="block normal-case font-normal text-white/50 text-[7px] tracking-normal mt-0.5">StockActual SAP</span>
+                      <span className="block normal-case font-normal text-gray-400 text-[7px] tracking-normal mt-0.5">StockActual SAP</span>
                     </th>
-                    <th className="px-3 py-5 border-r border-white/5 bg-blue-500/30 text-blue-200">
+                    <th className="px-3 py-5 border-r border-gray-100 bg-blue-50/50 text-blue-700">
                       Stock (UN)
-                      <span className="block normal-case font-normal text-white/50 text-[7px] tracking-normal mt-0.5">KG ÷ Lote Mín.</span>
+                      <span className="block normal-case font-normal text-gray-400 text-[7px] tracking-normal mt-0.5">KG ÷ Lote Mín.</span>
                     </th>
-                    <th className="px-3 py-5 border-r border-white/5 bg-amber-500/30 text-amber-200">Lote Mín. (KG)</th>
-                    <th className="px-3 py-5 border-r border-white/5 bg-amber-500/30 text-amber-200">Lote Máx. (KG)</th>
+                    <th className="px-3 py-5 border-r border-gray-100 bg-amber-50/50 text-amber-700">Lote Mín. (KG)</th>
+                    <th className="px-3 py-5 border-r border-gray-100 bg-amber-50/50 text-amber-700">Lote Máx. (KG)</th>
                     <th className="px-3 py-5">Responsable</th>
                   </tr>
                 </thead>
@@ -1044,16 +1101,16 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
                     <tr><td colSpan={10} className="py-20 text-center text-slate-200 uppercase font-black">No hay stock de &quot;BLOQUE FORMULADO&quot; registrado</td></tr>
                   ) : (
                     filteredInventario.map((row, i) => (
-                      <tr key={i} className="hover:bg-blue-50/10 transition-colors">
-                        <td className="px-6 py-3 border-r border-dashed border-gray-100 font-mono text-blue-600">{cleanCode(row.Material)}</td>
-                        <td className="px-6 py-3 border-r border-dashed border-gray-100 text-left uppercase text-slate-500 truncate max-w-[300px] leading-tight">{row.Descripcion || '—'}</td>
-                        <td className="px-4 py-3 border-r border-dashed border-gray-100 text-left text-indigo-600 truncate max-w-[220px]">{row.Categoria || '—'}</td>
-                        <td className="px-3 py-3 border-r border-dashed border-gray-100">{row.Centro}</td>
-                        <td className="px-3 py-3 border-r border-dashed border-gray-100 text-purple-700 font-black bg-purple-50/30">{row.ClaseAprovisionam || '—'}</td>
-                        <td className="px-3 py-3 border-r border-dashed border-gray-100 font-mono text-green-700 bg-green-50/30">{formatNum(row.stockKg, 1)}</td>
-                        <td className="px-3 py-3 border-r border-dashed border-gray-100 font-mono text-blue-500 bg-blue-50/30">{row.loteMin > 0 ? formatNum(row.stockUN, 2) : '—'}</td>
-                        <td className="px-3 py-3 border-r border-dashed border-gray-100 font-mono text-amber-700 bg-amber-50/30">{row.loteMin > 0 ? formatNum(row.loteMin, 0) : '—'}</td>
-                        <td className="px-3 py-3 border-r border-dashed border-gray-100 font-mono text-amber-700 bg-amber-50/30">{row.loteMax > 0 ? formatNum(row.loteMax, 0) : '—'}</td>
+                      <tr key={i} className="hover:bg-gray-50/50 transition-colors">
+                        <td className="px-6 py-3 border-r border-gray-100 font-mono text-blue-600">{cleanCode(row.Material)}</td>
+                        <td className="px-6 py-3 border-r border-gray-100 text-left uppercase text-slate-500 truncate max-w-[300px] leading-tight">{row.Descripcion || '—'}</td>
+                        <td className="px-4 py-3 border-r border-gray-100 text-left text-indigo-600 truncate max-w-[220px]">{row.Categoria || '—'}</td>
+                        <td className="px-3 py-3 border-r border-gray-100">{row.Centro}</td>
+                        <td className="px-3 py-3 border-r border-gray-100 text-purple-700 font-black bg-purple-50/30">{row.ClaseAprovisionam || '—'}</td>
+                        <td className="px-3 py-3 border-r border-gray-100 font-mono text-green-700 bg-green-50/30">{formatNum(row.stockKg, 1)}</td>
+                        <td className="px-3 py-3 border-r border-gray-100 font-mono text-blue-500 bg-blue-50/30">{row.loteMin > 0 ? formatNum(row.stockUN, 2) : '—'}</td>
+                        <td className="px-3 py-3 border-r border-gray-100 font-mono text-amber-700 bg-amber-50/30">{row.loteMin > 0 ? formatNum(row.loteMin, 0) : '—'}</td>
+                        <td className="px-3 py-3 border-r border-gray-100 font-mono text-amber-700 bg-amber-50/30">{row.loteMax > 0 ? formatNum(row.loteMax, 0) : '—'}</td>
                         <td className="px-3 py-3 text-[9px] text-blue-600 uppercase font-black">{row.RespCtrlProd || '—'}</td>
                       </tr>
                     ))

@@ -17,7 +17,9 @@ export interface Auth {
   token: string;
   expiresIn: string;
   user:User;
-  perfiles: any;
+  // Shape not defined by the backend contract used in this app; field is carried through
+  // but never read anywhere in the codebase (verified via repo-wide search for `perfiles`).
+  perfiles: unknown[];
 }
 export interface Ausentismo {
     codigo_ausentismo: number;
@@ -81,7 +83,7 @@ export interface DetalleTactico {
     estado: string;
     fecha_modificacion: Date;
     usuario_modificacion: string;
-    plan_grupo?: PlanGrupo;
+    codigo_plan_grupo_padre:number;
 }
 
 export interface Detalles {
