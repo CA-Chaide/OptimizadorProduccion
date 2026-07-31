@@ -139,7 +139,16 @@ const NAVIGATION_ITEMS = [
   { id: ActiveView.CONFIGURACIONES_GRUPO_OPERADORES, label: 'Grupo - Operadores', icon: <PersonnelIcon />, href: '/dashboard/configuraciones/grupo-operadores' },
 ];
 
-// Items que van dentro de la sección "Opciones" (contraíble)
+// Items que van dentro de la sección "Programación Táctica" (contraíble, abierta por defecto) — los
+// únicos 4 módulos tácticos vigentes para efectos de presentación.
+export const TACTICAL_ITEMS: ActiveView[] = [
+  ActiveView.TACTICAL_SCHEDULING_ESPUMAS,
+  ActiveView.TACTICAL_SCHEDULING_FORMULACION,
+  ActiveView.TACTICAL_SCHEDULING_VENTA_EXTERNA,
+  ActiveView.TACTICAL_SCHEDULING_CORTE_LAMINADO,
+];
+
+// Items que van dentro de la sección "Opciones" (contraíble, cerrada por defecto)
 export const OPCIONES_ITEMS: ActiveView[] = [
   ActiveView.DATA_IMPORT_V2,
   ActiveView.ABSENTEEISM,
@@ -147,10 +156,6 @@ export const OPCIONES_ITEMS: ActiveView[] = [
   ActiveView.MAINTENANCE,
   ActiveView.MAESTRO_MATERIALES_BRUTOS,
   ActiveView.VERSIONES_FABRICACION,
-  ActiveView.TACTICAL_SCHEDULING_ESPUMAS,
-  ActiveView.TACTICAL_SCHEDULING_FORMULACION,
-  ActiveView.TACTICAL_SCHEDULING_VENTA_EXTERNA,
-  ActiveView.TACTICAL_SCHEDULING_CORTE_LAMINADO,
   ActiveView.WORK_SHIFT_PLANNING,
   ActiveView.DICTIONARY,
 ];
