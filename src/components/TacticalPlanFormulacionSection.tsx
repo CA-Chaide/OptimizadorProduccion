@@ -130,6 +130,24 @@ const CURADO_SPACES: CuradoSpaceConfig[] = [
     // así que este espacio no filtra por esa columna (a diferencia de LEADER).
     corridaproceso: [],
   },
+  // T8 y Looper: no son líneas de producción del bloque (como Leader/Cofama), son los DESTINOS de
+  // consumo tras el curado (estadoTras "A" + destino: AT8 = a T8, AL = a Looper) — confirmado con el
+  // usuario. Mismo Maquina/corridaproceso que Leader (F_BLOQ / "1") en el 100% de los registros
+  // reales verificados.
+  {
+    key: 't8',
+    title: 'BLOQUE FORMULADO — DESTINO T8',
+    estado: 'AT8',
+    maquina: 'F_BLOQ',
+    corridaproceso: ['1'],
+  },
+  {
+    key: 'looper',
+    title: 'BLOQUE FORMULADO — DESTINO LOOPER',
+    estado: 'AL',
+    maquina: 'F_BLOQ',
+    corridaproceso: ['1'],
+  },
 ];
 
 const matchesCuradoSpace = (row: RawApiRow, space: CuradoSpaceConfig): boolean => {
@@ -793,8 +811,14 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         fechaDisponible = format(disp, 'yyyy-MM-dd');
         disponible = todayStr >= fechaDisponible;
       }
-      return { __raw: row, __fechaFabTime: fab ? fab.getTime() : 0, __fechaDisponible: fechaDisponible, __disponible: disponible };
+      const unidades = safeNum(getProp(row, ['CantidadStock', 'CANTIDADSTOCK', 'CANTIDAD_STOCK']));
+      return { __raw: row, __fechaFabTime: fab ? fab.getTime() : 0, __fechaDisponible: fechaDisponible, __disponible: disponible, __unidades: unidades };
     }).sort((a, b) => a.__fechaFabTime - b.__fechaFabTime);
+
+    // Totales en unidades (CantidadStock por registro) — disponible = ya pasó CURADO_DIAS_ESPERA
+    // desde fabricación; pendiente = todavía dentro de la ventana de curado.
+    const unidadesDisponible = filtered.filter(r => r.__disponible).reduce((s, r) => s + r.__unidades, 0);
+    const unidadesPendiente = filtered.filter(r => !r.__disponible).reduce((s, r) => s + r.__unidades, 0);
 
     const filterLabel = `ESTADO=${space.estado} · MAQUINA=${space.maquina}`
       + (space.corridaproceso.length > 0 ? ` · CORRIDAPROCESO=${space.corridaproceso.join(' / ')}` : ' · CORRIDAPROCESO=(todas, por combinación)');
@@ -823,8 +847,12 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
 
     return (
       <div className="space-y-2">
-        <div className="px-2 flex items-baseline justify-between flex-wrap gap-1">
-          <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{space.title} ({filtered.length})</h4>
+        <div className="px-2 flex items-baseline justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{space.title} ({filtered.length})</h4>
+            <span className="text-[9px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 rounded-full px-3 py-1">Disponible: {formatNum(unidadesDisponible, 1)} UN</span>
+            <span className="text-[9px] font-black uppercase tracking-wider bg-amber-50 text-amber-700 rounded-full px-3 py-1">Pendiente Curado: {formatNum(unidadesPendiente, 1)} UN</span>
+          </div>
           <p className="text-[9px] font-bold text-slate-300 uppercase tracking-widest">Filtro: {filterLabel}</p>
         </div>
         <div className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white text-left mb-8">
