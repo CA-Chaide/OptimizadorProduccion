@@ -6,7 +6,7 @@ import { serviciosService } from '@/services/servicios.service';
 import { planGrupoService } from '@/services/plangrupo.service';
 import { detalleTacticoService } from '@/services/detalletactico.service';
 import { useAppContext } from '@/context/AppProvider';
-import { Layers, Loader2, PlayCircle, LayoutGrid, PackageSearch, Clock, Gauge, Sun, Moon, RefreshCw, Stethoscope, Plus, X, CheckSquare, FileSpreadsheet, Save, TriangleAlert, MinusCircle, Lightbulb, RotateCcw } from 'lucide-react';
+import { Layers, Loader2, PlayCircle, LayoutGrid, PackageSearch, Clock, Gauge, Sun, Moon, RefreshCw, Stethoscope, Plus, X, CheckSquare, FileSpreadsheet, Save, TriangleAlert, MinusCircle, Lightbulb, RotateCcw, CheckCircle2, Circle } from 'lucide-react';
 import { Table, TableHeader, TableBody, TableFooter, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,6 +15,7 @@ import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogAction } from '@/components/ui/alert-dialog';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 import type { Restriccion, Grupo, PlanGrupo, DetalleTactico } from '@/types/interfaces';
 
@@ -44,10 +45,10 @@ const TURNOS_PM: { id: TurnoId; label: string; startTime: string; icon: typeof S
 
 // Duraciones de jornada posibles para cualquiera de los dos turnos (la de 11.7h es para demanda alta / sobretiempo)
 const SHIFT_DURATIONS_PM = [
-    { id: '8.7h', label: '8.7 horas', hours: 8.7 },
-    { id: '9.7h', label: '9.7 horas', hours: 9.7 },
-    { id: '10.7h', label: '10.7 horas', hours: 10.7 },
-    { id: '11.7h', label: '11.7 horas (Demanda Alta)', hours: 11.7 },
+    { id: '8.7h', label: '8.7 horas / 07:00 a 15:45', hours: 8.7 },
+    { id: '9.7h', label: '9.7 horas / 07:00 a 17:00', hours: 9.7 },
+    { id: '10.7h', label: '10.7 horas / 07:00 a 18:00', hours: 10.7 },
+    { id: '11.7h', label: '11.7 horas / 07:00 a 19:00 (Demanda Alta)', hours: 11.7 },
 ] as const;
 
 // Rango de utilización de capacidad considerado eficiente (ni mucho déficit ni mucho desperdicio). Fuera
@@ -66,6 +67,23 @@ const addHoursToTime = (startTime: string, hours: number): string => {
 
 // Centro de fabricación de Planchas Mixtas para la Planificación (Quito)
 const CENTRO_PLANIFICACION_PM = '1000';
+
+// Una fila por cada fuente de datos que fetchAllData descarga en secuencia, para la ventana de progreso
+// de "Actualizar Datos" (mismo patrón que "Planificación Táctica Muebles")
+interface LoadStage {
+    key: string;
+    label: string;
+    current: number;
+    total: number;
+    status: 'pending' | 'loading' | 'done';
+}
+
+const LOAD_STAGE_DEFS: Array<Pick<LoadStage, 'key' | 'label'>> = [
+    { key: 'previsionales', label: 'Órdenes Previsionales' },
+    { key: 'fert', label: 'Órdenes Fert' },
+    { key: 'tiempos', label: 'Tiempos de Ensamblado' },
+    { key: 'inventario', label: 'Inventario' },
+];
 
 // Plancha Mixta Equivalente: unidad de medida estándar del área (1 equivalente = 5.38 minutos de fabricación)
 const MINUTOS_POR_PLANCHA_EQUIVALENTE = 5.38;
@@ -188,6 +206,9 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
     const [materialStockActualMap, setMaterialStockActualMap] = useState<Map<string, number>>(new Map());
     const [isLoading, setIsLoading] = useState(false);
     const [downloadProgress, setDownloadProgress] = useState({ current: 0, total: 0 });
+    // Estado de la ventana de progreso de "Actualizar Datos": una fila por cada fuente que fetchAllData
+    // descarga en secuencia, para mostrar en tiempo real cuál está en curso y su avance.
+    const [loadStages, setLoadStages] = useState<LoadStage[]>(() => LOAD_STAGE_DEFS.map(d => ({ ...d, current: 0, total: 0, status: 'pending' as const })));
 
     // Configuración de los dos turnos: habilitado, duración de jornada y mesas asignadas a cada uno.
     // Por defecto solo el Turno Día está habilitado (con las 5 mesas), ya que es lo usual.
@@ -251,13 +272,20 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
     // Confirmación antes de reiniciar toda la configuración y el progreso de la planificación en curso
     const [showNuevaPlanificacionConfirm, setShowNuevaPlanificacionConfirm] = useState(false);
 
+    const updateLoadStage = (key: string, patch: Partial<LoadStage>) => {
+        setLoadStages(prev => prev.map(s => (s.key === key ? { ...s, ...patch } : s)));
+    };
+
     const fetchAllData = async () => {
         setIsLoading(true);
         setDownloadProgress({ current: 0, total: 0 });
+        setLoadStages(LOAD_STAGE_DEFS.map(d => ({ ...d, current: 0, total: 0, status: 'pending' as const })));
         try {
             // Órdenes Previsionales (todo el dataset; se filtra por RESPCONTROLPROD según "validRespCodes" en el cliente)
+            updateLoadStage('previsionales', { status: 'loading' });
             const provExplore = await serviciosService.getOrdenesProvisionalesAlphaPaginados(1, 1);
             const totalProv = provExplore.totalRegistros || 0;
+            updateLoadStage('previsionales', { total: totalProv });
             let combinedProv: any[] = [];
             if (totalProv > 0) {
                 const BATCH = 20000;
@@ -267,16 +295,20 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
                     if (res.data) {
                         combinedProv = combinedProv.concat(Array.isArray(res.data) ? res.data : [res.data]);
                         setDownloadProgress({ current: combinedProv.length, total: totalProv });
+                        updateLoadStage('previsionales', { current: combinedProv.length });
                     }
                 }
             }
             setAllPrevisionalRaw(combinedProv);
+            updateLoadStage('previsionales', { status: 'done', current: totalProv });
 
             // Órdenes Fert (todo el dataset; se filtra por RESPCTRLPROD según "validRespCodes" en el cliente). Necesarias
             // porque algunas órdenes de Planchas Mixtas se liberan con fecha de mañana por el horizonte
             // de planificación, y deben tomarse en cuenta igual que las Previsionales.
+            updateLoadStage('fert', { status: 'loading' });
             const fertExplore = await serviciosService.getOrdenesFert(1, 1);
             const totalFert = fertExplore.totalRegistros || 0;
+            updateLoadStage('fert', { total: totalFert });
             let combinedFert: any[] = [];
             if (totalFert > 0) {
                 const BATCH = 20000;
@@ -285,18 +317,23 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
                     const res = await serviciosService.getOrdenesFert(i, BATCH);
                     if (res.data) {
                         combinedFert = combinedFert.concat(Array.isArray(res.data) ? res.data : [res.data]);
+                        updateLoadStage('fert', { current: combinedFert.length });
                     }
                 }
             }
             setAllFertRaw(combinedFert);
+            updateLoadStage('fert', { status: 'done', current: totalFert });
 
             // Tiempos de Ensamblado (global), usados para calcular horas requeridas por material
+            updateLoadStage('tiempos', { status: 'loading' });
             const tiemposExplore = await serviciosService.getTiemposEnsamblado(1, 1);
             const totalTiempos = tiemposExplore.totalRegistros || 0;
+            updateLoadStage('tiempos', { total: totalTiempos });
             if (totalTiempos > 0) {
                 const BATCH = 20000;
                 const pages = Math.ceil(totalTiempos / BATCH);
                 const tMap = new Map<string, number>();
+                let processedTiempos = 0;
                 for (let i = 1; i <= pages; i++) {
                     const res = await serviciosService.getTiemposEnsamblado(i, BATCH);
                     if (res.data) {
@@ -308,21 +345,27 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
                                 tMap.set(material, tiempo);
                             }
                         });
+                        processedTiempos += items.length;
+                        updateLoadStage('tiempos', { current: processedTiempos });
                     }
                 }
                 setGlobalTiemposMap(tMap);
             }
+            updateLoadStage('tiempos', { status: 'done', current: totalTiempos });
 
             // Cubo de Inventarios: RespCtrlProd de cada componente (Explosión de Materiales: Láminas de
             // Espuma '013' / Láminas Prensadas '017') y Stock Actual (bruto, sumado por Material a través
             // de todos los Centros — mismo campo/criterio que usa el kardex de Muebles) para el kardex
+            updateLoadStage('inventario', { status: 'loading' });
             const invExplore = await serviciosService.getCuboInventarios(1, 1);
             const totalInv = invExplore.totalRegistros || 0;
+            updateLoadStage('inventario', { total: totalInv });
             if (totalInv > 0) {
                 const BATCH = 20000;
                 const pages = Math.ceil(totalInv / BATCH);
                 const respMap = new Map<string, string>();
                 const stockMap = new Map<string, number>();
+                let processedInv = 0;
                 for (let i = 1; i <= pages; i++) {
                     const res = await serviciosService.getCuboInventarios(i, BATCH);
                     if (res.data) {
@@ -336,11 +379,14 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
                             const actual = Number(item.StockActual) || 0;
                             stockMap.set(material, (stockMap.get(material) || 0) + actual);
                         });
+                        processedInv += items.length;
+                        updateLoadStage('inventario', { current: processedInv });
                     }
                 }
                 setMaterialRespCtrlProdMap(respMap);
                 setMaterialStockActualMap(stockMap);
             }
+            updateLoadStage('inventario', { status: 'done', current: totalInv });
 
             addNotification('success', 'Datos de Planchas Mixtas cargados correctamente.');
         } catch (error) {
@@ -353,6 +399,18 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
     useEffect(() => {
         fetchAllData();
     }, []);
+
+    // Progreso general de la ventana de estado de "Actualizar Datos": promedio simple del avance de
+    // cada una de las 4 etapas (cada una pesa lo mismo, sin importar cuántos registros tenga)
+    const overallLoadPercent = useMemo(() => {
+        if (loadStages.length === 0) return 0;
+        const sum = loadStages.reduce((acc, s) => {
+            if (s.status === 'done') return acc + 100;
+            if (s.status === 'loading' && s.total > 0) return acc + Math.min(100, (s.current / s.total) * 100);
+            return acc;
+        }, 0);
+        return Math.round(sum / loadStages.length);
+    }, [loadStages]);
 
     // Vuelve a descargar las órdenes previsionales/Fert (y tiempos/inventario) desde SAP, y descarta los
     // resultados ya calculados para que se recalculen con la información fresca. Si ya existía una
@@ -1961,6 +2019,61 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
                     {isSavingPlan ? 'Guardando Plan...' : 'Guardar Plan Táctico'}
                 </button>
             )}
+
+            {/* Ventana de progreso de "Actualizar Datos" (misma que "Planificación Táctica Muebles") */}
+            <Dialog open={isLoading}>
+                <DialogContent
+                    className="max-w-md"
+                    hideCloseButton
+                    onInteractOutside={(e) => e.preventDefault()}
+                    onEscapeKeyDown={(e) => e.preventDefault()}
+                >
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <Loader2 className="w-5 h-5 animate-spin text-indigo-600" />
+                            Actualizando datos desde SAP...
+                        </DialogTitle>
+                        <DialogDescription>
+                            No cierre ni recargue la página mientras se descargan y cruzan los datos.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-4 py-2">
+                        <div>
+                            <div className="flex justify-between text-xs font-bold text-gray-600 mb-1">
+                                <span>Progreso general</span>
+                                <span>{overallLoadPercent}%</span>
+                            </div>
+                            <Progress value={overallLoadPercent} />
+                        </div>
+
+                        <ul className="space-y-2.5">
+                            {loadStages.map(stage => (
+                                <li key={stage.key} className="flex items-center gap-2.5 text-xs">
+                                    {stage.status === 'done' ? (
+                                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                                    ) : stage.status === 'loading' ? (
+                                        <Loader2 className="w-4 h-4 animate-spin text-indigo-600 shrink-0" />
+                                    ) : (
+                                        <Circle className="w-4 h-4 text-gray-300 shrink-0" />
+                                    )}
+                                    <span className={cn(
+                                        'flex-1',
+                                        stage.status === 'done' ? 'text-gray-500' : stage.status === 'loading' ? 'font-bold text-gray-800' : 'text-gray-400'
+                                    )}>
+                                        {stage.label}
+                                    </span>
+                                    {stage.status !== 'pending' && (
+                                        <span className="text-gray-400 tabular-nums">
+                                            {stage.current.toLocaleString()}{stage.total > 0 ? ` / ${stage.total.toLocaleString()}` : ''}
+                                        </span>
+                                    )}
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                </DialogContent>
+            </Dialog>
 
             {/* No existe un Plan Táctico guardado para hoy: confirmar antes de proceder */}
             <AlertDialog open={planCheckModal?.type === 'not-found'} onOpenChange={(open) => !open && setPlanCheckModal(null)}>
