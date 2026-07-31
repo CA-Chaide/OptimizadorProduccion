@@ -154,9 +154,9 @@ interface ConsolidatedNeedRow extends NecesidadPlantaRow {
   area: string;
 }
 
-// Respuesta P3 (tab "Respuesta P3"): por cada material que Necesidades Planta (P2, hoy solo Venta
-// Externa) pide en un centro dado, responde con lo que YA está en Órdenes Provisionales para ese
-// centro, o 0 si no hay ninguna (sin fallback a stock todavía, ver provisionalKgPorMaterialUIO/GYE).
+// Respuesta P3 (tab "Respuesta P3"): por cada material que Necesidades Planta (P2) pide en un centro
+// dado, responde con la cascada FERT > Provisional > Stock (ver respuestaSalidaRowsPorCentro), o
+// "Sin dato" si ninguna fuente lo cubre.
 interface RespuestaP3Row {
   material: string;
   descripcion: string;
@@ -454,7 +454,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const [, setGrupos] = useState<Grupo[]>([]);
   const [necesidadesPlantaData, setNecesidadesPlantaData] = useState<Record<string, NecesidadPlantaRow[]>>({});
   const [necesidadesPlantaLoading, setNecesidadesPlantaLoading] = useState(false);
-  const [planPreviewP3, setPlanPreviewP3] = useState<PlanGrupoPreviewEspuma | null>(null);
+  // Array en vez de un solo objeto para poder cubrir 1 centro (botón por centro) o ambos a la vez
+  // (botón general "Generar Respuesta P3 (Ambos Centros)") con el mismo diálogo de confirmación.
+  const [planPreviewP3, setPlanPreviewP3] = useState<PlanGrupoPreviewEspuma[] | null>(null);
   const [isSavingPlanP3, setIsSavingPlanP3] = useState(false);
 
   // Pre-auditoría Provisionales/FERT: cruza codigo_material contra TODAS las filas ya cargadas en
@@ -752,28 +754,11 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const fertAuditUIO = useMemo(() => auditMapper(getFilteredData(ordenesFert, '1000', selectedDatesFert, 'past'), '1000'), [auditMapper, getFilteredData, ordenesFert, selectedDatesFert]);
   const fertAuditGYE = useMemo(() => auditMapper(getFilteredData(ordenesFert, '2000', selectedDatesFert, 'past'), '2000'), [auditMapper, getFilteredData, ordenesFert, selectedDatesFert]);
 
-  // Respuesta P3: cantidad "ya planificada" por material, en Kg — suma el peso de las Órdenes
-  // Provisionales vigentes (provAuditUIO/GYE, ya filtradas por centro/responsables permitidos/fechas
-  // seleccionadas) agrupado por material. Alcance actual (2026-07-30): NO incluye FERT ni fallback a
-  // stock disponible — eso queda pendiente para cuando el flujo esté más estable; un material sin
-  // Provisional que lo cubra queda en 0 (ver respuestaSalidaRowsPorCentro).
-  const provisionalKgPorMaterialUIO = useMemo(() => {
-    const map = new Map<string, number>();
-    provAuditUIO.forEach(r => map.set(r.material, (map.get(r.material) || 0) + r.peso));
-    return map;
-  }, [provAuditUIO]);
-
-  const provisionalKgPorMaterialGYE = useMemo(() => {
-    const map = new Map<string, number>();
-    provAuditGYE.forEach(r => map.set(r.material, (map.get(r.material) || 0) + r.peso));
-    return map;
-  }, [provAuditGYE]);
-
   // Fechas P2 (fecha_inicio_plan) por material y centro, con su ÁREA de origen — puede haber varias
   // si el material aparece en más de un P2 (distintos orígenes/fechas). Se usa para acotar qué
-  // órdenes FERT "responden" a cuál necesidad (ver fertKgPorMaterialPorCentro): una orden FERT solo
-  // cuenta si su fecha cae dentro de la tolerancia de ESA área (fechaOrdenCoincideConP2) respecto a AL
-  // MENOS una de estas fechas.
+  // órdenes FERT/Provisionales "responden" a cuál necesidad (ver fertKgPorMaterialPorCentro,
+  // provisionalKgPorMaterialPorCentro): una orden solo cuenta si su fecha cae dentro de la tolerancia
+  // de ESA área (fechaOrdenCoincideConP2) respecto a AL MENOS una de estas fechas.
   const fechasP2PorMaterialPorCentro = useMemo(() => {
     const porCentro: Record<string, Map<string, { fecha: string; area: string }[]>> = { '1000': new Map(), '2000': new Map() };
     Object.entries(necesidadesPlantaData).forEach(([area, rows]) => {
@@ -789,13 +774,55 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return porCentro;
   }, [necesidadesPlantaData]);
 
+  // Respuesta P3: mismo problema que motivó fertAuditAllUIO/GYE, pero sin corregir hasta ahora —
+  // provAuditUIO/GYE (usadas por el tab "Provisionales") dependen de selectedDatesProv, el calendario
+  // de ESE tab, ajeno a la necesidad puntual del P2. Se arma aquí su propia versión sin ese filtro,
+  // recorriendo TODO ordenesProvisionales por centro.
+  const provAuditAllUIO = useMemo(
+    () => auditMapper(ordenesProvisionales.filter(o => String(getProp(o, ['Centro', 'CENTRO', 'centro'])).trim() === '1000'), '1000'),
+    [auditMapper, ordenesProvisionales]
+  );
+  const provAuditAllGYE = useMemo(
+    () => auditMapper(ordenesProvisionales.filter(o => String(getProp(o, ['Centro', 'CENTRO', 'centro'])).trim() === '2000'), '2000'),
+    [auditMapper, ordenesProvisionales]
+  );
+
+  // Respuesta P3: cantidad "ya planificada" por material vía Órdenes Provisionales, en Kg — mismo
+  // criterio que fertKgPorMaterialPorCentro (responsable permitido + fechaOrdenCoincideConP2 contra
+  // la ventana real del P2). Antes solo exigía "fecha ≥ hoy" sin techo ni relación con la fecha del
+  // P2: verificado con datos reales, de 75 provisionales que calzaban por material+responsable, solo
+  // 7 caían dentro de la ventana del P2 que decían responder — las otras 68 contaban igual aunque
+  // estuvieran a semanas/meses de distancia (ej. material 30000160: P2 pide 04-ago, se le acreditaba
+  // una provisional del 08-sep). Al exigir la misma ventana que FERT, un material sin provisional
+  // real que lo cubra cae a Stock o queda en 0 (ver respuestaSalidaRowsPorCentro).
+  const provisionalKgPorMaterialPorCentro = useMemo(() => {
+    const porCentro: Record<string, Map<string, number>> = { '1000': new Map(), '2000': new Map() };
+
+    const procesar = (centro: '1000' | '2000', rows: UnifiedRow[]) => {
+      const allowed = ALLOWED_RESP_CORTE[centro] || [];
+      const fechasPorMaterial = fechasP2PorMaterialPorCentro[centro];
+      const map = porCentro[centro];
+      rows.forEach(r => {
+        if (!allowed.includes(r.responsable)) return;
+        const candidatosP2 = fechasPorMaterial?.get(r.material);
+        if (!candidatosP2 || candidatosP2.length === 0) return;
+        const coincide = candidatosP2.some(c => fechaOrdenCoincideConP2(r.fecha, c.area, c.fecha, todayStr));
+        if (!coincide) return;
+        map.set(r.material, (map.get(r.material) || 0) + r.peso);
+      });
+    };
+
+    procesar('1000', provAuditAllUIO);
+    procesar('2000', provAuditAllGYE);
+    return porCentro;
+  }, [provAuditAllUIO, provAuditAllGYE, fechasP2PorMaterialPorCentro, todayStr]);
+
   // Respuesta P3: cantidad "ya planificada" por material vía Órdenes FERT, emparejadas contra la
   // fecha del P2 que responden (fechasP2PorMaterialPorCentro) dentro de la tolerancia de SU área
   // (fechaOrdenCoincideConP2) — caso real que motivó esto: Venta Externa #78 (material 30005466,
   // 2026-08-03, 12 unidades) tiene su orden FERT #000062753914 exactamente en esa fecha con la misma
   // cantidad, pero no se cruzaba contra el P2 (decisión previa: FERT solo alimentaba horas de
-  // Capacidad Operativa). A diferencia de provisionalKgPorMaterialUIO/GYE (sin exigir coincidencia de
-  // fecha), esta SÍ valida la ventana.
+  // Capacidad Operativa). provisionalKgPorMaterialPorCentro (más arriba) aplica el mismo criterio.
   //
   // El peso (Kg) sale de auditMapper (mismo cálculo que ya usan Provisionales/FERT en sus tabs de
   // auditoría): match directo contra kpiLooperData si existe, o fórmula volumétrica (ancho×largo×
@@ -899,7 +926,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const respuestaSalidaRowsPorCentro = useCallback((centro: '1000' | '2000'): RespuestaP3Row[] => {
     const necesidadMap = materialNecesidadesPlantaMapPorCentro[centro];
     const origenesMap = materialOrigenesPlantaMapPorCentro[centro];
-    const provisionalMap = centro === '1000' ? provisionalKgPorMaterialUIO : provisionalKgPorMaterialGYE;
+    const provisionalMap = provisionalKgPorMaterialPorCentro[centro];
     const fertMap = fertKgPorMaterialPorCentro[centro];
     const stockMap = stockKgPorMaterialPorCentro[centro];
 
@@ -930,7 +957,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     // muestra solo los "Sin dato" y da la falsa impresión de que todo devuelve 0 — caso real: 148 de
     // 182 materiales sí tenían respuesta, pero quedaban ocultos tras hacer scroll).
     }).sort((a, b) => Number(b.tienePlan) - Number(a.tienePlan));
-  }, [materialNecesidadesPlantaMapPorCentro, materialOrigenesPlantaMapPorCentro, provisionalKgPorMaterialUIO, provisionalKgPorMaterialGYE, fertKgPorMaterialPorCentro, stockKgPorMaterialPorCentro, materialDescMap]);
+  }, [materialNecesidadesPlantaMapPorCentro, materialOrigenesPlantaMapPorCentro, provisionalKgPorMaterialPorCentro, fertKgPorMaterialPorCentro, stockKgPorMaterialPorCentro, materialDescMap]);
 
   // Reparte cantidadKg de un material entre sus planes P2 origen, proporcional a la necesidad que
   // cada uno aportó — mismo criterio que getOrigenesProrrateo de Corte y Laminado, pero SIN redondeo a
@@ -1120,16 +1147,15 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   // Paso 1 de la Respuesta P3: arma la vista previa de lo que se va a grabar para UN centro y abre el
   // diálogo de confirmación. No llama a ningún servicio todavía — mismo patrón de dos pasos que
   // "Guardar Plan" en Corte y Laminado (handleOpenGuardarPlan/handleConfirmGuardarPlan).
-  const handleAbrirRespuestaP3 = useCallback((centro: '1000' | '2000') => {
+  // Arma la vista previa de UN centro — no toca el estado, la decisión de abrir el diálogo (y con
+  // qué centros) queda en manos de quien llama (handleAbrirRespuestaP3 / handleAbrirRespuestaP3Todos).
+  const construirPreviewP3 = useCallback((centro: '1000' | '2000'): PlanGrupoPreviewEspuma | null => {
     const rows = respuestaSalidaRowsPorCentro(centro);
-    if (rows.length === 0) {
-      addNotification('warning', `No hay materiales de Necesidades Planta para el Centro ${centro}.`);
-      return;
-    }
+    if (rows.length === 0) return null;
     // El P3 es la RESPUESTA del día siguiente a la revisión — mismo criterio de negocio que Laminado:
     // su fecha_inicio_plan/fecha_fin_plan se fuerza siempre a hoy + 1 día.
     const fechaRespuesta = format(addDays(new Date(), 1), 'yyyy-MM-dd');
-    setPlanPreviewP3({
+    return {
       centro,
       codigo_grupo: CODIGO_GRUPO_ESPUMA,
       nombreGrupo: 'Corte Espuma',
@@ -1137,68 +1163,106 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       fechaInicio: fechaRespuesta,
       fechaFin: fechaRespuesta,
       rows
-    });
-  }, [respuestaSalidaRowsPorCentro, addNotification]);
+    };
+  }, [respuestaSalidaRowsPorCentro]);
 
-  // Paso 2: el usuario confirmó en el diálogo. Crea un único PlanGrupo (grupo 7 = Corte Espuma, del
-  // centro elegido) y, por cada material de la vista previa (incluidos los de cantidad 0 — a
-  // diferencia del "Guardar Plan" base de Laminado, aquí SÍ se conservan para dejar constancia de qué
-  // quedó sin Provisional que lo cubra), uno o más DetalleTactico vía getOrigenesProrrateoEspuma.
+  const handleAbrirRespuestaP3 = useCallback((centro: '1000' | '2000') => {
+    const preview = construirPreviewP3(centro);
+    if (!preview) {
+      addNotification('warning', `No hay materiales de Necesidades Planta para el Centro ${centro}.`);
+      return;
+    }
+    setPlanPreviewP3([preview]);
+  }, [construirPreviewP3, addNotification]);
+
+  // Botón general: arma la vista previa de AMBOS centros en un solo diálogo — un centro sin
+  // materiales de Necesidades Planta simplemente no aparece (no bloquea al otro).
+  const handleAbrirRespuestaP3Todos = useCallback(() => {
+    const previews = (['1000', '2000'] as const)
+      .map(centro => construirPreviewP3(centro))
+      .filter((p): p is PlanGrupoPreviewEspuma => p !== null);
+    if (previews.length === 0) {
+      addNotification('warning', 'No hay materiales de Necesidades Planta en ningún centro.');
+      return;
+    }
+    setPlanPreviewP3(previews);
+  }, [construirPreviewP3, addNotification]);
+
+  // Paso 2: el usuario confirmó en el diálogo. Por cada centro de la vista previa (uno solo si vino
+  // del botón por centro, hasta dos si vino del botón general "Ambos Centros"), crea su propio
+  // PlanGrupo (grupo 7 = Corte Espuma, del centro correspondiente) y, por cada material (incluidos
+  // los de cantidad 0 — a diferencia del "Guardar Plan" base de Laminado, aquí SÍ se conservan para
+  // dejar constancia de qué quedó sin Provisional que lo cubra), uno o más DetalleTactico vía
+  // getOrigenesProrrateoEspuma. Un centro que falle no bloquea al otro — se reporta por separado.
   const handleConfirmarRespuestaP3 = useCallback(async () => {
-    if (!planPreviewP3) return;
+    if (!planPreviewP3 || planPreviewP3.length === 0) return;
     setIsSavingPlanP3(true);
     try {
       const user = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('user') || '{}') : {};
       const usuario = user?.name || 'admin';
 
-      const planPayload = {
-        codigo_plan_grupo: 0,
-        codigo_grupo: planPreviewP3.codigo_grupo,
-        codigo_familia_grupo: null,
-        codigo_plan: null,
-        valor: planPreviewP3.valor,
-        fecha_inicio_plan: planPreviewP3.fechaInicio,
-        fecha_fin_plan: planPreviewP3.fechaFin,
-        estado: 'A',
-        usuario_creacion: usuario,
-      };
+      const resultadosPorCentro: string[] = [];
+      let huboError = false;
 
-      const planResponse = await planGrupoService.save(planPayload as unknown as PlanGrupo);
-      const nuevoCodigoPlanGrupo = planResponse.data.codigo_plan_grupo;
+      for (const preview of planPreviewP3) {
+        try {
+          const planPayload = {
+            codigo_plan_grupo: 0,
+            codigo_grupo: preview.codigo_grupo,
+            codigo_familia_grupo: null,
+            codigo_plan: null,
+            valor: preview.valor,
+            fecha_inicio_plan: preview.fechaInicio,
+            fecha_fin_plan: preview.fechaFin,
+            estado: 'A',
+            usuario_creacion: usuario,
+          };
 
-      let exitosos = 0;
-      let fallidos = 0;
+          const planResponse = await planGrupoService.save(planPayload as unknown as PlanGrupo);
+          const nuevoCodigoPlanGrupo = planResponse.data.codigo_plan_grupo;
 
-      for (const row of planPreviewP3.rows) {
-        const splits = getOrigenesProrrateoEspuma(row.material, row.cantidadKg, planPreviewP3.centro, nuevoCodigoPlanGrupo);
-        for (const split of splits) {
-          try {
-            const detallePayload = {
-              codigo_detalle_tactico: 0,
-              codigo_material: Number(row.material),
-              cantidad_produccion_neta: Math.round(split.cantidadKg).toFixed(0),
-              resp_ctrl_prod: '',
-              clase_aprovisionamiento: 'E',
-              cantidad_aprovisionamiento: 0,
-              estado: 'A',
-              codigo_plan_grupo: nuevoCodigoPlanGrupo,
-              codigo_plan_grupo_padre: split.codigoPadre,
-              usuario_modificacion: usuario,
-            };
-            await detalleTacticoService.save(detallePayload as unknown as DetalleTactico);
-            exitosos++;
-          } catch (e) {
-            console.warn(`[Respuesta P3 Espuma] Falló material ${row.material} (padre ${split.codigoPadre}):`, (e as Error).message);
-            fallidos++;
+          let exitosos = 0;
+          let fallidos = 0;
+
+          for (const row of preview.rows) {
+            const splits = getOrigenesProrrateoEspuma(row.material, row.cantidadKg, preview.centro, nuevoCodigoPlanGrupo);
+            for (const split of splits) {
+              try {
+                const detallePayload = {
+                  codigo_detalle_tactico: 0,
+                  codigo_material: Number(row.material),
+                  cantidad_produccion_neta: Math.round(split.cantidadKg).toFixed(0),
+                  resp_ctrl_prod: '',
+                  clase_aprovisionamiento: 'E',
+                  cantidad_aprovisionamiento: 0,
+                  estado: 'A',
+                  codigo_plan_grupo: nuevoCodigoPlanGrupo,
+                  codigo_plan_grupo_padre: split.codigoPadre,
+                  usuario_modificacion: usuario,
+                };
+                await detalleTacticoService.save(detallePayload as unknown as DetalleTactico);
+                exitosos++;
+              } catch (e) {
+                console.warn(`[Respuesta P3 Espuma] Falló material ${row.material} (padre ${split.codigoPadre}, centro ${preview.centro}):`, (e as Error).message);
+                fallidos++;
+              }
+            }
           }
+
+          if (fallidos === 0) {
+            resultadosPorCentro.push(`Centro ${preview.centro}: ${exitosos} materiales en Plan Grupo #${nuevoCodigoPlanGrupo}.`);
+          } else {
+            huboError = true;
+            resultadosPorCentro.push(`Centro ${preview.centro}: ${exitosos} guardados, ${fallidos} fallaron (Plan Grupo #${nuevoCodigoPlanGrupo}).`);
+          }
+        } catch (e) {
+          huboError = true;
+          resultadosPorCentro.push(`Centro ${preview.centro}: error al crear el Plan Grupo — ${(e as Error).message}`);
         }
       }
 
-      if (fallidos === 0) {
-        addNotification('success', `Respuesta P3 (Centro ${planPreviewP3.centro}) guardada: ${exitosos} materiales registrados en el Plan Grupo #${nuevoCodigoPlanGrupo}.`);
-      } else {
-        addNotification('warning', `Plan Grupo #${nuevoCodigoPlanGrupo} creado. ${exitosos} materiales guardados, ${fallidos} fallaron.`);
-      }
+      const mensaje = `Respuesta P3 guardada. ${resultadosPorCentro.join(' | ')}`;
+      addNotification(huboError ? 'warning' : 'success', mensaje);
       fetchNecesidadesPlanta();
       setPlanPreviewP3(null);
     } catch (e) {
@@ -1653,6 +1717,14 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             )}
           </TabsContent>
           <TabsContent value="respuestaP3" className="animate-in fade-in duration-300 space-y-8 text-left">
+            <div className="flex items-center justify-end">
+              <Button
+                onClick={handleAbrirRespuestaP3Todos}
+                className="bg-slate-900 hover:bg-slate-800 text-white rounded-xl h-9 px-5 text-[10px] font-black uppercase tracking-widest shadow-lg flex items-center gap-2"
+              >
+                <Save className="w-4 h-4" /> Generar Respuesta P3 (Ambos Centros)
+              </Button>
+            </div>
             {(['1000', '2000'] as const).map(centro => {
               const rows = respuestaSalidaRowsPorCentro(centro);
               const nombrePlanta = centro === '1000' ? 'UIO' : 'GYE';
@@ -1679,7 +1751,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <tr>
                           <th className="px-6 py-3 border-r border-gray-100 text-left">Material</th>
                           <th className="px-6 py-3 border-r border-gray-100 text-left">Descripción</th>
-                          <th className="px-6 py-3 border-r border-gray-100 font-black bg-yellow-50/50 text-yellow-700">Cantidad (Kg)</th>
+                          <th className="px-6 py-3 border-r border-gray-100 font-black bg-yellow-50/50 text-yellow-700">Cantidad (Kg / UN)</th>
                           <th className="px-6 py-3 border-r border-gray-100">Fuente</th>
                           <th className="px-6 py-3 border-r border-gray-100">Estado</th>
                           <th className="px-6 py-3">Plan(es) Grupo Origen (P2)</th>
@@ -1837,34 +1909,38 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             </DialogDescription>
           </DialogHeader>
           {planPreviewP3 && (
-            <div className="space-y-4 text-left text-sm">
-              <div className="grid grid-cols-2 gap-3 bg-slate-50 rounded-xl p-4 border border-slate-100">
-                <div><span className="font-black text-slate-500 text-[10px] uppercase block">Grupo</span>{planPreviewP3.nombreGrupo} (código {planPreviewP3.codigo_grupo})</div>
-                <div><span className="font-black text-slate-500 text-[10px] uppercase block">Centro</span>{planPreviewP3.centro}</div>
-                <div><span className="font-black text-slate-500 text-[10px] uppercase block">Valor Plan</span>{planPreviewP3.valor}</div>
-                <div><span className="font-black text-slate-500 text-[10px] uppercase block">Fecha Respuesta</span>{planPreviewP3.fechaInicio}</div>
-              </div>
-              <div>
-                <span className="font-black text-slate-500 text-[10px] uppercase block mb-2">Materiales a guardar ({planPreviewP3.rows.length})</span>
-                <div className="border border-slate-100 rounded-xl overflow-hidden max-h-[260px] overflow-y-auto">
-                  <table className="w-full text-[11px] border-collapse">
-                    <thead className="bg-gray-50 text-gray-400 uppercase font-bold sticky top-0">
-                      <tr>
-                        <th className="px-3 py-2 text-left">Material</th>
-                        <th className="px-3 py-2 text-right">Cantidad (Kg)</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50">
-                      {planPreviewP3.rows.map((row, i) => (
-                        <tr key={i}>
-                          <td className="px-3 py-2 text-left font-mono">{row.material}</td>
-                          <td className="px-3 py-2 text-right font-mono">{formatNum(row.cantidadKg, 0)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+            <div className="space-y-6 text-left text-sm">
+              {planPreviewP3.map((preview, idx) => (
+                <div key={preview.centro} className={cn(idx > 0 && 'pt-6 border-t border-slate-100')}>
+                  <div className="grid grid-cols-2 gap-3 bg-slate-50 rounded-xl p-4 border border-slate-100">
+                    <div><span className="font-black text-slate-500 text-[10px] uppercase block">Grupo</span>{preview.nombreGrupo} (código {preview.codigo_grupo})</div>
+                    <div><span className="font-black text-slate-500 text-[10px] uppercase block">Centro</span>{preview.centro}</div>
+                    <div><span className="font-black text-slate-500 text-[10px] uppercase block">Valor Plan</span>{preview.valor}</div>
+                    <div><span className="font-black text-slate-500 text-[10px] uppercase block">Fecha Respuesta</span>{preview.fechaInicio}</div>
+                  </div>
+                  <div className="mt-3">
+                    <span className="font-black text-slate-500 text-[10px] uppercase block mb-2">Materiales a guardar ({preview.rows.length})</span>
+                    <div className="border border-slate-100 rounded-xl overflow-hidden max-h-[260px] overflow-y-auto">
+                      <table className="w-full text-[11px] border-collapse">
+                        <thead className="bg-gray-50 text-gray-400 uppercase font-bold sticky top-0">
+                          <tr>
+                            <th className="px-3 py-2 text-left">Material</th>
+                            <th className="px-3 py-2 text-right">Cantidad (Kg / UN)</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                          {preview.rows.map((row, i) => (
+                            <tr key={i}>
+                              <td className="px-3 py-2 text-left font-mono">{row.material}</td>
+                              <td className="px-3 py-2 text-right font-mono">{formatNum(row.cantidadKg, 0)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              ))}
             </div>
           )}
           <DialogFooter>
