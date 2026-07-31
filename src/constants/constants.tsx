@@ -146,6 +146,12 @@ export const OPCIONES_ITEMS: ActiveView[] = [
   ActiveView.DICTIONARY,
 ];
 
+// Items que van dentro de la sección "Proyectos" (contraíble)
+export const PROYECTOS_ITEMS: ActiveView[] = [
+  ActiveView.TACTICAL_SCHEDULING_MUEBLES,
+  ActiveView.TACTICAL_SCHEDULING_PLANCHAS_MIXTAS,
+];
+
 // Items que van dentro de la sección "Parámetros" (contraíble)
 export const PARAMETROS_ITEMS: ActiveView[] = [
   ActiveView.PARAMETROS,

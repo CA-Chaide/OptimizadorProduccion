@@ -1,10 +1,19 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Image from 'next/image';
+import { usePathname } from 'next/navigation';
 import { MainNav } from '@/components/main-nav';
 import { Toaster } from "@/components/ui/toaster";
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { TacticalPlanMueblesSection, TacticalPlanPlanchasMixtasSection } from '@/components';
+
+// Rutas de los dos "Proyectos" cuyo estado se debe conservar al navegar entre ellos (y hacia/desde
+// cualquier otra página). Se mantienen SIEMPRE montados (solo ocultos con CSS) una vez visitados, en
+// vez de dejar que Next.js los desmonte al cambiar de ruta — así no se pierde el progreso de la
+// planificación en curso de ninguno de los dos al ir y volver.
+const MUEBLES_PATH = '/dashboard/opciones/programacion-tactica-muebles';
+const PLANCHAS_MIXTAS_PATH = '/dashboard/opciones/programacion-tactica-planchas-mixtas';
 
 export default function DashboardLayout({
   children,
@@ -12,6 +21,23 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const pathname = usePathname();
+  const isMueblesActive = pathname === MUEBLES_PATH;
+  const isPlanchasMixtasActive = pathname === PLANCHAS_MIXTAS_PATH;
+
+  // Una vez que el usuario visita cada Proyecto, se marca como "visitado" y a partir de ahí se
+  // mantiene montado (oculto con CSS si no es el activo) para toda la sesión. Antes de la primera
+  // visita no se monta, para no pagar el costo de descarga de datos de un Proyecto que nunca se abrió.
+  const [visitedMuebles, setVisitedMuebles] = useState(isMueblesActive);
+  const [visitedPlanchasMixtas, setVisitedPlanchasMixtas] = useState(isPlanchasMixtasActive);
+
+  useEffect(() => {
+    if (isMueblesActive) setVisitedMuebles(true);
+    if (isPlanchasMixtasActive) setVisitedPlanchasMixtas(true);
+  }, [isMueblesActive, isPlanchasMixtasActive]);
+
+  const isPersistedProjectRoute = isMueblesActive || isPlanchasMixtasActive;
+
   return (
     <div className="flex h-screen bg-gray-100">
       {/* Sidebar */}
@@ -47,7 +73,21 @@ export default function DashboardLayout({
       {/* Main content */}
       <div className="flex flex-col flex-1 overflow-y-auto">
         <div className="p-4">
-          {children}
+          {visitedMuebles && (
+            <div className={isMueblesActive ? '' : 'hidden'}>
+              <div className="container mx-auto py-4">
+                <TacticalPlanMueblesSection />
+              </div>
+            </div>
+          )}
+          {visitedPlanchasMixtas && (
+            <div className={isPlanchasMixtasActive ? '' : 'hidden'}>
+              <div className="container mx-auto py-4">
+                <TacticalPlanPlanchasMixtasSection />
+              </div>
+            </div>
+          )}
+          {!isPersistedProjectRoute && children}
         </div>
       </div>
       <Toaster />

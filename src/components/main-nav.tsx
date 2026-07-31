@@ -3,10 +3,10 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ActiveView, viewConfig, OPCIONES_ITEMS, PARAMETROS_ITEMS, CONFIGURACIONES_ITEMS } from '@/constants/constants';
+import { ActiveView, viewConfig, OPCIONES_ITEMS, PARAMETROS_ITEMS, CONFIGURACIONES_ITEMS, PROYECTOS_ITEMS } from '@/constants/constants';
 import { useAppContext } from '@/context/AppProvider';
 import { cn } from '@/lib/utils';
-import { Loader2, ChevronDown, ChevronRight, LayoutDashboard, Settings, Folder } from 'lucide-react';
+import { Loader2, ChevronDown, ChevronRight, LayoutDashboard, Settings, Folder, Briefcase } from 'lucide-react';
 
 interface CollapsibleSectionProps {
   title: string;
@@ -95,7 +95,8 @@ export function MainNav({ className, isCollapsed = false, ...props }: Readonly<R
   const pathname = usePathname();
   const [mounted, setMounted] = useState(false);
   
-  const [opcionesOpen, setOpcionesOpen] = useState(true);
+  const [proyectosOpen, setProyectosOpen] = useState(true);
+  const [opcionesOpen, setOpcionesOpen] = useState(false);
   const [parametrosOpen, setParametrosOpen] = useState(false);
   const [configuracionesOpen, setConfiguracionesOpen] = useState(false);
 
@@ -131,6 +132,18 @@ export function MainNav({ className, isCollapsed = false, ...props }: Readonly<R
         <LayoutDashboard className="h-5 w-5" />
         {!isCollapsed && <span className="flex-1">Dashboard</span>}
       </Link>
+
+      {/* Proyectos - sección contraíble */}
+      <CollapsibleSection
+        title="Proyectos"
+        icon={<Briefcase className="h-5 w-5" />}
+        items={PROYECTOS_ITEMS}
+        isOpen={proyectosOpen}
+        onToggle={() => setProyectosOpen(!proyectosOpen)}
+        pathname={pathname}
+        isLoading={isLoading}
+        isCollapsed={isCollapsed}
+      />
 
       {/* Opciones - sección contraíble */}
       <CollapsibleSection

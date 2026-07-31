@@ -6,7 +6,7 @@ import { serviciosService } from '@/services/servicios.service';
 import { planGrupoService } from '@/services/plangrupo.service';
 import { detalleTacticoService } from '@/services/detalletactico.service';
 import { useAppContext } from '@/context/AppProvider';
-import { Layers, Loader2, PlayCircle, LayoutGrid, PackageSearch, Clock, Gauge, Sun, Moon, RefreshCw, Stethoscope, Plus, X, CheckSquare, FileSpreadsheet, Save, TriangleAlert, MinusCircle, Lightbulb } from 'lucide-react';
+import { Layers, Loader2, PlayCircle, LayoutGrid, PackageSearch, Clock, Gauge, Sun, Moon, RefreshCw, Stethoscope, Plus, X, CheckSquare, FileSpreadsheet, Save, TriangleAlert, MinusCircle, Lightbulb, RotateCcw } from 'lucide-react';
 import { Table, TableHeader, TableBody, TableFooter, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -248,6 +248,9 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
     >(null);
     const [isPlanCheckBusy, setIsPlanCheckBusy] = useState(false);
 
+    // Confirmación antes de reiniciar toda la configuración y el progreso de la planificación en curso
+    const [showNuevaPlanificacionConfirm, setShowNuevaPlanificacionConfirm] = useState(false);
+
     const fetchAllData = async () => {
         setIsLoading(true);
         setDownloadProgress({ current: 0, total: 0 });
@@ -367,6 +370,39 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
         addNotification('info', eraRecalculo
             ? 'Datos actualizados desde SAP. Presione "PASO 2: RECALCULAR PLANIFICACIÓN AJUSTADA" para recalcular con la información más reciente.'
             : 'Datos actualizados desde SAP. Vuelva a presionar "EJECUTAR PLANIFICACIÓN" para recalcular.');
+    };
+
+    // Reinicia toda la configuración y el progreso de la planificación en curso (turnos, mesas, citas
+    // médicas, descuentos de capacidad, planificación calculada, distribución y explosión de materiales)
+    // para empezar una nueva desde cero. Los datos ya descargados de SAP NO se vuelven a descargar — para
+    // eso está "Actualizar Datos". Mismo patrón que "Planificación Nueva" en Planificación Táctica Muebles.
+    const handleNuevaPlanificacion = () => {
+        setTurnoEnabled({ dia: true, noche: false });
+        setTurnoDuration({ dia: SHIFT_DURATIONS_PM[0].id, noche: SHIFT_DURATIONS_PM[0].id });
+        setTurnoStations({ dia: new Set(WORK_STATIONS_PM.map(s => s.id)), noche: new Set() });
+        setMedicalAppointments([]);
+        setShowMedicalForm(false);
+        setMedicalNombre('');
+        setMedicalHoras('');
+        setMedicalTurno('dia');
+        setCapacityDiscounts([]);
+        setShowDiscountForm(false);
+        setDiscountRazon('');
+        setDiscountHoras('');
+        setDiscountTurno('dia');
+        setRejectedFillIds(new Set());
+        setHasPlanned(false);
+        setPmDistribution(null);
+        setIsExplodingMaterials(false);
+        setLaminaEspumaResults([]);
+        setLaminaPrensadaResults([]);
+        setIsRecalculatingPlan(false);
+        setIsSavingPlan(false);
+        setPlanCheckModal(null);
+        setIsPlanCheckBusy(false);
+        setSelectedProposalId(null);
+        setShowNuevaPlanificacionConfirm(false);
+        addNotification('info', 'Planificación reiniciada. Puede comenzar una nueva desde cero.');
     };
 
     // Órdenes de Planchas Mixtas (RESPCTRLPROD/RESPCONTROLPROD según la restricción "RespCtrlProd" del
@@ -1207,6 +1243,15 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
                     </div>
                     <div className="flex items-center gap-2">
                         <Button
+                            onClick={() => setShowNuevaPlanificacionConfirm(true)}
+                            variant="outline"
+                            title="Reinicia turnos, mesas, citas médicas, descuentos, planificación, distribución y explosión de materiales para empezar de cero."
+                            className="border-amber-300 text-amber-700 hover:bg-amber-50 font-bold gap-2"
+                        >
+                            <RotateCcw className="w-4 h-4" />
+                            Planificación Nueva
+                        </Button>
+                        <Button
                             onClick={() => setShowMedicalForm(v => !v)}
                             variant="outline"
                             className="border-amber-300 text-amber-700 hover:bg-amber-50 font-bold gap-2"
@@ -2024,6 +2069,27 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
                     )}
                 </DialogContent>
             </Dialog>
+
+            {/* Confirmación antes de reiniciar toda la planificación en curso */}
+            <AlertDialog open={showNuevaPlanificacionConfirm} onOpenChange={setShowNuevaPlanificacionConfirm}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle className="flex items-center gap-2 text-amber-700">
+                            <RotateCcw className="w-5 h-5" />
+                            ¿Iniciar una Planificación Nueva?
+                        </AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Esto reinicia los turnos habilitados, las mesas escogidas, las citas médicas, los descuentos de capacidad, la
+                            planificación calculada, la distribución de mesas y la explosión de materiales de esta sesión. No se borra
+                            nada de lo ya guardado en SAP ni en Plan Táctico — solo el progreso que no ha guardado todavía.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <Button variant="outline" onClick={() => setShowNuevaPlanificacionConfirm(false)}>CANCELAR</Button>
+                        <AlertDialogAction onClick={handleNuevaPlanificacion}>SÍ, EMPEZAR DE NUEVO</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 };

@@ -1,16 +1,9 @@
-'use client';
-
-import React from 'react';
-import { TacticalPlanPlanchasMixtasSection } from '@/components';
-
 /**
  * Página de Programación Táctica de Planchas Mixtas.
- * Renderiza el componente de sección correspondiente.
+ * El contenido real se renderiza desde el layout del dashboard (ver src/app/dashboard/layout.tsx),
+ * para mantener montado el componente (y su estado) al navegar hacia otras páginas y volver. Esta
+ * página no necesita renderizar nada por sí misma.
  */
 export default function ProgramacionTacticaPlanchasMixtasPage() {
-  return (
-    <div className="container mx-auto py-4">
-      <TacticalPlanPlanchasMixtasSection />
-    </div>
-  );
+  return null;
 }

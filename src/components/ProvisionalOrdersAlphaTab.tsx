@@ -46,11 +46,41 @@ const WORK_TABLES = Array.from({ length: 14 }, (_, i) => ({
   name: `MESA DE TRABAJO ${i + 1}`
 }));
 
-// Horarios de trabajo disponibles para la planificación táctica
+type TableAssignments = Record<number, { person: string; percentage: string }>;
+
+// Persistencia (localStorage, por Centro) de la última asignación de personal por mesa guardada
+// exitosamente, para pre-cargarla por defecto en la siguiente planificación y evitar reasignar
+// manualmente cada vez. El usuario siempre puede cambiar a la persona de cualquier mesa después.
+const TABLE_ASSIGNMENTS_STORAGE_PREFIX = 'tacticalPlanMuebles_lastTableAssignments_';
+
+const getTableAssignmentsStorageKey = (centro: string): string => `${TABLE_ASSIGNMENTS_STORAGE_PREFIX}Centro${centro}`;
+
+const saveLastTableAssignments = (centro: string, assignments: TableAssignments): void => {
+  try {
+    localStorage.setItem(getTableAssignmentsStorageKey(centro), JSON.stringify(assignments));
+  } catch (error) {
+    console.error('[TableAssignments] Error guardando en localStorage:', error);
+  }
+};
+
+const loadLastTableAssignments = (centro: string): TableAssignments => {
+  try {
+    const stored = localStorage.getItem(getTableAssignmentsStorageKey(centro));
+    if (stored) return JSON.parse(stored) as TableAssignments;
+  } catch (error) {
+    console.error('[TableAssignments] Error leyendo de localStorage:', error);
+  }
+  return {};
+};
+
+// Horarios de trabajo disponibles para la planificación táctica.
+// displayEndTime: hora de fin que se MUESTRA al usuario (menú de horario y línea de fin de turno del
+// Diagrama de Gantt). Es puramente visual — endTime (usado en el cálculo de solapamiento con
+// Mantenimientos Preventivos) y hoursPerTable (usado en el cálculo de capacidad) NO cambian.
 const SHIFT_SCHEDULES = [
-  { id: '8h', label: '8 horas / 07:00 - 16:45', hoursPerTable: 6.96, startTime: '07:00', endTime: '16:45' },
-  { id: '9h', label: '9 horas / 07:00 - 17:00', hoursPerTable: 7.83, startTime: '07:00', endTime: '17:00' },
-  { id: '10h', label: '10 horas / 07:00 a 18:00', hoursPerTable: 6.96, startTime: '07:00', endTime: '18:00' },
+  { id: '8h', label: '8 horas / 07:00 - 15:45', hoursPerTable: 6.96, startTime: '07:00', endTime: '16:45', displayEndTime: '15:45' },
+  { id: '9h', label: '9 horas / 07:00 - 17:00', hoursPerTable: 7.83, startTime: '07:00', endTime: '17:00', displayEndTime: '17:00' },
+  { id: '10h', label: '10 horas / 07:00 a 18:00', hoursPerTable: 6.96, startTime: '07:00', endTime: '18:00', displayEndTime: '18:00' },
 ] as const;
 
 // Ecuador (America/Guayaquil) está en UTC-5 todo el año, sin horario de verano
@@ -263,6 +293,22 @@ interface LargeOrderAlert {
 // Escala fija del eje X del Diagrama de Gantt de capacidad (en horas)
 const GANTT_HOURS_SCALE = 12;
 
+// "HH:MM" -> minutos totales desde medianoche
+const parseHHMM = (time: string): number => {
+    const [h, m] = time.split(':').map(Number);
+    return h * 60 + m;
+};
+
+// Hora real de reloj (formato "HH:MM") correspondiente a un offset en horas desde el inicio del
+// turno seleccionado, usada para etiquetar el eje X del Diagrama de Gantt con horas reales en vez
+// de un conteo genérico "0h, 2h, ...".
+const formatShiftClockLabel = (shiftStartTime: string, offsetHours: number): string => {
+    const totalMinutes = parseHHMM(shiftStartTime) + Math.round(offsetHours * 60);
+    const hh = Math.floor(totalMinutes / 60);
+    const mm = totalMinutes % 60;
+    return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+};
+
 interface MesaScheduleItem {
     order: UnifiedOrder;
     startHour: number;
@@ -398,7 +444,7 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
 
     // Estado para el personal disponible (Habilidades) y las asignaciones por mesa
     const [personnelRaw, setPersonnelRaw] = useState<any[]>([]);
-    const [tableAssignments, setTableAssignments] = useState<Record<number, { person: string; percentage: string }>>({});
+    const [tableAssignments, setTableAssignments] = useState<TableAssignments>({});
 
     // Estado para los Mantenimientos Preventivos Programados (verificación de disponibilidad de mesas)
     const [maintenanceRaw, setMaintenanceRaw] = useState<any[]>([]);
@@ -1465,6 +1511,7 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
             const targetKey = toDateKey(planningTargetDate);
             const existing = (res.data || []).find(p => {
                 if (p.codigo_grupo !== mueblesGrupo.codigo_grupo) return false;
+                if (p.estado !== 'A') return false;
                 if (!/P1\.3\s*$|P1\.5\s*$|P2\s*$|PFSM\s*$/i.test(String(p.valor || '').trim())) return false;
                 return toDateKey(new Date(p.fecha_inicio_plan)) === targetKey;
             });
@@ -1480,7 +1527,25 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
     // "PROCEDER" (no existía plan) o "Borrar y disponer del espacio" (sí existía): confirma la selección
     // de mesas y continúa con el flujo normal de planificación.
     const confirmChooseTables = () => {
-        setChosenTables(Array.from(activeTables).sort((a, b) => a - b));
+        const tables = Array.from(activeTables).sort((a, b) => a - b);
+        setChosenTables(tables);
+
+        // Pre-carga la asignación de personal por mesa de la última planificación guardada
+        // exitosamente para este Centro, para no tener que reasignar cada vez. El usuario
+        // puede cambiar la persona de cualquier mesa normalmente después.
+        if (mueblesGrupo?.centro) {
+            const lastAssignments = loadLastTableAssignments(mueblesGrupo.centro);
+            setTableAssignments(prev => {
+                const next = { ...prev };
+                tables.forEach(tableId => {
+                    if (!next[tableId] && lastAssignments[tableId]) {
+                        next[tableId] = lastAssignments[tableId];
+                    }
+                });
+                return next;
+            });
+        }
+
         setPlanCheckModal(null);
     };
 
@@ -1503,18 +1568,30 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
     const handleDeleteExistingPlan = async () => {
         if (!planCheckModal || planCheckModal.type !== 'found') return;
         const { planGrupo } = planCheckModal;
+        if (!mueblesGrupo || !planningTargetDate) return;
 
         setIsPlanCheckBusy(true);
         try {
-            const detallesRes = await detalleTacticoService.getAll();
-            const detalles = (detallesRes.data || []).filter(d => d.codigo_plan_grupo === planGrupo.codigo_plan_grupo);
-            await Promise.all(detalles.map(d => detalleTacticoService.delete(d.codigo_detalle_tactico)));
-            await planGrupoService.delete(planGrupo.codigo_plan_grupo);
+            // No se borra físicamente: se pasa de estado 'A' (activo) a 'I' (inactivo) para
+            // conservar el historial y que el administrador de planes sepa cuál usar si se
+            // repite la misma fecha objetivo. Se marcan TODOS los PlanGrupo hermanos de esa
+            // fecha (P1.3/P1.5/P2/PFSM), no solo el que disparó el modal, con el mismo filtro
+            // usado en handleChooseTables.
+            const res = await planGrupoService.getAll();
+            const targetKey = toDateKey(planningTargetDate);
+            const planesADesactivar = (res.data || []).filter(p => {
+                if (p.codigo_grupo !== mueblesGrupo.codigo_grupo) return false;
+                if (p.estado !== 'A') return false;
+                if (!/P1\.3\s*$|P1\.5\s*$|P2\s*$|PFSM\s*$/i.test(String(p.valor || '').trim())) return false;
+                return toDateKey(new Date(p.fecha_inicio_plan)) === targetKey;
+            });
 
-            addNotification('success', `Plan Táctico anterior (${planGrupo.valor}) eliminado. Puede continuar con la nueva planificación.`);
+            await Promise.all(planesADesactivar.map(p => planGrupoService.save({ ...p, estado: 'I' })));
+
+            addNotification('success', `Plan Táctico anterior (${planGrupo.valor}) marcado como inactivo. Puede continuar con la nueva planificación.`);
             confirmChooseTables();
         } catch (error) {
-            addNotification('error', `Error al eliminar el plan guardado: ${(error as Error).message}`);
+            addNotification('error', `Error al desactivar el plan guardado: ${(error as Error).message}`);
         } finally {
             setIsPlanCheckBusy(false);
         }
@@ -1978,7 +2055,18 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
         });
 
         sortedOrders.forEach(order => {
-            const candidates = eligibleMesaIds.filter(id => mesaAcceptsMaterial(id, order.sector, order.tamano));
+            let candidates = eligibleMesaIds.filter(id => mesaAcceptsMaterial(id, order.sector, order.tamano));
+
+            // Válvula de alivio: si la Línea 1 (Línea de Camas) ya no tiene capacidad disponible en
+            // ninguna de sus mesas habituales, se habilita la MESA DE TRABAJO 13 (normalmente de
+            // Línea 2 – Muebles) como mesa adicional para colocar el excedente de camas.
+            if (order.sector === SECTOR_CAMAS && eligibleMesaIds.includes(13) && !candidates.includes(13)) {
+                const sinEspacioEnLinea1 = candidates.every(id => (remaining.get(id) ?? 0) <= 0);
+                if (sinEspacioEnLinea1) {
+                    candidates = [...candidates, 13];
+                }
+            }
+
             if (candidates.length === 0) {
                 unassigned.push(order);
                 return;
@@ -2492,6 +2580,12 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
                     hayP2 ? `P2 (${foamExplosionResults.length} detalle(s))` : null,
                 ].filter(Boolean);
             addNotification('success', `${esPasoFinal ? 'Plan Táctico Final guardado' : 'Plan Táctico guardado'}: ${partes.join(', ')}.`);
+
+            // Guarda la asignación de personal por mesa de esta planificación para pre-cargarla
+            // por defecto en la próxima (ver confirmChooseTables).
+            if (mueblesGrupo?.centro) {
+                saveLastTableAssignments(mueblesGrupo.centro, tableAssignments);
+            }
         } catch (error) {
             console.error('Error al guardar el Plan Táctico:', error);
             addNotification('error', `Error al guardar el Plan Táctico: ${(error as Error).message}`);
@@ -3280,72 +3374,111 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
                                 <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-red-200 border border-red-300 inline-block" /> Grande</span>
                                 <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-emerald-200 border border-emerald-300 inline-block" /> Mediano</span>
                                 <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-blue-200 border border-blue-300 inline-block" /> Pequeño</span>
-                                <span className="inline-flex items-center gap-1.5 text-gray-400">
-                                    <span className="w-3 border-t-2 border-dashed border-gray-400 inline-block" /> Límite de capacidad de la mesa
+                                <span className="inline-flex items-center gap-1.5 text-gray-600">
+                                    <span className="w-3 border-t-[3px] border-dashed border-slate-600 inline-block" /> Límite de capacidad de la mesa
+                                </span>
+                                <span className="inline-flex items-center gap-1.5 text-gray-600">
+                                    <span className="w-3 border-t-4 border-slate-900 inline-block" /> Fin de turno ({selectedShiftConfig.displayEndTime})
                                 </span>
                             </div>
 
-                            {(['Línea 1 – Línea de Camas', 'Línea 2 – Línea de Muebles'] as const).map(linea => {
-                                const mesasLinea = Array.from(mesaDistribution.values()).filter(m => m.linea === linea);
-                                if (mesasLinea.length === 0) return null;
+                            {(() => {
+                                const shiftDurationHours = (parseHHMM(selectedShiftConfig.displayEndTime) - parseHHMM(selectedShiftConfig.startTime)) / 60;
+                                const endShiftLeftPct = shiftDurationHours > 0 && shiftDurationHours <= GANTT_HOURS_SCALE
+                                    ? (shiftDurationHours / GANTT_HOURS_SCALE) * 100
+                                    : null;
 
                                 return (
-                                    <div key={linea} className="space-y-3">
-                                        <h4 className="text-xs font-extrabold text-gray-700 uppercase tracking-wide border-b border-dashed border-gray-300 pb-1">{linea}</h4>
-                                        {mesasLinea.map(mesa => (
-                                            <div key={mesa.tableId} className="flex items-stretch gap-3">
-                                                <div className="w-44 shrink-0 flex flex-col justify-center">
-                                                    <p className="text-xs font-bold text-gray-800">{WORK_TABLES.find(t => t.id === mesa.tableId)?.name ?? `MESA ${mesa.tableId}`}</p>
-                                                    <p className="text-[10px] text-gray-500 font-mono">{mesa.usedHours.toFixed(2)} / {mesa.capacityHours.toFixed(2)} h</p>
-                                                </div>
-                                                <div className="flex-1">
-                                                    <div className="relative h-10 bg-gray-50 border border-gray-200 rounded-md overflow-hidden">
-                                                        {mesa.capacityHours > 0 && mesa.capacityHours <= GANTT_HOURS_SCALE && (
-                                                            <div
-                                                                className="absolute top-0 bottom-0 border-l-2 border-dashed border-gray-400 z-10"
-                                                                style={{ left: `${(mesa.capacityHours / GANTT_HOURS_SCALE) * 100}%` }}
-                                                                title={`Límite de capacidad: ${mesa.capacityHours.toFixed(2)} h`}
-                                                            />
-                                                        )}
-                                                        {mesa.items.map((item, idx) => {
-                                                            const left = (item.startHour / GANTT_HOURS_SCALE) * 100;
-                                                            const width = ((item.endHour - item.startHour) / GANTT_HOURS_SCALE) * 100;
-                                                            const colorClass = item.order.tamano === 'Grande'
-                                                                ? 'bg-red-200 border-red-300 text-red-800'
-                                                                : item.order.tamano === 'Mediano'
-                                                                    ? 'bg-emerald-200 border-emerald-300 text-emerald-800'
-                                                                    : 'bg-blue-200 border-blue-300 text-blue-800';
+                                    <div className="relative">
+                                        {endShiftLeftPct !== null && (
+                                            <div
+                                                className="pointer-events-none absolute top-0 bottom-0 z-30 border-r-4 border-slate-900"
+                                                style={{ left: `calc(11.75rem + (100% - 16rem) * ${endShiftLeftPct / 100})` }}
+                                                title={`Fin de turno: ${selectedShiftConfig.displayEndTime}`}
+                                            />
+                                        )}
+
+                                        <div className="space-y-6">
+                                            {(['Línea 1 – Línea de Camas', 'Línea 2 – Línea de Muebles'] as const).map(linea => {
+                                                const mesasLinea = Array.from(mesaDistribution.values()).filter(m => m.linea === linea);
+                                                if (mesasLinea.length === 0) return null;
+
+                                                return (
+                                                    <div key={linea} className="space-y-3">
+                                                        <h4 className="text-xs font-extrabold text-gray-700 uppercase tracking-wide border-b border-dashed border-gray-300 pb-1">{linea}</h4>
+                                                        {mesasLinea.map(mesa => {
+                                                            const utilizacionPct = mesa.capacityHours > 0 ? (mesa.usedHours / mesa.capacityHours) * 100 : 0;
                                                             return (
-                                                                <div
-                                                                    key={`${item.order.source}-${item.order.id}-${item.order.material}-${idx}`}
-                                                                    className={cn(
-                                                                        "absolute top-0.5 bottom-0.5 border rounded-sm px-1 flex items-center overflow-hidden",
-                                                                        colorClass,
-                                                                        item.overflow && "ring-2 ring-red-600"
-                                                                    )}
-                                                                    style={{ left: `${left}%`, width: `${Math.max(width, 0.5)}%` }}
-                                                                    title={`${item.order.nombre} (${item.order.material}) — ${item.order.tamano} — ${(item.endHour - item.startHour).toFixed(2)} h${item.overflow ? ' — EXCEDE CAPACIDAD' : ''}`}
-                                                                >
-                                                                    <span className="text-[9px] font-semibold truncate">{item.order.material}</span>
+                                                                <div key={mesa.tableId} className="flex items-stretch gap-3">
+                                                                    <div className="w-44 shrink-0 flex flex-col justify-center">
+                                                                        <p className="text-xs font-bold text-gray-800">{WORK_TABLES.find(t => t.id === mesa.tableId)?.name ?? `MESA ${mesa.tableId}`}</p>
+                                                                        <p className="text-sm font-extrabold text-gray-900 font-mono">{mesa.usedHours.toFixed(2)} / {mesa.capacityHours.toFixed(2)} h</p>
+                                                                    </div>
+                                                                    <div className="flex-1">
+                                                                        <div className="relative h-10 bg-gray-50 border border-gray-200 rounded-md overflow-hidden">
+                                                                            {mesa.capacityHours > 0 && mesa.capacityHours <= GANTT_HOURS_SCALE && (
+                                                                                <div
+                                                                                    className="absolute top-0 bottom-0 border-l-[3px] border-dashed border-slate-600 z-20"
+                                                                                    style={{ left: `${(mesa.capacityHours / GANTT_HOURS_SCALE) * 100}%` }}
+                                                                                    title={`Límite de capacidad: ${mesa.capacityHours.toFixed(2)} h`}
+                                                                                />
+                                                                            )}
+                                                                            {mesa.items.map((item, idx) => {
+                                                                                const left = (item.startHour / GANTT_HOURS_SCALE) * 100;
+                                                                                const width = ((item.endHour - item.startHour) / GANTT_HOURS_SCALE) * 100;
+                                                                                const colorClass = item.order.tamano === 'Grande'
+                                                                                    ? 'bg-red-200 border-red-300 text-red-800'
+                                                                                    : item.order.tamano === 'Mediano'
+                                                                                        ? 'bg-emerald-200 border-emerald-300 text-emerald-800'
+                                                                                        : 'bg-blue-200 border-blue-300 text-blue-800';
+                                                                                return (
+                                                                                    <div
+                                                                                        key={`${item.order.source}-${item.order.id}-${item.order.material}-${idx}`}
+                                                                                        className={cn(
+                                                                                            "absolute top-0.5 bottom-0.5 border rounded-sm px-1 flex items-center overflow-hidden",
+                                                                                            colorClass,
+                                                                                            item.overflow && "ring-2 ring-red-600"
+                                                                                        )}
+                                                                                        style={{ left: `${left}%`, width: `${Math.max(width, 0.5)}%` }}
+                                                                                        title={`${item.order.nombre} (${item.order.material}) — ${item.order.tamano} — ${(item.endHour - item.startHour).toFixed(2)} h${item.overflow ? ' — EXCEDE CAPACIDAD' : ''}`}
+                                                                                    >
+                                                                                        <span className="text-[9px] font-semibold truncate">{item.order.material}</span>
+                                                                                    </div>
+                                                                                );
+                                                                            })}
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="w-14 shrink-0 flex items-center justify-end">
+                                                                        <span
+                                                                            className={cn(
+                                                                                "text-xs font-extrabold",
+                                                                                utilizacionPct > 100 ? 'text-red-600' : utilizacionPct >= 90 ? 'text-emerald-700' : 'text-gray-600'
+                                                                            )}
+                                                                            title="Utilización: capacidad calculada vs. utilizada"
+                                                                        >
+                                                                            {utilizacionPct.toFixed(0)}%
+                                                                        </span>
+                                                                    </div>
                                                                 </div>
                                                             );
                                                         })}
                                                     </div>
+                                                );
+                                            })}
+
+                                            <div className="flex items-stretch gap-3">
+                                                <div className="w-44 shrink-0" />
+                                                <div className="flex-1 flex justify-between text-[9px] text-gray-400 font-mono px-0.5">
+                                                    {Array.from({ length: GANTT_HOURS_SCALE + 1 }, (_, h) => h).filter(h => h % 2 === 0).map(h => (
+                                                        <span key={h}>{formatShiftClockLabel(selectedShiftConfig.startTime, h)}</span>
+                                                    ))}
                                                 </div>
+                                                <div className="w-14 shrink-0" />
                                             </div>
-                                        ))}
+                                        </div>
                                     </div>
                                 );
-                            })}
-
-                            <div className="flex items-stretch gap-3">
-                                <div className="w-44 shrink-0" />
-                                <div className="flex-1 flex justify-between text-[9px] text-gray-400 font-mono px-0.5">
-                                    {Array.from({ length: GANTT_HOURS_SCALE + 1 }, (_, h) => h).filter(h => h % 2 === 0).map(h => (
-                                        <span key={h}>{h}h</span>
-                                    ))}
-                                </div>
-                            </div>
+                            })()}
 
                             {unassignedDistributionOrders.length > 0 && (
                                 <div className="bg-amber-50 border border-amber-300 rounded-lg p-3">
