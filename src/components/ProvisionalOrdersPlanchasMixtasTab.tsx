@@ -88,10 +88,38 @@ const LOAD_STAGE_DEFS: Array<Pick<LoadStage, 'key' | 'label'>> = [
 // Plancha Mixta Equivalente: unidad de medida estándar del área (1 equivalente = 5.38 minutos de fabricación)
 const MINUTOS_POR_PLANCHA_EQUIVALENTE = 5.38;
 
-// Fecha "hoy + offsetDays" en formato "YYYY-MM-DD"
+// Fecha "hoy + offsetDays" (días CALENDARIO corridos) en formato "YYYY-MM-DD". Solo debe usarse con
+// offsetDays = 0 (hoy); para "mañana"/"pasado mañana" usar getBusinessDateKeyOffset en su lugar, ya que
+// esos sí deben saltar sábado y domingo (mismo criterio que "Planificación Táctica Muebles").
 const getDateKeyOffset = (offsetDays: number): string => {
     const d = new Date();
     d.setDate(d.getDate() + offsetDays);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+};
+
+// Suma N días laborables (omite sábado y domingo) a una fecha — mismo criterio que
+// "Planificación Táctica Muebles" (ver addBusinessDays en ProvisionalOrdersAlphaTab.tsx)
+const addBusinessDays = (date: Date, days: number): Date => {
+    const result = new Date(date);
+    let remaining = days;
+    while (remaining > 0) {
+        result.setDate(result.getDate() + 1);
+        const dayOfWeek = result.getDay();
+        if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+            remaining--;
+        }
+    }
+    return result;
+};
+
+// Fecha "hoy + businessDays días LABORABLES" (omite sábado y domingo) en formato "YYYY-MM-DD". Es lo que
+// realmente significa "mañana"/"pasado mañana" para este módulo: si hoy es viernes, "mañana" (+1 día
+// laborable) es el lunes siguiente, no el sábado.
+const getBusinessDateKeyOffset = (businessDays: number): string => {
+    const d = addBusinessDays(new Date(), businessDays);
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, '0');
     const day = String(d.getDate()).padStart(2, '0');
@@ -473,8 +501,8 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
     //   de planificación estas órdenes siempre se liberan con fecha de un día después.
     const pmOrders = useMemo<PMOrder[]>(() => {
         const todayKey = getDateKeyOffset(0);
-        const tomorrowKey = getDateKeyOffset(1);
-        const dayAfterTomorrowKey = getDateKeyOffset(2);
+        const tomorrowKey = getBusinessDateKeyOffset(1);
+        const dayAfterTomorrowKey = getBusinessDateKeyOffset(2);
         const result: PMOrder[] = [];
 
         allPrevisionalRaw.forEach((row: any) => {
@@ -540,8 +568,8 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
     // mañana, MTO con fecha posterior a pasado mañana (ya que MTO ya cubre hasta pasado mañana como
     // obligatorio). Evita duplicar una misma orden entre "obligatorias" y "candidatas a relleno".
     const futurePmOrders = useMemo<PMOrder[]>(() => {
-        const tomorrowKey = getDateKeyOffset(1);
-        const dayAfterTomorrowKey = getDateKeyOffset(2);
+        const tomorrowKey = getBusinessDateKeyOffset(1);
+        const dayAfterTomorrowKey = getBusinessDateKeyOffset(2);
         return allPrevisionalRaw
             .filter((row: any) => validRespCodes.includes(String(row.RESPCONTROLPROD || '').trim()))
             .filter((row: any) => String(row.Centro || '').trim() === CENTRO_PLANIFICACION_PM)
@@ -1349,9 +1377,9 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
                 <p className="text-[11px] text-gray-500">
                     Planificando con órdenes del <span className="font-bold">Centro 1000 (Quito)</span>, RespCtrlProd{' '}
                     <span className="font-bold">{validRespCodes.length > 0 ? validRespCodes.join('/') : '(sin restricción configurada)'}</span>:
-                    Previsionales MTS (hoy {getDateKeyOffset(0)} o mañana {getDateKeyOffset(1)}), Previsionales MTO "Medidas
-                    Especiales" (mañana {getDateKeyOffset(1)} o pasado mañana {getDateKeyOffset(2)}) y Fert (únicamente mañana,{' '}
-                    {getDateKeyOffset(1)}) —{' '}
+                    Previsionales MTS (hoy {getDateKeyOffset(0)} o mañana {getBusinessDateKeyOffset(1)}), Previsionales MTO "Medidas
+                    Especiales" (mañana {getBusinessDateKeyOffset(1)} o pasado mañana {getBusinessDateKeyOffset(2)}) y Fert (únicamente mañana,{' '}
+                    {getBusinessDateKeyOffset(1)}) —{' '}
                     {pmOrders.length} orden(es) encontrada(s).
                 </p>
 

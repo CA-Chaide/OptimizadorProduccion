@@ -120,7 +120,7 @@ export const TacticalPlanMueblesSection: React.FC = () => {
     // directamente a la pestaña "PLAN TÁCTICO" y disparar "Actualizar Datos" para generar el Paso 3.
     const handleIrAPasoFinal = () => {
         setActiveTab('planTactivo');
-        provisionalOrdersAlphaRef.current?.refreshData();
+        provisionalOrdersAlphaRef.current?.refreshData(true);
     };
 
     useEffect(() => {

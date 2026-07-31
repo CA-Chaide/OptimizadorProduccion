@@ -7,7 +7,7 @@ import { ecuadorHolidaysService } from '@/services/ecuador-holidays.service';
 import { planGrupoService } from '@/services/plangrupo.service';
 import { detalleTacticoService } from '@/services/detalletactico.service';
 import { useAppContext } from '@/context/AppProvider';
-import { Package, Loader2, Search, Clock, Calendar, CalendarDays, LayoutDashboard, History, PlayCircle, Settings2, CheckCircle2, Users, Percent, Wrench, Gauge, Boxes, TriangleAlert, ClipboardCheck, FileSpreadsheet, LayoutGrid, TimerOff, X, Plus, Layers, PackageSearch, Save, CalendarClock, Lightbulb, Building2, Copy, RefreshCw, RotateCcw, Circle } from 'lucide-react';
+import { Package, Loader2, Search, Clock, Calendar, CalendarDays, LayoutDashboard, History, PlayCircle, Settings2, CheckCircle2, Users, Percent, Wrench, Gauge, Boxes, TriangleAlert, ClipboardCheck, FileSpreadsheet, LayoutGrid, TimerOff, X, Plus, Layers, PackageSearch, Save, CalendarClock, Lightbulb, Building2, Copy, RefreshCw, RotateCcw, Circle, Download } from 'lucide-react';
 import { Table, TableHeader, TableBody, TableFooter, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -30,7 +30,7 @@ interface ProvisionalOrdersAlphaTabProps {
 // (ej. "Plan Grupo Recuperado", cuando ya no hay déficit de espuma) puedan disparar "Actualizar Datos"
 // sin que este componente deje de ser dueño de su propio estado de planificación.
 export interface ProvisionalOrdersAlphaTabHandle {
-  refreshData: () => Promise<void>;
+  refreshData: (forcePasoFinal?: boolean) => Promise<void>;
 }
 
 const ROWS_PER_PAGE_OPTIONS = [20, 50, 100, 500];
@@ -160,6 +160,10 @@ const MINUTOS_POR_MUEBLE_EQUIVALENTE = 32.21;
 // Sectores de inventario relevantes para la clasificación de tamaño y la distribución por mesa
 const SECTOR_CAMAS = '02 BASES-CABECERO-CAMA';
 const SECTOR_MUEBLES = '03 MUEBLES FABRICACIÓN';
+
+// Mesas de Línea 2 (Muebles) habilitadas como válvula de alivio para Camas: solo se usan cuando la
+// Línea 1 (Línea de Camas) ya no tiene capacidad disponible en ninguna de sus mesas habituales.
+const CAMAS_OVERFLOW_MESA_IDS = [12, 13];
 
 // Umbrales de clasificación de tamaño por Sector (minutos del tiempo unitario de fabricación)
 const SIZE_THRESHOLDS: Record<string, { pequeñoMax: number; medianoMax: number }> = {
@@ -1327,10 +1331,13 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
     // resultados ya calculados, que quedarían desactualizados frente a cambios hechos externamente en
     // SAP (por ejemplo, mover manualmente una orden de la tabla "Órdenes que se Pueden Mover"). Las mesas
     // escogidas y el personal asignado NO se reinician, ya que son configuración del usuario, no datos de SAP.
-    const handleRefreshData = async () => {
+    const handleRefreshData = async (forcePasoFinal: boolean = false) => {
         // Determina el siguiente paso a partir del paso que produjo la última planificación ejecutada:
         // sin plan previo -> Paso 1; tras Paso 1 -> Paso 2; tras Paso 2 o Paso 3 -> Paso 3 (Final), ya que
         // el Paso 3 se repite hasta que la capacidad de espuma quede resuelta (no hay Paso 4).
+        // Excepción: si "Plan Grupo Recuperado" ya determinó que no hay déficit de espuma, se salta
+        // directo al Paso 3 (forcePasoFinal) sin pasar por el Paso 2, aunque el último paso ejecutado
+        // haya sido el Paso 1.
         const lastStep = planningResult?.planningStepResult ?? 0;
         await fetchAllData();
         setPlanningResult(null);
@@ -1342,7 +1349,7 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
         setCojinExplosionResults([]);
         setTelaExplosionResults([]);
         setCascoExplosionResults([]);
-        const nextStep: 1 | 2 | 3 = lastStep === 0 ? 1 : lastStep === 1 ? 2 : 3;
+        const nextStep: 1 | 2 | 3 = forcePasoFinal ? 3 : lastStep === 0 ? 1 : lastStep === 1 ? 2 : 3;
         setPlanningStep(nextStep);
         addNotification('info',
             nextStep === 3
@@ -1971,6 +1978,35 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
         XLSX.writeFile(workbook, `${fileLabel}_${fechaArchivo}.xlsx`);
     };
 
+    // Genera el archivo .txt para carga en el LSMW de SAP a partir de una tabla de Explosión de
+    // Materiales (Forros/Estructuras/Cojines). Formato por línea:
+    // Componente 1000 ZMOQ Cantidad Neta Requerida (entero) Fecha(DD.MM.AAAA) 1 000
+    // Se excluyen los componentes cuya Cantidad Neta Requerida redondeada sea 0.
+    const exportComponentNeedsToLSMW = (data: FoamComponentNeed[], fileLabel: string) => {
+        if (data.length === 0 || !planningResult) return;
+
+        const fecha = planningResult.targetDate;
+        const fechaTexto = `${String(fecha.getDate()).padStart(2, '0')}.${String(fecha.getMonth() + 1).padStart(2, '0')}.${fecha.getFullYear()}`;
+
+        const lines = data
+            .map(c => ({ ...c, cantidadRedondeada: Math.round(c.cantidadNetaAConseguir) }))
+            .filter(c => c.cantidadRedondeada > 0)
+            .map(c => `${c.componente} 1000 ZMOQ ${c.cantidadRedondeada} ${fechaTexto} 1 000`);
+
+        if (lines.length === 0) return;
+
+        const blob = new Blob([lines.join('\r\n') + '\r\n'], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        const fechaArchivo = new Date().toISOString().slice(0, 10);
+        link.href = url;
+        link.download = `${fileLabel}_LSMW_${fechaArchivo}.txt`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    };
+
     const handleExportTelasExcel = () => {
         if (telaExplosionResults.length === 0) return;
 
@@ -2058,12 +2094,16 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
             let candidates = eligibleMesaIds.filter(id => mesaAcceptsMaterial(id, order.sector, order.tamano));
 
             // Válvula de alivio: si la Línea 1 (Línea de Camas) ya no tiene capacidad disponible en
-            // ninguna de sus mesas habituales, se habilita la MESA DE TRABAJO 13 (normalmente de
-            // Línea 2 – Muebles) como mesa adicional para colocar el excedente de camas.
-            if (order.sector === SECTOR_CAMAS && eligibleMesaIds.includes(13) && !candidates.includes(13)) {
+            // ninguna de sus mesas habituales, se habilitan las MESAS DE TRABAJO 12 y 13 (normalmente de
+            // Línea 2 – Muebles) como mesas adicionales para colocar el excedente de camas.
+            if (order.sector === SECTOR_CAMAS) {
                 const sinEspacioEnLinea1 = candidates.every(id => (remaining.get(id) ?? 0) <= 0);
                 if (sinEspacioEnLinea1) {
-                    candidates = [...candidates, 13];
+                    CAMAS_OVERFLOW_MESA_IDS.forEach(mesaOverflowId => {
+                        if (eligibleMesaIds.includes(mesaOverflowId) && !candidates.includes(mesaOverflowId)) {
+                            candidates = [...candidates, mesaOverflowId];
+                        }
+                    });
                 }
             }
 
@@ -2121,6 +2161,124 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
         addNotification('success', 'Distribución de mesas ejecutada. Revise el Diagrama de Gantt de capacidad.');
     };
 
+    // Mesas adicionales que, además de lo que ya acepta mesaAcceptsMaterial, se consideran compatibles
+    // SOLO para efectos de "modular" (rebalancear) la distribución ya ejecutada. Las MESAS 12 y 13
+    // (normalmente Línea 2 – Muebles) se habilitan también como destino de excedentes de Camas, igual
+    // que la válvula de alivio que ya existe en handleExecuteDistribution.
+    const mesaCompatibleParaModular = (mesaId: number, sector: string | null, tamano: MaterialSize | null): boolean => {
+        if (mesaAcceptsMaterial(mesaId, sector, tamano)) return true;
+        return sector === SECTOR_CAMAS && CAMAS_OVERFLOW_MESA_IDS.includes(mesaId);
+    };
+
+    // "MODULAR DISTRIBUCIÓN DE MESAS": rebalancea la distribución ya ejecutada, moviendo materiales de
+    // mesas sobrecargadas (uso > capacidad) hacia mesas compatibles con capacidad libre, sin necesidad de
+    // volver a ejecutar toda la distribución desde cero. En cada mesa sobrecargada se prioriza mover
+    // primero él/los material(es) marcados como "EXCEDE CAPACIDAD" (los que provocaron el excedente); si
+    // ninguno de esos cabe en otra mesa compatible, se intenta con el resto de materiales de la mesa (del
+    // más grande al más pequeño). El material se envía siempre a la mesa compatible con MENOR
+    // utilización relativa que tenga espacio suficiente para recibirlo sin sobrecargarse.
+    const handleModularDistribution = () => {
+        if (!mesaDistribution || mesaDistribution.size === 0) {
+            addNotification('warning', 'Debe ejecutar la Distribución de Mesas antes de modularla.');
+            return;
+        }
+
+        const mesaIds = Array.from(mesaDistribution.keys());
+        const capacityById = new Map(mesaIds.map(id => [id, mesaDistribution.get(id)!.capacityHours]));
+        const workingItems = new Map<number, MesaScheduleItem[]>(
+            mesaIds.map(id => [id, mesaDistribution.get(id)!.items.map(it => ({ ...it }))])
+        );
+
+        const usedHoursOf = (id: number) => workingItems.get(id)!.reduce((s, it) => s + (it.endHour - it.startHour), 0);
+        const utilizationOf = (id: number) => {
+            const cap = capacityById.get(id) ?? 0;
+            return cap > 0 ? usedHoursOf(id) / cap : Infinity;
+        };
+
+        let materialesMovidos = 0;
+        const MAX_ITERATIONS = 200;
+
+        for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
+            const overloaded = mesaIds
+                .filter(id => usedHoursOf(id) > (capacityById.get(id) ?? 0))
+                .sort((a, b) => (usedHoursOf(b) - (capacityById.get(b) ?? 0)) - (usedHoursOf(a) - (capacityById.get(a) ?? 0)));
+            if (overloaded.length === 0) break;
+
+            let movedThisRound = false;
+
+            for (const sourceId of overloaded) {
+                const sourceItems = workingItems.get(sourceId)!;
+                // Primero los que provocan el excedente (overflow), luego el resto de mayor a menor duración
+                const candidateItems = [
+                    ...sourceItems.filter(it => it.overflow),
+                    ...sourceItems.filter(it => !it.overflow).sort((a, b) => (b.endHour - b.startHour) - (a.endHour - a.startHour)),
+                ];
+
+                for (const item of candidateItems) {
+                    const duracion = item.endHour - item.startHour;
+                    const destinos = mesaIds
+                        .filter(id => id !== sourceId)
+                        .filter(id => mesaCompatibleParaModular(id, item.order.sector, item.order.tamano))
+                        .filter(id => usedHoursOf(id) + duracion <= (capacityById.get(id) ?? 0))
+                        .sort((a, b) => utilizationOf(a) - utilizationOf(b));
+
+                    if (destinos.length > 0) {
+                        const destId = destinos[0];
+                        workingItems.set(sourceId, workingItems.get(sourceId)!.filter(it => it !== item));
+                        workingItems.get(destId)!.push({ ...item });
+                        materialesMovidos++;
+                        movedThisRound = true;
+                        break;
+                    }
+                }
+
+                if (movedThisRound) break;
+            }
+
+            if (!movedThisRound) break;
+        }
+
+        if (materialesMovidos === 0) {
+            addNotification('info', 'No se encontró ninguna mesa compatible con capacidad libre para reubicar materiales. La distribución no cambió.');
+            return;
+        }
+
+        // Recalcula startHour/endHour de forma secuencial dentro de cada mesa (igual que en la asignación
+        // original) y el flag "overflow" según si el material, en su nueva posición, excede la capacidad.
+        const newDistribution = new Map<number, MesaDistributionEntry>();
+        mesaIds
+            .sort((a, b) => a - b)
+            .forEach(id => {
+                const capacityHours = capacityById.get(id) ?? 0;
+                let cursor = 0;
+                const recalculatedItems: MesaScheduleItem[] = workingItems.get(id)!.map(it => {
+                    const duracion = it.endHour - it.startHour;
+                    const startHour = cursor;
+                    const endHour = cursor + duracion;
+                    cursor = endHour;
+                    return { order: it.order, startHour, endHour, overflow: endHour > capacityHours };
+                });
+                newDistribution.set(id, {
+                    tableId: id,
+                    linea: getMesaLinea(id),
+                    capacityHours,
+                    usedHours: recalculatedItems.reduce((s, it) => s + (it.endHour - it.startHour), 0),
+                    items: recalculatedItems,
+                });
+            });
+
+        setMesaDistribution(newDistribution);
+        // Una redistribución invalida cualquier explosión de materiales previa (misma regla que al ejecutar la distribución)
+        setFoamExplosionResults([]);
+        setForroExplosionResults([]);
+        setEstructuraExplosionResults([]);
+        setCojinExplosionResults([]);
+        setTelaExplosionResults([]);
+        setCascoExplosionResults([]);
+
+        addNotification('success', `Distribución modulada: ${materialesMovidos} material(es) reubicado(s) para equilibrar la carga entre mesas. Puede continuar con la Explosión de Materiales.`);
+    };
+
     // Exporta a Excel la planificación confirmada por mesa (Diagrama de Gantt), con el Puesto de Trabajo
     // (TAP-ARxx) y la hora de inicio/final real de cada material, calculadas igual que en el Gantt:
     // relativas al inicio del horario de trabajo seleccionado (selectedShiftConfig.startTime).
@@ -2157,6 +2315,48 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
 
         const fechaArchivo = planningTargetDate.toISOString().slice(0, 10);
         XLSX.writeFile(workbook, `Planificacion_Confirmada_Mesas_${fechaArchivo}.xlsx`);
+    };
+
+    // Genera el archivo .txt de "Detalle de Planificación Ejecutada" para carga en SAP. Formato por línea:
+    // Material Cant. Planificada Fecha(DD.MM.AAAA, fecha objetivo + 3 días hábiles) Hora Inicio Hora Final Puesto de Trabajo
+    // Hora Inicio/Final y Puesto de Trabajo se calculan igual que en "Imprimir Planificación Confirmada"
+    // (requiere haber ejecutado la Distribución de Mesas).
+    const exportPlanningDetailToLSMW = () => {
+        if (!planningResult) return;
+        if (!mesaDistribution || mesaDistribution.size === 0 || !planningTargetDate) {
+            addNotification('warning', 'Debe presionar "EJECUTAR DISTRIBUCIÓN DE MESAS" antes de descargar el .txt (se necesita la Hora Inicio/Final y el Puesto de Trabajo).');
+            return;
+        }
+
+        const fechaPlanificacion = addBusinessDays(planningResult.targetDate, 3);
+        const fechaTexto = `${String(fechaPlanificacion.getDate()).padStart(2, '0')}.${String(fechaPlanificacion.getMonth() + 1).padStart(2, '0')}.${fechaPlanificacion.getFullYear()}`;
+
+        const shiftStartUTC = shiftTimeToUTC(planningTargetDate, selectedShiftConfig.startTime);
+
+        const lines: string[] = [];
+        Array.from(mesaDistribution.values())
+            .sort((a, b) => a.tableId - b.tableId)
+            .forEach(mesa => {
+                const puestoTrabajo = `TAP-AR${String(mesa.tableId).padStart(2, '0')}`;
+                mesa.items.forEach(item => {
+                    const horaInicio = new Date(shiftStartUTC.getTime() + item.startHour * 60 * 60 * 1000);
+                    const horaFinal = new Date(shiftStartUTC.getTime() + item.endHour * 60 * 60 * 1000);
+                    lines.push(`${item.order.material} ${item.order.cantidadPlanificada} ${fechaTexto} ${formatEcuadorTime(horaInicio)} ${formatEcuadorTime(horaFinal)} ${puestoTrabajo}`);
+                });
+            });
+
+        if (lines.length === 0) return;
+
+        const blob = new Blob([lines.join('\r\n') + '\r\n'], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        const fechaArchivo = planningTargetDate.toISOString().slice(0, 10);
+        link.href = url;
+        link.download = `Detalle_Planificacion_Ejecutada_${fechaArchivo}.txt`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
     };
 
     const handleMaterialExplosion = async () => {
@@ -2652,7 +2852,7 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
                                 Planificación Nueva
                             </Button>
                             <Button
-                                onClick={handleRefreshData}
+                                onClick={() => handleRefreshData()}
                                 disabled={isLoading}
                                 size="sm"
                                 title="Vuelve a descargar los datos de SAP (Fert, Previsionales, Pendientes, Inventario). Úselo después de mover órdenes manualmente en SAP."
@@ -2927,6 +3127,14 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
                                 <p className="text-[11px] text-purple-200 font-medium">
                                     Fecha objetivo: <span className="font-bold text-white">{planningResult.targetDate.toLocaleDateString('es-EC', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
                                 </p>
+                                <Button
+                                    onClick={exportPlanningDetailToLSMW}
+                                    size="sm"
+                                    className="h-8 bg-white/10 hover:bg-white/20 text-white gap-1.5 text-xs"
+                                >
+                                    <Download className="w-3.5 h-3.5" />
+                                    Descargar .txt LSMW
+                                </Button>
                                 <Button
                                     onClick={handleExportPlanningExcel}
                                     size="sm"
@@ -3350,6 +3558,14 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
                             </div>
                             <div className="flex items-center gap-2">
                                 <Button
+                                    onClick={handleModularDistribution}
+                                    size="sm"
+                                    className="h-8 bg-fuchsia-600 hover:bg-fuchsia-700 text-white gap-1.5 text-xs"
+                                >
+                                    <RefreshCw className="w-3.5 h-3.5" />
+                                    Modular Distribución de Mesas
+                                </Button>
+                                <Button
                                     onClick={handleExportMesaDistributionExcel}
                                     size="sm"
                                     className="h-8 bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 text-xs"
@@ -3570,14 +3786,24 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
                                 <Layers className="w-5 h-5 text-teal-100" />
                                 <h3 className="text-sm font-bold text-white uppercase tracking-wide">Explosión de Materiales — Semielaborados de Forros para Muebles</h3>
                             </div>
-                            <Button
-                                onClick={() => exportComponentNeedsToExcel(forroExplosionResults, 'Forros', 'Explosion_Materiales_Forros')}
-                                size="sm"
-                                className="h-8 bg-white/10 hover:bg-white/20 text-white gap-1.5 text-xs shrink-0"
-                            >
-                                <FileSpreadsheet className="w-3.5 h-3.5" />
-                                Exportar a Excel
-                            </Button>
+                            <div className="flex items-center gap-2 shrink-0">
+                                <Button
+                                    onClick={() => exportComponentNeedsToLSMW(forroExplosionResults, 'Forros')}
+                                    size="sm"
+                                    className="h-8 bg-white/10 hover:bg-white/20 text-white gap-1.5 text-xs"
+                                >
+                                    <Download className="w-3.5 h-3.5" />
+                                    Descargar .txt LSMW
+                                </Button>
+                                <Button
+                                    onClick={() => exportComponentNeedsToExcel(forroExplosionResults, 'Forros', 'Explosion_Materiales_Forros')}
+                                    size="sm"
+                                    className="h-8 bg-white/10 hover:bg-white/20 text-white gap-1.5 text-xs"
+                                >
+                                    <FileSpreadsheet className="w-3.5 h-3.5" />
+                                    Exportar a Excel
+                                </Button>
+                            </div>
                         </div>
                         <div className="p-6">
                             <div className="border border-gray-300 rounded-lg overflow-auto max-h-[50vh]">
@@ -3643,14 +3869,24 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
                                 <Layers className="w-5 h-5 text-slate-100" />
                                 <h3 className="text-sm font-bold text-white uppercase tracking-wide">Explosión de Materiales — Semielaborados de Estructuras para Muebles</h3>
                             </div>
-                            <Button
-                                onClick={() => exportComponentNeedsToExcel(estructuraExplosionResults, 'Estructuras', 'Explosion_Materiales_Estructuras')}
-                                size="sm"
-                                className="h-8 bg-white/10 hover:bg-white/20 text-white gap-1.5 text-xs shrink-0"
-                            >
-                                <FileSpreadsheet className="w-3.5 h-3.5" />
-                                Exportar a Excel
-                            </Button>
+                            <div className="flex items-center gap-2 shrink-0">
+                                <Button
+                                    onClick={() => exportComponentNeedsToLSMW(estructuraExplosionResults, 'Estructuras')}
+                                    size="sm"
+                                    className="h-8 bg-white/10 hover:bg-white/20 text-white gap-1.5 text-xs"
+                                >
+                                    <Download className="w-3.5 h-3.5" />
+                                    Descargar .txt LSMW
+                                </Button>
+                                <Button
+                                    onClick={() => exportComponentNeedsToExcel(estructuraExplosionResults, 'Estructuras', 'Explosion_Materiales_Estructuras')}
+                                    size="sm"
+                                    className="h-8 bg-white/10 hover:bg-white/20 text-white gap-1.5 text-xs"
+                                >
+                                    <FileSpreadsheet className="w-3.5 h-3.5" />
+                                    Exportar a Excel
+                                </Button>
+                            </div>
                         </div>
                         <div className="p-6">
                             <div className="border border-gray-300 rounded-lg overflow-auto max-h-[50vh]">
@@ -3716,14 +3952,24 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
                                 <Layers className="w-5 h-5 text-fuchsia-100" />
                                 <h3 className="text-sm font-bold text-white uppercase tracking-wide">Explosión de Materiales — Semielaborados de Cojines para Muebles</h3>
                             </div>
-                            <Button
-                                onClick={() => exportComponentNeedsToExcel(cojinExplosionResults, 'Cojines', 'Explosion_Materiales_Cojines')}
-                                size="sm"
-                                className="h-8 bg-white/10 hover:bg-white/20 text-white gap-1.5 text-xs shrink-0"
-                            >
-                                <FileSpreadsheet className="w-3.5 h-3.5" />
-                                Exportar a Excel
-                            </Button>
+                            <div className="flex items-center gap-2 shrink-0">
+                                <Button
+                                    onClick={() => exportComponentNeedsToLSMW(cojinExplosionResults, 'Cojines')}
+                                    size="sm"
+                                    className="h-8 bg-white/10 hover:bg-white/20 text-white gap-1.5 text-xs"
+                                >
+                                    <Download className="w-3.5 h-3.5" />
+                                    Descargar .txt LSMW
+                                </Button>
+                                <Button
+                                    onClick={() => exportComponentNeedsToExcel(cojinExplosionResults, 'Cojines', 'Explosion_Materiales_Cojines')}
+                                    size="sm"
+                                    className="h-8 bg-white/10 hover:bg-white/20 text-white gap-1.5 text-xs"
+                                >
+                                    <FileSpreadsheet className="w-3.5 h-3.5" />
+                                    Exportar a Excel
+                                </Button>
+                            </div>
                         </div>
                         <div className="p-6">
                             <div className="border border-gray-300 rounded-lg overflow-auto max-h-[50vh]">

@@ -8,6 +8,8 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@
 import { ProvisionalOrdersTabSection } from './ProvisionalOrdersTabSection';
 import { TiemposEnsambladoTab } from './TiemposEnsambladoTab';
 import { ProvisionalOrdersPlanchasMixtasTab } from './ProvisionalOrdersPlanchasMixtasTab';
+import { PlanGrupoEnsambladoTab } from './PlanGrupoEnsambladoTab';
+import { PlanGrupoEnsambladoPFFTab } from './PlanGrupoEnsambladoPFFTab';
 import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
 import { serviciosService } from '@/services/servicios.service';
@@ -222,9 +224,15 @@ export const TacticalPlanPlanchasMixtasSection: React.FC = () => {
       </div>
       
       <Tabs defaultValue="plan-tactico" className="w-full">
-        <TabsList className="grid w-full grid-cols-4 h-auto p-1 bg-muted border border-dashed border-gray-300 rounded-lg">
+        <TabsList className="grid w-full grid-cols-6 h-auto p-1 bg-muted border border-dashed border-gray-300 rounded-lg">
           <TabsTrigger value="plan-tactico" className="border-r border-dashed border-gray-300">
             Plan Táctico
+          </TabsTrigger>
+          <TabsTrigger value="plan-grupo-ensamblado" className="border-r border-dashed border-gray-300">
+            Plan Grupo Ensamblado (P1)
+          </TabsTrigger>
+          <TabsTrigger value="plan-grupo-ensamblado-pff" className="border-r border-dashed border-gray-300">
+            Plan Grupo Ensamblado (PFF)
           </TabsTrigger>
           <TabsTrigger value="ordenes" className="border-r border-dashed border-gray-300">
             Ord. Prev. ({validRespCodesPrensado.length > 0 ? validRespCodesPrensado.join('&') : '...'})
@@ -239,6 +247,14 @@ export const TacticalPlanPlanchasMixtasSection: React.FC = () => {
 
         <TabsContent value="plan-tactico" className="mt-4">
           <ProvisionalOrdersPlanchasMixtasTab restricciones={restriccionesPrensado} />
+        </TabsContent>
+
+        <TabsContent value="plan-grupo-ensamblado" className="mt-4">
+          <PlanGrupoEnsambladoTab />
+        </TabsContent>
+
+        <TabsContent value="plan-grupo-ensamblado-pff" className="mt-4">
+          <PlanGrupoEnsambladoPFFTab />
         </TabsContent>
 
         <TabsContent value="ordenes" className="mt-4">
