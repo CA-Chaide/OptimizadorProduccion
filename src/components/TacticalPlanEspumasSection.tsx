@@ -19,21 +19,30 @@ import {
   CheckCircle2,
   Database,
   ChevronsLeft,
-  ChevronsRight
+  ChevronsRight,
+  Save
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import { serviciosService } from '@/services/servicios.service';
 import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
 import { planGrupoService } from '@/services/plangrupo.service';
 import { detalleTacticoService } from '@/services/detalletactico.service';
 import { useAppContext } from '@/context/AppProvider';
-import type { Grupo } from '@/types/interfaces';
+import type { Grupo, PlanGrupo, DetalleTactico } from '@/types/interfaces';
 import { cn } from '@/lib/utils';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, isValid } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, isValid, addDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 // --- CONSTANTES TÉCNICAS PLANTA ---
@@ -47,6 +56,45 @@ const EFFICIENCY_FACTOR = 0.87;
 // homologa a minutos y se le suma ese 35% cuando se usa como respaldo.
 const CARRUSEL_TIEMPO_CORTE_A_MINUTOS = 1 / 60;
 const CARRUSEL_ACTIVIDAD_ADICIONAL_FACTOR = 1.35;
+
+// Responsables de Control de Producción de Corte que auditamos por centro (Provisionales y FERT
+// comparten la misma lista) — se centraliza aquí para que la Respuesta P3 (fertKgPorMaterialPorCentro)
+// use exactamente el mismo criterio que getFilteredData, sin duplicar el literal.
+const ALLOWED_RESP_CORTE: Record<'1000' | '2000', string[]> = {
+  '1000': ['013', '038', '039', '044', '036', '034'],
+  '2000': ['002', '038', '039', '044', '036', '034'],
+};
+
+// Determina si la fecha de una orden FERT corresponde a la necesidad P2 de un material, según el
+// criterio de fecha correcto para el ÁREA de origen de ese P2 — verificado contra datos reales, no
+// es el mismo criterio para todas:
+// - Venta Externa: su P2 sí tiene fecha_inicio_plan confiable. Sus Provisionales se generan a hoy+1,
+//   pero al liberarse/convertirse en FERT se traslapan con la fecha del P2 (hoy+2) — tolerancia ±2
+//   alrededor de esa fecha real.
+// - Muebles/Colchones: su fecha_inicio_plan NO es confiable para esto (documentado en la propia
+//   restricción ALMACEN_CONSUMO: "no distingue si el material ya se fabricó o sigue pendiente") —
+//   comprobado con datos reales: P2 de Muebles #73 fechado 2026-08-04, pero sus órdenes FERT reales
+//   caen 2026-07-30/31 (a 4-5 días de esa fecha, ninguna tolerancia razonable las alcanza). Se
+//   IGNORA la fecha del P2 y se usa una ventana FIJA [hoy, hoy+1].
+// - Cualquier otra área (ej. Prensado): tolerancia ±1 alrededor de la fecha real del P2 (en la
+//   práctica su P2 sí quedó cerca de "hoy").
+const fechaOrdenCoincideConP2 = (fechaOrdenStr: string, area: string, fechaP2Str: string, hoyStr: string): boolean => {
+  const tOrden = new Date(fechaOrdenStr).getTime();
+  if (isNaN(tOrden)) return false;
+  if (/muebles|colchones/i.test(area)) {
+    const tHoy = new Date(hoyStr).getTime();
+    if (isNaN(tHoy)) return false;
+    return tOrden >= tHoy && tOrden <= tHoy + 86400000; // [hoy, hoy+1]
+  }
+  const tP2 = new Date(fechaP2Str).getTime();
+  if (isNaN(tP2)) return false;
+  const dias = /venta\s*externa/i.test(area) ? 2 : 1;
+  return Math.abs(tOrden - tP2) <= dias * 86400000;
+};
+
+// Almacén de stock disponible por centro para la Respuesta P3 (último fallback de la cascada
+// FERT → Provisional → Stock) — confirmado con el usuario: 1006 en Quito, 2006 en Guayaquil.
+const ALMACEN_STOCK_POR_CENTRO: Record<'1000' | '2000', string> = { '1000': '1006', '2000': '2006' };
 
 // Máquinas de cabecera del resumen (Capacidad Operativa), reutilizadas para vincular
 // cada registro de Mantenimiento SAP (ID_MAQUINA) con su tarjeta correspondiente.
@@ -96,10 +144,39 @@ interface NecesidadPlantaRow {
   fecha_fin: string;
   codigo_grupo: number;
   codigo_plan_grupo: number;
+  // Centro físico (1000=UIO, 2000=GYE) del Grupo dueño del PlanGrupo P2 de origen — "Venta Externa"
+  // tiene un codigo_grupo distinto por centro (18/19), por eso se puede resolver aquí sin ambigüedad.
+  // Alimenta la Respuesta P3 (ver materialNecesidadesPlantaMapPorCentro), que sí necesita separar por centro.
+  centro: string;
 }
 
 interface ConsolidatedNeedRow extends NecesidadPlantaRow {
   area: string;
+}
+
+// Respuesta P3 (tab "Respuesta P3"): por cada material que Necesidades Planta (P2, hoy solo Venta
+// Externa) pide en un centro dado, responde con lo que YA está en Órdenes Provisionales para ese
+// centro, o 0 si no hay ninguna (sin fallback a stock todavía, ver provisionalKgPorMaterialUIO/GYE).
+interface RespuestaP3Row {
+  material: string;
+  descripcion: string;
+  tienePlan: boolean;
+  cantidadKg: number;
+  origenes: string;
+  // De dónde salió cantidadKg — cascada FERT (emparejado por fecha con el P2) > Provisional > Stock
+  // disponible (almacén 1006/2006) > sin dato (0, plan vacío). Visible en la UI para poder auditar
+  // por qué un material devuelve la cantidad que devuelve.
+  fuente: 'FERT' | 'Provisional' | 'Stock' | 'Sin dato';
+}
+
+interface PlanGrupoPreviewEspuma {
+  centro: '1000' | '2000';
+  codigo_grupo: number;
+  nombreGrupo: string;
+  valor: string;
+  fechaInicio: string;
+  fechaFin: string;
+  rows: RespuestaP3Row[];
 }
 
 // Tab "Necesidades Planta": antes mostraba una tabla independiente por área (Object.entries +
@@ -201,6 +278,13 @@ const safeNum = (val: unknown): number => {
 
 const cleanCode = (code: unknown): string => {
   return String(code || '').replace(/^0+/, '').trim();
+};
+
+// Cantidad viene como texto desde DetalleTactico (p.ej. "120.5000"); se limpia igual que en
+// el tab homólogo de Corte y Laminado para poder sumarla de forma segura en la Respuesta P3.
+const parseQty = (val: unknown): number => {
+  const n = Number(String(val || '').replace(/[^0-9.-]/g, ''));
+  return isNaN(n) ? 0 : n;
 };
 
 const formatNum = (val: unknown, decimals: number = 2): string => {
@@ -354,14 +438,14 @@ const DateFilterPopover: React.FC<{
 };
 
 export const TacticalPlanEspumasSection: React.FC = () => {
-  useAppContext();
+  const { addNotification } = useAppContext();
 
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState('resumen');
   const [isLoading, setIsLoading] = useState(true);
   const [ordenesProvisionales, setOrdenesProvisionales] = useState<RawApiRow[]>([]);
   const [ordenesFert, setOrdenesFert] = useState<RawApiRow[]>([]);
-  const [, setInventarioSAP] = useState<RawApiRow[]>([]);
+  const [inventarioSAP, setInventarioSAP] = useState<RawApiRow[]>([]);
   const [kpiLooperData, setKpiLooperData] = useState<RawApiRow[]>([]);
   const [mantenimientosSAP, setMantenimientosSAP] = useState<RawApiRow[]>([]);
   const [tiemposCatalogo, setTiemposCatalogo] = useState<RawApiRow[]>([]);
@@ -370,6 +454,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const [, setGrupos] = useState<Grupo[]>([]);
   const [necesidadesPlantaData, setNecesidadesPlantaData] = useState<Record<string, NecesidadPlantaRow[]>>({});
   const [necesidadesPlantaLoading, setNecesidadesPlantaLoading] = useState(false);
+  const [planPreviewP3, setPlanPreviewP3] = useState<PlanGrupoPreviewEspuma | null>(null);
+  const [isSavingPlanP3, setIsSavingPlanP3] = useState(false);
 
   // Pre-auditoría Provisionales/FERT: cruza codigo_material contra TODAS las filas ya cargadas en
   // "Necesidades Planta" que mencionan ese material (puede haber más de una — mismo material pedido
@@ -387,6 +473,39 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       });
     });
     return map;
+  }, [necesidadesPlantaData]);
+
+  // Respuesta P3: necesidad P2 agregada por material, SEPARADA por centro (a diferencia de
+  // materialAreaMap/necesidadesPlantaConsolidada, que mezclan ambos centros bajo la misma "área" —
+  // "Venta Externa" usa un codigo_grupo distinto por centro: 18=UIO/1000, 19=GYE/2000, ver row.centro).
+  const materialNecesidadesPlantaMapPorCentro = useMemo(() => {
+    const porCentro: Record<string, Map<string, number>> = { '1000': new Map(), '2000': new Map() };
+    Object.values(necesidadesPlantaData).flat().forEach(row => {
+      const centro = String(row.centro || '');
+      if (!porCentro[centro]) return;
+      const key = String(Number(row.codigo_material));
+      const map = porCentro[centro];
+      map.set(key, (map.get(key) || 0) + parseQty(row.cantidad_produccion_neta));
+    });
+    return porCentro;
+  }, [necesidadesPlantaData]);
+
+  // Igual que materialNecesidadesPlantaMapPorCentro, pero conserva el desglose por codigo_plan_grupo
+  // ORIGEN (la otra área/P2 que generó la demanda) para poder prorratear la Respuesta P3 entre esos
+  // orígenes reales — mismo patrón que materialOrigenesPlantaMap en Corte y Laminado.
+  const materialOrigenesPlantaMapPorCentro = useMemo(() => {
+    const porCentro: Record<string, Map<string, Map<number, number>>> = { '1000': new Map(), '2000': new Map() };
+    Object.values(necesidadesPlantaData).flat().forEach(row => {
+      const centro = String(row.centro || '');
+      if (!porCentro[centro]) return;
+      const matKey = String(Number(row.codigo_material));
+      const map = porCentro[centro];
+      if (!map.has(matKey)) map.set(matKey, new Map());
+      const porOrigen = map.get(matKey)!;
+      const qty = parseQty(row.cantidad_produccion_neta);
+      porOrigen.set(row.codigo_plan_grupo, (porOrigen.get(row.codigo_plan_grupo) || 0) + qty);
+    });
+    return porCentro;
   }, [necesidadesPlantaData]);
 
   // Tabla única consolidada del tab "Necesidades Planta" (ver ConsolidatedNeedsTable): aplana
@@ -415,8 +534,11 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const todayStr = format(new Date(), 'yyyy-MM-dd');
   // FERT: la ventana hacia adelante no es "mañana" fijo, es el siguiente DÍA LABORABLE — si hoy es
   // viernes, el siguiente laborable es el lunes (se salta sábado y domingo), y así cada día según
-  // corresponda. Viernes/sábado quedan cubiertos por este mismo cálculo sin necesitar tabla de
-  // feriados: solo fines de semana (lunes-jueves => +1; viernes => +3; sábado => +2; domingo => +1).
+  // corresponda. REVERTIDO (ver nota): se había ampliado a +3 días laborables para poder cruzar FERT
+  // contra P2 en la Respuesta P3, pero esta MISMA variable también acota qué órdenes FERT cuentan
+  // para "Capacidad Operativa" (horas de ocupación) — ampliarla aquí inflaba esas horas de más. La
+  // Respuesta P3 ahora tiene su PROPIA ventana independiente (ver fertAuditAllUIO/GYE, que ignoran
+  // este límite) — esta variable vuelve a ser exclusiva de Capacidad Operativa / la vista del tab.
   const nextBusinessDayStr = useMemo(() => {
     const now = new Date();
     const day = now.getDay(); // 0=domingo … 5=viernes, 6=sábado
@@ -604,11 +726,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   // boundary 'future' (Provisionales): descarta fechas pasadas SIEMPRE, sin importar qué haya
   // seleccionado el usuario — ni siquiera "Ver Todo el Plan" (selección vacía) puede traer una
   // orden provisional de ayer, porque por lógica de sistema no debería existir/evaluarse.
-  // boundary 'past' (FERT): descarta lo que quede después del siguiente día laborable — no "hoy" a
-  // secas — para dar la ventana de 2 días (hoy + siguiente laborable) que pidió el negocio.
+  // boundary 'past' (FERT): descarta lo que quede después de +3 días desde hoy (ver nextBusinessDayStr).
   const getFilteredData = useCallback((rawData: RawApiRow[], centro: string, dates: Set<string>, boundary: 'future' | 'past') => {
     // Auditamos responsables de Corte (013, 038, 039, 044, 036, 034, 002)
-    const allowed = centro === '1000' ? ['013', '038', '039', '044', '036', '034'] : ['002', '038', '039', '044', '036', '034'];
+    const allowed = ALLOWED_RESP_CORTE[centro as '1000' | '2000'] || [];
     return rawData.filter(o => {
       const c = String(getProp(o, ['Centro', 'CENTRO', 'centro'])).trim();
       const r = String(getProp(o, ['RESPCONTROLPROD', 'RESPCTRLPROD', 'RespControlProd', 'RESP_CONTROL_PROD', 'RESPONSABLE'])).trim();
@@ -630,6 +751,196 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const provAuditGYE = useMemo(() => auditMapper(getFilteredData(ordenesProvisionales, '2000', selectedDatesProv, 'future'), '2000'), [auditMapper, getFilteredData, ordenesProvisionales, selectedDatesProv]);
   const fertAuditUIO = useMemo(() => auditMapper(getFilteredData(ordenesFert, '1000', selectedDatesFert, 'past'), '1000'), [auditMapper, getFilteredData, ordenesFert, selectedDatesFert]);
   const fertAuditGYE = useMemo(() => auditMapper(getFilteredData(ordenesFert, '2000', selectedDatesFert, 'past'), '2000'), [auditMapper, getFilteredData, ordenesFert, selectedDatesFert]);
+
+  // Respuesta P3: cantidad "ya planificada" por material, en Kg — suma el peso de las Órdenes
+  // Provisionales vigentes (provAuditUIO/GYE, ya filtradas por centro/responsables permitidos/fechas
+  // seleccionadas) agrupado por material. Alcance actual (2026-07-30): NO incluye FERT ni fallback a
+  // stock disponible — eso queda pendiente para cuando el flujo esté más estable; un material sin
+  // Provisional que lo cubra queda en 0 (ver respuestaSalidaRowsPorCentro).
+  const provisionalKgPorMaterialUIO = useMemo(() => {
+    const map = new Map<string, number>();
+    provAuditUIO.forEach(r => map.set(r.material, (map.get(r.material) || 0) + r.peso));
+    return map;
+  }, [provAuditUIO]);
+
+  const provisionalKgPorMaterialGYE = useMemo(() => {
+    const map = new Map<string, number>();
+    provAuditGYE.forEach(r => map.set(r.material, (map.get(r.material) || 0) + r.peso));
+    return map;
+  }, [provAuditGYE]);
+
+  // Fechas P2 (fecha_inicio_plan) por material y centro, con su ÁREA de origen — puede haber varias
+  // si el material aparece en más de un P2 (distintos orígenes/fechas). Se usa para acotar qué
+  // órdenes FERT "responden" a cuál necesidad (ver fertKgPorMaterialPorCentro): una orden FERT solo
+  // cuenta si su fecha cae dentro de la tolerancia de ESA área (fechaOrdenCoincideConP2) respecto a AL
+  // MENOS una de estas fechas.
+  const fechasP2PorMaterialPorCentro = useMemo(() => {
+    const porCentro: Record<string, Map<string, { fecha: string; area: string }[]>> = { '1000': new Map(), '2000': new Map() };
+    Object.entries(necesidadesPlantaData).forEach(([area, rows]) => {
+      rows.forEach(row => {
+        const centro = String(row.centro || '');
+        if (!porCentro[centro] || !row.fecha_inicio || row.fecha_inicio === '—') return;
+        const key = String(Number(row.codigo_material));
+        const map = porCentro[centro];
+        if (!map.has(key)) map.set(key, []);
+        map.get(key)!.push({ fecha: row.fecha_inicio, area });
+      });
+    });
+    return porCentro;
+  }, [necesidadesPlantaData]);
+
+  // Respuesta P3: cantidad "ya planificada" por material vía Órdenes FERT, emparejadas contra la
+  // fecha del P2 que responden (fechasP2PorMaterialPorCentro) dentro de la tolerancia de SU área
+  // (fechaOrdenCoincideConP2) — caso real que motivó esto: Venta Externa #78 (material 30005466,
+  // 2026-08-03, 12 unidades) tiene su orden FERT #000062753914 exactamente en esa fecha con la misma
+  // cantidad, pero no se cruzaba contra el P2 (decisión previa: FERT solo alimentaba horas de
+  // Capacidad Operativa). A diferencia de provisionalKgPorMaterialUIO/GYE (sin exigir coincidencia de
+  // fecha), esta SÍ valida la ventana.
+  //
+  // El peso (Kg) sale de auditMapper (mismo cálculo que ya usan Provisionales/FERT en sus tabs de
+  // auditoría): match directo contra kpiLooperData si existe, o fórmula volumétrica (ancho×largo×
+  // espesor×densidad) si no — NO de kpiLooperData a secas, que casi no tiene materiales de Espuma
+  // (verificado: 30005466 no aparece ahí, habría dado 0 Kg). Se recorre TODO ordenesFert por centro
+  // (sin el filtro de fecha "hoy+3" ni el selectedDatesFert de la UI, que son ajenos a esta necesidad
+  // puntual del P2) para no perder órdenes fuera de esa ventana de visualización.
+  const fertAuditAllUIO = useMemo(
+    () => auditMapper(ordenesFert.filter(o => String(getProp(o, ['Centro', 'CENTRO', 'centro'])).trim() === '1000'), '1000'),
+    [auditMapper, ordenesFert]
+  );
+  const fertAuditAllGYE = useMemo(
+    () => auditMapper(ordenesFert.filter(o => String(getProp(o, ['Centro', 'CENTRO', 'centro'])).trim() === '2000'), '2000'),
+    [auditMapper, ordenesFert]
+  );
+
+  const fertKgPorMaterialPorCentro = useMemo(() => {
+    const porCentro: Record<string, Map<string, number>> = { '1000': new Map(), '2000': new Map() };
+
+    const procesar = (centro: '1000' | '2000', rows: UnifiedRow[]) => {
+      const allowed = ALLOWED_RESP_CORTE[centro] || [];
+      const fechasPorMaterial = fechasP2PorMaterialPorCentro[centro];
+      const map = porCentro[centro];
+      rows.forEach(r => {
+        if (!allowed.includes(r.responsable)) return;
+        const candidatosP2 = fechasPorMaterial?.get(r.material);
+        if (!candidatosP2 || candidatosP2.length === 0) return;
+        const coincide = candidatosP2.some(c => fechaOrdenCoincideConP2(r.fecha, c.area, c.fecha, todayStr));
+        if (!coincide) return;
+        map.set(r.material, (map.get(r.material) || 0) + r.peso);
+      });
+    };
+
+    procesar('1000', fertAuditAllUIO);
+    procesar('2000', fertAuditAllGYE);
+    return porCentro;
+  }, [fertAuditAllUIO, fertAuditAllGYE, fechasP2PorMaterialPorCentro, todayStr]);
+
+  // Respuesta P3: stock disponible (Kg) por material y centro — último fallback de la cascada
+  // (FERT emparejado → Provisional → Stock), solo para materiales del universo P2 de ese centro que
+  // no calzaron con ninguna de las dos fuentes anteriores. Verificado contra datos reales: en el
+  // almacén de espuma (1006 Quito / 2006 Guayaquil) LIBREUTILIZACION viene en UNIDADES/piezas
+  // (valores enteros pequeños: 6, 40, 60, 313...), NO en Kg como en Corte y Laminado — se convierte
+  // igual que el peso de FERT: match en kpiLooperData si existe, o fórmula volumétrica
+  // (ancho×largo×espesor×densidad) si no (la mayoría de espuma no está en kpiLooperData).
+  const stockKgPorMaterialPorCentro = useMemo(() => {
+    const porCentro: Record<string, Map<string, number>> = { '1000': new Map(), '2000': new Map() };
+    inventarioSAP.forEach(inv => {
+      const centro = String(getProp(inv, ['CENTRO', 'Centro', 'centro'])).trim();
+      const almacenEsperado = ALMACEN_STOCK_POR_CENTRO[centro as '1000' | '2000'];
+      if (!almacenEsperado) return;
+      const almacen = String(getProp(inv, ['ALMACEN', 'Almacen'])).trim();
+      if (almacen !== almacenEsperado) return;
+
+      const unidades = safeNum(getProp(inv, ['LIBREUTILIZACION']));
+      if (unidades <= 0) return;
+
+      const info = extractMaterialInfo(inv);
+      if (!info.code) return;
+      const looperMatch = kpiLooperData.find(k => cleanCode(k.Material) === info.code);
+      const densVal = safeNum(info.dens);
+      const pesoUN = looperMatch ? safeNum(looperMatch.PesoUN) : (info.ancho * info.largo * info.esp * densVal) / 1000000;
+      if (pesoUN <= 0) return;
+
+      const map = porCentro[centro];
+      map.set(info.code, (map.get(info.code) || 0) + unidades * pesoUN);
+    });
+    return porCentro;
+  }, [inventarioSAP, kpiLooperData, extractMaterialInfo]);
+
+  // Descripción por material para la Respuesta P3 — sale de las Órdenes Provisionales y FERT ya
+  // auditadas (únicas filas de este archivo que traen descripción); un material que nunca apareció en
+  // ninguna orden de ningún centro queda sin descripción (limitación conocida, no hay maestro de
+  // materiales consultado aquí todavía).
+  const materialDescMap = useMemo(() => {
+    const map = new Map<string, string>();
+    [...provAuditUIO, ...provAuditGYE, ...fertAuditUIO, ...fertAuditGYE].forEach(r => { if (!map.has(r.material)) map.set(r.material, r.descripcion); });
+    return map;
+  }, [provAuditUIO, provAuditGYE, fertAuditUIO, fertAuditGYE]);
+
+  // Cascada de la Respuesta P3: FERT (emparejado por fecha contra el P2, ver
+  // fertKgPorMaterialPorCentro) > Provisional > Stock disponible (almacén 1006/2006, ver
+  // stockKgPorMaterialPorCentro) > 0 (sin dato). Cada nivel solo se consulta si el anterior no tiene
+  // nada — evita contar dos veces la misma producción si, por ejemplo, la orden Provisional ya se
+  // convirtió en la orden FERT.
+  const respuestaSalidaRowsPorCentro = useCallback((centro: '1000' | '2000'): RespuestaP3Row[] => {
+    const necesidadMap = materialNecesidadesPlantaMapPorCentro[centro];
+    const origenesMap = materialOrigenesPlantaMapPorCentro[centro];
+    const provisionalMap = centro === '1000' ? provisionalKgPorMaterialUIO : provisionalKgPorMaterialGYE;
+    const fertMap = fertKgPorMaterialPorCentro[centro];
+    const stockMap = stockKgPorMaterialPorCentro[centro];
+
+    return Array.from(necesidadMap.keys()).map((material): RespuestaP3Row => {
+      const fertKg = fertMap.get(material) || 0;
+      const provisionalKg = provisionalMap.get(material) || 0;
+      const stockKg = stockMap.get(material) || 0;
+      let cantidadKg = 0;
+      let fuente: RespuestaP3Row['fuente'] = 'Sin dato';
+      if (fertKg > 0) { cantidadKg = fertKg; fuente = 'FERT'; }
+      else if (provisionalKg > 0) { cantidadKg = provisionalKg; fuente = 'Provisional'; }
+      else if (stockKg > 0) { cantidadKg = stockKg; fuente = 'Stock'; }
+      const origenesDeMaterial = origenesMap.get(material);
+      const origenes = origenesDeMaterial && origenesDeMaterial.size > 0
+        ? Array.from(origenesDeMaterial.keys()).join(', ')
+        : '—';
+      return {
+        material,
+        descripcion: materialDescMap.get(material) || '—',
+        tienePlan: cantidadKg > 0,
+        cantidadKg,
+        origenes,
+        fuente
+      };
+    // Con respuesta primero (de lo contrario, al no tener paginación este tab, la pantalla inicial
+    // muestra solo los "Sin dato" y da la falsa impresión de que todo devuelve 0 — caso real: 148 de
+    // 182 materiales sí tenían respuesta, pero quedaban ocultos tras hacer scroll).
+    }).sort((a, b) => Number(b.tienePlan) - Number(a.tienePlan));
+  }, [materialNecesidadesPlantaMapPorCentro, materialOrigenesPlantaMapPorCentro, provisionalKgPorMaterialUIO, provisionalKgPorMaterialGYE, fertKgPorMaterialPorCentro, stockKgPorMaterialPorCentro, materialDescMap]);
+
+  // Reparte cantidadKg de un material entre sus planes P2 origen, proporcional a la necesidad que
+  // cada uno aportó — mismo criterio que getOrigenesProrrateo de Corte y Laminado, pero SIN redondeo a
+  // "rollo" (Espuma no tiene esa unidad física; se redondea a Kg entero). Si no hay origen registrado
+  // EN ABSOLUTO, referencia el propio plan P3 recién creado como fallback — un origen SÍ registrado
+  // pero con necesidad 0 es un origen real y no debe caer en este fallback (mismo bug corregido en
+  // getOrigenesProrrateo de Corte y Laminado: auto-referenciar el P3 en vez del P2 real).
+  const getOrigenesProrrateoEspuma = useCallback((material: string, cantidadKg: number, centro: '1000' | '2000', fallbackCodigoPlanGrupo: number) => {
+    const origenes = materialOrigenesPlantaMapPorCentro[centro].get(material);
+    if (!origenes || origenes.size === 0) {
+      return [{ codigoPadre: fallbackCodigoPlanGrupo, cantidadKg: Math.round(cantidadKg) }];
+    }
+    if (cantidadKg <= 0) {
+      return Array.from(origenes.keys()).map(codigoPadre => ({ codigoPadre, cantidadKg: 0 }));
+    }
+    const entradas = Array.from(origenes.entries());
+    const totalOrigen = entradas.reduce((s, [, v]) => s + v, 0);
+    // Todos los orígenes registrados pidieron 0: se asigna completo al primero en vez de
+    // auto-referenciar el P3 recién creado.
+    if (totalOrigen <= 0) {
+      return entradas.map(([codigoPadre], i) => ({ codigoPadre, cantidadKg: i === 0 ? Math.round(cantidadKg) : 0 }));
+    }
+    return entradas.map(([codigoPadre, cantidad]) => ({
+      codigoPadre,
+      cantidadKg: Math.round(cantidadKg * (cantidad / totalOrigen))
+    }));
+  }, [materialOrigenesPlantaMapPorCentro]);
 
   // Puntos en el calendario: cada selector solo marca los días con datos de SU propia fuente
   // (antes era una sola lista combinada, mostraba puntos de FERT en el selector de Provisionales y viceversa).
@@ -729,7 +1040,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         .flatMap((r) => String(r.valor_restriccion || '').split(/[,&]/).map((v: string) => normalizeName(v)))
         .filter((v: string) => v !== '');
 
-      const gruposFiltrados = (gruposRes.data || []).filter((g) => almacenConsumoNames.includes(normalizeName(g.nombre_grupo)));
+      const gruposFiltrados = (gruposRes.data || []).filter((g) => g.estado === 'A' && almacenConsumoNames.includes(normalizeName(g.nombre_grupo)));
       const gruposCodigos = gruposFiltrados.map((g) => g.codigo_grupo);
       const grupoPorCodigo = new Map(gruposFiltrados.map((g) => [g.codigo_grupo, g]));
 
@@ -775,7 +1086,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           fecha_inicio: plan?.fecha_inicio_plan ? String(plan.fecha_inicio_plan).split('T')[0] : '—',
           fecha_fin: plan?.fecha_fin_plan ? String(plan.fecha_fin_plan).split('T')[0] : '—',
           codigo_grupo: plan?.codigo_grupo ?? 0,
-          codigo_plan_grupo: d.codigo_plan_grupo
+          codigo_plan_grupo: d.codigo_plan_grupo,
+          centro: String(grupo?.centro || '')
         });
       });
 
@@ -787,6 +1099,97 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       setNecesidadesPlantaLoading(false);
     }
   }, []);
+
+  // Paso 1 de la Respuesta P3: arma la vista previa de lo que se va a grabar para UN centro y abre el
+  // diálogo de confirmación. No llama a ningún servicio todavía — mismo patrón de dos pasos que
+  // "Guardar Plan" en Corte y Laminado (handleOpenGuardarPlan/handleConfirmGuardarPlan).
+  const handleAbrirRespuestaP3 = useCallback((centro: '1000' | '2000') => {
+    const rows = respuestaSalidaRowsPorCentro(centro);
+    if (rows.length === 0) {
+      addNotification('warning', `No hay materiales de Necesidades Planta para el Centro ${centro}.`);
+      return;
+    }
+    // El P3 es la RESPUESTA del día siguiente a la revisión — mismo criterio de negocio que Laminado:
+    // su fecha_inicio_plan/fecha_fin_plan se fuerza siempre a hoy + 1 día.
+    const fechaRespuesta = format(addDays(new Date(), 1), 'yyyy-MM-dd');
+    setPlanPreviewP3({
+      centro,
+      codigo_grupo: CODIGO_GRUPO_ESPUMA,
+      nombreGrupo: 'Corte Espuma',
+      valor: `Plan Táctico - Centro ${centro} - P3`,
+      fechaInicio: fechaRespuesta,
+      fechaFin: fechaRespuesta,
+      rows
+    });
+  }, [respuestaSalidaRowsPorCentro, addNotification]);
+
+  // Paso 2: el usuario confirmó en el diálogo. Crea un único PlanGrupo (grupo 7 = Corte Espuma, del
+  // centro elegido) y, por cada material de la vista previa (incluidos los de cantidad 0 — a
+  // diferencia del "Guardar Plan" base de Laminado, aquí SÍ se conservan para dejar constancia de qué
+  // quedó sin Provisional que lo cubra), uno o más DetalleTactico vía getOrigenesProrrateoEspuma.
+  const handleConfirmarRespuestaP3 = useCallback(async () => {
+    if (!planPreviewP3) return;
+    setIsSavingPlanP3(true);
+    try {
+      const user = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('user') || '{}') : {};
+      const usuario = user?.name || 'admin';
+
+      const planPayload = {
+        codigo_plan_grupo: 0,
+        codigo_grupo: planPreviewP3.codigo_grupo,
+        codigo_familia_grupo: null,
+        codigo_plan: null,
+        valor: planPreviewP3.valor,
+        fecha_inicio_plan: planPreviewP3.fechaInicio,
+        fecha_fin_plan: planPreviewP3.fechaFin,
+        estado: 'A',
+        usuario_creacion: usuario,
+      };
+
+      const planResponse = await planGrupoService.save(planPayload as unknown as PlanGrupo);
+      const nuevoCodigoPlanGrupo = planResponse.data.codigo_plan_grupo;
+
+      let exitosos = 0;
+      let fallidos = 0;
+
+      for (const row of planPreviewP3.rows) {
+        const splits = getOrigenesProrrateoEspuma(row.material, row.cantidadKg, planPreviewP3.centro, nuevoCodigoPlanGrupo);
+        for (const split of splits) {
+          try {
+            const detallePayload = {
+              codigo_detalle_tactico: 0,
+              codigo_material: Number(row.material),
+              cantidad_produccion_neta: Math.round(split.cantidadKg).toFixed(0),
+              resp_ctrl_prod: '',
+              clase_aprovisionamiento: 'E',
+              cantidad_aprovisionamiento: 0,
+              estado: 'A',
+              codigo_plan_grupo: nuevoCodigoPlanGrupo,
+              codigo_plan_grupo_padre: split.codigoPadre,
+              usuario_modificacion: usuario,
+            };
+            await detalleTacticoService.save(detallePayload as unknown as DetalleTactico);
+            exitosos++;
+          } catch (e) {
+            console.warn(`[Respuesta P3 Espuma] Falló material ${row.material} (padre ${split.codigoPadre}):`, (e as Error).message);
+            fallidos++;
+          }
+        }
+      }
+
+      if (fallidos === 0) {
+        addNotification('success', `Respuesta P3 (Centro ${planPreviewP3.centro}) guardada: ${exitosos} materiales registrados en el Plan Grupo #${nuevoCodigoPlanGrupo}.`);
+      } else {
+        addNotification('warning', `Plan Grupo #${nuevoCodigoPlanGrupo} creado. ${exitosos} materiales guardados, ${fallidos} fallaron.`);
+      }
+      fetchNecesidadesPlanta();
+      setPlanPreviewP3(null);
+    } catch (e) {
+      addNotification('error', `Error al guardar la Respuesta P3: ${(e as Error).message}`);
+    } finally {
+      setIsSavingPlanP3(false);
+    }
+  }, [planPreviewP3, addNotification, fetchNecesidadesPlanta, getOrigenesProrrateoEspuma]);
 
   useEffect(() => {
     setMounted(true);
@@ -1208,13 +1611,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <div><h2 className="text-xl font-black text-gray-800 uppercase tracking-tighter">Programación Táctica Corte Espuma</h2><p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Capacidad Carrusel 3.2m | Auditoría Técnica SAP</p></div>
         </div>
         <div className="flex items-center gap-3">
-           <Button onClick={() => { fetchDataAsync(); fetchNecesidadesPlanta(); }} disabled={isLoading} className="bg-red-600 hover:bg-red-700 text-white rounded-xl h-10 px-6 text-[10px] font-black uppercase tracking-widest shadow-lg flex items-center gap-2">{isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} SINCRONIZAR SAP</Button>
+           <Button onClick={() => { fetchDataAsync(); fetchNecesidadesPlanta(); }} disabled={isLoading} className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl h-10 px-6 text-[10px] font-black uppercase tracking-widest shadow-lg flex items-center gap-2">{isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} SINCRONIZAR SAP</Button>
         </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-5 h-11 bg-gray-100/50 p-1.5 rounded-2xl border border-gray-200 mb-8">
-          {[ { v: 'resumen', l: 'Capacidad Operativa', i: LayoutDashboard }, { v: 'necesidadesPlanta', l: 'Necesidades Planta', i: Database }, { v: 'ordenes', l: 'Provisionales', i: Package }, { v: 'ordenesFert', l: 'Órdenes FERT', i: ShoppingCart }, { v: 'mantenimiento', l: 'Mantenimiento SAP', i: Wrench } ].map(tab => (
+        <TabsList className="grid grid-cols-6 h-11 bg-gray-100/50 p-1.5 rounded-2xl border border-gray-200 mb-8">
+          {[ { v: 'resumen', l: 'Capacidad Operativa', i: LayoutDashboard }, { v: 'necesidadesPlanta', l: 'Necesidades Planta', i: Database }, { v: 'respuestaP3', l: 'Respuesta P3', i: Save }, { v: 'ordenes', l: 'Provisionales', i: Package }, { v: 'ordenesFert', l: 'Órdenes FERT', i: ShoppingCart }, { v: 'mantenimiento', l: 'Mantenimiento SAP', i: Wrench } ].map(tab => (
             <TabsTrigger key={tab.v} value={tab.v} className="gap-2 text-[10px] font-black uppercase transition-all data-[state=active]:bg-white data-[state=active]:shadow-lg data-[state=active]:text-red-600 rounded-xl"><tab.i className="w-4 h-4" /> {tab.l}</TabsTrigger>
           ))}
         </TabsList>
@@ -1222,7 +1625,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <TabsContent value="resumen" className="animate-in fade-in duration-300">{renderDashboard('UIO')}{renderDashboard('GYE')}</TabsContent>
           <TabsContent value="necesidadesPlanta" className="animate-in fade-in duration-300 space-y-6 text-left">
             <div className="flex items-center justify-end">
-              <Button onClick={fetchNecesidadesPlanta} disabled={necesidadesPlantaLoading} className="bg-red-600 hover:bg-red-700 text-white rounded-xl h-9 px-5 text-[10px] font-black uppercase tracking-widest shadow-lg flex items-center gap-2">
+              <Button onClick={fetchNecesidadesPlanta} disabled={necesidadesPlantaLoading} className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl h-9 px-5 text-[10px] font-black uppercase tracking-widest shadow-lg flex items-center gap-2">
                 {necesidadesPlantaLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Actualizar
               </Button>
             </div>
@@ -1231,6 +1634,75 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             ) : (
               <ConsolidatedNeedsTable rows={necesidadesPlantaConsolidada} areaCounts={necesidadesPlantaAreaCounts} />
             )}
+          </TabsContent>
+          <TabsContent value="respuestaP3" className="animate-in fade-in duration-300 space-y-8 text-left">
+            {(['1000', '2000'] as const).map(centro => {
+              const rows = respuestaSalidaRowsPorCentro(centro);
+              const nombrePlanta = centro === '1000' ? 'UIO' : 'GYE';
+              const conDato = rows.filter(r => r.tienePlan).length;
+              return (
+                <div key={centro} className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
+                  <div className="flex items-center justify-between px-6 py-4 bg-gray-50 border-b border-gray-100">
+                    <h3 className="text-xs font-black uppercase text-slate-800 tracking-widest flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 rounded-full bg-red-600" /> Respuesta P3 — Centro {centro} ({nombrePlanta}) · {rows.length} materiales
+                      <span className="text-[9px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 rounded-full px-3 py-1">{conDato} con dato</span>
+                      <span className="text-[9px] font-black uppercase tracking-wider bg-red-50 text-red-600 rounded-full px-3 py-1">{rows.length - conDato} sin dato</span>
+                    </h3>
+                    <Button
+                      onClick={() => handleAbrirRespuestaP3(centro)}
+                      disabled={rows.length === 0}
+                      className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl h-9 px-5 text-[10px] font-black uppercase tracking-widest shadow-lg flex items-center gap-2"
+                    >
+                      <Save className="w-4 h-4" /> Generar Respuesta P3 {nombrePlanta}
+                    </Button>
+                  </div>
+                  <div className="overflow-x-auto max-h-[500px]">
+                    <table className="w-full text-center border-collapse text-[10px]">
+                      <thead className="bg-gray-50 sticky top-0 z-20 text-[9px] font-bold uppercase text-gray-400">
+                        <tr>
+                          <th className="px-6 py-3 border-r border-gray-100 text-left">Material</th>
+                          <th className="px-6 py-3 border-r border-gray-100 text-left">Descripción</th>
+                          <th className="px-6 py-3 border-r border-gray-100 font-black bg-yellow-50/50 text-yellow-700">Cantidad (Kg)</th>
+                          <th className="px-6 py-3 border-r border-gray-100">Fuente</th>
+                          <th className="px-6 py-3 border-r border-gray-100">Estado</th>
+                          <th className="px-6 py-3">Plan(es) Grupo Origen (P2)</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50 font-bold text-slate-700">
+                        {rows.length === 0 ? (
+                          <tr><td colSpan={6} className="py-16 text-slate-300 uppercase font-black tracking-widest italic opacity-50 text-center">Sin materiales de Necesidades Planta para este centro</td></tr>
+                        ) : rows.map((row, idx) => (
+                          <tr key={idx} className="hover:bg-gray-50/50 transition-colors font-mono text-[10px]">
+                            <td className="px-6 py-3 border-r border-slate-50 text-left text-indigo-600 font-black">{row.material}</td>
+                            <td className="px-6 py-3 border-r border-slate-50 text-left font-sans normal-case">{row.descripcion}</td>
+                            <td className="px-6 py-3 border-r border-slate-50 text-slate-900 font-black bg-yellow-50">{formatNum(row.cantidadKg, 0)}</td>
+                            <td className="px-6 py-3 border-r border-slate-50">
+                              <Badge
+                                className={cn(
+                                  "text-[8px] font-black uppercase",
+                                  row.fuente === 'FERT' ? "bg-indigo-50 text-indigo-700 border-indigo-200"
+                                  : row.fuente === 'Provisional' ? "bg-sky-50 text-sky-700 border-sky-200"
+                                  : row.fuente === 'Stock' ? "bg-amber-50 text-amber-700 border-amber-200"
+                                  : "bg-slate-50 text-slate-500 border-slate-200"
+                                )}
+                              >
+                                {row.fuente}
+                              </Badge>
+                            </td>
+                            <td className="px-6 py-3 border-r border-slate-50">
+                              <Badge className={cn("text-[8px] font-black uppercase", row.tienePlan ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-red-50 text-red-700 border-red-200")}>
+                                {row.tienePlan ? 'Con Respuesta' : 'Sin Respuesta'}
+                              </Badge>
+                            </td>
+                            <td className="px-6 py-3 text-slate-400">{row.origenes}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            })}
           </TabsContent>
           <TabsContent value="ordenes" className="animate-in fade-in duration-300 space-y-6">
             <div className="flex items-center justify-end">
@@ -1338,6 +1810,55 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           </TabsContent>
         </div>
       </Tabs>
+
+      <Dialog open={planPreviewP3 !== null} onOpenChange={(open) => { if (!open && !isSavingPlanP3) setPlanPreviewP3(null); }}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Confirmar Respuesta P3 — Corte Espuma</DialogTitle>
+            <DialogDescription>
+              Revisa los datos que se van a grabar antes de continuar. Esta acción crea registros nuevos en producción.
+            </DialogDescription>
+          </DialogHeader>
+          {planPreviewP3 && (
+            <div className="space-y-4 text-left text-sm">
+              <div className="grid grid-cols-2 gap-3 bg-slate-50 rounded-xl p-4 border border-slate-100">
+                <div><span className="font-black text-slate-500 text-[10px] uppercase block">Grupo</span>{planPreviewP3.nombreGrupo} (código {planPreviewP3.codigo_grupo})</div>
+                <div><span className="font-black text-slate-500 text-[10px] uppercase block">Centro</span>{planPreviewP3.centro}</div>
+                <div><span className="font-black text-slate-500 text-[10px] uppercase block">Valor Plan</span>{planPreviewP3.valor}</div>
+                <div><span className="font-black text-slate-500 text-[10px] uppercase block">Fecha Respuesta</span>{planPreviewP3.fechaInicio}</div>
+              </div>
+              <div>
+                <span className="font-black text-slate-500 text-[10px] uppercase block mb-2">Materiales a guardar ({planPreviewP3.rows.length})</span>
+                <div className="border border-slate-100 rounded-xl overflow-hidden max-h-[260px] overflow-y-auto">
+                  <table className="w-full text-[11px] border-collapse">
+                    <thead className="bg-gray-50 text-gray-400 uppercase font-bold sticky top-0">
+                      <tr>
+                        <th className="px-3 py-2 text-left">Material</th>
+                        <th className="px-3 py-2 text-right">Cantidad (Kg)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {planPreviewP3.rows.map((row, i) => (
+                        <tr key={i}>
+                          <td className="px-3 py-2 text-left font-mono">{row.material}</td>
+                          <td className="px-3 py-2 text-right font-mono">{formatNum(row.cantidadKg, 0)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPlanPreviewP3(null)} disabled={isSavingPlanP3}>Cancelar</Button>
+            <Button onClick={handleConfirmarRespuestaP3} disabled={isSavingPlanP3} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+              {isSavingPlanP3 ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              {isSavingPlanP3 ? 'Guardando...' : 'Confirmar y Guardar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
