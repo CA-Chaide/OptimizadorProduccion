@@ -639,10 +639,11 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   // memoria de sesión (no se persiste ni bloquea "Guardar Plan"): se resetea al recalcular el Resumen
   // Necesidades o recargar la página.
   const [approvedDeficitRows, setApprovedDeficitRows] = useState<Set<string>>(new Set());
-  // Pendiente de confirmación: una edición individual de PLAN(UN) cruzó el "techo" de corrida del
-  // bloque (múltiplo de 40 más cercano) — se pregunta si se quiere completar/vaciar la corrida
-  // redistribuyendo la diferencia entre los DEMÁS materiales, sin tocar el valor recién editado.
-  const [corridaTechoConfirm, setCorridaTechoConfirm] = useState<{
+  // Toast no bloqueante: una edición individual de PLAN(UN) cambió la cantidad de un material que
+  // comparte bloque con otros — se ofrece redistribuir la diferencia entre los DEMÁS materiales, sin
+  // tocar el valor recién editado. No bloquea: la edición ya se aplicó, esto solo ofrece ajustarla.
+  // Solo un toast a la vez — uno nuevo reemplaza al anterior en vez de acumularse.
+  const [redistribuirToast, setRedistribuirToast] = useState<{
     material: string; apertura: string; densidad: string; editedValue: number;
     techoActual: number; techoNuevo: number;
   } | null>(null);
@@ -714,7 +715,37 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return Number.isNaN(n) ? 0 : n;
   }, []);
 
+  // Ambos turnos arrancan en "VACÍO" (antes Día arrancaba en H1) — obliga a escoger horario a
+  // propósito en vez de asumir uno por defecto; ver validación en handleProcessResumen y
+  // handleAutoAssignPersonnel.
+  const [selectedDiaShift, setSelectedDiaShift] = useState('EMPTY');
+  const [selectedNocheShift, setSelectedNocheShift] = useState('EMPTY');
+
+  const diaShiftOptions = [
+    { v: 'EMPTY', l: 'VACÍO', h: 0 },
+    { v: 'H1', l: '07:00 - 15:45', h: 8.75 },
+    { v: 'H2', l: '07:00 - 17:00', h: 10 },
+    { v: 'H3', l: '07:00 - 18:00', h: 11 },
+    { v: 'H4', l: '07:00 - 19:00', h: 12 }
+  ];
+
+  const nocheShiftOptions = [
+    { v: 'EMPTY', l: 'VACÍO', h: 0 },
+    { v: 'H1', l: '21:00 - 05:30', h: 8.5 },
+    { v: 'H2', l: '19:00 - 05:30', h: 10.5 }
+  ];
+
+  // Auto-asignar Personal — Laminado Cilíndrico: exige haber escogido al menos un horario (Día y/o
+  // Noche) antes de asignar, y respeta cuáles turnos están realmente activos — antes asignaba
+  // siempre los 4 puestos (Día+Noche) sin importar si algún turno estaba en "VACÍO". Regla: turno
+  // "VACÍO" no recibe personal; si ambos tienen horario, se asignan los 4 puestos.
   const handleAutoAssignPersonnel = useCallback(() => {
+    const diaActivo = selectedDiaShift !== 'EMPTY';
+    const nocheActivo = selectedNocheShift !== 'EMPTY';
+    if (!diaActivo && !nocheActivo) {
+      addNotification('warning', 'Escoja un horario de Turno Día y/o Turno Noche antes de asignar personal.');
+      return;
+    }
     if (operadoresLaminado.length === 0) {
       addNotification('warning', 'No hay operadores con habilidades de Laminado Cilíndrico disponibles.');
       return;
@@ -736,37 +767,22 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       return found?.code || '';
     };
 
-    const diaOp1 = takeNext(principales);
-    const diaOp2 = takeNext(ayudantes) || takeNext(principales);
-    const nocheOp1 = takeNext(principales);
-    const nocheOp2 = takeNext(ayudantes) || takeNext(principales);
+    const diaOp1 = diaActivo ? takeNext(principales) : '';
+    const diaOp2 = diaActivo ? (takeNext(ayudantes) || takeNext(principales)) : '';
+    const nocheOp1 = nocheActivo ? takeNext(principales) : '';
+    const nocheOp2 = nocheActivo ? (takeNext(ayudantes) || takeNext(principales)) : '';
 
     setAssignedPersonnel({ diaOp1, diaOp2, nocheOp1, nocheOp2 });
 
+    const posicionesEsperadas = (diaActivo ? 2 : 0) + (nocheActivo ? 2 : 0);
     const asignados = [diaOp1, diaOp2, nocheOp1, nocheOp2].filter(Boolean).length;
-    if (asignados < 4) {
-      addNotification('warning', `Asignación automática parcial: se completaron ${asignados} de 4 posiciones por falta de operadores calificados disponibles.`);
+    const alcanceTexto = diaActivo && nocheActivo ? '' : diaActivo ? ' — solo Turno Día (Noche vacío)' : ' — solo Turno Noche (Día vacío)';
+    if (asignados < posicionesEsperadas) {
+      addNotification('warning', `Asignación automática parcial: se completaron ${asignados} de ${posicionesEsperadas} posiciones por falta de operadores calificados disponibles${alcanceTexto}.`);
     } else {
-      addNotification('success', 'Personal asignado automáticamente según calificación (Operador A: >50%, Ayudante B: ≤50%).');
+      addNotification('success', `Personal asignado automáticamente según calificación (Operador A: >50%, Ayudante B: ≤50%)${alcanceTexto}.`);
     }
-  }, [operadoresLaminado, addNotification, parseCalificacionOperador]);
-
-  const [selectedDiaShift, setSelectedDiaShift] = useState('H1');
-  const [selectedNocheShift, setSelectedNocheShift] = useState('EMPTY');
-
-  const diaShiftOptions = [
-    { v: 'EMPTY', l: 'VACÍO', h: 0 },
-    { v: 'H1', l: '07:00 - 15:45', h: 8.75 },
-    { v: 'H2', l: '07:00 - 17:00', h: 10 },
-    { v: 'H3', l: '07:00 - 18:00', h: 11 },
-    { v: 'H4', l: '07:00 - 19:00', h: 12 }
-  ];
-
-  const nocheShiftOptions = [
-    { v: 'EMPTY', l: 'VACÍO', h: 0 },
-    { v: 'H1', l: '21:00 - 05:30', h: 8.5 },
-    { v: 'H2', l: '19:00 - 05:30', h: 10.5 }
-  ];
+  }, [operadoresLaminado, addNotification, parseCalificacionOperador, selectedDiaShift, selectedNocheShift]);
 
   useEffect(() => {
     setMounted(true);
@@ -1003,20 +1019,34 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   // total nunca excede lo planificado. Si el techo no alcanza para cubrir el mínimo real de algún
   // origen, esto NO alerta aquí — P3 solo reparte lo ya decidido; esa alerta debe vivir en la
   // planificación de la corrida (deficitRealUN/distribuirPorDeficit), no en este prorrateo. Si no
-  // hay origen registrado (la necesidad vino directo de OF_PROV/OF_HALB y no de otra área), se
-  // referencia el propio plan de Laminado como fallback.
+  // hay origen registrado en absoluto (la necesidad vino directo de OF_PROV/OF_HALB y no de otra
+  // área), se referencia el propio plan de Laminado como fallback.
   const getOrigenesProrrateo = useCallback((material: string, cantidadKg: number, fallbackCodigoPlanGrupo: number) => {
     const origenes = materialOrigenesPlantaMap.get(String(Number(material)));
-    const totalOrigen = origenes ? Array.from(origenes.values()).reduce((s, v) => s + v, 0) : 0;
-    if (!origenes || totalOrigen <= 0) {
+    // BUG corregido: un origen SÍ registrado pero con necesidad 0 (el área pidió el material con
+    // cantidad 0) es un origen real — antes "totalOrigen <= 0" lo trataba igual que "sin origen" y
+    // terminaba auto-referenciando el P3 recién creado como codigo_plan_grupo_padre, perdiendo la
+    // trazabilidad hacia el P2 real (ej. Muebles #73 con 1 ítem en 0 quedaba huérfano de su origen).
+    // El fallback a sí mismo ahora SOLO aplica cuando no hay ninguna entrada de origen.
+    if (!origenes || origenes.size === 0) {
       return [{ codigoPadre: fallbackCodigoPlanGrupo, cantidadKg: redondearARollo(material, cantidadKg) }];
     }
 
     const entradas = Array.from(origenes.entries()).sort((a, b) => b[1] - a[1]); // mayor necesidad primero
+    const totalOrigen = entradas.reduce((s, [, v]) => s + v, 0);
     const pesoRollo = unifiedNeeds.find(u => u.material === material)?.peso || 0;
 
     if (cantidadKg <= 0) {
       return entradas.map(([codigoPadre]) => ({ codigoPadre, cantidadKg: 0 }));
+    }
+    // Todos los orígenes registrados pidieron 0 (no hay peso real entre ellos para prorratear
+    // proporcionalmente): se asigna completo al primero — ninguno tiene más prioridad que otro — en
+    // vez de auto-referenciar el P3 recién creado.
+    if (totalOrigen <= 0) {
+      return entradas.map(([codigoPadre], i) => ({
+        codigoPadre,
+        cantidadKg: i === 0 ? redondearARollo(material, cantidadKg) : 0
+      }));
     }
     if (pesoRollo <= 0 || entradas.length <= 1) {
       return entradas.map(([codigoPadre, cantidad]) => ({
@@ -1108,16 +1138,33 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   // lámina/componente del resumen (match directo por código, sin explosión BOM), igual que
   // materialNecesidadesPlantaMap. Esta SÍ es producción ya realizada/comprometida: alimenta la
   // columna "Producción Diaria" y se suma al stock disponible (ver handleProcessResumen).
+  //
+  // El tab ÓRDENES FERT maneja CANTPENDIENTE en la unidad que indique cada línea (campo UNIDAD): la
+  // mayoría son "ST" (unidades/rollos), pero ciertas referencias vienen directo en "KG" — verificado
+  // contra datos reales (UNIDAD: ST/M/KG conviven en el mismo endpoint). Sumar CANTPENDIENTE tal cual
+  // como si siempre fuera Kg inflaba brutalmente el stock/Producción Diaria de cualquier material en
+  // ST (ej. "6" unidades se contaban como "6 Kg"). Ahora: si UNIDAD=KG se usa tal cual; en cualquier
+  // otro caso se trata como UN y se convierte a Kg con el peso del rollo (kpiLooperData.PesoUN) —
+  // mismo peso que usa el resto del módulo para todas las conversiones UN↔Kg.
   const materialProd014FertMap = useMemo(() => {
     const map = new Map<string, number>();
     filteredFertOrdersProd014.forEach(order => {
       const key = String(Number(getProp(order, ['MATERIAL', 'CodMaterial'])));
       if (!key || key === 'NaN') return;
       const qty = safeNum(getProp(order, ['CANTPENDIENTE', 'CANTPROGRAMADA', 'CANTIDAD']));
-      map.set(key, (map.get(key) || 0) + qty);
+      const unidad = getProp(order, ['UNIDAD', 'Unidad', 'UNIDAD_MEDIDA']).trim().toUpperCase();
+      let qtyKg = 0;
+      if (unidad === 'KG') {
+        qtyKg = qty;
+      } else {
+        const looperMatch = kpiLooperData.find(k => cleanCode(k.Material) === key);
+        const pesoUN = looperMatch ? safeNum(looperMatch.PesoUN) : 0;
+        qtyKg = pesoUN > 0 ? qty * pesoUN : 0;
+      }
+      map.set(key, (map.get(key) || 0) + qtyKg);
     });
     return map;
-  }, [filteredFertOrdersProd014]);
+  }, [filteredFertOrdersProd014, kpiLooperData]);
 
   // Reconciliación reutilizable de un PlanGrupo contra la necesidad actual (misma lógica que ya
   // usaba "Editar Plan" manual): trae los DetalleTactico vigentes del plan, los cruza por clave
@@ -1311,11 +1358,17 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   }, [planActivoPendienteConfirmacion, materialNecesidadesPlantaMap, materialOrigenesPlantaMap, reconciliarDetallesParaPlan, persistirFilasEditables, desactivarPlanGrupo, fetchNecesidadesPlanta, addNotification]);
 
   const handleProcessResumen = useCallback(async () => {
+    // Ambos turnos en "VACÍO" (default desde ahora) significa que todavía no se definió capacidad
+    // operativa para ningún horario — bloquea y pide escoger antes de generar (Gestión de Tiempos).
+    if (selectedDiaShift === 'EMPTY' && selectedNocheShift === 'EMPTY') {
+      addNotification('warning', 'Escoja un horario de Turno Día y/o Turno Noche (Gestión de Tiempos) antes de generar necesidades.');
+      return;
+    }
     if (filteredOrders.length === 0 && filteredFertOrders.length === 0) {
       setUnifiedNeeds([]);
       return;
     }
-    
+
     setIsProcessingResumen(true);
     // Órdenes Provisionales (Provisionales + 014-Provisional) ya no participan en absoluto en este
     // cálculo: su cantidad nunca alimenta necesidad (NEC. PLANTA [Kg] / P2 la reemplazó por completo)
@@ -1541,7 +1594,13 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       const consumoKg = necPlantaKg;
       const cUn = row.peso > 0 ? consumoKg / row.peso : 0;
       const cUnHalb = row.peso > 0 ? row.consumoKgHalb / row.peso : 0;
-      const totalNecRollos = cUn + cUnHalb;
+      // Un proceso físico no puede cortar una fracción de rollo: la necesidad total del ítem se
+      // redondea hacia arriba al rollo completo (mismo criterio y epsilon que deficitRealUN) ANTES de
+      // sumarla por bloque/apertura — de lo contrario, sumar las fracciones crudas y redondear una sola
+      // vez al final subestima el total real (ej. 3 + 47 + 19 rollos completos por ítem = 69, pero
+      // sumar los Kg fraccionarios y redondear al final da 68.2 → 68).
+      const totalNecRollosRaw = cUn + cUnHalb;
+      const totalNecRollos = totalNecRollosRaw > 0.001 ? Math.ceil(totalNecRollosRaw - 0.001) : 0;
       // Piso obligatorio de Venta Externa: porción de consumoKg cuyo origen es ese grupo (subconjunto
       // de necPlantaKg, ver materialNecesidadVentaExternaMap). Se redondea hacia arriba al rollo
       // completo con el mismo criterio que deficitRealUN — es el que se cubre exacto en el bloque.
@@ -1705,7 +1764,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
     setUnifiedNeeds(finalArray);
     setIsProcessingResumen(false);
-  }, [filteredOrders, filteredFertOrders, materialProd014FertMap, materialNecesidadesPlantaMap, materialNecesidadVentaExternaMap, kpiLooperData, inventarioSAP, extractMaterialInfo, planManualOverrides, corridasManualOverrides, selectedDates, evaluarModificacionAutomaticaPlanActivo, addNotification]);
+  }, [filteredOrders, filteredFertOrders, materialProd014FertMap, materialNecesidadesPlantaMap, materialNecesidadVentaExternaMap, kpiLooperData, inventarioSAP, extractMaterialInfo, planManualOverrides, corridasManualOverrides, selectedDates, evaluarModificacionAutomaticaPlanActivo, addNotification, selectedDiaShift, selectedNocheShift]);
 
   // Recalcula planKg/tProceso de una fila para un planUn dado (misma fórmula usada en handleProcessResumen).
   // setupContribution ya viene calculado por el caller (participación viva en unidades del bloque,
@@ -1898,30 +1957,28 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       });
     });
 
-    // Si el material editado es estándar y el cambio cruza el "techo" de corrida del bloque (múltiplo
-    // de 40 más cercano — 1 corrida=40, 2=80...), se OFRECE completar/vaciar la corrida redistribuyendo
-    // la diferencia entre los demás materiales del bloque. Nunca automático: requiere confirmación
-    // explícita del usuario (ver corridaTechoConfirm / handleConfirmarCompletarTecho), para no revivir
-    // la redistribución forzada que se quitó de la edición libre por material.
-    if (!isConvEdit) {
+    // Se ofrece redistribuir siempre que la cantidad realmente cambie y haya otros materiales en el
+    // bloque con quién redistribuir — cubre tanto "no tenía plan de corrida y se le asigna uno" como
+    // "ya tenía plan y se le suma/resta". Nunca automático: requiere acción explícita del usuario
+    // sobre el toast (ver redistribuirToast / handleConfirmarCompletarTecho); el toast no bloquea, la
+    // edición ya quedó aplicada — si se ignora, el bloque simplemente ajusta sus corridas al nuevo total.
+    if (!isConvEdit && editedRowNow && newValue !== editedRowNow.planUn) {
       const standardGroupNow = unifiedNeeds.filter(r => inGroup(r) && !isConvDescripcion(r.descripcion));
       if (standardGroupNow.length > 1) {
         const currentTotal = standardGroupNow.reduce((s, r) => s + r.planUn, 0);
         const othersSum = standardGroupNow.reduce((s, r) => s + (r.material === material ? 0 : r.planUn), 0);
         const techoActual = currentTotal > 0 ? Math.ceil(currentTotal / BLOCK_SIZE) * BLOCK_SIZE : 0;
         const techoNuevo = (othersSum + newValue) > 0 ? Math.ceil((othersSum + newValue) / BLOCK_SIZE) * BLOCK_SIZE : 0;
-        if (techoNuevo !== techoActual) {
-          setCorridaTechoConfirm({ material, apertura, densidad, editedValue: newValue, techoActual, techoNuevo });
-        }
+        setRedistribuirToast({ material, apertura, densidad, editedValue: newValue, techoActual, techoNuevo });
       }
     }
   };
 
-  // Aplica la redistribución que el usuario confirmó en corridaTechoConfirm: reparte SOLO entre los
+  // Aplica la redistribución que el usuario confirmó desde redistribuirToast: reparte SOLO entre los
   // demás materiales estándar del bloque (proporcional a su participación entre sí), dejando intacto
   // el valor que el usuario acaba de escribir para el material editado.
   const handleConfirmarCompletarTecho = () => {
-    const pending = corridaTechoConfirm;
+    const pending = redistribuirToast;
     if (!pending) return;
     const { material, apertura, densidad, editedValue, techoNuevo } = pending;
 
@@ -1976,10 +2033,18 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     });
 
     addNotification('success', `Bloque ${apertura}/${densidad}: corrida completada a ${techoNuevo.toLocaleString()} UN, capacidad redistribuida entre los demás materiales.`);
-    setCorridaTechoConfirm(null);
+    setRedistribuirToast(null);
   };
 
-  const handleDescartarCompletarTecho = () => setCorridaTechoConfirm(null);
+  const handleDescartarCompletarTecho = () => setRedistribuirToast(null);
+
+  // Auto-descarte del toast de redistribución tras 8s si el usuario no interactúa — no bloquea el
+  // flujo, y evita que se acumule si el usuario sigue editando otros materiales.
+  useEffect(() => {
+    if (!redistribuirToast) return;
+    const timer = setTimeout(() => setRedistribuirToast(null), 8000);
+    return () => clearTimeout(timer);
+  }, [redistribuirToast]);
 
   // Control de "Corridas" a nivel de bloque (independiente de PLAN(UN) por material): el usuario
   // decide un número de corridas distinto al recomendado por el algoritmo de déficit (runsRecomendado)
@@ -2585,13 +2650,22 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     [mttoPreventivoTasks]
   );
 
-  const tDisponible = useMemo(() => {
+  // Disponibilidad neta OEE calculada de forma independiente por turno (cada turno descuenta
+  // su propio 13% de pérdidas estándar) para poder evaluar la disponibilidad real de cada turno
+  // por separado. El MTTO Preventivo se sigue descontando una sola vez sobre la suma de ambos turnos.
+  const diaDisponibleOEE = useMemo(() => {
     const diaH = diaShiftOptions.find(o => o.v === selectedDiaShift)?.h || 0;
+    return diaH * 0.87;
+  }, [selectedDiaShift]);
+
+  const nocheDisponibleOEE = useMemo(() => {
     const nocheH = nocheShiftOptions.find(o => o.v === selectedNocheShift)?.h || 0;
-    const horasBrutas = diaH + nocheH;
-    const horasNetasOEE = horasBrutas * 0.87; // Se descuenta 13% de pérdidas estándar (OEE) sobre las horas brutas
-    return Math.max(0, horasNetasOEE - mttoPreventivoHoras); // + descuento del MTTO Preventivo (Operación Adicional)
-  }, [selectedDiaShift, selectedNocheShift, mttoPreventivoHoras]);
+    return nocheH * 0.87;
+  }, [selectedNocheShift]);
+
+  const tDisponible = useMemo(() => {
+    return Math.max(0, (diaDisponibleOEE + nocheDisponibleOEE) - mttoPreventivoHoras); // + descuento del MTTO Preventivo (Operación Adicional)
+  }, [diaDisponibleOEE, nocheDisponibleOEE, mttoPreventivoHoras]);
 
   const ocupacionPorc = useMemo(() => {
     if (tDisponible <= 0) return 0;
@@ -2823,12 +2897,14 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 <select value={selectedDiaShift} onChange={(e) => setSelectedDiaShift(e.target.value)} className="bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-[10px] text-indigo-700 flex-1 font-black outline-none appearance-none cursor-pointer">
                   {diaShiftOptions.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
                 </select>
+                <span className="text-[8px] font-black text-indigo-700 whitespace-nowrap tabular-nums" title="Disponibilidad neta del turno Día (-13% OEE)">{diaDisponibleOEE.toFixed(2)}h</span>
               </div>
               <div className="flex items-center gap-3">
                 <span className="text-[9px] font-black text-slate-400 w-12">NOCHE:</span>
                 <select value={selectedNocheShift} onChange={(e) => setSelectedNocheShift(e.target.value)} className="bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-[10px] text-indigo-700 flex-1 font-black outline-none appearance-none cursor-pointer">
                   {nocheShiftOptions.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
                 </select>
+                <span className="text-[8px] font-black text-purple-700 whitespace-nowrap tabular-nums" title="Disponibilidad neta del turno Noche (-13% OEE)">{nocheDisponibleOEE.toFixed(2)}h</span>
               </div>
               <div className="flex items-center gap-3">
                 <span className="text-[9px] font-black text-slate-400 w-12">MTTO:</span>
@@ -2973,7 +3049,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           <div className="col-span-2 p-4 border-r border-gray-100 flex flex-col items-center justify-center">
             <p className="text-[9px] font-black text-slate-400 uppercase tracking-tighter mb-1">DISPONIBILIDAD TOTAL (H)</p>
             <span className="text-2xl font-black text-amber-600 leading-none tabular-nums">{tDisponible.toFixed(2)}</span>
-            <p className="text-[7px] font-bold text-slate-400 uppercase tracking-tighter mt-1">Bruto -13% OEE -{mttoPreventivoHoras.toFixed(2)}h MTTO</p>
+            <p className="text-[7px] font-bold text-slate-400 uppercase tracking-tighter mt-1">Día {diaDisponibleOEE.toFixed(2)}h + Noche {nocheDisponibleOEE.toFixed(2)}h (-13% OEE c/u) -{mttoPreventivoHoras.toFixed(2)}h MTTO</p>
           </div>
           <div className="col-span-5 flex items-center px-6">
              {isSaturated && (
@@ -3001,7 +3077,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           </div>
         </div>
         <div className="flex items-center gap-3">
-           <Button onClick={handleProcessResumen} disabled={isProcessingResumen} className="bg-red-600 hover:bg-red-700 text-white rounded-xl h-10 px-6 text-[10px] font-black uppercase tracking-widest shadow-lg flex items-center gap-2">
+           <Button onClick={handleProcessResumen} disabled={isProcessingResumen} className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl h-10 px-6 text-[10px] font-black uppercase tracking-widest shadow-lg flex items-center gap-2">
               {isProcessingResumen ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} GENERAR NECESIDADES
            </Button>
            <Popover>
@@ -3419,29 +3495,24 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             </DialogContent>
           </Dialog>
 
-          <Dialog open={corridaTechoConfirm !== null} onOpenChange={(open) => { if (!open) setCorridaTechoConfirm(null); }}>
-            <DialogContent className="max-w-md">
-              <DialogHeader>
-                <DialogTitle>¿Completar la corrida?</DialogTitle>
-                <DialogDescription>
-                  {corridaTechoConfirm && (
-                    <>
-                      El cambio en <span className="font-mono font-bold">{corridaTechoConfirm.material}</span> (bloque {corridaTechoConfirm.apertura}/{corridaTechoConfirm.densidad}){' '}
-                      {corridaTechoConfirm.techoNuevo > corridaTechoConfirm.techoActual
-                        ? 'implica pasar a una corrida adicional: '
-                        : 'deja capacidad libre por debajo de la corrida actual: '}
-                      de {corridaTechoConfirm.techoActual.toLocaleString()} a {corridaTechoConfirm.techoNuevo.toLocaleString()} UN.
-                      {' '}¿Redistribuir automáticamente la diferencia entre los demás materiales del bloque para llenar/vaciar la corrida completa, o dejarlo como quedó?
-                    </>
-                  )}
-                </DialogDescription>
-              </DialogHeader>
-              <DialogFooter>
-                <Button variant="outline" onClick={handleDescartarCompletarTecho}>Dejar así</Button>
-                <Button onClick={handleConfirmarCompletarTecho} className="bg-indigo-600 hover:bg-indigo-700 text-white">Redistribuir automáticamente</Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          {redistribuirToast && (
+            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] w-full max-w-md bg-white border border-indigo-200 rounded-2xl shadow-2xl p-4 flex items-start gap-3 animate-in slide-in-from-bottom-4">
+              <Info className="w-5 h-5 text-indigo-600 flex-shrink-0 mt-0.5" />
+              <div className="flex-1 text-left">
+                <p className="text-[11px] font-black text-slate-800 leading-snug">
+                  Bloque <span className="font-mono">{redistribuirToast.apertura}/{redistribuirToast.densidad}</span>: material <span className="font-mono">{redistribuirToast.material}</span> pasó a {redistribuirToast.editedValue.toLocaleString()} UN
+                  {redistribuirToast.techoNuevo !== redistribuirToast.techoActual && (
+                    <> ({redistribuirToast.techoActual.toLocaleString()} → {redistribuirToast.techoNuevo.toLocaleString()} UN de capacidad)</>
+                  )}.
+                </p>
+                <p className="text-[10px] text-slate-400 font-bold mt-1">¿Redistribuir la diferencia entre los demás materiales del bloque según su % de participación?</p>
+                <div className="flex items-center gap-2 mt-3">
+                  <Button size="sm" onClick={handleConfirmarCompletarTecho} className="h-7 px-3 text-[10px] font-black bg-indigo-600 hover:bg-indigo-700 text-white">Redistribuir</Button>
+                  <Button size="sm" variant="outline" onClick={handleDescartarCompletarTecho} className="h-7 px-3 text-[10px] font-black">Dejar así</Button>
+                </div>
+              </div>
+            </div>
+          )}
 
           <Dialog open={planPreview !== null} onOpenChange={(open) => { if (!open && !isSavingPlan) setPlanPreview(null); }}>
             <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
@@ -3699,7 +3770,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             <Button
               onClick={fetchNecesidadesPlanta}
               disabled={necesidadesPlantaLoading}
-              className="bg-red-600 hover:bg-red-700 text-white rounded-xl h-10 px-6 text-[10px] font-black uppercase tracking-widest shadow-lg flex items-center gap-2"
+              className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl h-10 px-6 text-[10px] font-black uppercase tracking-widest shadow-lg flex items-center gap-2"
             >
               {necesidadesPlantaLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Actualizar
             </Button>
@@ -3866,7 +3937,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <Button onClick={handleExportTxt} className="bg-red-600 hover:bg-red-700 text-white rounded-xl h-10 px-6 text-[10px] font-black uppercase tracking-widest shadow-lg flex items-center gap-2">
+              <Button onClick={handleExportTxt} className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl h-10 px-6 text-[10px] font-black uppercase tracking-widest shadow-lg flex items-center gap-2">
                 <Download className="w-4 h-4" /> Exportar TXT
               </Button>
             </div>
