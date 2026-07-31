@@ -3198,7 +3198,13 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                           <tr className={cn("hover:brightness-95 cursor-pointer transition-all border-l-4 font-black", getDensityColor(group.densidad))} onClick={() => toggleGroup(groupKey)}>
                             <td className="px-4 py-4 text-left border-r border-gray-100/10 flex items-center gap-2">
                                {isExp ? <Minus className="w-3 h-3 text-red-500" /> : <Plus className="w-3 h-3 text-indigo-500" />}
-                               <span className="font-black text-[10px] uppercase tracking-widest text-slate-700">{group.apertura} - D{group.densidad}</span>
+                               {/* Apertura se mantiene, pero discreta: "12 SL" existe en más de una apertura real
+                                   (ej. 200 y 214) — ocultarla del todo haría indistinguibles esos dos bloques,
+                                   aunque sigan siendo grupos internamente distintos (groupKey = apertura|densidad). */}
+                               <div className="flex flex-col leading-tight">
+                                  <span className="font-black text-[10px] uppercase tracking-widest text-slate-700">D{group.densidad}</span>
+                                  <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wide">Apertura {group.apertura}</span>
+                               </div>
                             </td>
                             <td className="px-6 py-4 text-left font-black uppercase">
                                <div className="flex flex-col gap-1.5">
