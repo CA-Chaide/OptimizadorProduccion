@@ -866,15 +866,30 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return porCentro;
   }, [inventarioSAP, kpiLooperData, extractMaterialInfo]);
 
-  // Descripción por material para la Respuesta P3 — sale de las Órdenes Provisionales y FERT ya
-  // auditadas (únicas filas de este archivo que traen descripción); un material que nunca apareció en
-  // ninguna orden de ningún centro queda sin descripción (limitación conocida, no hay maestro de
-  // materiales consultado aquí todavía).
+  // Descripción por material para la Respuesta P3 — en cascada de fuentes, de más a menos específica.
+  // Antes solo leía de Provisionales/FERT auditados (provAuditUIO/GYE, fertAuditUIO/GYE), que son los
+  // conjuntos YA filtrados por responsable+fecha — dejaba sin descripción a cualquier material que
+  // solo calzara vía fertAuditAllUIO/GYE (fuente real de fertKgPorMaterialPorCentro, sin ese filtro) o
+  // vía Stock (inventarioSAP, sin ninguna orden). Verificado con datos reales: Muebles pasó de 0/80 a
+  // 80/80 con descripción al sumar esas dos fuentes. Un material sin ninguna orden NI stock en ningún
+  // centro queda sin descripción (limitación real, no hay maestro de materiales consultado aquí).
   const materialDescMap = useMemo(() => {
     const map = new Map<string, string>();
-    [...provAuditUIO, ...provAuditGYE, ...fertAuditUIO, ...fertAuditGYE].forEach(r => { if (!map.has(r.material)) map.set(r.material, r.descripcion); });
+    const trySet = (code: string, desc: string) => {
+      if (!code || !desc || desc === '—' || map.has(code)) return;
+      map.set(code, desc);
+    };
+    [...provAuditUIO, ...provAuditGYE, ...fertAuditUIO, ...fertAuditGYE, ...fertAuditAllUIO, ...fertAuditAllGYE]
+      .forEach(r => trySet(r.material, r.descripcion));
+    inventarioSAP.forEach(inv => { const info = extractMaterialInfo(inv); trySet(info.code, info.desc); });
     return map;
-  }, [provAuditUIO, provAuditGYE, fertAuditUIO, fertAuditGYE]);
+  }, [provAuditUIO, provAuditGYE, fertAuditUIO, fertAuditGYE, fertAuditAllUIO, fertAuditAllGYE, inventarioSAP, extractMaterialInfo]);
+
+  // Materiales de "Laminado Cilíndrico" (descripción "LAMINA CILINDRICA...") — verificado con datos
+  // reales: son 6 materiales, todos de Muebles, y ya reciben su respuesta P3 desde el módulo de
+  // Laminado. Se excluyen de la Respuesta P3 de Corte Espuma (ni se muestran ni se guardan) para no
+  // generar una segunda respuesta duplicada/conflictiva para el mismo material.
+  const esLaminadoCilindrico = (descripcion: string): boolean => /lamina\s*cilindr/i.test(descripcion);
 
   // Cascada de la Respuesta P3: FERT (emparejado por fecha contra el P2, ver
   // fertKgPorMaterialPorCentro) > Provisional > Stock disponible (almacén 1006/2006, ver
@@ -888,7 +903,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const fertMap = fertKgPorMaterialPorCentro[centro];
     const stockMap = stockKgPorMaterialPorCentro[centro];
 
-    return Array.from(necesidadMap.keys()).map((material): RespuestaP3Row => {
+    return Array.from(necesidadMap.keys())
+      .filter(material => !esLaminadoCilindrico(materialDescMap.get(material) || ''))
+      .map((material): RespuestaP3Row => {
       const fertKg = fertMap.get(material) || 0;
       const provisionalKg = provisionalMap.get(material) || 0;
       const stockKg = stockMap.get(material) || 0;
