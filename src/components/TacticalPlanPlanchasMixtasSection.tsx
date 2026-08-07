@@ -9,7 +9,8 @@ import { ProvisionalOrdersTabSection } from './ProvisionalOrdersTabSection';
 import { TiemposEnsambladoTab } from './TiemposEnsambladoTab';
 import { ProvisionalOrdersPlanchasMixtasTab } from './ProvisionalOrdersPlanchasMixtasTab';
 import { PlanGrupoEnsambladoTab } from './PlanGrupoEnsambladoTab';
-import { PlanGrupoEnsambladoPFFTab } from './PlanGrupoEnsambladoPFFTab';
+import { PlanGrupoEnsambladoPFFTab, type ComponentePlanchaAccum } from './PlanGrupoEnsambladoPFFTab';
+import { PlanTacticoPFFTab } from './PlanTacticoPFFTab';
 import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
 import { serviciosService } from '@/services/servicios.service';
@@ -85,6 +86,15 @@ export const TacticalPlanPlanchasMixtasSection: React.FC = () => {
   const [gruposPlanchas, setGruposPlanchas] = useState<Grupo[]>([]);
   const [restriccionesPrensado, setRestriccionesPrensado] = useState<Restriccion[]>([]);
   const [isLoadingRestricciones, setIsLoadingRestricciones] = useState(true);
+
+  // Pestaña activa (controlada) del Tabs — permite que "Plan Grupo Ensamblado (PFF)" navegue
+  // directamente a "Plan Táctico PFF" desde su botón flotante
+  const [activeTab, setActiveTab] = useState('plan-tactico');
+
+  // Resultado de la Explosión de Materiales — Componentes de Plancha (calculado en "Plan Grupo Ensamblado
+  // (PFF)"), entregado aquí para alimentar la pestaña "Plan Táctico PFF"
+  const [pffComponentesPlancha, setPffComponentesPlancha] = useState<ComponentePlanchaAccum[]>([]);
+  const [pffFechaObjetivo, setPffFechaObjetivo] = useState<string | null>(null);
 
   // Responsables de Control de Producción del área (ej. "015&016"), tomados de la restricción
   // "RespCtrlProd" del Grupo Prensado, usados para filtrar órdenes previsionales en todas las pestañas
@@ -223,24 +233,27 @@ export const TacticalPlanPlanchasMixtasSection: React.FC = () => {
         <h2 className="text-2xl font-semibold text-gray-700">Programación Táctica Planchas Mixtas</h2>
       </div>
       
-      <Tabs defaultValue="plan-tactico" className="w-full">
-        <TabsList className="grid w-full grid-cols-6 h-auto p-1 bg-muted border border-dashed border-gray-300 rounded-lg">
-          <TabsTrigger value="plan-tactico" className="border-r border-dashed border-gray-300">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="grid w-full grid-cols-4 gap-1 h-auto p-1 bg-muted border border-dashed border-gray-300 rounded-lg">
+          <TabsTrigger value="plan-tactico" className="font-bold text-blue-700 data-[state=active]:text-blue-700">
             Plan Táctico
           </TabsTrigger>
-          <TabsTrigger value="plan-grupo-ensamblado" className="border-r border-dashed border-gray-300">
+          <TabsTrigger value="plan-grupo-ensamblado" className="font-bold text-blue-700 data-[state=active]:text-blue-700">
             Plan Grupo Ensamblado (P1)
           </TabsTrigger>
-          <TabsTrigger value="plan-grupo-ensamblado-pff" className="border-r border-dashed border-gray-300">
+          <TabsTrigger value="plan-grupo-ensamblado-pff" className="font-bold text-blue-700 data-[state=active]:text-blue-700">
             Plan Grupo Ensamblado (PFF)
           </TabsTrigger>
-          <TabsTrigger value="ordenes" className="border-r border-dashed border-gray-300">
+          <TabsTrigger value="plan-tactico-pff" className="font-bold text-blue-700 data-[state=active]:text-blue-700">
+            Plan Táctico PFF
+          </TabsTrigger>
+          <TabsTrigger value="ordenes" className="font-bold text-blue-700 data-[state=active]:text-blue-700">
             Ord. Prev. ({validRespCodesPrensado.length > 0 ? validRespCodesPrensado.join('&') : '...'})
           </TabsTrigger>
-          <TabsTrigger value="tiempos" className="border-r border-dashed border-gray-300">
+          <TabsTrigger value="tiempos" className="font-bold text-blue-700 data-[state=active]:text-blue-700">
             Tiempos de Fabricación
           </TabsTrigger>
-          <TabsTrigger value="restricciones">
+          <TabsTrigger value="restricciones" className="font-bold text-blue-700 data-[state=active]:text-blue-700">
             Restricciones
           </TabsTrigger>
         </TabsList>
@@ -254,7 +267,21 @@ export const TacticalPlanPlanchasMixtasSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="plan-grupo-ensamblado-pff" className="mt-4">
-          <PlanGrupoEnsambladoPFFTab />
+          <PlanGrupoEnsambladoPFFTab
+            onExplosionComplete={(componentes, fecha) => {
+              setPffComponentesPlancha(componentes);
+              setPffFechaObjetivo(fecha);
+            }}
+            onNavigateToPlanTacticoPFF={() => setActiveTab('plan-tactico-pff')}
+          />
+        </TabsContent>
+
+        <TabsContent value="plan-tactico-pff" className="mt-4">
+          <PlanTacticoPFFTab
+            restricciones={restriccionesPrensado}
+            componentesPlancha={pffComponentesPlancha}
+            fechaObjetivo={pffFechaObjetivo}
+          />
         </TabsContent>
 
         <TabsContent value="ordenes" className="mt-4">

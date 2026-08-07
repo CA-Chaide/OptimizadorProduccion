@@ -7,7 +7,7 @@ import { ecuadorHolidaysService } from '@/services/ecuador-holidays.service';
 import { planGrupoService } from '@/services/plangrupo.service';
 import { detalleTacticoService } from '@/services/detalletactico.service';
 import { useAppContext } from '@/context/AppProvider';
-import { Package, Loader2, Search, Clock, Calendar, CalendarDays, LayoutDashboard, History, PlayCircle, Settings2, CheckCircle2, Users, Percent, Wrench, Gauge, Boxes, TriangleAlert, ClipboardCheck, FileSpreadsheet, LayoutGrid, TimerOff, X, Plus, Layers, PackageSearch, Save, CalendarClock, Lightbulb, Building2, Copy, RefreshCw, RotateCcw, Circle, Download } from 'lucide-react';
+import { Package, Loader2, Search, Clock, Calendar, CalendarDays, LayoutDashboard, History, PlayCircle, Settings2, CheckCircle2, Users, Percent, Wrench, Gauge, Boxes, TriangleAlert, ClipboardCheck, FileSpreadsheet, LayoutGrid, TimerOff, X, Plus, Layers, PackageSearch, Save, CalendarClock, Lightbulb, Building2, Copy, RefreshCw, RotateCcw, Circle, Download, BedDouble } from 'lucide-react';
 import { Table, TableHeader, TableBody, TableFooter, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -278,7 +278,8 @@ interface PlanningResult {
     // Qué paso del flujo (1/2/3) generó este resultado. Paso 2 y 3 ya incluyen las movibles/diferidas
     // tal cual están en SAP (el usuario ya decidió qué mover); Paso 3 (Final, tras ajustar por la
     // capacidad real de espuma en "Plan Grupo Recuperado") además hace que "Guardar Plan Táctico" se
-    // comporte como "Guardar Plan Final" (genera el PlanGrupo PFSM y deja constancia en P1.3/P1.5/P2).
+    // comporte como "Guardar Plan Final" (genera el PlanGrupo PFSM con el Detalle de Planificación
+    // Ejecutada, sin volver a guardar P1.3/P1.5/P2).
     planningStepResult: 1 | 2 | 3;
 }
 
@@ -364,6 +365,10 @@ interface FoamComponentNeed {
 // Tela (empieza con "TELA MUEBLES"), con la Alerta de Stock (mismo criterio de la pestaña "Telas": StockActual < 300 = "CRÍTICO")
 interface TelaComponentNeed extends FoamComponentNeed {
     alertaStock: boolean;
+    // Stock Actual - Cantidad Total Necesaria: lo que queda (o, si es negativo, lo que realmente falta)
+    // de esta tela crítica luego de cubrir la necesidad de hoy. Se usa en la Alerta de Stock en vez de
+    // cantidadNetaAConseguir, que da 0 cuando el stock alcanza aunque esté por debajo del umbral CRÍTICO.
+    stockRestante: number;
 }
 
 // Casco (empieza con "CASCO"): sin stock suficiente cuando la Cantidad Neta Requerida es mayor a cero
@@ -440,6 +445,11 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
     // Estado para Mesas de Trabajo Habilitadas
     const [activeTables, setActiveTables] = useState<Set<number>>(new Set(WORK_TABLES.map(t => t.id)));
 
+    // Mesas de Línea 2 (Muebles) habilitadas como válvula de alivio para Camas (antes hardcodeado en
+    // CAMAS_OVERFLOW_MESA_IDS = [12, 13]). Configurable por el usuario con el botón "Habilitar para
+    // Camas" junto a cada mesa de Línea 2, en vez de estar fijo en el código.
+    const [camasOverflowMesaIds, setCamasOverflowMesaIds] = useState<Set<number>>(new Set(CAMAS_OVERFLOW_MESA_IDS));
+
     // Estado para Horario de Trabajo seleccionado
     const [selectedShift, setSelectedShift] = useState<string>(SHIFT_SCHEDULES[0].id);
 
@@ -468,6 +478,50 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
     // ajustado ("Paso 2") de la primera ejecución de la planificación, y del paso final ("Paso 3")
     // tras ajustar por la capacidad real de espuma en la pestaña "Plan Grupo Recuperado".
     const [planningStep, setPlanningStep] = useState<1 | 2 | 3>(1);
+
+    // "Órdenes que se Pueden Mover": por defecto se asume que TODAS se producen hoy (checkbox marcado),
+    // simulando que ocupan la capacidad sobrante. Al desmarcar una orden (se decide moverla a otro día),
+    // sus horas se restan en vivo de "Horas Requeridas"/"Déficit de Capacidad" en "Detalle de Planificación
+    // Ejecutada", sin necesidad de volver a ejecutar la planificación. Guarda las claves DESmarcadas
+    // (`${source}-${id}-${material}`) — así el default (todo marcado) es un Set vacío.
+    const [uncheckedMovableIds, setUncheckedMovableIds] = useState<Set<string>>(new Set());
+
+    const toggleMovableOrderChecked = (key: string) => {
+        setUncheckedMovableIds(prev => {
+            const next = new Set(prev);
+            if (next.has(key)) next.delete(key);
+            else next.add(key);
+            return next;
+        });
+    };
+
+    // Simulación en vivo de "Órdenes que se Pueden Mover": arranca asumiendo que TODAS se producen hoy
+    // (ocupando la capacidad sobrante) y resta las que el usuario desmarca, para ver en vivo cómo mejora
+    // (o empeora) el Déficit/Sobrante de Capacidad sin tener que re-ejecutar la planificación completa.
+    const liveCapacityInfo = useMemo(() => {
+        if (!planningResult) return null;
+        const movableOrderKey = (o: UnifiedOrder) => `${o.source}-${o.id}-${o.material}`;
+        const isRecalcLogicNow = planningResult.planningStepResult >= 2;
+        // Horas de "movableOrders" que YA están incluidas en planningResult.totalHoursRequired: en Paso
+        // 2/3, handleRunPlanning fusiona en immediateOrders las que tienen fecha propia = fecha objetivo
+        // (ver "movableOrdersParaHoy"). Hay que restarlas de la base para no contarlas dos veces al
+        // recomponer el total en vivo a partir del estado de los checkboxes.
+        const movableBaseHoras = isRecalcLogicNow
+            ? planningResult.movableOrders.reduce((sum, o) => {
+                const enFechaObjetivo = !!o.fechaPropia && toDateKey(o.fechaPropia) === toDateKey(planningResult.targetDate);
+                return enFechaObjetivo ? sum + o.horas : sum;
+            }, 0)
+            : 0;
+        const requiredBaseline = planningResult.totalHoursRequired - movableBaseHoras;
+        const checkedHoras = planningResult.movableOrders.reduce((sum, o) => {
+            return uncheckedMovableIds.has(movableOrderKey(o)) ? sum : sum + o.horas;
+        }, 0);
+        const liveTotalHoursRequired = requiredBaseline + checkedHoras;
+        return {
+            liveTotalHoursRequired,
+            liveDeficit: planningResult.totalCapacityAvailable - liveTotalHoursRequired,
+        };
+    }, [planningResult, uncheckedMovableIds]);
 
     // Estado para la Distribución de Mesas (Diagrama de Gantt de capacidad)
     const [mesaDistribution, setMesaDistribution] = useState<Map<number, MesaDistributionEntry> | null>(null);
@@ -1494,6 +1548,15 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
         });
     };
 
+    const toggleCamasOverflow = (id: number) => {
+        setCamasOverflowMesaIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    };
+
     // Antes de confirmar la fecha objetivo (escoger mesas), se verifica si ya existe un Plan Táctico
     // guardado (PlanGrupo de Muebles, patrón "... - P1.3"/"... - P1.5"/"... - P2") para esa misma fecha,
     // para evitar duplicar o pisar sin darse cuenta un plan que ya se guardó. Se aceptan los 3 sufijos
@@ -1846,6 +1909,8 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
         // Una nueva planificación invalida cualquier distribución de mesas previa
         setMesaDistribution(null);
         setUnassignedDistributionOrders([]);
+        // Reinicia la simulación de "Órdenes que se Pueden Mover" (todo vuelve a quedar marcado)
+        setUncheckedMovableIds(new Set());
 
         if (ptboAlerts.length > 0) {
             addNotification('warning', `Atención: ${ptboAlerts.length} material(es) con la sigla "PTBO" en su nombre requieren revisión.`);
@@ -1979,19 +2044,21 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
     };
 
     // Genera el archivo .txt para carga en el LSMW de SAP a partir de una tabla de Explosión de
-    // Materiales (Forros/Estructuras/Cojines). Formato por línea:
-    // Componente 1000 ZMOQ Cantidad Neta Requerida (entero) Fecha(DD.MM.AAAA) 1 000
+    // Materiales (Forros/Estructuras/Cojines). Formato por línea (campos separados por TAB):
+    // Componente <TAB> 1000 <TAB> ZMOQ <TAB> Cantidad Neta Requerida (entero) <TAB> Fecha(DD.MM.AAAA) <TAB> 1 <TAB> 0000
     // Se excluyen los componentes cuya Cantidad Neta Requerida redondeada sea 0.
+    // La fecha del archivo es hoy + 2 días laborables (segundo día de la Ventana de Fabricación),
+    // NO la fecha objetivo de planificación (que es el 3er día laborable, workingWindow[2]).
     const exportComponentNeedsToLSMW = (data: FoamComponentNeed[], fileLabel: string) => {
         if (data.length === 0 || !planningResult) return;
 
-        const fecha = planningResult.targetDate;
+        const fecha = workingWindow.length >= 2 ? workingWindow[1].date : planningResult.targetDate;
         const fechaTexto = `${String(fecha.getDate()).padStart(2, '0')}.${String(fecha.getMonth() + 1).padStart(2, '0')}.${fecha.getFullYear()}`;
 
         const lines = data
             .map(c => ({ ...c, cantidadRedondeada: Math.round(c.cantidadNetaAConseguir) }))
             .filter(c => c.cantidadRedondeada > 0)
-            .map(c => `${c.componente} 1000 ZMOQ ${c.cantidadRedondeada} ${fechaTexto} 1 000`);
+            .map(c => `${c.componente}\t1000\tZMOQ\t${c.cantidadRedondeada}\t${fechaTexto}\t1\t0000`);
 
         if (lines.length === 0) return;
 
@@ -2094,12 +2161,13 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
             let candidates = eligibleMesaIds.filter(id => mesaAcceptsMaterial(id, order.sector, order.tamano));
 
             // Válvula de alivio: si la Línea 1 (Línea de Camas) ya no tiene capacidad disponible en
-            // ninguna de sus mesas habituales, se habilitan las MESAS DE TRABAJO 12 y 13 (normalmente de
-            // Línea 2 – Muebles) como mesas adicionales para colocar el excedente de camas.
+            // ninguna de sus mesas habituales, se habilitan las mesas de Línea 2 – Muebles marcadas con
+            // el botón "Habilitar para Camas" (camasOverflowMesaIds) como mesas adicionales para colocar
+            // el excedente de camas.
             if (order.sector === SECTOR_CAMAS) {
                 const sinEspacioEnLinea1 = candidates.every(id => (remaining.get(id) ?? 0) <= 0);
                 if (sinEspacioEnLinea1) {
-                    CAMAS_OVERFLOW_MESA_IDS.forEach(mesaOverflowId => {
+                    camasOverflowMesaIds.forEach(mesaOverflowId => {
                         if (eligibleMesaIds.includes(mesaOverflowId) && !candidates.includes(mesaOverflowId)) {
                             candidates = [...candidates, mesaOverflowId];
                         }
@@ -2162,12 +2230,12 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
     };
 
     // Mesas adicionales que, además de lo que ya acepta mesaAcceptsMaterial, se consideran compatibles
-    // SOLO para efectos de "modular" (rebalancear) la distribución ya ejecutada. Las MESAS 12 y 13
-    // (normalmente Línea 2 – Muebles) se habilitan también como destino de excedentes de Camas, igual
-    // que la válvula de alivio que ya existe en handleExecuteDistribution.
+    // SOLO para efectos de "modular" (rebalancear) la distribución ya ejecutada. Las mesas de Línea 2 –
+    // Muebles marcadas con "Habilitar para Camas" (camasOverflowMesaIds) se habilitan también como
+    // destino de excedentes de Camas, igual que la válvula de alivio que ya existe en handleExecuteDistribution.
     const mesaCompatibleParaModular = (mesaId: number, sector: string | null, tamano: MaterialSize | null): boolean => {
         if (mesaAcceptsMaterial(mesaId, sector, tamano)) return true;
-        return sector === SECTOR_CAMAS && CAMAS_OVERFLOW_MESA_IDS.includes(mesaId);
+        return sector === SECTOR_CAMAS && camasOverflowMesaIds.has(mesaId);
     };
 
     // "MODULAR DISTRIBUCIÓN DE MESAS": rebalancea la distribución ya ejecutada, moviendo materiales de
@@ -2549,9 +2617,11 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
                         recordOrigin(accum, material);
                     }
 
-                    // Telas para muebles: la descripción inicia con "TELA MUEBLES"
+                    // Telas para muebles: la descripción inicia con "TELA MUEBLES". La unidad se fuerza a
+                    // "M" (metros): todas las telas se miden en metros y el Maestro de Materiales a veces
+                    // no trae la UNIDAD, cayendo en el default genérico "UN" que no aplica aquí.
                     if (descripcionUpper.startsWith('TELA MUEBLES')) {
-                        const accum = ensure(groupedTelas, componente, descripcion, unidad);
+                        const accum = ensure(groupedTelas, componente, descripcion, 'M');
                         accum.totalNecesario += necesario;
                         recordOrigin(accum, material);
                     }
@@ -2611,7 +2681,11 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
             // Telas: Alerta de Stock con el mismo criterio de la pestaña "Telas" (StockActual bruto < 300 = "CRÍTICO")
             const sortedTelas: TelaComponentNeed[] = Array.from(groupedTelas.values())
                 .map(withKardex(false))
-                .map(c => ({ ...c, alertaStock: c.stockActual !== null && c.stockActual < 300 }))
+                .map(c => ({
+                    ...c,
+                    alertaStock: c.stockActual !== null && c.stockActual < 300,
+                    stockRestante: (c.stockActual ?? 0) - c.totalNecesario,
+                }))
                 .sort((a, b) => b.cantidadNetaAConseguir - a.cantidadNetaAConseguir);
             setTelaExplosionResults(sortedTelas);
 
@@ -2649,14 +2723,14 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
         const hayP2 = foamExplosionResults.length > 0;
         // Paso 3 (Final): "Guardar Plan Táctico Final" NO vuelve a guardar P1.3/P1.5/P2 (ya se guardaron
         // en Paso 1/2) — únicamente guarda un Plan de Grupo "PFSM" (Plan Final de Semielaborados de
-        // Muebles) con la Explosión de Materiales de Forros + Estructuras + Cojines, reflejando el
-        // cálculo final tras ajustar por la capacidad real de espuma en "Plan Grupo Recuperado".
+        // Muebles) con el Detalle de Planificación Ejecutada (mismo contenido que P1.3: cada orden de
+        // planningResult.immediateOrders + extraOrders), que es lo que el administrador necesita ver.
         const esPasoFinal = planningResult?.planningStepResult === 3;
-        const hayPFSM = esPasoFinal && hayP15;
+        const hayPFSM = esPasoFinal && hayP13;
 
         if (esPasoFinal) {
             if (!hayPFSM) {
-                addNotification('warning', 'No hay detalles de Explosión de Materiales (Forros/Estructuras/Cojines) para guardar en el Plan Final.');
+                addNotification('warning', 'No hay detalles de Planificación Ejecutada para guardar en el Plan Final.');
                 return;
             }
         } else if (!hayP13 && !hayP15 && !hayP2) {
@@ -2744,12 +2818,17 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
                     }
                 }
 
-                // 3. P2 — Explosión de Materiales: Semielaborados de Espuma. Fecha objetivo = hoy + 1 día
-                // calendario (no planningTargetDate) — el área de espuma programa con horizonte propio.
+                // 3. P2 — Explosión de Materiales: Semielaborados de Espuma. Fecha objetivo = el próximo
+                // día LABORABLE (no planningTargetDate, que es el 3er día laborable de la ventana — el
+                // área de espuma programa con horizonte propio, pero igual debe caer en día laborable,
+                // saltando fines de semana y feriados de Ecuador vía workingWindow/holidaysMap).
                 if (hayP2) {
-                    const fechaP2 = new Date();
-                    fechaP2.setHours(0, 0, 0, 0);
-                    fechaP2.setDate(fechaP2.getDate() + 1);
+                    const fechaP2 = workingWindow.length > 0 ? workingWindow[0].date : (() => {
+                        const fallback = new Date();
+                        fallback.setHours(0, 0, 0, 0);
+                        fallback.setDate(fallback.getDate() + 1);
+                        return fallback;
+                    })();
                     const codigoPlanGrupoP2 = await savePlanGrupo('P2', fechaP2);
                     for (const comp of foamExplosionResults) {
                         await saveDetalle(codigoPlanGrupoP2, Number(comp.componente) || 0, comp.cantidadNetaAConseguir, '');
@@ -2758,22 +2837,16 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
             }
 
             // 4. PFSM (Plan Final de Semielaborados de Muebles) — solo en Paso 3 (Final), y es lo ÚNICO que
-            // se guarda en ese paso: Explosión de Materiales de Forros + Estructuras + Cojines.
+            // se guarda en ese paso: Detalle de Planificación Ejecutada (mismo contenido que P1.3).
             if (hayPFSM) {
                 const codigoPlanGrupoPFSM = await savePlanGrupo('PFSM');
-                for (const comp of forroExplosionResults) {
-                    await saveDetalle(codigoPlanGrupoPFSM, Number(comp.componente) || 0, comp.cantidadNetaAConseguir, '026');
-                }
-                for (const comp of estructuraExplosionResults) {
-                    await saveDetalle(codigoPlanGrupoPFSM, Number(comp.componente) || 0, comp.cantidadNetaAConseguir, '033');
-                }
-                for (const comp of cojinExplosionResults) {
-                    await saveDetalle(codigoPlanGrupoPFSM, Number(comp.componente) || 0, comp.cantidadNetaAConseguir, '');
+                for (const o of executedOrders) {
+                    await saveDetalle(codigoPlanGrupoPFSM, Number(o.material) || 0, o.cantidadPlanificada, '');
                 }
             }
 
             const partes = esPasoFinal
-                ? [`PFSM (${forroExplosionResults.length + estructuraExplosionResults.length + cojinExplosionResults.length} detalle(s))`]
+                ? [`PFSM (${executedOrders.length} orden(es))`]
                 : [
                     hayP13 ? `P1.3 (${executedOrders.length} orden(es))` : null,
                     hayP15 ? `P1.5 (${forroExplosionResults.length + estructuraExplosionResults.length + cojinExplosionResults.length} detalle(s))` : null,
@@ -2799,6 +2872,8 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
     // de SAP (órdenes, tiempos, inventario) NO se vuelven a descargar — para eso está "Actualizar Datos".
     const handleNuevaPlanificacion = () => {
         setActiveTables(new Set(WORK_TABLES.map(t => t.id)));
+        setCamasOverflowMesaIds(new Set(CAMAS_OVERFLOW_MESA_IDS));
+        setUncheckedMovableIds(new Set());
         setSelectedShift(SHIFT_SCHEDULES[0].id);
         setChosenTables(null);
         setTableAssignments({});
@@ -2893,9 +2968,15 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
                                     </span>
 
                                     {day.holidayName && (
-                                        <span className="text-[9px] text-amber-700 font-semibold text-center leading-tight" title={day.holidayName}>
-                                            {day.holidayName}
-                                        </span>
+                                        <div className="flex flex-col items-center gap-0.5" title={day.holidayName}>
+                                            <Badge className="text-[9px] bg-amber-100 text-amber-800 hover:bg-amber-100 gap-1 px-1.5 py-0.5 h-auto border border-amber-300 animate-pulse">
+                                                <TriangleAlert className="w-2.5 h-2.5 shrink-0" />
+                                                FERIADO
+                                            </Badge>
+                                            <span className="text-[9px] text-amber-700 font-semibold text-center leading-tight">
+                                                {day.holidayName}
+                                            </span>
+                                        </div>
                                     )}
                                     {!day.holidayName && day.isWeekend && (
                                         <span className="text-[9px] text-gray-400 font-semibold uppercase">Fin de Semana</span>
@@ -2941,22 +3022,44 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
                     <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
                         <div className="lg:col-span-3">
                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-x-6 gap-y-3">
-                                {WORK_TABLES.map(table => (
-                                    <div key={table.id} className="flex items-center space-x-3 p-1 hover:bg-gray-50 rounded transition-colors group">
-                                        <Checkbox 
-                                            id={`table-${table.id}`} 
-                                            checked={activeTables.has(table.id)}
-                                            onCheckedChange={() => toggleTableSelection(table.id)}
-                                            className="data-[state=checked]:bg-indigo-600 border-gray-300"
-                                        />
-                                        <label 
-                                            htmlFor={`table-${table.id}`}
-                                            className="text-xs font-semibold text-gray-700 cursor-pointer select-none group-hover:text-indigo-600"
-                                        >
-                                            {table.name}
-                                        </label>
-                                    </div>
-                                ))}
+                                {WORK_TABLES.map(table => {
+                                    const isLinea2 = table.id > 7;
+                                    const isCamasEnabled = camasOverflowMesaIds.has(table.id);
+                                    return (
+                                        <div key={table.id} className="flex flex-col gap-1 p-1 hover:bg-gray-50 rounded transition-colors group">
+                                            <div className="flex items-center space-x-3">
+                                                <Checkbox
+                                                    id={`table-${table.id}`}
+                                                    checked={activeTables.has(table.id)}
+                                                    onCheckedChange={() => toggleTableSelection(table.id)}
+                                                    className="data-[state=checked]:bg-indigo-600 border-gray-300"
+                                                />
+                                                <label
+                                                    htmlFor={`table-${table.id}`}
+                                                    className="text-xs font-semibold text-gray-700 cursor-pointer select-none group-hover:text-indigo-600"
+                                                >
+                                                    {table.name}
+                                                </label>
+                                            </div>
+                                            {isLinea2 && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => toggleCamasOverflow(table.id)}
+                                                    title="Habilita esta mesa de Línea 2 (Muebles) como válvula de alivio para fabricar excedentes de Línea 1 (Camas) cuando esa línea ya no tenga capacidad disponible."
+                                                    className={cn(
+                                                        "ml-7 w-fit inline-flex items-center gap-1 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full border transition-colors",
+                                                        isCamasEnabled
+                                                            ? "bg-sky-100 border-sky-300 text-sky-700 hover:bg-sky-200"
+                                                            : "bg-gray-50 border-gray-200 text-gray-400 hover:bg-gray-100"
+                                                    )}
+                                                >
+                                                    <BedDouble className="w-3 h-3" />
+                                                    {isCamasEnabled ? 'Habilitada p/ Camas' : 'Habilitar p/ Camas'}
+                                                </button>
+                                            )}
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </div>
 
@@ -3150,8 +3253,11 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
                             <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-4">
                                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                                     <p className="text-[10px] font-bold text-blue-500 uppercase">Horas Requeridas (Compromisos Inmediatos)</p>
-                                    <p className="text-xl font-black text-blue-800">{planningResult.totalHoursRequired.toFixed(2)} h</p>
-                                    <p className="text-[10px] text-blue-400">{planningResult.immediateOrders.length} órdenes (entrega +1/+2 días o Fert en fecha objetivo)</p>
+                                    <p className="text-xl font-black text-blue-800">{(liveCapacityInfo?.liveTotalHoursRequired ?? planningResult.totalHoursRequired).toFixed(2)} h</p>
+                                    <p className="text-[10px] text-blue-400">
+                                        {planningResult.immediateOrders.length} órdenes (entrega +1/+2 días o Fert en fecha objetivo)
+                                        {planningResult.movableOrders.length > 0 && ' · incluye simulación de "Órdenes que se Pueden Mover"'}
+                                    </p>
                                 </div>
                                 <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
                                     <p className="text-[10px] font-bold text-emerald-500 uppercase">Capacidad Disponible</p>
@@ -3159,21 +3265,21 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
                                 </div>
                                 <div className={cn(
                                     "border rounded-lg p-4",
-                                    planningResult.totalCapacityAvailable >= planningResult.totalHoursRequired
+                                    (liveCapacityInfo?.liveDeficit ?? 0) >= 0
                                         ? "bg-emerald-50 border-emerald-200"
                                         : "bg-red-50 border-red-200"
                                 )}>
                                     <p className={cn(
                                         "text-[10px] font-bold uppercase",
-                                        planningResult.totalCapacityAvailable >= planningResult.totalHoursRequired ? "text-emerald-500" : "text-red-500"
+                                        (liveCapacityInfo?.liveDeficit ?? 0) >= 0 ? "text-emerald-500" : "text-red-500"
                                     )}>
-                                        {planningResult.totalCapacityAvailable >= planningResult.totalHoursRequired ? 'Capacidad Sobrante' : 'Déficit de Capacidad'}
+                                        {(liveCapacityInfo?.liveDeficit ?? 0) >= 0 ? 'Capacidad Sobrante' : 'Déficit de Capacidad'}
                                     </p>
                                     <p className={cn(
                                         "text-xl font-black",
-                                        planningResult.totalCapacityAvailable >= planningResult.totalHoursRequired ? "text-emerald-800" : "text-red-800"
+                                        (liveCapacityInfo?.liveDeficit ?? 0) >= 0 ? "text-emerald-800" : "text-red-800"
                                     )}>
-                                        {Math.abs(planningResult.totalCapacityAvailable - planningResult.totalHoursRequired).toFixed(2)} h
+                                        {Math.abs(liveCapacityInfo?.liveDeficit ?? 0).toFixed(2)} h
                                     </p>
                                 </div>
                                 <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
@@ -3485,11 +3591,15 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
                                 {planningResult.planningStepResult >= 2
                                     ? ' Ya están incluidas en el cálculo de capacidad, distribución de mesas y explosión de materiales de este Paso 2 (reflejan lo que hay hoy en SAP); si quiere seguir optimizando, muévalas también en SAP y presione "Actualizar Datos" de nuevo.'
                                     : ' No se incluyeron en el cálculo de capacidad de hoy; revíselas para decidir si conviene adelantar alguna.'}
+                                {' '}Use el checkbox de cada fila para simular en vivo: por defecto todas cuentan como producidas
+                                hoy (ocupando la capacidad sobrante); al desmarcar una, sus horas se restan al instante de
+                                "Horas Requeridas" y "Déficit de Capacidad" en "Detalle de Planificación Ejecutada", arriba.
                             </p>
                             <div className="border border-gray-300 rounded-lg overflow-auto max-h-[40vh]">
                                 <Table>
                                     <TableHeader>
                                         <TableRow className="bg-slate-50 hover:bg-slate-50 border-b-2 border-slate-200 sticky top-0">
+                                            <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase text-center border-r border-gray-200 w-10">Incl.</TableHead>
                                             <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase text-center border-r border-gray-200">Origen</TableHead>
                                             <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase border-r border-gray-200">N° Orden</TableHead>
                                             <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase border-r border-gray-200">Pedido</TableHead>
@@ -3500,20 +3610,31 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        {planningResult.movableOrders.map((o, idx) => (
-                                            <TableRow key={`${o.source}-${o.id}-${o.material}-${idx}`} className={cn("border-b border-gray-200", idx % 2 === 1 && "bg-gray-50/70")}>
-                                                <TableCell className="text-[11px] text-center border-r border-gray-200 font-semibold text-gray-600">{o.source}</TableCell>
-                                                <TableCell className="text-[11px] border-r border-gray-200 font-mono text-gray-700">{o.id || '—'}</TableCell>
-                                                <TableCell className="text-[11px] border-r border-gray-200 font-mono">{o.pedido || '—'}</TableCell>
-                                                <TableCell className="text-[11px] border-r border-gray-200">
-                                                    <span className="font-semibold text-gray-800">{o.material}</span>
-                                                    <span className="block text-gray-500">{o.nombre}</span>
-                                                </TableCell>
-                                                <TableCell className="text-[11px] text-center border-r border-gray-200">{o.centro}</TableCell>
-                                                <TableCell className="text-[11px] text-center border-r border-gray-200 font-mono text-slate-700 font-bold">{o.fechaEntrega}</TableCell>
-                                                <TableCell className="text-[11px] text-center font-mono font-bold text-blue-700">{o.horas.toFixed(2)}</TableCell>
-                                            </TableRow>
-                                        ))}
+                                        {planningResult.movableOrders.map((o, idx) => {
+                                            const key = `${o.source}-${o.id}-${o.material}`;
+                                            const isChecked = !uncheckedMovableIds.has(key);
+                                            return (
+                                                <TableRow key={`${key}-${idx}`} className={cn("border-b border-gray-200", idx % 2 === 1 && "bg-gray-50/70", !isChecked && "opacity-50")}>
+                                                    <TableCell className="text-center border-r border-gray-200">
+                                                        <Checkbox
+                                                            checked={isChecked}
+                                                            onCheckedChange={() => toggleMovableOrderChecked(key)}
+                                                            className="data-[state=checked]:bg-indigo-600 border-gray-300"
+                                                        />
+                                                    </TableCell>
+                                                    <TableCell className="text-[11px] text-center border-r border-gray-200 font-semibold text-gray-600">{o.source}</TableCell>
+                                                    <TableCell className="text-[11px] border-r border-gray-200 font-mono text-gray-700">{o.id || '—'}</TableCell>
+                                                    <TableCell className="text-[11px] border-r border-gray-200 font-mono">{o.pedido || '—'}</TableCell>
+                                                    <TableCell className="text-[11px] border-r border-gray-200">
+                                                        <span className="font-semibold text-gray-800">{o.material}</span>
+                                                        <span className="block text-gray-500">{o.nombre}</span>
+                                                    </TableCell>
+                                                    <TableCell className="text-[11px] text-center border-r border-gray-200">{o.centro}</TableCell>
+                                                    <TableCell className="text-[11px] text-center border-r border-gray-200 font-mono text-slate-700 font-bold">{o.fechaEntrega}</TableCell>
+                                                    <TableCell className="text-[11px] text-center font-mono font-bold text-blue-700">{o.horas.toFixed(2)}</TableCell>
+                                                </TableRow>
+                                            );
+                                        })}
                                     </TableBody>
                                 </Table>
                             </div>
@@ -4558,7 +4679,7 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
                     type="button"
                     onClick={handleSavePlanAndDetails}
                     disabled={isSavingPlan}
-                    title={planningResult?.planningStepResult === 3 ? 'Guardar Plan Final (PFSM): Explosión de Materiales de Forros + Estructuras + Cojines' : 'Guardar Plan Táctico y sus Detalles'}
+                    title={planningResult?.planningStepResult === 3 ? 'Guardar Plan Final (PFSM): Detalle de Planificación Ejecutada' : 'Guardar Plan Táctico y sus Detalles'}
                     className="fixed bottom-6 right-6 z-50 flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold text-sm px-5 py-3.5 rounded-full shadow-xl shadow-emerald-900/30 transition-colors"
                 >
                     {isSavingPlan ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
@@ -4635,12 +4756,18 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
                                     <div>
                                         <p className="text-sm font-bold text-gray-800 mb-1">
                                             {stockAlertData.telas.length} tela(s) con Alerta de Stock (CRÍTICO, StockActual &lt; 300) —
-                                            faltan <span className="text-red-700 font-extrabold">{stockAlertData.telas.reduce((s, t) => s + t.cantidadNetaAConseguir, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span> en total:
+                                            {(() => {
+                                                const totalRestante = stockAlertData.telas.reduce((s, t) => s + t.stockRestante, 0);
+                                                const label = totalRestante < 0 ? 'faltan' : 'quedan';
+                                                return (
+                                                    <> {label} <span className="text-red-700 font-extrabold">{Math.abs(totalRestante).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span> en total:</>
+                                                );
+                                            })()}
                                         </p>
                                         <ul className="text-xs text-gray-600 list-disc pl-5 space-y-0.5">
                                             {stockAlertData.telas.map(t => (
                                                 <li key={t.componente}>
-                                                    <span className="font-mono font-semibold">{t.componente}</span> — {t.descripcion} (necesario: {t.totalNecesario.toFixed(2)}, stock: {t.stockActual ?? 0}, <span className="text-red-700 font-bold">faltan: {t.cantidadNetaAConseguir.toFixed(2)} {t.unidad}</span>)
+                                                    <span className="font-mono font-semibold">{t.componente}</span> — {t.descripcion} (necesario: {t.totalNecesario.toFixed(2)}, stock: {t.stockActual ?? 0}, <span className="text-red-700 font-bold">{t.stockRestante < 0 ? 'faltan' : 'quedan'}: {Math.abs(t.stockRestante).toFixed(2)} {t.unidad}</span>)
                                                     {t.origenes.length > 0 && (
                                                         <ul className="list-[circle] pl-4 mt-0.5 text-gray-500">
                                                             {t.origenes.map(o => (
@@ -4775,8 +4902,8 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
                                             <TableCell className="text-[11px] text-center">
                                                 {d.resp_ctrl_prod === '026' ? 'Forros'
                                                     : d.resp_ctrl_prod === '033' ? 'Estructuras'
-                                                    : /P1\.3\s*$/i.test(planCheckModal.planGrupo.valor) ? 'Planificación Ejecutada'
-                                                    : /P1\.5\s*$|PFSM\s*$/i.test(planCheckModal.planGrupo.valor) ? 'Cojines'
+                                                    : /P1\.3\s*$|PFSM\s*$/i.test(planCheckModal.planGrupo.valor) ? 'Planificación Ejecutada'
+                                                    : /P1\.5\s*$/i.test(planCheckModal.planGrupo.valor) ? 'Cojines'
                                                     : 'Espuma'}
                                             </TableCell>
                                         </TableRow>

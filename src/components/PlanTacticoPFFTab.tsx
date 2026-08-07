@@ -5,27 +5,27 @@ import * as XLSX from 'xlsx';
 import { serviciosService } from '@/services/servicios.service';
 import { planGrupoService } from '@/services/plangrupo.service';
 import { detalleTacticoService } from '@/services/detalletactico.service';
-import { ecuadorHolidaysService } from '@/services/ecuador-holidays.service';
 import { useAppContext } from '@/context/AppProvider';
-import { Layers, Loader2, PlayCircle, LayoutGrid, PackageSearch, Clock, Gauge, Sun, Moon, RefreshCw, Stethoscope, Plus, X, CheckSquare, FileSpreadsheet, Save, TriangleAlert, MinusCircle, PlusCircle, Lightbulb, RotateCcw, CheckCircle2, Circle } from 'lucide-react';
+import { Layers, Loader2, PlayCircle, LayoutGrid, PackageSearch, Clock, Gauge, Sun, Moon, RefreshCw, Stethoscope, Plus, X, FileSpreadsheet, Save, TriangleAlert, MinusCircle, PlusCircle, Lightbulb, RotateCcw, CheckCircle2, Circle } from 'lucide-react';
 import { Table, TableHeader, TableBody, TableFooter, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { Checkbox } from '@/components/ui/checkbox';
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogAction } from '@/components/ui/alert-dialog';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 import type { Restriccion, Grupo, PlanGrupo, DetalleTactico } from '@/types/interfaces';
+import type { ComponentePlanchaAccum } from './PlanGrupoEnsambladoPFFTab';
 
 const normalizeMaterialCode = (code: string | number): string => {
     const codeStr = String(code).trim();
     return codeStr.slice(-8);
 };
 
-// 5 Mesas de Pegado físicas, sobre las que se distribuye equitativamente la producción
+// 5 Mesas de Pegado físicas, sobre las que se distribuye equitativamente la producción — mismo recurso
+// físico que usa "Plan Táctico" (ProvisionalOrdersPlanchasMixtasTab)
 const WORK_STATIONS_PM = Array.from({ length: 5 }, (_, i) => ({
     id: i + 1,
     name: `MESA DE PEGADO ${i + 1}`,
@@ -37,14 +37,11 @@ const PERSONAS_POR_MESA = 2;
 
 type TurnoId = 'dia' | 'noche';
 
-// Turno Día (inicia 07:00) y Turno Noche (inicia 21:00): dos turnos simultáneos e independientes,
-// cada uno con su propia selección de mesas y duración. La mayoría de los días solo se usa el Turno Día.
 const TURNOS_PM: { id: TurnoId; label: string; startTime: string; icon: typeof Sun }[] = [
     { id: 'dia', label: 'Turno Día', startTime: '07:00', icon: Sun },
     { id: 'noche', label: 'Turno Noche', startTime: '21:00', icon: Moon },
 ];
 
-// Duraciones de jornada posibles para cualquiera de los dos turnos (la de 11.7h es para demanda alta / sobretiempo)
 const SHIFT_DURATIONS_PM = [
     { id: '8.7h', label: '8.7 horas / 07:00 a 15:45', hours: 8.7 },
     { id: '9.7h', label: '9.7 horas / 07:00 a 17:00', hours: 9.7 },
@@ -52,12 +49,10 @@ const SHIFT_DURATIONS_PM = [
     { id: '11.7h', label: '11.7 horas / 07:00 a 19:00 (Demanda Alta)', hours: 11.7 },
 ] as const;
 
-// Rango de utilización de capacidad considerado eficiente (ni mucho déficit ni mucho desperdicio). Fuera
-// de este rango se evalúa la Propuesta de Ajuste de Capacidad (turno o mesas).
+// Rango de utilización de capacidad considerado eficiente (ni mucho déficit ni mucho desperdicio)
 const UTILIZACION_EFICIENTE_MIN = 85;
 const UTILIZACION_EFICIENTE_MAX = 105;
 
-// Suma horas a una hora "HH:MM" y devuelve la hora final, dando la vuelta al día siguiente si aplica (turno noche)
 const addHoursToTime = (startTime: string, hours: number): string => {
     const [h, m] = startTime.split(':').map(Number);
     const totalMinutes = Math.round((h * 60 + m + hours * 60) % (24 * 60));
@@ -66,11 +61,8 @@ const addHoursToTime = (startTime: string, hours: number): string => {
     return `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
 };
 
-// Centro de fabricación de Planchas Mixtas para la Planificación (Quito)
 const CENTRO_PLANIFICACION_PM = '1000';
 
-// Una fila por cada fuente de datos que fetchAllData descarga en secuencia, para la ventana de progreso
-// de "Actualizar Datos" (mismo patrón que "Planificación Táctica Muebles")
 interface LoadStage {
     key: string;
     label: string;
@@ -79,19 +71,18 @@ interface LoadStage {
     status: 'pending' | 'loading' | 'done';
 }
 
+// A diferencia de "Plan Táctico" (que descarga Previsionales/Fert/Tiempos/Inventario porque construye sus
+// propias órdenes desde SAP), aquí las "órdenes" YA vienen calculadas (componentesPlancha, con su Tiempo
+// Requerido ya incluido) desde "Plan Grupo Ensamblado (PFF)". Solo se necesita descargar Fert (para la
+// Producción Propia Pendiente del kardex) e Inventario (Stock Actual y RespCtrlProd de cada componente).
 const LOAD_STAGE_DEFS: Array<Pick<LoadStage, 'key' | 'label'>> = [
-    { key: 'previsionales', label: 'Órdenes Previsionales' },
-    { key: 'fert', label: 'Órdenes Fert' },
-    { key: 'tiempos', label: 'Tiempos de Ensamblado' },
+    { key: 'fert', label: 'Órdenes Fert (Producción Propia Pendiente)' },
     { key: 'inventario', label: 'Inventario' },
 ];
 
 // Plancha Mixta Equivalente: unidad de medida estándar del área (1 equivalente = 5.38 minutos de fabricación)
 const MINUTOS_POR_PLANCHA_EQUIVALENTE = 5.38;
 
-// Fecha "hoy + offsetDays" (días CALENDARIO corridos) en formato "YYYY-MM-DD". Solo debe usarse con
-// offsetDays = 0 (hoy); para "mañana"/"pasado mañana" usar getBusinessDateKeyOffset en su lugar, ya que
-// esos sí deben saltar sábado y domingo (mismo criterio que "Planificación Táctica Muebles").
 const getDateKeyOffset = (offsetDays: number): string => {
     const d = new Date();
     d.setDate(d.getDate() + offsetDays);
@@ -101,41 +92,8 @@ const getDateKeyOffset = (offsetDays: number): string => {
     return `${y}-${m}-${day}`;
 };
 
-const toDateKey = (date: Date): string => {
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, '0');
-    const d = String(date.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
-};
-
-// Suma N días laborables (omite sábado, domingo y feriados de Ecuador) a una fecha — mismo criterio que
-// "Planificación Táctica Muebles" (ver addBusinessDays/holidaysMap en ProvisionalOrdersAlphaTab.tsx)
-const addBusinessDays = (date: Date, days: number, holidaysSet: Set<string>): Date => {
-    const result = new Date(date);
-    let remaining = days;
-    while (remaining > 0) {
-        result.setDate(result.getDate() + 1);
-        const dayOfWeek = result.getDay();
-        const isHoliday = holidaysSet.has(toDateKey(result));
-        if (dayOfWeek !== 0 && dayOfWeek !== 6 && !isHoliday) {
-            remaining--;
-        }
-    }
-    return result;
-};
-
-// Fecha "hoy + businessDays días LABORABLES" (omite sábado, domingo y feriados) en formato "YYYY-MM-DD".
-// Es lo que realmente significa "mañana"/"pasado mañana" para este módulo: si hoy es viernes y el lunes
-// siguiente es feriado, "mañana" (+1 día laborable) es el martes, no el lunes.
-const getBusinessDateKeyOffset = (businessDays: number, holidaysSet: Set<string>): string => {
-    const d = addBusinessDays(new Date(), businessDays, holidaysSet);
-    return toDateKey(d);
-};
-
 interface PMOrder {
     id: string;
-    source: 'Previsional' | 'Fert';
-    tipo: 'MTO' | 'MTS';
     material: string;
     nombre: string;
     cantidad: number;
@@ -157,23 +115,21 @@ interface PMStationEntry extends PMSlot {
 }
 
 // Semielaborado (Lámina de Espuma RESPCTRLPROD '013' o Lámina Prensada '017') requerido, desde la Explosión
-// de Materiales, con el mismo kardex de "Planificación Táctica Muebles": Stock Actual - Consumo de Órdenes
-// Pasadas Pendientes + Producción Propia Pendiente = Disponible Real; Cantidad Neta Requerida = max(0,
-// Necesario - Disponible Real)
+// de Materiales de los Componentes de Plancha. Kardex: Stock Actual + Producción Propia Pendiente =
+// Disponible Real; Cantidad Neta Requerida = max(0, Necesario - Disponible Real). A diferencia de "Plan
+// Táctico", aquí no existe un "Consumo de Órdenes Pasadas Pendientes" que descontar, ya que la demanda de
+// origen (Explosión PFF) no tiene ese concepto de días anteriores pendientes.
 interface PMComponentNeed {
     componente: string;
     descripcion: string;
     unidad: string;
     totalNecesario: number;
     stockActual: number | null;
-    consumoOrdenesPasadas: number;
     produccionPropiaPendiente: number;
     disponibleReal: number | null;
     cantidadNetaAConseguir: number;
 }
 
-// Cita médica de una persona: sus horas de ausencia afectan a toda la mesa/turno, prorrateadas entre
-// las mesas activas de ESE turno
 interface MedicalAppointment {
     id: string;
     nombre: string;
@@ -181,8 +137,6 @@ interface MedicalAppointment {
     turno: TurnoId;
 }
 
-// Descuento de capacidad por un motivo general (ej. reunión de personal): a diferencia de la cita médica,
-// las horas NO se prorratean — se descuentan completas de CADA mesa activa del turno seleccionado
 interface CapacityDiscount {
     id: string;
     razon: string;
@@ -190,8 +144,6 @@ interface CapacityDiscount {
     turno: TurnoId;
 }
 
-// Opción de la Propuesta de Ajuste de Capacidad: cambiar la jornada (prioridad) o la cantidad de mesas
-// activas (segunda opción) de un turno, con la utilización de capacidad resultante
 interface CapacityProposalOption {
     id: string;
     turno: TurnoId;
@@ -205,47 +157,34 @@ interface CapacityProposalOption {
 
 const slotKey = (turno: TurnoId, stationId: number) => `${turno}-${stationId}`;
 
-interface ProvisionalOrdersPlanchasMixtasTabProps {
+// Sufijos de PlanGrupo exclusivos de este flujo (PFF), distintos de "PFSP"/"P2" que usa "Plan Táctico",
+// para que ninguno de los dos módulos detecte por error un plan guardado por el otro como duplicado
+const SUFIJO_PFSP_PFF = 'PFSP-PFF';
+const SUFIJO_P2_PFF = 'P2-PFF';
+
+interface PlanTacticoPFFTabProps {
     restricciones: Restriccion[];
+    componentesPlancha: ComponentePlanchaAccum[];
+    fechaObjetivo: string | null;
 }
 
-export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanchasMixtasTabProps> = ({ restricciones }) => {
+export const PlanTacticoPFFTab: React.FC<PlanTacticoPFFTabProps> = ({ restricciones, componentesPlancha, fechaObjetivo }) => {
     const { addNotification } = useAppContext();
 
-    // Responsables de Control de Producción que identifican Planchas Mixtas (semielaborado de colchones),
-    // tomados de la restricción "RespCtrlProd" del Grupo Prensado (ej. "015&016"), igual que en Muebles
-    const validRespCodes = useMemo(() => {
-        const respRestriccion = restricciones.find(r => r.nombre_restriccion === 'RespCtrlProd');
-        if (!respRestriccion || !respRestriccion.valor_restriccion) return [];
-
-        return respRestriccion.valor_restriccion
-            .split(/[&,]/)
-            .map(code => String(code).trim())
-            .filter(Boolean);
-    }, [restricciones]);
-
-    // Grupo Prensado (codigo_grupo=9), tomado del "grupo" anidado en cualquiera de las restricciones
-    // recibidas — igual patrón que "mueblesGrupo" en Planificación Táctica Muebles
+    // Grupo Prensado (codigo_grupo=9): las Mesas de Pegado son un recurso físico de este grupo, sin
+    // importar que la demanda de esta pestaña provenga de la Explosión PFF de Ensamblado
     const prensadoGrupo = useMemo<Grupo | undefined>(() => {
         const conGrupo = restricciones as (Restriccion & { grupo?: Grupo })[];
         return conGrupo.find(r => r.grupo)?.grupo;
     }, [restricciones]);
 
-    const [allPrevisionalRaw, setAllPrevisionalRaw] = useState<any[]>([]);
     const [allFertRaw, setAllFertRaw] = useState<any[]>([]);
-    const [globalTiemposMap, setGlobalTiemposMap] = useState<Map<string, number>>(new Map());
     const [materialRespCtrlProdMap, setMaterialRespCtrlProdMap] = useState<Map<string, string>>(new Map());
-    // Stock Actual (bruto) por Material, sumado a través de todos los Centros, usado para el kardex de la
-    // Explosión de Materiales (mismo criterio que "Planificación Táctica Muebles")
     const [materialStockActualMap, setMaterialStockActualMap] = useState<Map<string, number>>(new Map());
     const [isLoading, setIsLoading] = useState(false);
-    const [downloadProgress, setDownloadProgress] = useState({ current: 0, total: 0 });
-    // Estado de la ventana de progreso de "Actualizar Datos": una fila por cada fuente que fetchAllData
-    // descarga en secuencia, para mostrar en tiempo real cuál está en curso y su avance.
     const [loadStages, setLoadStages] = useState<LoadStage[]>(() => LOAD_STAGE_DEFS.map(d => ({ ...d, current: 0, total: 0, status: 'pending' as const })));
 
     // Configuración de los dos turnos: habilitado, duración de jornada y mesas asignadas a cada uno.
-    // Por defecto solo el Turno Día está habilitado (con las 5 mesas), ya que es lo usual.
     const [turnoEnabled, setTurnoEnabled] = useState<Record<TurnoId, boolean>>({ dia: true, noche: false });
     const [turnoDuration, setTurnoDuration] = useState<Record<TurnoId, string>>({ dia: SHIFT_DURATIONS_PM[0].id, noche: SHIFT_DURATIONS_PM[0].id });
     const [turnoStations, setTurnoStations] = useState<Record<TurnoId, Set<number>>>({
@@ -279,39 +218,27 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
         });
     };
 
-    // Citas médicas registradas (nombre, horas, turno). Cada una descuenta horas/mesas-del-turno del
-    // total de capacidad disponible de ese turno.
     const [medicalAppointments, setMedicalAppointments] = useState<MedicalAppointment[]>([]);
     const [showMedicalForm, setShowMedicalForm] = useState(false);
     const [medicalNombre, setMedicalNombre] = useState('');
     const [medicalHoras, setMedicalHoras] = useState('');
     const [medicalTurno, setMedicalTurno] = useState<TurnoId>('dia');
 
-    // Descuentos de capacidad registrados (razón, horas, turno). Cada uno descuenta horas COMPLETAS (sin
-    // prorratear) de CADA mesa activa del turno seleccionado.
     const [capacityDiscounts, setCapacityDiscounts] = useState<CapacityDiscount[]>([]);
     const [showDiscountForm, setShowDiscountForm] = useState(false);
     const [discountRazon, setDiscountRazon] = useState('');
     const [discountHoras, setDiscountHoras] = useState('');
     const [discountTurno, setDiscountTurno] = useState<TurnoId>('dia');
 
-    // Propuesta de relleno de capacidad: órdenes previsionales de días posteriores que el usuario puede
-    // aceptar (por defecto todas) o desmarcar individualmente para excluirlas
-    const [rejectedFillIds, setRejectedFillIds] = useState<Set<string>>(new Set());
-
     const [hasPlanned, setHasPlanned] = useState(false);
     const [pmDistribution, setPmDistribution] = useState<Map<string, PMStationEntry> | null>(null);
     const [isExplodingMaterials, setIsExplodingMaterials] = useState(false);
     const [laminaEspumaResults, setLaminaEspumaResults] = useState<PMComponentNeed[]>([]);
     const [laminaPrensadaResults, setLaminaPrensadaResults] = useState<PMComponentNeed[]>([]);
-    // Se activa cuando se actualizan los datos de SAP después de una planificación previa, para distinguir
-    // el recálculo ajustado ("Paso 2") de la primera ejecución de la planificación.
     const [isRecalculatingPlan, setIsRecalculatingPlan] = useState(false);
 
-    // Estado para el guardado del Plan Táctico (PlanGrupo) y sus Detalles (DetalleTactico)
     const [isSavingPlan, setIsSavingPlan] = useState(false);
 
-    // Verificación de Plan Táctico ya guardado para el día de hoy, al presionar "EJECUTAR PLANIFICACIÓN"
     const [planCheckModal, setPlanCheckModal] = useState<
         | { type: 'not-found' }
         | { type: 'found'; planesGrupo: PlanGrupo[] }
@@ -320,8 +247,8 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
     >(null);
     const [isPlanCheckBusy, setIsPlanCheckBusy] = useState(false);
 
-    // Confirmación antes de reiniciar toda la configuración y el progreso de la planificación en curso
     const [showNuevaPlanificacionConfirm, setShowNuevaPlanificacionConfirm] = useState(false);
+    const [selectedProposalId, setSelectedProposalId] = useState<string | null>(null);
 
     const updateLoadStage = (key: string, patch: Partial<LoadStage>) => {
         setLoadStages(prev => prev.map(s => (s.key === key ? { ...s, ...patch } : s)));
@@ -329,33 +256,10 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
 
     const fetchAllData = async () => {
         setIsLoading(true);
-        setDownloadProgress({ current: 0, total: 0 });
         setLoadStages(LOAD_STAGE_DEFS.map(d => ({ ...d, current: 0, total: 0, status: 'pending' as const })));
         try {
-            // Órdenes Previsionales (todo el dataset; se filtra por RESPCONTROLPROD según "validRespCodes" en el cliente)
-            updateLoadStage('previsionales', { status: 'loading' });
-            const provExplore = await serviciosService.getOrdenesProvisionalesAlphaPaginados(1, 1);
-            const totalProv = provExplore.totalRegistros || 0;
-            updateLoadStage('previsionales', { total: totalProv });
-            let combinedProv: any[] = [];
-            if (totalProv > 0) {
-                const BATCH = 20000;
-                const pages = Math.ceil(totalProv / BATCH);
-                for (let i = 1; i <= pages; i++) {
-                    const res = await serviciosService.getOrdenesProvisionalesAlphaPaginados(i, BATCH);
-                    if (res.data) {
-                        combinedProv = combinedProv.concat(Array.isArray(res.data) ? res.data : [res.data]);
-                        setDownloadProgress({ current: combinedProv.length, total: totalProv });
-                        updateLoadStage('previsionales', { current: combinedProv.length });
-                    }
-                }
-            }
-            setAllPrevisionalRaw(combinedProv);
-            updateLoadStage('previsionales', { status: 'done', current: totalProv });
-
-            // Órdenes Fert (todo el dataset; se filtra por RESPCTRLPROD según "validRespCodes" en el cliente). Necesarias
-            // porque algunas órdenes de Planchas Mixtas se liberan con fecha de mañana por el horizonte
-            // de planificación, y deben tomarse en cuenta igual que las Previsionales.
+            // Órdenes Fert (todo el dataset, sin filtrar por RespCtrlProd): producción propia YA en curso de
+            // cada componente (Espuma/Prensada), usada más abajo en el kardex de la Explosión de Materiales
             updateLoadStage('fert', { status: 'loading' });
             const fertExplore = await serviciosService.getOrdenesFert(1, 1);
             const totalFert = fertExplore.totalRegistros || 0;
@@ -375,38 +279,8 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
             setAllFertRaw(combinedFert);
             updateLoadStage('fert', { status: 'done', current: totalFert });
 
-            // Tiempos de Ensamblado (global), usados para calcular horas requeridas por material
-            updateLoadStage('tiempos', { status: 'loading' });
-            const tiemposExplore = await serviciosService.getTiemposEnsamblado(1, 1);
-            const totalTiempos = tiemposExplore.totalRegistros || 0;
-            updateLoadStage('tiempos', { total: totalTiempos });
-            if (totalTiempos > 0) {
-                const BATCH = 20000;
-                const pages = Math.ceil(totalTiempos / BATCH);
-                const tMap = new Map<string, number>();
-                let processedTiempos = 0;
-                for (let i = 1; i <= pages; i++) {
-                    const res = await serviciosService.getTiemposEnsamblado(i, BATCH);
-                    if (res.data) {
-                        const items = Array.isArray(res.data) ? res.data : [res.data];
-                        items.forEach((item: any) => {
-                            const material = normalizeMaterialCode(item.CodMaterial || item.Material || '');
-                            const tiempo = Number(item.Tiempo_Min ?? item.Tiempo ?? 0);
-                            if (material && tiempo > 0 && !tMap.has(material)) {
-                                tMap.set(material, tiempo);
-                            }
-                        });
-                        processedTiempos += items.length;
-                        updateLoadStage('tiempos', { current: processedTiempos });
-                    }
-                }
-                setGlobalTiemposMap(tMap);
-            }
-            updateLoadStage('tiempos', { status: 'done', current: totalTiempos });
-
-            // Cubo de Inventarios: RespCtrlProd de cada componente (Explosión de Materiales: Láminas de
-            // Espuma '013' / Láminas Prensadas '017') y Stock Actual (bruto, sumado por Material a través
-            // de todos los Centros — mismo campo/criterio que usa el kardex de Muebles) para el kardex
+            // Cubo de Inventarios: RespCtrlProd de cada componente (013 Espuma / 017 Prensada) y Stock
+            // Actual (bruto, sumado por Material a través de todos los Centros) para el kardex
             updateLoadStage('inventario', { status: 'loading' });
             const invExplore = await serviciosService.getCuboInventarios(1, 1);
             const totalInv = invExplore.totalRegistros || 0;
@@ -439,9 +313,9 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
             }
             updateLoadStage('inventario', { status: 'done', current: totalInv });
 
-            addNotification('success', 'Datos de Planchas Mixtas cargados correctamente.');
+            addNotification('success', 'Datos de Plan Táctico PFF cargados correctamente.');
         } catch (error) {
-            addNotification('error', `Error al cargar datos de Planchas Mixtas: ${(error as Error).message}`);
+            addNotification('error', `Error al cargar datos de Plan Táctico PFF: ${(error as Error).message}`);
         } finally {
             setIsLoading(false);
         }
@@ -451,28 +325,6 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
         fetchAllData();
     }, []);
 
-    // Feriados de Ecuador para el cálculo de "mañana"/"pasado mañana" (getBusinessDateKeyOffset): sin esto,
-    // esas fechas solo saltaban fines de semana y podían caer en un feriado (ej. 10/8, Independencia de
-    // Guayaquil), haciendo que no se encuentren las órdenes que en SAP sí están fechadas para el siguiente
-    // día realmente laborable.
-    const [holidaysSet, setHolidaysSet] = useState<Set<string>>(new Set());
-    useEffect(() => {
-        const fetchHolidays = async () => {
-            try {
-                const start = new Date();
-                const end = new Date(start);
-                end.setDate(end.getDate() + 14);
-                const holidays = await ecuadorHolidaysService.getHolidaysForRange(start, end);
-                setHolidaysSet(new Set(holidays.map(h => h.date)));
-            } catch (error) {
-                console.error('Error al cargar feriados para Planchas Mixtas:', error);
-            }
-        };
-        fetchHolidays();
-    }, []);
-
-    // Progreso general de la ventana de estado de "Actualizar Datos": promedio simple del avance de
-    // cada una de las 4 etapas (cada una pesa lo mismo, sin importar cuántos registros tenga)
     const overallLoadPercent = useMemo(() => {
         if (loadStages.length === 0) return 0;
         const sum = loadStages.reduce((acc, s) => {
@@ -483,9 +335,6 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
         return Math.round(sum / loadStages.length);
     }, [loadStages]);
 
-    // Vuelve a descargar las órdenes previsionales/Fert (y tiempos/inventario) desde SAP, y descarta los
-    // resultados ya calculados para que se recalculen con la información fresca. Si ya existía una
-    // planificación previa, esta actualización se marca como recálculo ajustado (Paso 2).
     const handleRefreshData = async () => {
         const eraRecalculo = hasPlanned;
         await fetchAllData();
@@ -493,7 +342,6 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
         setPmDistribution(null);
         setLaminaEspumaResults([]);
         setLaminaPrensadaResults([]);
-        setRejectedFillIds(new Set());
         setSelectedProposalId(null);
         setIsRecalculatingPlan(eraRecalculo);
         addNotification('info', eraRecalculo
@@ -501,10 +349,9 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
             : 'Datos actualizados desde SAP. Vuelva a presionar "EJECUTAR PLANIFICACIÓN" para recalcular.');
     };
 
-    // Reinicia toda la configuración y el progreso de la planificación en curso (turnos, mesas, citas
-    // médicas, descuentos de capacidad, planificación calculada, distribución y explosión de materiales)
-    // para empezar una nueva desde cero. Los datos ya descargados de SAP NO se vuelven a descargar — para
-    // eso está "Actualizar Datos". Mismo patrón que "Planificación Nueva" en Planificación Táctica Muebles.
+    // Reinicia toda la configuración y el progreso de la planificación en curso. Los Componentes de
+    // Plancha (prop) NO se recalculan aquí — para eso hay que volver a ejecutar la "Explosión de
+    // Materiales" en "Plan Grupo Ensamblado (PFF)".
     const handleNuevaPlanificacion = () => {
         setTurnoEnabled({ dia: true, noche: false });
         setTurnoDuration({ dia: SHIFT_DURATIONS_PM[0].id, noche: SHIFT_DURATIONS_PM[0].id });
@@ -522,7 +369,6 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
         setAdicionalEnabled(false);
         setAdicionalHoras('');
         setAdicionalStations(new Set());
-        setRejectedFillIds(new Set());
         setHasPlanned(false);
         setPmDistribution(null);
         setIsExplodingMaterials(false);
@@ -537,116 +383,30 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
         addNotification('info', 'Planificación reiniciada. Puede comenzar una nueva desde cero.');
     };
 
-    // Órdenes de Planchas Mixtas (RESPCTRLPROD/RESPCONTROLPROD según la restricción "RespCtrlProd" del
-    // Grupo Prensado — ver "validRespCodes", ej. 015/016 —, Centro 1000) que se deben tomar
-    // en cuenta HOY:
-    // - Previsionales MTS (sin PEDIDOVENTAS): FECHAINICIO = hoy o mañana.
-    // - Previsionales MTO "Medidas Especiales" (con PEDIDOVENTAS): FECHAINICIO = mañana o pasado mañana
-    //   (NO hoy), ya que estas siempre aparecen fechadas 1 o 2 días después de hoy.
-    // - Fert (MTO o MTS): FECHA = ÚNICAMENTE mañana (no hoy) y CANTPENDIENTE > 0, ya que por el horizonte
-    //   de planificación estas órdenes siempre se liberan con fecha de un día después.
+    // Cada Componente de Plancha de la Explosión PFF (ya con su Tiempo Requerido calculado) se convierte en
+    // una "orden" a repartir entre las Mesas de Pegado — mismo rol que las órdenes Previsional/Fert en
+    // "Plan Táctico", pero la fuente aquí es la tabla "Explosión de Materiales — Componentes de Plancha"
     const pmOrders = useMemo<PMOrder[]>(() => {
-        const todayKey = getDateKeyOffset(0);
-        const tomorrowKey = getBusinessDateKeyOffset(1, holidaysSet);
-        const dayAfterTomorrowKey = getBusinessDateKeyOffset(2, holidaysSet);
-        const result: PMOrder[] = [];
-
-        allPrevisionalRaw.forEach((row: any) => {
-            if (!validRespCodes.includes(String(row.RESPCONTROLPROD || '').trim())) return;
-            if (String(row.Centro || '').trim() !== CENTRO_PLANIFICACION_PM) return;
-
-            const fechaKey = String(row.FECHAINICIO || '').trim().slice(0, 10);
-            const esMTO = !!String(row.PEDIDOVENTAS || '').trim();
-            const fechaValida = esMTO
-                ? (fechaKey === tomorrowKey || fechaKey === dayAfterTomorrowKey)
-                : (fechaKey === todayKey || fechaKey === tomorrowKey);
-            if (!fechaValida) return;
-
-            const cantidad = Number(row.CANTIDAD) || 0;
-            if (cantidad <= 0) return;
-
-            const material = normalizeMaterialCode(row.MATERIAL || row.CodMaterial || '');
-            const tiempoUnitMin = globalTiemposMap.get(material) ?? 0;
-            result.push({
-                id: String(row.ORDENPREVISIONAL || ''),
-                source: 'Previsional',
-                tipo: esMTO ? 'MTO' : 'MTS',
-                material,
-                nombre: String(row.NOMBRE || '').trim(),
-                cantidad,
-                tiempoUnitMin,
-                horas: (tiempoUnitMin * cantidad) / 60,
-                fecha: fechaKey,
-            });
-        });
-
-        allFertRaw.forEach((row: any) => {
-            if (!validRespCodes.includes(String(row.RESPCTRLPROD || '').trim())) return;
-            if (String(row.CENTRO || '').trim() !== CENTRO_PLANIFICACION_PM) return;
-
-            const fechaKey = String(row.FECHA || '').trim().slice(0, 10);
-            if (fechaKey !== tomorrowKey) return;
-
-            const cantidad = Number(row.CANTPENDIENTE) || 0;
-            if (cantidad <= 0) return;
-
-            const esMTO = !!String(row.PEDIDO || '').trim();
-            const material = normalizeMaterialCode(row.MATERIAL || '');
-            const tiempoUnitMin = globalTiemposMap.get(material) ?? 0;
-            result.push({
-                id: String(row.ORDEN || ''),
-                source: 'Fert',
-                tipo: esMTO ? 'MTO' : 'MTS',
-                material,
-                nombre: String(row.NOMBRE || '').trim(),
-                cantidad,
-                tiempoUnitMin,
-                horas: (tiempoUnitMin * cantidad) / 60,
-                fecha: fechaKey,
-            });
-        });
-
-        return result;
-    }, [allPrevisionalRaw, allFertRaw, globalTiemposMap, validRespCodes, holidaysSet]);
-
-    // Candidatas para la Propuesta de Relleno de Capacidad: Previsionales de Planchas Mixtas cuya
-    // FECHAINICIO todavía NO forma parte de lo obligatorio de "pmOrders" — MTS con fecha posterior a
-    // mañana, MTO con fecha posterior a pasado mañana (ya que MTO ya cubre hasta pasado mañana como
-    // obligatorio). Evita duplicar una misma orden entre "obligatorias" y "candidatas a relleno".
-    const futurePmOrders = useMemo<PMOrder[]>(() => {
-        const tomorrowKey = getBusinessDateKeyOffset(1, holidaysSet);
-        const dayAfterTomorrowKey = getBusinessDateKeyOffset(2, holidaysSet);
-        return allPrevisionalRaw
-            .filter((row: any) => validRespCodes.includes(String(row.RESPCONTROLPROD || '').trim()))
-            .filter((row: any) => String(row.Centro || '').trim() === CENTRO_PLANIFICACION_PM)
-            .filter((row: any) => {
-                const fechaKey = String(row.FECHAINICIO || '').trim().slice(0, 10);
-                const esMTO = !!String(row.PEDIDOVENTAS || '').trim();
-                return esMTO ? fechaKey > dayAfterTomorrowKey : fechaKey > tomorrowKey;
-            })
-            .map((row: any) => {
-                const material = normalizeMaterialCode(row.MATERIAL || row.CodMaterial || '');
-                const cantidad = Number(row.CANTIDAD) || 0;
-                const tiempoUnitMin = globalTiemposMap.get(material) ?? 0;
-                const esMTO = !!String(row.PEDIDOVENTAS || '').trim();
-                const fecha = String(row.FECHAINICIO || '').trim().slice(0, 10);
+        return componentesPlancha
+            .map(c => {
+                const cantidad = Math.round(c.cantidadTotal);
                 return {
-                    id: String(row.ORDENPREVISIONAL || ''),
-                    source: 'Previsional' as const,
-                    tipo: (esMTO ? 'MTO' : 'MTS') as 'MTO' | 'MTS',
-                    material,
-                    nombre: String(row.NOMBRE || '').trim(),
+                    id: c.componente,
+                    material: c.componente,
+                    nombre: c.descripcion,
                     cantidad,
-                    tiempoUnitMin,
-                    horas: (tiempoUnitMin * cantidad) / 60,
-                    fecha,
+                    tiempoUnitMin: cantidad > 0 ? (c.horasRequeridas * 60) / cantidad : 0,
+                    horas: c.horasRequeridas,
+                    fecha: fechaObjetivo ?? '',
                 };
             })
-            .filter(o => o.cantidad > 0 && o.horas > 0)
-            .sort((a, b) => a.fecha.localeCompare(b.fecha));
-    }, [allPrevisionalRaw, globalTiemposMap, validRespCodes, holidaysSet]);
+            .filter(o => o.cantidad > 0 && o.horas > 0);
+    }, [componentesPlancha, fechaObjetivo]);
 
     const totalHorasRequeridas = useMemo(() => pmOrders.reduce((s, o) => s + o.horas, 0), [pmOrders]);
+    const totalCantidadRequerida = useMemo(() => pmOrders.reduce((s, o) => s + o.cantidad, 0), [pmOrders]);
+    // Plancha Mixta Equivalente: unidad de medida estándar del área, donde 1 equivalente = 5.38 min
+    const totalPlanchasEquivalentes = useMemo(() => (totalHorasRequeridas * 60) / MINUTOS_POR_PLANCHA_EQUIVALENTE, [totalHorasRequeridas]);
 
     // Slots de capacidad activos: una combinación Turno + Mesa por cada mesa habilitada en cada turno activo
     const activeSlots = useMemo<PMSlot[]>(() => {
@@ -678,9 +438,7 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
 
     const totalMedicalDeduction = medicalDeductionByTurno.dia + medicalDeductionByTurno.noche;
 
-    // Descuento de capacidad por motivos generales (ej. reunión de personal): a diferencia de las citas
-    // médicas, estas horas NO se prorratean entre mesas — se descuentan COMPLETAS de CADA mesa activa del
-    // turno seleccionado (ej. 1 hora de reunión con 5 mesas activas = 5 horas de capacidad perdidas).
+    // Descuento de capacidad por motivos generales: se descuentan COMPLETAS de CADA mesa activa del turno
     const capacityDiscountByTurno = useMemo(() => {
         const deduction: Record<TurnoId, number> = { dia: 0, noche: 0 };
         capacityDiscounts.forEach(d => {
@@ -755,77 +513,24 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
         setCapacityDiscounts(prev => prev.filter(d => d.id !== id));
     };
 
-    // Propuesta de relleno de capacidad: si sobra capacidad después de las órdenes obligatorias de hoy,
-    // se proponen (en orden de fecha más próxima) órdenes previsionales de días posteriores hasta llenar
-    // esa capacidad sobrante. El usuario puede desmarcar individualmente las que no quiera aceptar.
-    const proposedFillOrders = useMemo<PMOrder[]>(() => {
-        const spare = capacidadDisponibleAjustada - totalHorasRequeridas;
-        if (spare <= 0) return [];
-        const proposal: PMOrder[] = [];
-        let used = 0;
-        for (const o of futurePmOrders) {
-            if (used + o.horas > spare) continue;
-            proposal.push(o);
-            used += o.horas;
-        }
-        return proposal;
-    }, [futurePmOrders, capacidadDisponibleAjustada, totalHorasRequeridas]);
-
-    const toggleFillOrderAccepted = (id: string) => {
-        setRejectedFillIds(prev => {
-            const next = new Set(prev);
-            if (next.has(id)) next.delete(id);
-            else next.add(id);
-            return next;
-        });
-    };
-
-    const acceptedFillOrders = useMemo(
-        () => proposedFillOrders.filter(o => !rejectedFillIds.has(o.id)),
-        [proposedFillOrders, rejectedFillIds]
-    );
-    const horasPropuestaAceptada = useMemo(() => acceptedFillOrders.reduce((s, o) => s + o.horas, 0), [acceptedFillOrders]);
-
-    // Lista efectiva a planificar: lo obligatorio de hoy/mañana + lo aceptado de la propuesta de relleno
-    const effectivePmOrders = useMemo(() => [...pmOrders, ...acceptedFillOrders], [pmOrders, acceptedFillOrders]);
-
-    const totalHorasEfectivas = useMemo(() => effectivePmOrders.reduce((s, o) => s + o.horas, 0), [effectivePmOrders]);
-    const totalCantidadRequerida = useMemo(() => effectivePmOrders.reduce((s, o) => s + o.cantidad, 0), [effectivePmOrders]);
-    // Plancha Mixta Equivalente: unidad de medida estándar del área, donde 1 equivalente = 3.87 min
-    const totalPlanchasEquivalentes = useMemo(() => (totalHorasEfectivas * 60) / MINUTOS_POR_PLANCHA_EQUIVALENTE, [totalHorasEfectivas]);
-
-    // Ejecuta realmente la planificación (llamado directamente si no había plan guardado para hoy, o tras
-    // "PROCEDER"/"Borrar Plan(es) Guardado(s)" en el chequeo de plan duplicado)
+    // Ejecuta realmente la planificación (llamado directamente si no había plan guardado para la fecha
+    // objetivo, o tras "PROCEDER"/"Borrar Plan(es) Guardado(s)" en el chequeo de plan duplicado)
     const confirmRunPlanning = () => {
         setHasPlanned(true);
-        // Una nueva planificación invalida cualquier distribución/explosión previa y reinicia la propuesta
         setPmDistribution(null);
         setLaminaEspumaResults([]);
         setLaminaPrensadaResults([]);
-        setRejectedFillIds(new Set());
         setSelectedProposalId(null);
-        // El recálculo ajustado (Paso 2) ya se ejecutó; el botón vuelve a su estado normal
         setIsRecalculatingPlan(false);
         setPlanCheckModal(null);
-        addNotification('success', `Planificación calculada: ${pmOrders.length} orden(es), ${totalHorasRequeridas.toFixed(2)} h requeridas.`);
+        addNotification('success', `Planificación calculada: ${pmOrders.length} componente(s), ${totalHorasRequeridas.toFixed(2)} h requeridas.`);
     };
 
-    // Fecha objetivo real de esta planificación: el "mañana" laborable (salta fines de semana y feriados)
-    // usado para las órdenes Fert/Previsionales MTS — NO necesariamente hoy. El Plan Táctico (PFSP/P2) que
-    // se guarda representa la producción de ESE día, así que tanto la verificación de duplicados como el
-    // guardado deben usar esta fecha, no la fecha del día en que se presiona el botón.
-    const fechaObjetivoPM = useMemo(() => getBusinessDateKeyOffset(1, holidaysSet), [holidaysSet]);
-
-    // Antes de ejecutar la planificación, se verifica si ya existe un Plan Táctico guardado (PlanGrupo del
-    // Grupo Prensado, patrón "... - PFSP"/"... - P2") para la fecha objetivo, para evitar duplicar o pisar
-    // sin darse cuenta un plan que ya se guardó. Mismo chequeo que "Planificación Táctica Muebles".
+    // Antes de ejecutar la planificación, se verifica si ya existe un Plan Táctico PFF guardado (PlanGrupo
+    // del Grupo Prensado, patrón "...-PFSP-PFF"/"...-P2-PFF") para la fecha objetivo de la Explosión PFF
     const handleRunPlanning = async () => {
-        if (validRespCodes.length === 0) {
-            addNotification('warning', 'No se encontró la restricción "RespCtrlProd" del Grupo Prensado. No se puede determinar qué Responsables de Control de Producción planificar.');
-            return;
-        }
         if (pmOrders.length === 0) {
-            addNotification('warning', `No hay órdenes previsionales ni Fert de Planchas Mixtas (RESPCTRLPROD ${validRespCodes.join('/')}) para planificar hoy.`);
+            addNotification('warning', 'No hay Componentes de Plancha (Explosión PFF) para planificar. Ejecute primero "Explosión de Materiales" en "Plan Grupo Ensamblado (PFF)" y presione "Ir a Plan Táctico PFF".');
             return;
         }
         if (activeSlots.length === 0) {
@@ -840,10 +545,12 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
         setIsPlanCheckBusy(true);
         try {
             const res = await planGrupoService.getAll();
+            const fechaObjetivoKey = fechaObjetivo ?? getDateKeyOffset(0);
+            const sufijoPattern = new RegExp(`${SUFIJO_PFSP_PFF}\\s*$|${SUFIJO_P2_PFF}\\s*$`, 'i');
             const existentes = (res.data || []).filter(p => {
                 if (p.codigo_grupo !== prensadoGrupo.codigo_grupo) return false;
-                if (!/PFSP\s*$|P2\s*$/i.test(String(p.valor || '').trim())) return false;
-                return String(p.fecha_inicio_plan).slice(0, 10) === fechaObjetivoPM;
+                if (!sufijoPattern.test(String(p.valor || '').trim())) return false;
+                return String(p.fecha_inicio_plan).slice(0, 10) === fechaObjetivoKey;
             });
 
             setPlanCheckModal(existentes.length > 0 ? { type: 'found', planesGrupo: existentes } : { type: 'not-found' });
@@ -883,7 +590,7 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
             await Promise.all(detalles.map(d => detalleTacticoService.delete(d.codigo_detalle_tactico)));
             await Promise.all(planesGrupo.map(p => planGrupoService.delete(p.codigo_plan_grupo)));
 
-            addNotification('success', `Plan(es) Táctico(s) anterior(es) (${planesGrupo.map(p => p.valor).join(', ')}) eliminado(s). Puede continuar con la nueva planificación.`);
+            addNotification('success', `Plan(es) Táctico(s) PFF anterior(es) (${planesGrupo.map(p => p.valor).join(', ')}) eliminado(s). Puede continuar con la nueva planificación.`);
             confirmRunPlanning();
         } catch (error) {
             addNotification('error', `Error al eliminar el plan guardado: ${(error as Error).message}`);
@@ -892,25 +599,21 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
         }
     };
 
-    // Distribuye CADA orden (obligatorias + propuesta de relleno aceptada) en partes exactamente iguales
-    // entre todos los slots de capacidad activos (Turno + Mesa): así se fabrica realmente en planta — por
-    // ejemplo, 28 unidades del mismo material con 4 mesas activas se reparten en 7 unidades por mesa. Si
-    // la cantidad no es divisible exactamente, el residuo (las unidades "de más") se reparte una por una
-    // entre las mesas, rotando cuáles la reciben en cada orden para que ninguna mesa quede sistemáticamente
-    // con más carga que las demás.
+    // Distribuye CADA Componente de Plancha en partes exactamente iguales entre todos los slots de
+    // capacidad activos (Turno + Mesa) — mismo algoritmo de "Plan Táctico": residuo repartido rotando
+    // qué mesas lo reciben en cada orden, para que ninguna mesa quede sistemáticamente con más carga.
     const handleDistributePM = () => {
-        if (effectivePmOrders.length === 0 || activeSlots.length === 0) return;
+        if (pmOrders.length === 0 || activeSlots.length === 0) return;
 
         const n = activeSlots.length;
         const slotHours = new Map<string, number>(activeSlots.map(s => [slotKey(s.turno, s.stationId), 0]));
         const slotItems = new Map<string, PMOrder[]>(activeSlots.map(s => [slotKey(s.turno, s.stationId), []]));
 
-        effectivePmOrders.forEach((order, orderIdx) => {
+        pmOrders.forEach((order, orderIdx) => {
             const baseQty = Math.floor(order.cantidad / n);
             const remainder = order.cantidad % n;
 
             activeSlots.forEach((slot, slotIdx) => {
-                // Rota qué mesas reciben la unidad "extra" del residuo, orden a orden
                 const rotatedIdx = (slotIdx - (orderIdx % n) + n) % n;
                 const assignedQty = baseQty + (rotatedIdx < remainder ? 1 : 0);
                 if (assignedQty <= 0) return;
@@ -935,34 +638,26 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
         setPmDistribution(distribution);
         setLaminaEspumaResults([]);
         setLaminaPrensadaResults([]);
-        addNotification('success', `Distribución ejecutada: cada material se repartió en partes iguales entre las ${n} mesa(s)-turno activas.`);
+        addNotification('success', `Distribución ejecutada: cada componente se repartió en partes iguales entre las ${n} mesa(s)-turno activas.`);
     };
 
-    // Horas Requeridas (Obligatorias) repartidas entre la cantidad de mesas-turno escogidas (activeSlots)
     const horasPorMesa = useMemo(
         () => (activeSlots.length > 0 ? totalHorasRequeridas / activeSlots.length : 0),
         [totalHorasRequeridas, activeSlots]
     );
 
-    // % de utilización de la capacidad: Horas Requeridas (Obligatorias) / Capacidad Disponible ajustada.
-    // 100% = capacidad exactamente usada; >100% = déficit; <100% = capacidad sobrante.
+    // % de utilización de la capacidad: Horas Requeridas / Capacidad Disponible ajustada
     const utilizacionActualPct = useMemo(
         () => (capacidadDisponibleAjustada > 0 ? (totalHorasRequeridas / capacidadDisponibleAjustada) * 100 : Infinity),
         [totalHorasRequeridas, capacidadDisponibleAjustada]
     );
 
-    // Selección de la propuesta de ajuste de capacidad actualmente aplicada (para resaltarla en la UI)
-    const [selectedProposalId, setSelectedProposalId] = useState<string | null>(null);
-
-    // Propuesta de Ajuste de Capacidad: si la utilización actual está fuera de un rango eficiente
-    // (85%-105%), se evalúa si cambiar la duración de jornada de algún turno activo (prioridad, ya que
-    // las mesas se definen semanalmente según vacaciones del personal de Prensado) o la cantidad de mesas
-    // activas de ese turno acercaría la utilización a ese rango. Solo se muestra si SÍ existe una mejora.
+    // Propuesta de Ajuste de Capacidad: mismo criterio que "Plan Táctico" — si la utilización está fuera
+    // del rango eficiente, evalúa cambiar jornada (prioridad) o mesas activas (segunda opción)
     const capacityProposal = useMemo<CapacityProposalOption[]>(() => {
         if (!hasPlanned || totalHorasRequeridas <= 0) return [];
         if (utilizacionActualPct >= UTILIZACION_EFICIENTE_MIN && utilizacionActualPct <= UTILIZACION_EFICIENTE_MAX) return [];
 
-        // Distancia (en puntos porcentuales) de una utilización al rango eficiente; 0 si ya está dentro
         const distanciaAEficiente = (pct: number): number => {
             if (pct < UTILIZACION_EFICIENTE_MIN) return UTILIZACION_EFICIENTE_MIN - pct;
             if (pct > UTILIZACION_EFICIENTE_MAX) return pct - UTILIZACION_EFICIENTE_MAX;
@@ -970,8 +665,6 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
         };
         const distanciaActual = distanciaAEficiente(utilizacionActualPct);
 
-        // Deducciones fijas netas (citas médicas + descuentos de capacidad − adición al cálculo) que no
-        // cambian con la propuesta
         const deduccionesFijas = totalMedicalDeduction + totalCapacityDiscount - totalAdicionalCapacidad;
         const opciones: CapacityProposalOption[] = [];
 
@@ -981,10 +674,8 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
             if (mesasActuales === 0) return;
             const duracionActualId = turnoDuration[turno.id];
             const duracionActualHoras = SHIFT_DURATIONS_PM.find(d => d.id === duracionActualId)?.hours ?? 0;
-            // Capacidad de TODOS los demás slots (otros turnos, o este mismo turno sin contar sus propias mesas)
             const capacidadOtrosSlots = capacidadDisponible - (mesasActuales * duracionActualHoras);
 
-            // Opción prioritaria: cambiar la duración de jornada de este turno (subir o bajar el turno)
             SHIFT_DURATIONS_PM.forEach(d => {
                 if (d.id === duracionActualId) return;
                 const capacidadResultante = Math.max(0, capacidadOtrosSlots + (mesasActuales * d.hours) - deduccionesFijas);
@@ -1000,7 +691,6 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
                 });
             });
 
-            // Opción secundaria: aumentar o disminuir la cantidad de mesas activas de este turno (misma jornada)
             for (let m = 1; m <= WORK_STATIONS_PM.length; m++) {
                 if (m === mesasActuales) continue;
                 const capacidadResultante = Math.max(0, capacidadOtrosSlots + (m * duracionActualHoras) - deduccionesFijas);
@@ -1017,8 +707,6 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
             }
         });
 
-        // Solo se conservan las opciones que realmente mejoran la utilización actual (más cerca del rango
-        // eficiente que el estado actual); se prioriza turno sobre mesas, y dentro de cada tipo, la mejor
         const mejores = opciones
             .filter(o => distanciaAEficiente(o.utilizacionPct) < distanciaActual)
             .sort((a, b) => {
@@ -1026,14 +714,11 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
                 return distanciaAEficiente(a.utilizacionPct) - distanciaAEficiente(b.utilizacionPct);
             });
 
-        // Se muestra como máximo 1 opción de turno (prioritaria) + 1 de mesas (segunda opción)
         const mejorTurno = mejores.find(o => o.tipo === 'turno');
         const mejorMesas = mejores.find(o => o.tipo === 'mesas');
         return [mejorTurno, mejorMesas].filter((o): o is CapacityProposalOption => !!o);
     }, [hasPlanned, totalHorasRequeridas, utilizacionActualPct, capacidadDisponible, turnoEnabled, turnoStations, turnoDuration, totalMedicalDeduction, totalCapacityDiscount, totalAdicionalCapacidad]);
 
-    // Aplica la opción de propuesta escogida: cambia la jornada o la cantidad de mesas activas del turno
-    // correspondiente, e invalida la distribución/explosión previas (quedaron calculadas con la config anterior)
     const handleApplyCapacityProposal = (option: CapacityProposalOption) => {
         if (option.tipo === 'turno' && option.nuevaDuracionId) {
             setTurnoDuration(prev => ({ ...prev, [option.turno]: option.nuevaDuracionId! }));
@@ -1058,27 +743,24 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
         addNotification('success', `Propuesta aplicada: ${option.descripcion}. Presione "DISTRIBUIR EN MESAS DE PEGADO" nuevamente para recalcular con este ajuste.`);
     };
 
-    // Exporta a Excel la tabla "Planificación Calculada — Planchas Mixtas" (pmOrders)
+    // Exporta a Excel la tabla "Planificación Calculada — Plan Táctico PFF" (pmOrders)
     const handleExportPlanningPMExcel = () => {
         if (pmOrders.length === 0) return;
 
         const rows = pmOrders.map(o => ({
-            'Origen': o.source,
-            'N° Orden': o.id,
-            'Material': o.material,
-            'Nombre': o.nombre,
-            'Tipo': o.tipo,
-            'Fecha': o.fecha,
+            'Componente': o.material,
+            'Descripción': o.nombre,
+            'Fecha Objetivo': o.fecha,
             'Cantidad': o.cantidad,
             'Horas': Number(o.horas.toFixed(2)),
         }));
 
         const worksheet = XLSX.utils.json_to_sheet(rows);
         const workbook = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(workbook, worksheet, 'Planificación Calculada');
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Planificación Calculada PFF');
 
         const fechaArchivo = getDateKeyOffset(0);
-        XLSX.writeFile(workbook, `Planificacion_Calculada_Planchas_Mixtas_${fechaArchivo}.xlsx`);
+        XLSX.writeFile(workbook, `Planificacion_Calculada_PFF_${fechaArchivo}.xlsx`);
     };
 
     // Exporta a Excel una tabla de Explosión de Materiales (Láminas de Espuma/Prensadas) con el Kardex
@@ -1091,7 +773,6 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
             'Unidad': c.unidad,
             'Cantidad Total Necesaria': Number(c.totalNecesario.toFixed(2)),
             'Stock Actual': c.stockActual ?? '',
-            'Consumo Órdenes Pasadas': Number(c.consumoOrdenesPasadas.toFixed(2)),
             'Producción Propia Pendiente': Number(c.produccionPropiaPendiente.toFixed(2)),
             'Disponible Real': c.disponibleReal ?? '',
             'Cantidad Neta Requerida': Number(c.cantidadNetaAConseguir.toFixed(2)),
@@ -1105,10 +786,9 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
         XLSX.writeFile(workbook, `${fileLabel}_${fechaArchivo}.xlsx`);
     };
 
-    // Guarda el Plan Táctico de Planchas Mixtas en el Grupo Prensado (codigo_grupo=9), separado en 2
-    // PlanGrupo — mismo patrón de "Planificación Táctica Muebles" (ver P1.3/P1.5/P2/PFSM de ese módulo):
-    // - PFSP: Explosión de Materiales — Láminas Prensadas (RESPCTRLPROD 017)
-    // - P2: Explosión de Materiales — Láminas de Espuma (RESPCTRLPROD 013)
+    // Guarda el Plan Táctico PFF en el Grupo Prensado (codigo_grupo=9), separado en 2 PlanGrupo — mismo
+    // patrón que "Plan Táctico" pero con sufijos exclusivos (PFSP-PFF/P2-PFF) y fecha_inicio_plan = fecha
+    // objetivo de la Explosión PFF (no "hoy"), ya que ese es el día que realmente se está planificando.
     const handleSavePlanTacticoPM = async () => {
         const hayPFSP = laminaPrensadaResults.length > 0;
         const hayP2 = laminaEspumaResults.length > 0;
@@ -1124,20 +804,15 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
 
         setIsSavingPlan(true);
         try {
-            // La fecha del Plan Táctico es la fecha OBJETIVO (mañana laborable), no la fecha en que se
-            // guarda — mismo criterio que la verificación de duplicados en handleRunPlanning.
-            const fechaPlan = new Date(`${fechaObjetivoPM}T00:00:00`);
+            const fechaPlan = fechaObjetivo ? new Date(`${fechaObjetivo}T00:00:00`) : new Date();
 
-            // Crea un Plan de Grupo con el sufijo indicado (PFSP / P2) y devuelve su código. codigo_plan y
-            // codigo_familia_grupo se envían como null (no 0) para evitar un error de integridad
-            // referencial contra tablas que aún no tienen ese registro relacionado.
             const savePlanGrupo = async (sufijo: string): Promise<number> => {
                 const planPayload = {
                     codigo_plan_grupo: 0,
                     codigo_plan: null,
                     codigo_grupo: prensadoGrupo.codigo_grupo,
                     codigo_familia_grupo: null,
-                    valor: `Plan Táctico - Centro ${prensadoGrupo.centro} - ${sufijo}`,
+                    valor: `Plan Táctico PFF - Centro ${prensadoGrupo.centro} - ${sufijo}`,
                     fecha_inicio_plan: fechaPlan,
                     fecha_fin_plan: fechaPlan,
                     estado: 'A',
@@ -1169,35 +844,35 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
                 return detalleTacticoService.save(detallePayload);
             };
 
-            // 1. PFSP — Explosión de Materiales: Láminas Prensadas (RESPCTRLPROD 017)
             if (hayPFSP) {
-                const codigoPlanGrupoPFSP = await savePlanGrupo('PFSP');
+                const codigoPlanGrupoPFSP = await savePlanGrupo(SUFIJO_PFSP_PFF);
                 for (const comp of laminaPrensadaResults) {
                     await saveDetalle(codigoPlanGrupoPFSP, Number(comp.componente) || 0, comp.cantidadNetaAConseguir, '017');
                 }
             }
 
-            // 2. P2 — Explosión de Materiales: Láminas de Espuma (RESPCTRLPROD 013)
             if (hayP2) {
-                const codigoPlanGrupoP2 = await savePlanGrupo('P2');
+                const codigoPlanGrupoP2 = await savePlanGrupo(SUFIJO_P2_PFF);
                 for (const comp of laminaEspumaResults) {
                     await saveDetalle(codigoPlanGrupoP2, Number(comp.componente) || 0, comp.cantidadNetaAConseguir, '013');
                 }
             }
 
             const partes = [
-                hayPFSP ? `PFSP (${laminaPrensadaResults.length} detalle(s))` : null,
-                hayP2 ? `P2 (${laminaEspumaResults.length} detalle(s))` : null,
+                hayPFSP ? `${SUFIJO_PFSP_PFF} (${laminaPrensadaResults.length} detalle(s))` : null,
+                hayP2 ? `${SUFIJO_P2_PFF} (${laminaEspumaResults.length} detalle(s))` : null,
             ].filter(Boolean).join(', ');
-            addNotification('success', `Plan Táctico de Planchas Mixtas guardado: ${partes}.`);
+            addNotification('success', `Plan Táctico PFF guardado: ${partes}.`);
         } catch (error) {
-            console.error('Error al guardar el Plan Táctico de Planchas Mixtas:', error);
-            addNotification('error', `Error al guardar el Plan Táctico: ${(error as Error).message}`);
+            console.error('Error al guardar el Plan Táctico PFF:', error);
+            addNotification('error', `Error al guardar el Plan Táctico PFF: ${(error as Error).message}`);
         } finally {
             setIsSavingPlan(false);
         }
     };
 
+    // Explosiona los Componentes de Plancha ya distribuidos en mesas para identificar, dentro de ellos, sus
+    // propios sub-componentes de Lámina de Espuma (013)/Prensada (017) — mismo mecanismo que "Plan Táctico".
     const handleMaterialExplosionPM = async () => {
         if (!pmDistribution || pmDistribution.size === 0) {
             addNotification('warning', 'Debe presionar "DISTRIBUIR EN MESAS DE PEGADO" antes de calcular la explosión de materiales.');
@@ -1217,55 +892,25 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
             return;
         }
 
-        // Kardex: demanda de las mismas órdenes (Fert/Previsionales de Planchas Mixtas) de días ANTERIORES
-        // a hoy que todavía están pendientes — Fert con CANTPENDIENTE > 0, Previsionales previas (se toma
-        // su CANTIDAD completa). Van a consumir stock ANTES que la planificación de hoy, así que se
-        // descuentan del Stock Actual. Mismo patrón que "Planificación Táctica Muebles".
-        const todayKey = getDateKeyOffset(0);
-        const pastDemandMap = new Map<string, number>();
-        allPrevisionalRaw.forEach((row: any) => {
-            if (!validRespCodes.includes(String(row.RESPCONTROLPROD || '').trim())) return;
-            if (String(row.Centro || '').trim() !== CENTRO_PLANIFICACION_PM) return;
-            const fechaKey = String(row.FECHAINICIO || '').trim().slice(0, 10);
-            const cantidad = Number(row.CANTIDAD) || 0;
-            if (fechaKey && cantidad > 0 && fechaKey < todayKey) {
-                const material = normalizeMaterialCode(row.MATERIAL || row.CodMaterial || '');
-                pastDemandMap.set(material, (pastDemandMap.get(material) || 0) + cantidad);
-            }
-        });
-        allFertRaw.forEach((row: any) => {
-            if (!validRespCodes.includes(String(row.RESPCTRLPROD || '').trim())) return;
-            if (String(row.CENTRO || '').trim() !== CENTRO_PLANIFICACION_PM) return;
-            const fechaKey = String(row.FECHA || '').trim().slice(0, 10);
-            const pendiente = Number(row.CANTPENDIENTE) || 0;
-            if (fechaKey && pendiente > 0 && fechaKey < todayKey) {
-                const material = normalizeMaterialCode(row.MATERIAL || '');
-                pastDemandMap.set(material, (pastDemandMap.get(material) || 0) + pendiente);
-            }
-        });
-        const pastUniqueMaterials = Array.from(pastDemandMap.keys()).filter(Boolean);
-
         // Producción propia pendiente de cada COMPONENTE (Espuma/Prensada): órdenes Fert que fabrican ese
-        // mismo material (sin importar su RESPCTRLPROD, por eso se usa el dataset completo allFertRaw), de
-        // días anteriores a hoy y todavía pendientes. Es producción ya en curso que sumará como disponible.
+        // mismo material, con fecha anterior a la fecha objetivo y todavía pendientes — producción que ya
+        // estará disponible para cuando se necesite.
+        const cutoffKey = fechaObjetivo ?? getDateKeyOffset(0);
         const componentOwnFertPendingMap = new Map<string, number>();
         allFertRaw.forEach((row: any) => {
             const fechaKey = String(row.FECHA || '').trim().slice(0, 10);
             const pendiente = Number(row.CANTPENDIENTE) || 0;
-            if (fechaKey && pendiente > 0 && fechaKey < todayKey) {
+            if (fechaKey && pendiente > 0 && fechaKey < cutoffKey) {
                 const material = normalizeMaterialCode(row.MATERIAL || '');
                 componentOwnFertPendingMap.set(material, (componentOwnFertPendingMap.get(material) || 0) + pendiente);
             }
         });
 
-        // Se explosionan juntos los materiales de hoy y los de días pasados pendientes, en un solo lote.
-        const allUniqueMaterials = Array.from(new Set([...uniqueMaterials, ...pastUniqueMaterials]));
-
         setIsExplodingMaterials(true);
-        addNotification('info', `Iniciando explosión de ${allUniqueMaterials.length} material(es) único(s) (${uniqueMaterials.length} de hoy, ${pastUniqueMaterials.length} de días pasados pendientes)...`);
+        addNotification('info', `Iniciando explosión de ${uniqueMaterials.length} material(es) único(s)...`);
 
         try {
-            const responses = await Promise.all(allUniqueMaterials.map(async (material) => {
+            const responses = await Promise.all(uniqueMaterials.map(async (material) => {
                 try {
                     const res = await serviciosService.getMaestroMaterialesExplosion('1000', material, 1, 5000);
                     if (res && res.data) {
@@ -1280,8 +925,6 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
             type RawComponentAccum = { componente: string; descripcion: string; unidad: string; totalNecesario: number };
             const groupedEspuma = new Map<string, RawComponentAccum>();
             const groupedPrensada = new Map<string, RawComponentAccum>();
-            // Kardex: consumo de cada componente por parte de las órdenes de días pasados pendientes
-            const pastConsumptionMap = new Map<string, number>();
 
             const ensure = (map: Map<string, RawComponentAccum>, componente: string, descripcion: string, unidad: string) => {
                 if (!map.has(componente)) {
@@ -1291,10 +934,9 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
             };
 
             responses.forEach((components, idx) => {
-                const material = allUniqueMaterials[idx];
+                const material = uniqueMaterials[idx];
                 const parentDemand = materialDemandMap.get(material) || 0;
-                const parentPastDemand = pastDemandMap.get(material) || 0;
-                if (parentDemand === 0 && parentPastDemand === 0) return;
+                if (parentDemand === 0) return;
 
                 components.forEach((comp: any) => {
                     const descripcion = String(comp.DESCRIPCION_COMPONENTE || '').trim();
@@ -1303,35 +945,27 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
 
                     const cantBase = Number(comp.CANTIDAD_ACUMULADA ?? comp.CANTIDAD_UNITARIA ?? 0);
                     const necesario = cantBase * parentDemand;
-                    const consumoPasado = cantBase * parentPastDemand;
                     const unidad = String(comp.UNIDAD || 'UN');
                     const respCtrlProd = materialRespCtrlProdMap.get(normalizeMaterialCode(componente));
 
-                    if (consumoPasado > 0) {
-                        pastConsumptionMap.set(componente, (pastConsumptionMap.get(componente) || 0) + consumoPasado);
-                    }
                     if (necesario <= 0) return;
 
-                    // Semielaborados de Láminas de Espuma: RESPCTRLPROD '013'
                     if (respCtrlProd === '013') {
                         ensure(groupedEspuma, componente, descripcion, unidad).totalNecesario += necesario;
                     }
-
-                    // Semielaborados de Láminas Prensadas: RESPCTRLPROD '017'
                     if (respCtrlProd === '017') {
                         ensure(groupedPrensada, componente, descripcion, unidad).totalNecesario += necesario;
                     }
                 });
             });
 
-            // Kardex: Stock Actual - Consumo de Órdenes Pasadas Pendientes + Producción Propia Pendiente =
-            // Disponible Real; Cantidad Neta Requerida = max(0, Necesario de hoy - Disponible Real).
+            // Kardex: Stock Actual + Producción Propia Pendiente = Disponible Real; Cantidad Neta Requerida =
+            // max(0, Necesario - Disponible Real)
             const withKardex = (c: RawComponentAccum): PMComponentNeed => {
                 const stockActual = materialStockActualMap.get(normalizeMaterialCode(c.componente)) ?? null;
-                const consumoOrdenesPasadas = pastConsumptionMap.get(c.componente) || 0;
                 const produccionPropiaPendiente = componentOwnFertPendingMap.get(normalizeMaterialCode(c.componente)) || 0;
                 const disponibleReal = (stockActual !== null || produccionPropiaPendiente > 0)
-                    ? (stockActual ?? 0) - consumoOrdenesPasadas + produccionPropiaPendiente
+                    ? (stockActual ?? 0) + produccionPropiaPendiente
                     : null;
                 const cantidadNetaAConseguir = disponibleReal !== null ? Math.max(0, c.totalNecesario - disponibleReal) : c.totalNecesario;
                 return {
@@ -1340,7 +974,6 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
                     unidad: c.unidad,
                     totalNecesario: c.totalNecesario,
                     stockActual,
-                    consumoOrdenesPasadas,
                     produccionPropiaPendiente,
                     disponibleReal,
                     cantidadNetaAConseguir,
@@ -1366,22 +999,29 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
         }
     };
 
-    if (isLoading && allPrevisionalRaw.length === 0) {
+    if (isLoading && allFertRaw.length === 0) {
         return (
             <div className="flex flex-col items-center justify-center py-20 bg-gray-50 rounded-xl border-2 border-dashed gap-4">
                 <Loader2 className="w-12 h-12 animate-spin text-indigo-600" />
-                <div className="text-center">
-                    <p className="text-sm font-bold text-gray-700">Descargando datos de Planchas Mixtas...</p>
-                    <p className="text-xs text-gray-500 mt-1">
-                        Procesados {downloadProgress.current.toLocaleString()} de {downloadProgress.total.toLocaleString()} registros
-                    </p>
-                </div>
+                <p className="text-sm font-bold text-gray-700">Descargando datos de Plan Táctico PFF...</p>
             </div>
         );
     }
 
     return (
         <div className="space-y-6">
+            <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+                <p className="text-[11px] text-gray-500">
+                    Fuente: <span className="font-bold text-gray-700">Explosión de Materiales — Componentes de Plancha</span> de
+                    "Plan Grupo Ensamblado (PFF)" — Fecha objetivo:{' '}
+                    <span className="font-bold text-gray-700">{fechaObjetivo || '—'}</span> —{' '}
+                    <span className="font-bold text-gray-700">{componentesPlancha.length}</span> componente(s) recibido(s).
+                    {componentesPlancha.length === 0 && (
+                        <span className="text-amber-600 font-semibold"> Vaya a "Plan Grupo Ensamblado (PFF)", ejecute "Explosión de Materiales" y presione "Ir a Plan Táctico PFF".</span>
+                    )}
+                </p>
+            </div>
+
             {/* SECCIÓN DE TURNOS DE TRABAJO (DÍA Y NOCHE, SIMULTÁNEOS E INDEPENDIENTES) */}
             <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm space-y-4">
                 <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -1437,12 +1077,9 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
                     </div>
                 </div>
                 <p className="text-[11px] text-gray-500">
-                    Planificando con órdenes del <span className="font-bold">Centro 1000 (Quito)</span>, RespCtrlProd{' '}
-                    <span className="font-bold">{validRespCodes.length > 0 ? validRespCodes.join('/') : '(sin restricción configurada)'}</span>:
-                    Previsionales MTS (hoy {getDateKeyOffset(0)} o mañana {getBusinessDateKeyOffset(1, holidaysSet)}), Previsionales MTO "Medidas
-                    Especiales" (mañana {getBusinessDateKeyOffset(1, holidaysSet)} o pasado mañana {getBusinessDateKeyOffset(2, holidaysSet)}) y Fert (únicamente mañana,{' '}
-                    {getBusinessDateKeyOffset(1, holidaysSet)}) —{' '}
-                    {pmOrders.length} orden(es) encontrada(s).
+                    Planificando <span className="font-bold">{pmOrders.length} componente(s) de Plancha</span> del{' '}
+                    <span className="font-bold">Centro {CENTRO_PLANIFICACION_PM} (Quito)</span> — fecha objetivo{' '}
+                    <span className="font-bold">{fechaObjetivo || '—'}</span>.
                 </p>
 
                 {showMedicalForm && (
@@ -1715,7 +1352,7 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
                     <div className="flex items-center justify-between px-6 py-4 bg-gradient-to-r from-purple-900 to-indigo-900">
                         <div className="flex items-center gap-2">
                             <Gauge className="w-5 h-5 text-purple-200" />
-                            <h3 className="text-sm font-bold text-white uppercase tracking-wide">Planificación Calculada — Planchas Mixtas</h3>
+                            <h3 className="text-sm font-bold text-white uppercase tracking-wide">Planificación Calculada — Plan Táctico PFF</h3>
                         </div>
                         <div className="flex items-center gap-2">
                             <Button
@@ -1739,9 +1376,9 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
                     <div className="p-6 space-y-4">
                         <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-5 gap-4">
                             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                                <p className="text-[10px] font-bold text-blue-500 uppercase">Horas Requeridas (Obligatorias)</p>
+                                <p className="text-[10px] font-bold text-blue-500 uppercase">Horas Requeridas</p>
                                 <p className="text-xl font-black text-blue-800">{totalHorasRequeridas.toFixed(2)} h</p>
-                                <p className="text-[10px] text-blue-400">{pmOrders.length} órdenes (Previsional + Fert, {validRespCodes.join('/')})</p>
+                                <p className="text-[10px] text-blue-400">{pmOrders.length} componente(s) de Plancha (Explosión PFF)</p>
                             </div>
                             <div className="bg-cyan-50 border border-cyan-200 rounded-lg p-4">
                                 <p className="text-[10px] font-bold text-cyan-500 uppercase">Total Planchas Equivalentes</p>
@@ -1762,22 +1399,19 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
                             </div>
                             <div className={cn(
                                 "border rounded-lg p-4",
-                                capacidadDisponibleAjustada >= totalHorasEfectivas ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
+                                capacidadDisponibleAjustada >= totalHorasRequeridas ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
                             )}>
-                                <p className={cn("text-[10px] font-bold uppercase", capacidadDisponibleAjustada >= totalHorasEfectivas ? "text-emerald-500" : "text-red-500")}>
-                                    {capacidadDisponibleAjustada >= totalHorasEfectivas ? 'Capacidad Sobrante' : 'Déficit de Capacidad'}
+                                <p className={cn("text-[10px] font-bold uppercase", capacidadDisponibleAjustada >= totalHorasRequeridas ? "text-emerald-500" : "text-red-500")}>
+                                    {capacidadDisponibleAjustada >= totalHorasRequeridas ? 'Capacidad Sobrante' : 'Déficit de Capacidad'}
                                 </p>
-                                <p className={cn("text-xl font-black", capacidadDisponibleAjustada >= totalHorasEfectivas ? "text-emerald-800" : "text-red-800")}>
-                                    {Math.abs(capacidadDisponibleAjustada - totalHorasEfectivas).toFixed(2)} h
+                                <p className={cn("text-xl font-black", capacidadDisponibleAjustada >= totalHorasRequeridas ? "text-emerald-800" : "text-red-800")}>
+                                    {Math.abs(capacidadDisponibleAjustada - totalHorasRequeridas).toFixed(2)} h
                                 </p>
-                                {horasPropuestaAceptada > 0 && (
-                                    <p className="text-[10px] text-gray-500">incluye {horasPropuestaAceptada.toFixed(2)} h de propuesta aceptada</p>
-                                )}
                             </div>
                             <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
-                                <p className="text-[10px] font-bold text-indigo-500 uppercase">Total Planchas Físicas</p>
+                                <p className="text-[10px] font-bold text-indigo-500 uppercase">Total Cantidad Física</p>
                                 <p className="text-xl font-black text-indigo-800">{totalCantidadRequerida.toLocaleString()}</p>
-                                <p className="text-[10px] text-indigo-400">planchas a fabricar (obligatorias + propuesta aceptada)</p>
+                                <p className="text-[10px] text-indigo-400">unidades de Componentes de Plancha a fabricar</p>
                             </div>
                         </div>
 
@@ -1785,7 +1419,7 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
                             <div>
                                 <p className="text-[10px] font-bold text-fuchsia-500 uppercase">Horas Requeridas por Mesa</p>
                                 <p className="text-[10px] text-fuchsia-400">
-                                    {totalHorasRequeridas.toFixed(2)} h (Obligatorias) ÷ {activeSlots.length} mesa(s)-turno escogida(s)
+                                    {totalHorasRequeridas.toFixed(2)} h ÷ {activeSlots.length} mesa(s)-turno escogida(s)
                                 </p>
                             </div>
                             <p className="text-2xl font-black text-fuchsia-800">
@@ -1797,26 +1431,19 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
                             <Table>
                                 <TableHeader>
                                     <TableRow className="bg-gray-100 hover:bg-gray-100 border-b-2 border-gray-300 sticky top-0 z-10">
-                                        <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase border-r border-gray-200">Origen</TableHead>
-                                        <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase border-r border-gray-200">N° Orden</TableHead>
-                                        <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase border-r border-gray-200">Material / Nombre</TableHead>
-                                        <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase text-center border-r border-gray-200">Tipo</TableHead>
-                                        <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase text-center border-r border-gray-200">Fecha</TableHead>
+                                        <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase border-r border-gray-200">Componente</TableHead>
+                                        <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase border-r border-gray-200">Descripción</TableHead>
+                                        <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase text-center border-r border-gray-200">Fecha Objetivo</TableHead>
                                         <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase text-center border-r border-gray-200">Cantidad</TableHead>
                                         <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase text-center">Horas</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {pmOrders.map((o, idx) => (
-                                        <TableRow key={`${o.source}-${o.id}-${o.material}-${idx}`} className={cn("border-b border-gray-200", idx % 2 === 1 && "bg-gray-50/70")}>
-                                            <TableCell className="text-[11px] text-center border-r border-gray-200 font-semibold text-gray-600">{o.source}</TableCell>
-                                            <TableCell className="text-[11px] border-r border-gray-200 font-mono text-gray-700">{o.id || '—'}</TableCell>
-                                            <TableCell className="text-[11px] border-r border-gray-200">
-                                                <span className="font-semibold text-gray-800">{o.material}</span>
-                                                <span className="block text-gray-500">{o.nombre}</span>
-                                            </TableCell>
-                                            <TableCell className="text-[11px] text-center border-r border-gray-200">{o.tipo}</TableCell>
-                                            <TableCell className="text-[11px] text-center border-r border-gray-200 font-mono">{o.fecha}</TableCell>
+                                        <TableRow key={`${o.id}-${idx}`} className={cn("border-b border-gray-200", idx % 2 === 1 && "bg-gray-50/70")}>
+                                            <TableCell className="text-[11px] border-r border-gray-200 font-mono font-semibold text-gray-800">{o.material}</TableCell>
+                                            <TableCell className="text-[11px] border-r border-gray-200 text-gray-600">{o.nombre}</TableCell>
+                                            <TableCell className="text-[11px] text-center border-r border-gray-200 font-mono">{o.fecha || '—'}</TableCell>
                                             <TableCell className="text-[11px] text-center border-r border-gray-200 font-semibold">{o.cantidad}</TableCell>
                                             <TableCell className="text-[11px] text-center font-mono font-bold text-blue-700">{o.horas.toFixed(2)}</TableCell>
                                         </TableRow>
@@ -1843,8 +1470,7 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
                             ({utilizacionActualPct > 100 ? 'déficit de capacidad' : 'capacidad sobrante/desperdiciada'}). Estas opciones
                             acercarían la utilización a un rango más eficiente ({UTILIZACION_EFICIENTE_MIN}%-{UTILIZACION_EFICIENTE_MAX}%).
                             Ajustar el <span className="font-semibold">turno</span> tiene prioridad; ajustar{' '}
-                            <span className="font-semibold">mesas</span> es una segunda opción, ya que las mesas activas se definen
-                            semanalmente según las vacaciones del personal de Prensado.
+                            <span className="font-semibold">mesas</span> es una segunda opción.
                         </p>
                         <div className="space-y-2">
                             {capacityProposal.map(option => (
@@ -1858,7 +1484,7 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
                                     <div className="flex items-center gap-3">
                                         <input
                                             type="radio"
-                                            name="capacity-proposal"
+                                            name="capacity-proposal-pff"
                                             checked={selectedProposalId === option.id}
                                             onChange={() => handleApplyCapacityProposal(option)}
                                             className="accent-orange-600 w-4 h-4"
@@ -1883,57 +1509,6 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
                                     </div>
                                 </label>
                             ))}
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {hasPlanned && proposedFillOrders.length > 0 && (
-                <div className="bg-white border border-purple-200 rounded-xl shadow-md overflow-hidden">
-                    <div className="flex items-center gap-2 px-6 py-4 bg-gradient-to-r from-purple-700 to-fuchsia-700">
-                        <CheckSquare className="w-5 h-5 text-purple-100" />
-                        <h3 className="text-sm font-bold text-white uppercase tracking-wide">Propuesta de Relleno de Capacidad</h3>
-                    </div>
-                    <div className="p-6 space-y-3">
-                        <p className="text-xs text-gray-600">
-                            Hay capacidad sobrante hoy. Se proponen estas órdenes previsionales de días posteriores (las más próximas
-                            primero) para completarla. Todas están aceptadas por defecto — desmarque las que no quiera incluir.
-                            Horas aceptadas: <span className="font-bold text-purple-700">{horasPropuestaAceptada.toFixed(2)} h</span> de{' '}
-                            {proposedFillOrders.reduce((s, o) => s + o.horas, 0).toFixed(2)} h propuestas.
-                        </p>
-                        <div className="border border-gray-300 rounded-lg overflow-auto max-h-[40vh]">
-                            <Table>
-                                <TableHeader>
-                                    <TableRow className="bg-gray-100 hover:bg-gray-100 border-b-2 border-gray-300 sticky top-0 z-10">
-                                        <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase text-center border-r border-gray-200 w-10">Aceptar</TableHead>
-                                        <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase border-r border-gray-200">N° Orden</TableHead>
-                                        <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase border-r border-gray-200">Material / Nombre</TableHead>
-                                        <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase text-center border-r border-gray-200">Fecha Original</TableHead>
-                                        <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase text-center border-r border-gray-200">Cantidad</TableHead>
-                                        <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase text-center">Horas</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {proposedFillOrders.map((o, idx) => {
-                                        const accepted = !rejectedFillIds.has(o.id);
-                                        return (
-                                            <TableRow key={`${o.id}-${o.material}-${idx}`} className={cn("border-b border-gray-200", idx % 2 === 1 && "bg-gray-50/70", !accepted && "opacity-50")}>
-                                                <TableCell className="text-center border-r border-gray-200">
-                                                    <Checkbox checked={accepted} onCheckedChange={() => toggleFillOrderAccepted(o.id)} />
-                                                </TableCell>
-                                                <TableCell className="text-[11px] border-r border-gray-200 font-mono text-gray-700">{o.id || '—'}</TableCell>
-                                                <TableCell className="text-[11px] border-r border-gray-200">
-                                                    <span className="font-semibold text-gray-800">{o.material}</span>
-                                                    <span className="block text-gray-500">{o.nombre}</span>
-                                                </TableCell>
-                                                <TableCell className="text-[11px] text-center border-r border-gray-200 font-mono">{o.fecha}</TableCell>
-                                                <TableCell className="text-[11px] text-center border-r border-gray-200 font-semibold">{o.cantidad}</TableCell>
-                                                <TableCell className="text-[11px] text-center font-mono font-bold text-purple-700">{o.horas.toFixed(2)}</TableCell>
-                                            </TableRow>
-                                        );
-                                    })}
-                                </TableBody>
-                            </Table>
                         </div>
                     </div>
                 </div>
@@ -2015,10 +1590,10 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
                     <div className="flex items-center justify-between gap-2 px-6 py-4 bg-gradient-to-r from-orange-700 to-amber-700">
                         <div className="flex items-center gap-2">
                             <Layers className="w-5 h-5 text-orange-100" />
-                            <h3 className="text-sm font-bold text-white uppercase tracking-wide">Explosión de Materiales — Láminas de Espuma (RESPCTRLPROD 013)</h3>
+                            <h3 className="text-sm font-bold text-white uppercase tracking-wide">Explosión de Materiales — Semielaborados de Espuma (Plan Táctico PFF)</h3>
                         </div>
                         <Button
-                            onClick={() => exportComponentNeedsToExcelPM(laminaEspumaResults, 'Laminas Espuma', 'Explosion_Materiales_Laminas_Espuma')}
+                            onClick={() => exportComponentNeedsToExcelPM(laminaEspumaResults, 'Laminas Espuma PFF', 'Explosion_Materiales_Laminas_Espuma_PFF')}
                             size="sm"
                             className="h-8 bg-white/10 hover:bg-white/20 text-white gap-1.5 text-xs shrink-0"
                         >
@@ -2036,7 +1611,6 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
                                         <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase text-center border-r border-gray-200">Unidad</TableHead>
                                         <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase text-center border-r border-gray-200">Cantidad Total Necesaria</TableHead>
                                         <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase text-center border-r border-gray-200">Stock Actual</TableHead>
-                                        <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase text-center border-r border-gray-200">Consumo Órdenes Pasadas</TableHead>
                                         <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase text-center border-r border-gray-200">Producción Propia Pendiente</TableHead>
                                         <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase text-center border-r border-gray-200">Disponible Real</TableHead>
                                         <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase text-center">Cantidad Neta Requerida</TableHead>
@@ -2055,9 +1629,6 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
                                                 {comp.stockActual !== null ? comp.stockActual.toLocaleString() : '—'}
                                             </TableCell>
                                             <TableCell className="text-[11px] text-center font-mono text-gray-600 border-r border-gray-200">
-                                                {comp.consumoOrdenesPasadas.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                            </TableCell>
-                                            <TableCell className="text-[11px] text-center font-mono text-gray-600 border-r border-gray-200">
                                                 {comp.produccionPropiaPendiente.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                             </TableCell>
                                             <TableCell className="text-[11px] text-center font-mono text-gray-600 border-r border-gray-200">
@@ -2071,7 +1642,7 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
                                 </TableBody>
                                 <TableFooter className="sticky bottom-0">
                                     <TableRow className="bg-orange-50 hover:bg-orange-50 border-t-2 border-orange-300">
-                                        <TableCell colSpan={8} className="text-[11px] font-extrabold text-orange-900 uppercase text-right border-r border-orange-200">Total General (Neto Requerido)</TableCell>
+                                        <TableCell colSpan={7} className="text-[11px] font-extrabold text-orange-900 uppercase text-right border-r border-orange-200">Total General (Neto Requerido)</TableCell>
                                         <TableCell className="text-[11px] text-center font-mono font-extrabold text-orange-900">
                                             {laminaEspumaResults.reduce((s, c) => s + c.cantidadNetaAConseguir, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                         </TableCell>
@@ -2088,10 +1659,10 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
                     <div className="flex items-center justify-between gap-2 px-6 py-4 bg-gradient-to-r from-teal-700 to-cyan-700">
                         <div className="flex items-center gap-2">
                             <Layers className="w-5 h-5 text-teal-100" />
-                            <h3 className="text-sm font-bold text-white uppercase tracking-wide">Explosión de Materiales — Láminas Prensadas (RESPCTRLPROD 017)</h3>
+                            <h3 className="text-sm font-bold text-white uppercase tracking-wide">Explosión de Materiales — Semielaborados Prensados (Plan Táctico PFF)</h3>
                         </div>
                         <Button
-                            onClick={() => exportComponentNeedsToExcelPM(laminaPrensadaResults, 'Laminas Prensadas', 'Explosion_Materiales_Laminas_Prensadas')}
+                            onClick={() => exportComponentNeedsToExcelPM(laminaPrensadaResults, 'Laminas Prensadas PFF', 'Explosion_Materiales_Laminas_Prensadas_PFF')}
                             size="sm"
                             className="h-8 bg-white/10 hover:bg-white/20 text-white gap-1.5 text-xs shrink-0"
                         >
@@ -2109,7 +1680,6 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
                                         <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase text-center border-r border-gray-200">Unidad</TableHead>
                                         <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase text-center border-r border-gray-200">Cantidad Total Necesaria</TableHead>
                                         <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase text-center border-r border-gray-200">Stock Actual</TableHead>
-                                        <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase text-center border-r border-gray-200">Consumo Órdenes Pasadas</TableHead>
                                         <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase text-center border-r border-gray-200">Producción Propia Pendiente</TableHead>
                                         <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase text-center border-r border-gray-200">Disponible Real</TableHead>
                                         <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase text-center">Cantidad Neta Requerida</TableHead>
@@ -2128,9 +1698,6 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
                                                 {comp.stockActual !== null ? comp.stockActual.toLocaleString() : '—'}
                                             </TableCell>
                                             <TableCell className="text-[11px] text-center font-mono text-gray-600 border-r border-gray-200">
-                                                {comp.consumoOrdenesPasadas.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                            </TableCell>
-                                            <TableCell className="text-[11px] text-center font-mono text-gray-600 border-r border-gray-200">
                                                 {comp.produccionPropiaPendiente.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                             </TableCell>
                                             <TableCell className="text-[11px] text-center font-mono text-gray-600 border-r border-gray-200">
@@ -2144,7 +1711,7 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
                                 </TableBody>
                                 <TableFooter className="sticky bottom-0">
                                     <TableRow className="bg-teal-50 hover:bg-teal-50 border-t-2 border-teal-300">
-                                        <TableCell colSpan={8} className="text-[11px] font-extrabold text-teal-900 uppercase text-right border-r border-teal-200">Total General (Neto Requerido)</TableCell>
+                                        <TableCell colSpan={7} className="text-[11px] font-extrabold text-teal-900 uppercase text-right border-r border-teal-200">Total General (Neto Requerido)</TableCell>
                                         <TableCell className="text-[11px] text-center font-mono font-extrabold text-teal-900">
                                             {laminaPrensadaResults.reduce((s, c) => s + c.cantidadNetaAConseguir, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                         </TableCell>
@@ -2161,15 +1728,15 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
                     type="button"
                     onClick={handleSavePlanTacticoPM}
                     disabled={isSavingPlan}
-                    title="Guardar Plan Táctico y sus Detalles"
+                    title="Guardar Plan Táctico PFF y sus Detalles"
                     className="fixed bottom-6 right-6 z-50 flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold text-sm px-5 py-3.5 rounded-full shadow-xl shadow-emerald-900/30 transition-colors"
                 >
                     {isSavingPlan ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
-                    {isSavingPlan ? 'Guardando Plan...' : 'Guardar Plan Táctico'}
+                    {isSavingPlan ? 'Guardando Plan...' : 'Guardar Plan Táctico PFF'}
                 </button>
             )}
 
-            {/* Ventana de progreso de "Actualizar Datos" (misma que "Planificación Táctica Muebles") */}
+            {/* Ventana de progreso de "Actualizar Datos" */}
             <Dialog open={isLoading}>
                 <DialogContent
                     className="max-w-md"
@@ -2224,14 +1791,14 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
                 </DialogContent>
             </Dialog>
 
-            {/* No existe un Plan Táctico guardado para la fecha objetivo: confirmar antes de proceder */}
+            {/* No existe un Plan Táctico PFF guardado para la fecha objetivo: confirmar antes de proceder */}
             <AlertDialog open={planCheckModal?.type === 'not-found'} onOpenChange={(open) => !open && setPlanCheckModal(null)}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>Verificación de Plan Táctico</AlertDialogTitle>
+                        <AlertDialogTitle>Verificación de Plan Táctico PFF</AlertDialogTitle>
                         <AlertDialogDescription>
-                            No existe Plan Táctico Guardado del Grupo Prensado con fecha objetivo{' '}
-                            <span className="font-bold text-gray-800">{fechaObjetivoPM}</span>.
+                            No existe Plan Táctico PFF guardado del Grupo Prensado con fecha objetivo{' '}
+                            <span className="font-bold text-gray-800">{fechaObjetivo || getDateKeyOffset(0)}</span>.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
@@ -2241,17 +1808,17 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
                 </AlertDialogContent>
             </AlertDialog>
 
-            {/* Ya existe(n) Plan(es) Táctico(s) guardado(s) para la fecha objetivo: Vista o Borrar */}
+            {/* Ya existe(n) Plan(es) Táctico(s) PFF guardado(s) para la fecha objetivo: Vista o Borrar */}
             <AlertDialog open={planCheckModal?.type === 'found'} onOpenChange={(open) => !open && setPlanCheckModal(null)}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
                         <AlertDialogTitle className="flex items-center gap-2 text-amber-700">
                             <TriangleAlert className="w-5 h-5" />
-                            Ya existe un Plan Táctico guardado
+                            Ya existe un Plan Táctico PFF guardado
                         </AlertDialogTitle>
                         <AlertDialogDescription>
-                            Ya existe Plan Táctico Guardado del Grupo Prensado con fecha objetivo{' '}
-                            <span className="font-bold text-gray-800">{fechaObjetivoPM}</span>{' '}
+                            Ya existe Plan Táctico PFF guardado del Grupo Prensado con fecha objetivo{' '}
+                            <span className="font-bold text-gray-800">{fechaObjetivo || getDateKeyOffset(0)}</span>{' '}
                             ({planCheckModal?.type === 'found' ? planCheckModal.planesGrupo.map(p => p.valor).join(', ') : ''}). Escoja qué desea hacer:
                         </AlertDialogDescription>
                     </AlertDialogHeader>
@@ -2276,11 +1843,11 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
                 </AlertDialogContent>
             </AlertDialog>
 
-            {/* Modo Vista: detalle de materiales realmente guardado para el/los Plan(es) Táctico(s) encontrado(s) */}
+            {/* Modo Vista: detalle de materiales realmente guardado para el/los Plan(es) Táctico(s) PFF encontrado(s) */}
             <Dialog open={planCheckModal?.type === 'vista'} onOpenChange={(open) => !open && setPlanCheckModal(null)}>
                 <DialogContent className="max-w-3xl">
                     <DialogHeader>
-                        <DialogTitle>Modo Vista — Plan Táctico Guardado</DialogTitle>
+                        <DialogTitle>Modo Vista — Plan Táctico PFF Guardado</DialogTitle>
                         <DialogDescription>
                             {planCheckModal?.type === 'vista' ? planCheckModal.planesGrupo.map(p => p.valor).join(', ') : ''} — solo se
                             muestra el detalle de materiales que realmente quedó guardado (Componente, Cantidad, Resp. Ctrl. Prod.). No
@@ -2317,7 +1884,7 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
                                     {planCheckModal.detalles.length === 0 && (
                                         <TableRow>
                                             <TableCell colSpan={5} className="text-center py-6 text-gray-400 text-xs">
-                                                Este Plan Táctico no tiene Detalles Tácticos asociados.
+                                                Este Plan Táctico PFF no tiene Detalles Tácticos asociados.
                                             </TableCell>
                                         </TableRow>
                                     )}
@@ -2339,7 +1906,7 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
                         <AlertDialogDescription>
                             Esto reinicia los turnos habilitados, las mesas escogidas, las citas médicas, los descuentos de capacidad, la
                             planificación calculada, la distribución de mesas y la explosión de materiales de esta sesión. No se borra
-                            nada de lo ya guardado en SAP ni en Plan Táctico — solo el progreso que no ha guardado todavía.
+                            nada de lo ya guardado en SAP ni en Plan Táctico PFF — solo el progreso que no ha guardado todavía.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
