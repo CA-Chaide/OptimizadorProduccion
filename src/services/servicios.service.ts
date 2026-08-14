@@ -266,6 +266,22 @@ export const serviciosService = {
     }
   },
 
+  async getPendientesTotales(page: number, rowsPerPage: number): Promise<BodyResponse<any>> {
+    try {
+      const response = await fetch(API_URL + "/CuboPendientesTotales", {
+        method: "POST",
+        headers: getHeaders(),
+        body: JSON.stringify({ page: page, rowsPerPage: rowsPerPage }),
+      });
+      if (!response.ok) {
+        return { data: [], length: 0, totalRegistros: 0 };
+      }
+      return response.json();
+    } catch {
+      return { data: [], length: 0, totalRegistros: 0 };
+    }
+  },
+
   async VersionesFabricacion(page: number, rowsPerPage: number): Promise<BodyResponse<any>> {
     const response = await fetch(API_URL + "/VersionesFabricacionMateriales", {
       method: "POST",
@@ -375,4 +391,16 @@ export const serviciosService = {
     return response.json();
   },
   
+  async getConsumosFormulado(material: string): Promise<BodyResponse<any>> {
+    const response = await fetch(API_URL + "/Registros51Mb", {
+      method: "POST",
+      headers: getHeaders(),
+      body: JSON.stringify({ Material: material }),
+    });
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({ message: "Error desconocido" }));
+      throw new Error(errorBody.message || "Failed to fetch Presupuesto");
+    }
+    return response.json();
+  },
 };

@@ -51,7 +51,9 @@ import { serviciosService } from '@/services/servicios.service';
 import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion, PlanGrupo, DetalleTactico } from '@/types/interfaces';
 import { cn } from '@/lib/utils';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, isValid, addDays } from 'date-fns';
+import { nextBusinessDay as nextBusinessDayCal, cargarDiasNoLaborables, fechaLocalEcuador, type DiasNoLaborables } from '@/lib/dias-laborables';
+import { guardarEnCache, leerDeCache } from '@/lib/cache-modulos';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, isValid } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 // --- CONSTANTES TÉCNICAS PLANTA ---
@@ -294,6 +296,10 @@ interface EditPlanPreview {
   fechaInicio: string;
   fechaFin: string;
   rows: EditableDetalleRow[];
+  // PlanGrupo tal cual vino de getAll() — necesario para poder resguardar fecha_inicio_plan/
+  // fecha_fin_plan al confirmar (ver handleConfirmEditarPlan): el servicio no tiene PATCH parcial,
+  // hay que reenviar el objeto completo.
+  planOriginal: PlanGrupo;
 }
 
 interface NecesidadPlantaRow {
@@ -328,21 +334,39 @@ const computeRespuestaSalidaRows = (
         material: u.material,
         descripcion: u.descripcion,
         tieneCorrida,
-        cantidadKg: tieneCorrida ? u.planKg : u.totalStockKg,
-        cantidadUn: tieneCorrida ? u.planUn : u.totalStockUN,
+        // Con corrida: la corrida planificada NO reemplaza el stock ya disponible, se suma — lo que
+        // realmente va a estar disponible es planKg (lo que se va a cortar) + totalStockKg (lo que ya
+        // hay). Sin corrida, la respuesta sigue siendo solo el stock (no hay nada más que ofrecer).
+        cantidadKg: u.totalStockKg + (tieneCorrida ? u.planKg : 0),
+        cantidadUn: u.totalStockUN + (tieneCorrida ? u.planUn : 0),
         origenes,
       };
     })
     .sort((a, b) => Number(a.tieneCorrida) - Number(b.tieneCorrida));
 };
 
-// Normaliza fecha_inicio_plan/fecha_fin_plan (a veces con sufijo horario "...T00:00:00") al mismo
-// formato 'yyyy-MM-dd' que usa selectedDates, igual convención que ya usa el resto del archivo.
+// Normaliza fecha_inicio_plan/fecha_fin_plan al mismo formato 'yyyy-MM-dd' que usa selectedDates.
+// Delega en fechaLocalEcuador (@/lib/dias-laborables): el sufijo horario NO siempre es "T00:00:00"
+// como asumía el comentario original — un plan grabado a las 17:00 o 22:00 hora Ecuador llega en UTC
+// con esa hora real, y recortar el ISO a lo bruto podía devolver el día calendario SIGUIENTE (ver
+// el mismo bug documentado en explotarPFFParaCentro de Corte Espuma). fechaLocalEcuador convierte
+// correctamente a hora de Ecuador, y deja intactas las fechas planas sin hora (Provisionales/FERT).
 const soloFecha = (v: unknown): string => {
   const s = String(v ?? '').trim();
   if (!s || s === 'null' || s === 'undefined') return '';
-  return s.includes('T') ? s.split('T')[0] : s;
+  return fechaLocalEcuador(s);
 };
+
+// Solo el plan "P3" es una respuesta real contra un P2 — "PFD" es una variante de salida que no debe
+// contarse como respuesta efectiva. Mismo criterio que usa Venta Externa (ver esPlanP3 en
+// TacticalPlanVentaExternaSection) para su propia validación "Data Aprobada".
+const esPlanP3 = (valor: unknown): boolean => /\bp3\b/i.test(String(valor || ''));
+
+// Los días hábiles viven en @/lib/dias-laborables y contemplan feriados / días no trabajados del
+// calendario configurado (Configuraciones → Calendario Área). Dentro del componente se usa el wrapper
+// siguienteDiaHabil, que ya lleva ese calendario cargado. Antes esto era un salto fijo (viernes +3,
+// sábado +2, resto +1) que ignoraba feriados: la Respuesta P3/PFD podía quedar fechada en un día que
+// la planta no trabaja, y esa fecha es la de FABRICACIÓN.
 
 // Un PlanGrupo "cubre" la selección si alguna fecha seleccionada cae dentro de su rango
 // [fecha_inicio_plan, fecha_fin_plan] (comparación lexicográfica, válida en formato yyyy-MM-dd). Si
@@ -368,6 +392,10 @@ const filtrarPlanesP3ActivosQueCubren = (planes: PlanGrupo[], fechasSeleccionada
   return planes.filter(p =>
     p.codigo_grupo === CODIGO_GRUPO_LAMINADO &&
     p.estado === 'A' &&
+    // "Rollos": codigo_grupo=8 es compartido con la Respuesta P3/PFD de Corte Espuma — sin este
+    // filtro, un P3 de Espuma podía colarse como candidato a la modificación/desactivación automática
+    // de Laminado.
+    /rollo/i.test(String(p.valor || '')) &&
     /p3/i.test(String(p.valor || '')) && !/pfd/i.test(String(p.valor || '')) &&
     soloFecha(p.fecha_creacion) !== todayStr &&
     planCubreAlgunaFecha(p, fechasSeleccionadas)
@@ -539,6 +567,23 @@ const MaterialSummaryTable: React.FC<{ data: Record<string, NecesidadPlantaRow[]
   );
 };
 
+// Snapshot de lo que este módulo tiene cargado. Se guarda al sincronizar y se restaura al volver de
+// otro módulo, para no perder el trabajo en curso solo por navegar — mismo patrón que Corte Espuma y
+// Venta Externa (ver @/lib/cache-modulos y [[persistencia_datos_modulos]]).
+const CACHE_CORTE_LAMINADO = 'tactica-corte-laminado';
+interface SnapshotCorteLaminado {
+  grupos: Grupo[];
+  restriccionesArray: Restriccion[];
+  ordenes: RawApiRow[];
+  ordenesFert: RawApiRow[];
+  kpiLooperData: RawApiRow[];
+  inventarioSAP: InventarioSapRow[];
+  operadoresLaminado: RawApiRow[];
+  mantenimientosSAP: RawApiRow[];
+  diasNoLaborables: string[];
+  necesidadesPlantaData: Record<string, NecesidadPlantaRow[]>;
+}
+
 export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const { addNotification } = useAppContext();
 
@@ -552,7 +597,11 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [inventarioSAP, setInventarioSAP] = useState<InventarioSapRow[]>([]);
   const [operadoresLaminado, setOperadoresLaminado] = useState<RawApiRow[]>([]);
   const [mantenimientosSAP, setMantenimientosSAP] = useState<RawApiRow[]>([]);
-  const [, setIsLoading] = useState(true);
+  // El módulo YA NO sincroniza solo al abrirse — ver handleSincronizar. `isLoading` estaba declarado
+  // como `[, setIsLoading]` (getter descartado): nada lo leía, así que no había ningún indicador
+  // visual mientras cargaba. Ahora sí se usa, en el botón Sincronizar del encabezado.
+  const [isLoading, setIsLoading] = useState(false);
+  const [datosCargados, setDatosCargados] = useState(false);
   const [necesidadesPlantaData, setNecesidadesPlantaData] = useState<Record<string, NecesidadPlantaRow[]>>({});
   const [necesidadesPlantaLoading, setNecesidadesPlantaLoading] = useState(false);
 
@@ -562,6 +611,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [unifiedNeeds, setUnifiedNeeds] = useState<UnifiedNeedRow[]>([]);
   const [isProcessingResumen, setIsProcessingResumen] = useState(false);
   const [isSavingPlan, setIsSavingPlan] = useState(false);
+  const [isValidandoExportTxt, setIsValidandoExportTxt] = useState(false);
   const [planPreview, setPlanPreview] = useState<PlanGrupoPreview | null>(null);
   const [isSavingPlanPFD, setIsSavingPlanPFD] = useState(false);
   const [planPreviewPFD, setPlanPreviewPFD] = useState<PlanGrupoPreview | null>(null);
@@ -718,6 +768,11 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   // Ambos turnos arrancan en "VACÍO" (antes Día arrancaba en H1) — obliga a escoger horario a
   // propósito en vez de asumir uno por defecto; ver validación en handleProcessResumen y
   // handleAutoAssignPersonnel.
+  // Días NO laborables (feriados + días que la planta decide no trabajar) del calendario configurado.
+  // Vacío = solo se saltan fines de semana. Se carga en initData.
+  const [diasNoLaborables, setDiasNoLaborables] = useState<DiasNoLaborables>(new Set<string>());
+  const siguienteDiaHabil = useCallback((d: Date) => nextBusinessDayCal(d, diasNoLaborables), [diasNoLaborables]);
+
   const [selectedDiaShift, setSelectedDiaShift] = useState('EMPTY');
   const [selectedNocheShift, setSelectedNocheShift] = useState('EMPTY');
 
@@ -827,7 +882,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   }, []);
 
   const initData = useCallback(async () => {
-    setIsLoading(true);
     try {
       const groupsRes = await grupoService.getAll();
       const filteredGroups = (groupsRes.data || []).filter(g => {
@@ -836,7 +890,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       });
       setGrupos(filteredGroups);
       const ids = filteredGroups.map(g => g.codigo_grupo);
-      
+
       const [restrs, provs, kpiLooper, invSAP, ferts, skills, maint] = await Promise.all([
         restriccionService.getAll(),
         serviciosService.OrdenesProvisionalesPaginados(1, 20000).catch(() => ({ data: [] })),
@@ -847,31 +901,45 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         serviciosService.ListarMantenimientoPreventivosProgramados().catch(() => ({ data: [] }))
       ]);
 
-      setRestriccionesArray((restrs.data || []).filter((r) => ids.includes(r.codigo_grupo)));
-      setOrders(provs.data?.data || provs.data || []);
-      setOrdersFert(ferts.data?.data || ferts.data || []);
-      setKpiLooperData(kpiLooper?.data || []);
-      setInventarioSAP(Array.isArray(invSAP?.data) ? invSAP.data : (invSAP?.data?.data || []));
-      setMantenimientosSAP(Array.isArray(maint?.data) ? maint.data : (maint?.data?.data || []));
-
-      // Filtrar Operadores por Laminado Cilíndrico usando el nuevo método
+      const restriccionesFiltradas = (restrs.data || []).filter((r) => ids.includes(r.codigo_grupo));
+      const provOrdenes = provs.data?.data || provs.data || [];
+      const fertOrdenes = ferts.data?.data || ferts.data || [];
+      const kpiLooperRows = kpiLooper?.data || [];
+      const inventario = Array.isArray(invSAP?.data) ? invSAP.data : (invSAP?.data?.data || []);
+      const mantenimientos = Array.isArray(maint?.data) ? maint.data : (maint?.data?.data || []);
       const skillRows: RawApiRow[] = Array.isArray(skills.data) ? skills.data : [];
       const laminadoOps = skillRows.filter((s) =>
         String(getProp(s, ['LineaProceso', 'LINEA_PROCESO'])).toUpperCase().includes('LAMINADO CILINDRICO')
       );
+
+      setRestriccionesArray(restriccionesFiltradas);
+      setOrders(provOrdenes);
+      setOrdersFert(fertOrdenes);
+      setKpiLooperData(kpiLooperRows);
+      setInventarioSAP(inventario);
+      setMantenimientosSAP(mantenimientos);
       setOperadoresLaminado(laminadoOps);
 
+      return {
+        grupos: filteredGroups,
+        restriccionesArray: restriccionesFiltradas,
+        ordenes: provOrdenes,
+        ordenesFert: fertOrdenes,
+        kpiLooperData: kpiLooperRows,
+        inventarioSAP: inventario,
+        operadoresLaminado: laminadoOps,
+        mantenimientosSAP: mantenimientos,
+      };
     } catch (e) {
       console.error('Error init TacticalPlanLaminado:', e);
-    } finally {
-      setIsLoading(false);
+      return null;
     }
   }, []);
 
   // Mismo criterio del tab "Necesidades Planta" de Corte Espuma: filtra los grupos referenciados
   // por la restricción ALMACEN_CONSUMO, ubica sus PlanGrupo activos de "Plan Táctico - Centro <centro> - P2"
   // y trae el DetalleTactico asociado, agrupado por área (nombre de grupo).
-  const fetchNecesidadesPlanta = useCallback(async () => {
+  const fetchNecesidadesPlanta = useCallback(async (diasOverride?: DiasNoLaborables): Promise<Record<string, NecesidadPlantaRow[]>> => {
     setNecesidadesPlantaLoading(true);
     try {
       const [restrsRes, gruposRes] = await Promise.all([
@@ -893,33 +961,61 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         .flatMap((r) => String(r.valor_restriccion || '').split(/[,&]/).map((v: string) => normalizeName(v)))
         .filter((v: string) => v !== '');
 
-      const gruposFiltrados = (gruposRes.data || []).filter((g) => almacenConsumoNames.includes(normalizeName(g.nombre_grupo)));
+      const gruposFiltrados = (gruposRes.data || []).filter((g) => g.estado === 'A' && almacenConsumoNames.includes(normalizeName(g.nombre_grupo)));
       const gruposCodigos = gruposFiltrados.map((g) => g.codigo_grupo);
       const grupoPorCodigo = new Map(gruposFiltrados.map((g) => [g.codigo_grupo, g]));
 
       if (gruposCodigos.length === 0) {
         setNecesidadesPlantaData({});
-        return;
+        return {};
       }
 
       // "Venta Externa" alimenta necesidad tanto de Laminado como de Espuma (planes "...P2 - Rollos"
       // y "...P2 - Espumas" respectivamente) — aquí solo cuenta la variante "Rollos".
+      //
+      // Además del estado, se exige que fecha_inicio_plan sea EXACTO hoy + 1 día hábil — así se graba
+      // el P2 en origen (generarPlanP2Core en Venta Externa fija fecha_inicio_plan = nextBusinessDay(hoy)
+      // directo, sin pasos intermedios). Sin esto, un P2 que quedó "A" por olvido del área origen
+      // (nunca desactivado al generar el siguiente ciclo) seguía apareciendo como necesidad vigente
+      // indefinidamente, sin importar qué tan vieja fuera su fecha — mismo criterio que Corte Espuma.
+      // diasOverride: al inicializar, el calendario de feriados se acaba de cargar y el estado
+      //  todavía no se refleja en este closure — se recibe el Set directo para no
+      // calcular la fecha objetivo con feriados vacíos (ver el useEffect de arranque).
+      const fechaObjetivoP2 = format(nextBusinessDayCal(new Date(), diasOverride ?? diasNoLaborables), 'yyyy-MM-dd');
+
       const planGruposRes = await planGrupoService.getAll();
-      const planesActivos = (planGruposRes.data || []).filter((pg) => {
+      const planesActivosCrudo = (planGruposRes.data || []).filter((pg) => {
         const valor = String(pg.valor || '').trim();
         if (pg.estado !== 'A' || !gruposCodigos.includes(pg.codigo_grupo)) return false;
         if (!/plan\s*t[aá]ctico.*centro.*p2/i.test(valor)) return false;
         const esVentaExterna = /venta\s*externa/i.test(grupoPorCodigo.get(pg.codigo_grupo)?.nombre_grupo || '');
         if (esVentaExterna && !/rollo/i.test(valor)) return false;
+        if (soloFecha(pg.fecha_inicio_plan) !== fechaObjetivoP2) return false;
         return true;
       });
+
+      // Solo el plan MÁS RECIENTE por grupo — red de seguridad para el caso (menos común ahora que
+      // planesActivosCrudo ya exige fecha de recuperación = hoy) de que el origen genere dos P2 "A"
+      // del mismo grupo en el mismo ciclo. Verificado con datos reales (grupo "Forros": #121 del
+      // 03/08 y #146 del 04/08, ambos activos a la vez) que el módulo origen del P2 no siempre
+      // desactiva el plan del ciclo anterior al generar uno nuevo (mismo bug que ya corregimos en la
+      // generación de Venta Externa). Sin este filtro, Laminado sumaba ambos y duplicaba la
+      // necesidad.
+      const masRecientePorGrupo = new Map<number, PlanGrupo>();
+      planesActivosCrudo.forEach((pg) => {
+        const actual = masRecientePorGrupo.get(pg.codigo_grupo);
+        if (!actual || soloFecha(pg.fecha_inicio_plan) > soloFecha(actual.fecha_inicio_plan)) {
+          masRecientePorGrupo.set(pg.codigo_grupo, pg);
+        }
+      });
+      const planesActivos = Array.from(masRecientePorGrupo.values());
 
       const planGrupoCodigos = planesActivos.map((pg) => pg.codigo_plan_grupo);
       const planPorCodigo = new Map(planesActivos.map((pg) => [pg.codigo_plan_grupo, pg]));
 
       if (planGrupoCodigos.length === 0) {
         setNecesidadesPlantaData({});
-        return;
+        return {};
       }
 
       const detallesRes = await detalleTacticoService.getAll();
@@ -934,23 +1030,70 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         grouped[area].push({
           codigo_material: d.codigo_material,
           cantidad_produccion_neta: d.cantidad_produccion_neta,
-          fecha_inicio: plan?.fecha_inicio_plan ? String(plan.fecha_inicio_plan).split('T')[0] : '—',
+          fecha_inicio: plan?.fecha_inicio_plan ? fechaLocalEcuador(plan.fecha_inicio_plan) : '—',
           codigo_plan_grupo: d.codigo_plan_grupo
         });
       });
 
       setNecesidadesPlantaData(grouped);
+      return grouped;
     } catch (e) {
       console.error('Error al recuperar necesidades de planta', e);
       setNecesidadesPlantaData({});
+      return {};
     } finally {
       setNecesidadesPlantaLoading(false);
     }
-  }, []);
+  }, [diasNoLaborables]);
 
+  // Sincronización manual: se dispara con el botón "Sincronizar" del encabezado, no al abrir el
+  // módulo — mismo criterio que Corte Espuma y Venta Externa (ver [[carga_manual_modulos_tacticos]]).
+  // Entrar a mirar no debe costar 7 llamadas pesadas a SAP (Provisionales/FERT ~20K filas cada una).
+  //
+  // El calendario de feriados se carga PRIMERO y su Set se pasa explícito a fetchNecesidadesPlanta:
+  // si corrieran en paralelo, la recuperación del P2 usaría el set todavía vacío (setState no
+  // actualiza el closure de forma síncrona) y buscaría el plan un día antes del que el origen
+  // realmente grabó. Al ser un callback disparado por click (no un useEffect con estas funciones en
+  // sus dependencias), no reaparece el bucle infinito que obligó a leer por ref en la versión
+  // anterior de este arranque — ver [[dias_no_laborables_p2]] para el porqué de ese bug.
+  const handleSincronizar = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const dias = await cargarDiasNoLaborables();
+      setDiasNoLaborables(dias);
+      const [snapshotInit, necesidadesPlanta] = await Promise.all([initData(), fetchNecesidadesPlanta(dias)]);
+      setDatosCargados(true);
+      if (snapshotInit) {
+        guardarEnCache<SnapshotCorteLaminado>(CACHE_CORTE_LAMINADO, {
+          ...snapshotInit,
+          diasNoLaborables: [...dias],
+          necesidadesPlantaData: necesidadesPlanta,
+        });
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  }, [initData, fetchNecesidadesPlanta]);
+
+  // Rehidratación: si ya se había sincronizado en esta sesión, se recupera lo trabajado en vez de
+  // dejar el módulo vacío al volver de otro módulo (ver @/lib/cache-modulos).
   useEffect(() => {
-    if (mounted) { initData(); fetchNecesidadesPlanta(); }
-  }, [mounted, initData, fetchNecesidadesPlanta]);
+    if (!mounted) return;
+    const snap = leerDeCache<SnapshotCorteLaminado>(CACHE_CORTE_LAMINADO);
+    if (snap) {
+      setGrupos(snap.grupos);
+      setRestriccionesArray(snap.restriccionesArray);
+      setOrders(snap.ordenes);
+      setOrdersFert(snap.ordenesFert);
+      setKpiLooperData(snap.kpiLooperData);
+      setInventarioSAP(snap.inventarioSAP);
+      setOperadoresLaminado(snap.operadoresLaminado);
+      setMantenimientosSAP(snap.mantenimientosSAP);
+      setDiasNoLaborables(new Set(snap.diasNoLaborables));
+      setNecesidadesPlantaData(snap.necesidadesPlantaData);
+      setDatosCargados(true);
+    }
+  }, [mounted]);
 
   // Kg totales por material desde el resumen consolidado del tab "Necesidades Planta"
   // (mismo cálculo que MaterialSummaryTable), usado sólo para las columnas informativas
@@ -996,6 +1139,36 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     });
     return map;
   }, [necesidadesPlantaData]);
+
+  // codigo_plan_grupo de los orígenes cuya área es "Venta Externa" — necesidadesPlantaData ya viene
+  // agrupado por área (nombre_grupo), así que basta con recorrer las claves. Usado en
+  // getOrigenesProrrateo para distinguir, entre los orígenes de un material, cuál es Venta Externa
+  // (se cubre exacto con su propia necesidad) de cuáles son internos (Forros/Muebles, reciben el
+  // remanente) — ver conversación: el reparto proporcional por % participación solo es un problema
+  // real cuando Venta Externa comparte material con un origen interno, no entre orígenes internos
+  // entre sí (ese caso se resuelve con stock, sin cambios).
+  const planGruposVentaExternaSet = useMemo(() => {
+    const set = new Set<number>();
+    Object.entries(necesidadesPlantaData).forEach(([area, rows]) => {
+      if (!/venta\s*externa/i.test(area)) return;
+      rows.forEach(row => set.add(row.codigo_plan_grupo));
+    });
+    return set;
+  }, [necesidadesPlantaData]);
+
+  // Colector de faltantes de cobertura interna (ver getOrigenesProrrateo) acumulados durante un guardado
+  // de plan (puede llamarse decenas de veces, una por material, dentro de un mismo forEach/for): se
+  // limpia al inicio de cada flujo de guardado y se vacía en un solo aviso consolidado al final —
+  // mismo criterio que el aviso agregado "N material(es) PFF sin lámina cortada" de Corte Espuma, en
+  // vez de un toast por material.
+  const faltanteInternoRef = useRef<{ material: string; rollosFaltantes: number }[]>([]);
+  const flushFaltanteInternoNotification = useCallback(() => {
+    const items = faltanteInternoRef.current;
+    faltanteInternoRef.current = [];
+    if (items.length === 0) return;
+    const detalle = items.map(i => `${i.material} (faltan ${i.rollosFaltantes} rollo${i.rollosFaltantes === 1 ? '' : 's'})`).join(', ');
+    addNotification('warning', `Venta Externa se cubrió completo, pero no alcanzó para cubrir el consumo interno (Forros/Muebles) de ${items.length} material(es): ${detalle}. Verifique si hace falta una corrida adicional.`);
+  }, [addNotification]);
 
   // El proceso de Corte y Laminado no puede cortar/despachar fracciones de rollo: cada cantidad se
   // redondea HACIA ARRIBA al múltiplo entero del peso de un rollo completo (unifiedNeeds.peso) que
@@ -1048,6 +1221,82 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         cantidadKg: i === 0 ? redondearARollo(material, cantidadKg) : 0
       }));
     }
+
+    const entradasVE = entradas.filter(([codigoPadre]) => planGruposVentaExternaSet.has(codigoPadre));
+    const entradasInternas = entradas.filter(([codigoPadre]) => !planGruposVentaExternaSet.has(codigoPadre));
+
+    // Venta Externa comparte material con un origen interno (Forros/Muebles): el reparto proporcional
+    // de abajo infla a VE por tener mayor % de participación aunque su necesidad real ya esté cubierta
+    // (ver conversación, caso 30004189: VE 70.2%/Forros 29.8% dejaba a Forros corto). Aquí VE se cubre
+    // EXACTO con su propia necesidad (nunca más) y el remanente completo va al/los origen(es)
+    // interno(s) — no un % fijo. El caso sin mezcla (solo VE, o solo orígenes internos entre sí) sigue
+    // el reparto proporcional de siempre más abajo, sin cambios: ahí no hay problema real, se resuelve
+    // con stock. El piso de corte de Venta Externa (aplicarPisoVentaExterna, en handleProcessResumen)
+    // sigue garantizando que cantidadKg alcance al menos para VE; si aun así no alcanza, VE se queda
+    // con lo que haya y no sale nada para el resto (mismo criterio "no negociable" de siempre, ahora
+    // solo aplicado a la atribución en vez de al corte).
+    if (entradasVE.length > 0 && entradasInternas.length > 0) {
+      const necesidadVEKg = entradasVE.reduce((s, [, v]) => s + v, 0);
+      const necesidadInternaKg = entradasInternas.reduce((s, [, v]) => s + v, 0);
+
+      if (pesoRollo <= 0) {
+        const veKgAsignado = Math.min(necesidadVEKg, cantidadKg);
+        const restoKg = Math.max(0, cantidadKg - veKgAsignado);
+        if (restoKg < necesidadInternaKg - 0.001) {
+          faltanteInternoRef.current.push({ material, rollosFaltantes: 0 });
+        }
+        const filasVE = entradasVE.map(([codigoPadre, cantidad]) => ({
+          codigoPadre,
+          cantidadKg: veKgAsignado * (cantidad / (necesidadVEKg || 1))
+        }));
+        const filasInternas = entradasInternas.map(([codigoPadre, cantidad]) => ({
+          codigoPadre,
+          cantidadKg: restoKg * (cantidad / (necesidadInternaKg || 1))
+        }));
+        return [...filasVE, ...filasInternas];
+      }
+
+      const techoRollos = Math.round(cantidadKg / pesoRollo);
+
+      // TIER 1 — Venta Externa: se cubre exacto con su propia necesidad (redondeada hacia arriba al
+      // rollo), topada al techo real cortado. Si hay 2+ orígenes VE (caso raro), se reparten
+      // proporcional entre ellos con el mismo criterio "mayor primero, último se lleva el remanente"
+      // usado abajo, para no pasarse del cupo reservado.
+      const necesidadVERollos = entradasVE.reduce((s, [, v]) => s + (v > 0 ? Math.ceil(v / pesoRollo - 0.001) : 0), 0);
+      const veRollosAsignados = Math.min(necesidadVERollos, techoRollos);
+      let remanenteVE = veRollosAsignados;
+      const filasVE = entradasVE.map(([codigoPadre, cantidad], i) => {
+        const esUltimo = i === entradasVE.length - 1;
+        const rollos = esUltimo
+          ? Math.max(0, remanenteVE)
+          : Math.min(Math.ceil(veRollosAsignados * (cantidad / necesidadVEKg)), Math.max(0, remanenteVE));
+        remanenteVE -= rollos;
+        return { codigoPadre, cantidadKg: rollos * pesoRollo };
+      });
+
+      // TIER 2 — origen(es) interno(s): reciben TODO el remanente de rollos tras reservar VE (no un %
+      // fijo del total). Si son 2+ (Forros y Muebles a la vez), se reparten proporcional entre ellos.
+      const remanenteInternoRollos = Math.max(0, techoRollos - veRollosAsignados);
+      let remanenteInterno = remanenteInternoRollos;
+      const filasInternas = entradasInternas.map(([codigoPadre, cantidad], i) => {
+        const esUltimo = i === entradasInternas.length - 1;
+        const rollos = esUltimo
+          ? Math.max(0, remanenteInterno)
+          : Math.min(Math.ceil(remanenteInternoRollos * (cantidad / necesidadInternaKg)), Math.max(0, remanenteInterno));
+        remanenteInterno -= rollos;
+        return { codigoPadre, cantidadKg: rollos * pesoRollo };
+      });
+
+      // Alerta: el remanente para el/los origen(es) interno(s) no alcanza a cubrir su propia necesidad
+      // real — escasez real de material para la corrida, no se reparte "a la baja" en silencio.
+      const necesidadInternaRollos = entradasInternas.reduce((s, [, v]) => s + (v > 0 ? Math.ceil(v / pesoRollo - 0.001) : 0), 0);
+      if (remanenteInternoRollos < necesidadInternaRollos) {
+        faltanteInternoRef.current.push({ material, rollosFaltantes: necesidadInternaRollos - remanenteInternoRollos });
+      }
+
+      return [...filasVE, ...filasInternas];
+    }
+
     if (pesoRollo <= 0 || entradas.length <= 1) {
       return entradas.map(([codigoPadre, cantidad]) => ({
         codigoPadre,
@@ -1065,7 +1314,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       remanenteRollos -= rollos;
       return { codigoPadre, cantidadKg: rollos * pesoRollo };
     });
-  }, [materialOrigenesPlantaMap, redondearARollo, unifiedNeeds]);
+  }, [materialOrigenesPlantaMap, planGruposVentaExternaSet, redondearARollo, unifiedNeeds]);
 
   const filteredOrders = useMemo(() => {
     const relevantGroups = grupos.map(g => g.codigo_grupo);
@@ -1194,6 +1443,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
     const clavesUsadas = new Set<string>();
     const rows: EditableDetalleRow[] = [];
+    faltanteInternoRef.current = [];
     salidaFresca.forEach(row => {
       const splits = getOrigenesProrrateo(row.material, row.cantidadKg, plan.codigo_plan_grupo);
       splits.forEach(split => {
@@ -1229,8 +1479,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       });
     });
 
+    flushFaltanteInternoNotification();
     return rows;
-  }, [getOrigenesProrrateo]);
+  }, [getOrigenesProrrateo, flushFaltanteInternoNotification]);
 
   // Persistencia reutilizable de filas reconciliadas (upsert de las vigentes, delete de las
   // marcadas) — misma lógica que ya usaba "Editar Plan" manual (handleConfirmEditarPlan).
@@ -1281,6 +1532,47 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const desactivarPlanGrupo = useCallback(async (plan: PlanGrupo) => {
     await planGrupoService.save({ ...plan, estado: 'I' } as PlanGrupo);
   }, []);
+
+  // Al confirmar un nuevo P3 o PFD, cualquier otro PlanGrupo de Laminado del MISMO canal (P3 con P3,
+  // PFD con PFD — ver esPFD) que siga activo y cuya fecha_inicio_plan sea del MISMO día o de un día
+  // ANTERIOR al del plan recién creado queda superado — se desactiva automáticamente, sin diálogo de
+  // confirmación aparte (a diferencia de "Modificar Plan Activo", que sí lo pide porque además
+  // reconcilia sus detalles; aquí el plan viejo ya quedó completamente reemplazado por uno nuevo, no
+  // hace falta tocar nada de él salvo apagarlo). El propio plan nuevo se excluye por codigo_plan_grupo.
+  //
+  // P3 y PFD son canales INDEPENDIENTES, no intercambiables — verificado con un bug real: antes se
+  // trataban como "la misma respuesta vigente" y un PFD nuevo desactivaba el P3 activo del mismo día,
+  // lo que rompía la validación de "Exportar TXT" (exige un P3 activo con fecha correcta, ver
+  // validarAprobacionVentaExterna) justo después de generar un PFD. El propio PFD ya se documenta en
+  // otro lado como "no reemplaza ni modifica el P3 normal: es un PlanGrupo aparte" — la desactivación
+  // debía respetar eso.
+  const desactivarPlanesLaminadoSuperados = useCallback(async (codigoGrupo: number, fechaNuevoPlan: string, codigoPlanGrupoNuevo: number, esPFD: boolean): Promise<number> => {
+    try {
+      const planesRes = await planGrupoService.getAll();
+      const superados = (planesRes.data || []).filter(p => {
+        if (p.codigo_grupo !== codigoGrupo || p.estado !== 'A' || p.codigo_plan_grupo === codigoPlanGrupoNuevo) return false;
+        // codigo_grupo=8 es compartido con la Respuesta P3/PFD de Corte Espuma (responden como el
+        // mismo grupo SAP, ver conversación) — sin este filtro por "Rollos" en el valor, un P3/PFD
+        // nuevo de Laminado desactivaba por error los P3/PFD que Corte Espuma generó el mismo día,
+        // porque ambos comparten codigo_grupo y esta función no distinguía de quién era cada uno.
+        if (!/rollo/i.test(String(p.valor || ''))) return false;
+        if (/pfd/i.test(String(p.valor || '')) !== esPFD) return false;
+        const inicio = soloFecha(p.fecha_inicio_plan);
+        return inicio !== '' && inicio <= fechaNuevoPlan;
+      });
+      for (const plan of superados) {
+        try {
+          await desactivarPlanGrupo(plan);
+        } catch (e) {
+          console.warn(`[Guardar Plan] No se pudo desactivar el Plan Grupo #${plan.codigo_plan_grupo} superado:`, (e as Error).message);
+        }
+      }
+      return superados.length;
+    } catch (e) {
+      console.warn('[Guardar Plan] No se pudo evaluar planes superados para desactivar:', (e as Error).message);
+      return 0;
+    }
+  }, [desactivarPlanGrupo]);
 
   const [planActivoPendienteConfirmacion, setPlanActivoPendienteConfirmacion] = useState<{ planes: PlanGrupo[]; needsFrescos: UnifiedNeedRow[] } | null>(null);
   const [isEjecutandoModificacionAutomatica, setIsEjecutandoModificacionAutomatica] = useState(false);
@@ -2123,8 +2415,10 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   // Sección dos del tab Resumen — "Simulación Salida de Datos por Respuesta": toma como universo
   // los materiales que "Necesidades Planta" referencia (match por código contra Resumen Necesidades
   // — materialNecesidadesPlantaMap), y responde por cada uno con lo que YA está planificado en
-  // corrida (planKg/planUn) si tiene, o con el stock disponible (totalStockKg/totalStockUN, que ya
-  // incluye bodegas + Producción Diaria) si no hay corrida prevista.
+  // corrida (planKg/planUn) MÁS el stock disponible (totalStockKg/totalStockUN, que ya incluye
+  // bodegas + Producción Diaria) — la corrida no reemplaza el stock ya existente, se suma a él,
+  // porque ambos van a estar físicamente disponibles. Sin corrida prevista, la respuesta es solo el
+  // stock (mismo criterio de computeRespuestaSalidaRows, la versión en función pura de este cálculo).
   const respuestaSalidaRows = useMemo((): RespuestaSalidaRow[] => {
     return unifiedNeeds
       .filter(u => materialNecesidadesPlantaMap.has(String(Number(u.material))))
@@ -2136,8 +2430,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           material: u.material,
           descripcion: u.descripcion,
           tieneCorrida,
-          cantidadKg: tieneCorrida ? u.planKg : u.totalStockKg,
-          cantidadUn: tieneCorrida ? u.planUn : u.totalStockUN,
+          cantidadKg: u.totalStockKg + (tieneCorrida ? u.planKg : 0),
+          cantidadUn: u.totalStockUN + (tieneCorrida ? u.planUn : 0),
           origenes,
         };
       })
@@ -2155,20 +2449,26 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       return;
     }
 
-    // El P3 es la RESPUESTA del día siguiente a la revisión: sin importar qué fechas estén marcadas
-    // en el calendario del módulo (esas son el rango de producción, no la fecha de la respuesta), su
-    // fecha_inicio_plan/fecha_fin_plan se fuerza siempre a hoy + 1 día.
-    const fechaRespuesta = format(addDays(new Date(), 1), 'yyyy-MM-dd');
+    // El P3 es la RESPUESTA del día siguiente HÁBIL a la revisión: sin importar qué fechas estén
+    // marcadas en el calendario del módulo (esas son el rango de producción, no la fecha de la
+    // respuesta), su fecha_inicio_plan/fecha_fin_plan se fuerza siempre al próximo día laborable (no
+    // simplemente hoy+1 calendario, que caía en sábado/domingo si hoy era viernes/sábado).
+    const fechaRespuesta = format(siguienteDiaHabil(new Date()), 'yyyy-MM-dd');
 
     setPlanPreview({
       codigo_grupo: CODIGO_GRUPO_LAMINADO,
       nombreGrupo: 'Corte y Laminado (Centro 1000)',
-      valor: 'Plan Táctico - Centro 1000 - P3',
+      // Sufijo "Rollos" — igual que el P2 ya distingue "P2 - Rollos" de "P2 - Espumas", y necesario
+      // porque codigo_grupo=8 ahora es compartido con la Respuesta P3/PFD de Corte Espuma (ambos
+      // responden como el mismo grupo SAP, ver conversación). Sin el sufijo, un P3 de Laminado y uno
+      // de Espuma para el mismo centro/fecha son indistinguibles por el valor — y desactivarPlanesLaminadoSuperados
+      // depende de este sufijo para no tocar los planes de Espuma (ver ahí).
+      valor: 'Plan Táctico - Centro 1000 - P3 - Rollos',
       fechaInicio: fechaRespuesta,
       fechaFin: fechaRespuesta,
       rows: rowsToSave,
     });
-  }, [respuestaSalidaRows, addNotification]);
+  }, [respuestaSalidaRows, addNotification, siguienteDiaHabil]);
 
   // Paso 2: el usuario confirmó en el diálogo. Crea un único PlanGrupo (grupo 8 = Corte y Laminado
   // Centro 1000) y, por cada material con plan asignado, uno o más DetalleTactico: codigo_plan_grupo
@@ -2209,6 +2509,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       let exitosos = 0;
       let fallidos = 0;
 
+      faltanteInternoRef.current = [];
       for (const row of planPreview.rows) {
         const splits = getOrigenesProrrateo(row.material, row.cantidadKg, nuevoCodigoPlanGrupo);
         for (const split of splits) {
@@ -2234,11 +2535,15 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           }
         }
       }
+      flushFaltanteInternoNotification();
+
+      const superados = await desactivarPlanesLaminadoSuperados(CODIGO_GRUPO_LAMINADO, planPreview.fechaInicio, nuevoCodigoPlanGrupo, false);
+      const sufijoSuperados = superados > 0 ? ` ${superados} Plan Grupo previo(s) del mismo día o anterior fueron desactivados.` : '';
 
       if (fallidos === 0) {
-        addNotification('success', `Plan guardado: ${exitosos} materiales registrados en el Plan Grupo #${nuevoCodigoPlanGrupo}.`);
+        addNotification('success', `Plan guardado: ${exitosos} materiales registrados en el Plan Grupo #${nuevoCodigoPlanGrupo}.${sufijoSuperados}`);
       } else {
-        addNotification('warning', `Plan Grupo #${nuevoCodigoPlanGrupo} creado. ${exitosos} materiales guardados, ${fallidos} fallaron.`);
+        addNotification('warning', `Plan Grupo #${nuevoCodigoPlanGrupo} creado. ${exitosos} materiales guardados, ${fallidos} fallaron.${sufijoSuperados}`);
       }
       fetchNecesidadesPlanta();
       setPlanPreview(null);
@@ -2247,7 +2552,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     } finally {
       setIsSavingPlan(false);
     }
-  }, [planPreview, addNotification, fetchNecesidadesPlanta, getOrigenesProrrateo]);
+  }, [planPreview, addNotification, fetchNecesidadesPlanta, getOrigenesProrrateo, flushFaltanteInternoNotification, desactivarPlanesLaminadoSuperados]);
 
   // Variante "PFD" del Paso 1: mismo universo de materiales que "Guardar Plan" (P3), pero los
   // materiales sin corrida ("No — stock", tieneCorrida === false) se fuerzan a cantidad 0 en vez de
@@ -2262,19 +2567,22 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       return;
     }
 
-    const dates = Array.from(selectedDates).sort();
-    const fechaInicio = dates.length > 0 ? dates[0] : format(new Date(), 'yyyy-MM-dd');
-    const fechaFin = dates.length > 0 ? dates[dates.length - 1] : fechaInicio;
+    // Igual que "Guardar Plan" (P3, ver handleOpenGuardarPlan): el PFD es la respuesta del día
+    // siguiente HÁBIL a la revisión, no el rango de producción marcado en el calendario del módulo
+    // (selectedDates). Antes caía en hoy (o en el rango seleccionado) en vez de hoy+1 día hábil.
+    const fechaRespuesta = format(siguienteDiaHabil(new Date()), 'yyyy-MM-dd');
 
     setPlanPreviewPFD({
       codigo_grupo: CODIGO_GRUPO_LAMINADO,
       nombreGrupo: 'Corte y Laminado (Centro 1000)',
-      valor: 'Plan Táctico - Centro 1000 - PFD',
-      fechaInicio,
-      fechaFin,
+      // Mismo sufijo "Rollos" que el P3 (ver handleOpenGuardarPlan) — necesario para no confundirse
+      // con el PFD de Corte Espuma, que ahora comparte codigo_grupo=8.
+      valor: 'Plan Táctico - Centro 1000 - PFD - Rollos',
+      fechaInicio: fechaRespuesta,
+      fechaFin: fechaRespuesta,
       rows: rowsToSave,
     });
-  }, [respuestaSalidaRows, selectedDates, addNotification]);
+  }, [respuestaSalidaRows, addNotification, siguienteDiaHabil]);
 
   // Paso 2 del plan PFD: mismo PlanGrupo + DetalleTactico que "Guardar Plan", incluyendo el mismo
   // codigo_plan_grupo_padre (origen real vía getOrigenesProrrateo) que usa el flujo P3 — los
@@ -2308,6 +2616,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       let exitosos = 0;
       let fallidos = 0;
 
+      faltanteInternoRef.current = [];
       for (const row of planPreviewPFD.rows) {
         const splits = getOrigenesProrrateo(row.material, row.cantidadKg, nuevoCodigoPlanGrupo);
         for (const split of splits) {
@@ -2333,11 +2642,15 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           }
         }
       }
+      flushFaltanteInternoNotification();
+
+      const superados = await desactivarPlanesLaminadoSuperados(CODIGO_GRUPO_LAMINADO, planPreviewPFD.fechaInicio, nuevoCodigoPlanGrupo, true);
+      const sufijoSuperados = superados > 0 ? ` ${superados} Plan Grupo previo(s) del mismo día o anterior fueron desactivados.` : '';
 
       if (fallidos === 0) {
-        addNotification('success', `Plan PFD guardado: ${exitosos} materiales registrados en el Plan Grupo #${nuevoCodigoPlanGrupo}.`);
+        addNotification('success', `Plan PFD guardado: ${exitosos} materiales registrados en el Plan Grupo #${nuevoCodigoPlanGrupo}.${sufijoSuperados}`);
       } else {
-        addNotification('warning', `Plan Grupo PFD #${nuevoCodigoPlanGrupo} creado. ${exitosos} materiales guardados, ${fallidos} fallaron.`);
+        addNotification('warning', `Plan Grupo PFD #${nuevoCodigoPlanGrupo} creado. ${exitosos} materiales guardados, ${fallidos} fallaron.${sufijoSuperados}`);
       }
       fetchNecesidadesPlanta();
       setPlanPreviewPFD(null);
@@ -2346,7 +2659,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     } finally {
       setIsSavingPlanPFD(false);
     }
-  }, [planPreviewPFD, addNotification, fetchNecesidadesPlanta, getOrigenesProrrateo]);
+  }, [planPreviewPFD, addNotification, fetchNecesidadesPlanta, getOrigenesProrrateo, flushFaltanteInternoNotification, desactivarPlanesLaminadoSuperados]);
 
   // Paso 1 de edición: busca los PlanGrupo activos de Corte y Laminado directo por codigo_grupo
   // (CODIGO_GRUPO_LAMINADO) en planGrupoService.getAll(), NO a través de "Necesidades Planta"
@@ -2361,7 +2674,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     try {
       const planesRes = await planGrupoService.getAll();
       const planesGrupo = (planesRes.data || [])
-        .filter(p => p.codigo_grupo === CODIGO_GRUPO_LAMINADO && p.estado === 'A')
+        // "Rollos" filtra los planes propios de Laminado — codigo_grupo=8 es compartido con la
+        // Respuesta P3/PFD de Corte Espuma, sin este filtro aparecerían acá para editar por error.
+        .filter(p => p.codigo_grupo === CODIGO_GRUPO_LAMINADO && p.estado === 'A' && /rollo/i.test(String(p.valor || '')))
         .sort((a, b) => b.codigo_plan_grupo - a.codigo_plan_grupo);
 
       if (planesGrupo.length === 0) {
@@ -2395,12 +2710,38 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     try {
       const rows = await reconciliarDetallesParaPlan(planVigente, respuestaSalidaRows, unifiedNeeds);
 
+      // La fecha se RECALCULA al editar, no se conserva la que traía el plan — el mismo bug que se
+      // corrigió al crear el plan (hoy+1 calendario en vez de próximo día laborable) también dejaba
+      // planes editados con una fecha vieja/vencida, porque "Guardar Cambios" solo tocaba los
+      // DetalleTactico y nunca volvía a grabar fecha_inicio_plan/fecha_fin_plan del propio PlanGrupo.
+      // P3 (la respuesta automática): se recalcula al próximo día laborable desde HOY, igual que al
+      // crear uno nuevo. PFD (la variante ligada al calendario de producción del módulo): se
+      // recalcula desde la selección de fechas VIGENTE (selectedDates), igual que al crearlo; si no
+      // hay fechas seleccionadas en este momento, se conserva la que ya tenía el plan.
+      const esPFD = /pfd/i.test(planVigente.valor || '');
+      let fechaInicio: string;
+      let fechaFin: string;
+      if (esPFD) {
+        const dates = Array.from(selectedDates).sort();
+        if (dates.length > 0) {
+          fechaInicio = dates[0];
+          fechaFin = dates[dates.length - 1];
+        } else {
+          fechaInicio = planVigente.fecha_inicio_plan ? fechaLocalEcuador(planVigente.fecha_inicio_plan) : format(new Date(), 'yyyy-MM-dd');
+          fechaFin = planVigente.fecha_fin_plan ? fechaLocalEcuador(planVigente.fecha_fin_plan) : fechaInicio;
+        }
+      } else {
+        fechaInicio = format(siguienteDiaHabil(new Date()), 'yyyy-MM-dd');
+        fechaFin = fechaInicio;
+      }
+
       setEditPlanPreview({
         codigo_plan_grupo: planVigente.codigo_plan_grupo,
         valor: planVigente.valor,
-        fechaInicio: planVigente.fecha_inicio_plan ? String(planVigente.fecha_inicio_plan).split('T')[0] : '—',
-        fechaFin: planVigente.fecha_fin_plan ? String(planVigente.fecha_fin_plan).split('T')[0] : '—',
+        fechaInicio,
+        fechaFin,
         rows,
+        planOriginal: planVigente,
       });
       setPlanesGrupoDisponibles(null);
       setPlanGrupoSeleccionado(null);
@@ -2409,7 +2750,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     } finally {
       setIsLoadingEditPlan(false);
     }
-  }, [planGrupoSeleccionado, planesGrupoDisponibles, addNotification, unifiedNeeds, respuestaSalidaRows, reconciliarDetallesParaPlan]);
+  }, [planGrupoSeleccionado, planesGrupoDisponibles, addNotification, unifiedNeeds, respuestaSalidaRows, reconciliarDetallesParaPlan, selectedDates, siguienteDiaHabil]);
 
   // Materiales del Resumen actual que todavía no están en el plan cargado, disponibles para agregar.
   const materialesDisponiblesParaAgregar = useMemo(() => {
@@ -2420,23 +2761,28 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
   const handleAddMaterialToEditPlan = (material: string) => {
     const needRow = unifiedNeeds.find(u => u.material === material);
-    if (!needRow) return;
+    if (!needRow || !editPlanPreview) return;
+    // Igual que al crear el plan: si la necesidad del material viene de varias áreas, se prorratea
+    // y se agrega una fila por cada origen (codigo_plan_grupo_padre = ese origen real). Se calcula
+    // fuera del updater de setEditPlanPreview porque getOrigenesProrrateo tiene el efecto secundario
+    // de encolar faltantes en faltanteInternoRef — un updater de React puede invocarse más de una vez
+    // (StrictMode) y duplicaría el aviso.
+    faltanteInternoRef.current = [];
+    const splits = getOrigenesProrrateo(needRow.material, needRow.planKg, editPlanPreview.codigo_plan_grupo);
+    flushFaltanteInternoNotification();
+    const nuevasFilas: EditableDetalleRow[] = splits
+      .filter(split => split.cantidadKg > 0)
+      .map(split => ({
+        codigo_detalle_tactico: 0,
+        material: needRow.material,
+        descripcion: needRow.descripcion,
+        cantidad: split.cantidadKg,
+        marcadoEliminar: false,
+        esNuevo: true,
+        codigo_plan_grupo_padre: split.codigoPadre,
+      }));
     setEditPlanPreview(prev => {
       if (!prev) return prev;
-      // Igual que al crear el plan: si la necesidad del material viene de varias áreas, se prorratea
-      // y se agrega una fila por cada origen (codigo_plan_grupo_padre = ese origen real).
-      const splits = getOrigenesProrrateo(needRow.material, needRow.planKg, prev.codigo_plan_grupo);
-      const nuevasFilas: EditableDetalleRow[] = splits
-        .filter(split => split.cantidadKg > 0)
-        .map(split => ({
-          codigo_detalle_tactico: 0,
-          material: needRow.material,
-          descripcion: needRow.descripcion,
-          cantidad: split.cantidadKg,
-          marcadoEliminar: false,
-          esNuevo: true,
-          codigo_plan_grupo_padre: split.codigoPadre,
-        }));
       return { ...prev, rows: [...prev.rows, ...nuevasFilas] };
     });
   };
@@ -2469,13 +2815,25 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       const user = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('user') || '{}') : {};
       const usuario = user?.name || 'admin';
 
+      // A diferencia de antes, "Guardar Cambios" también regraba fecha_inicio_plan/fecha_fin_plan
+      // del propio PlanGrupo (recalculadas en handleConfirmarSeleccionPlan) — antes solo se
+      // actualizaban los DetalleTactico y el plan se quedaba con la fecha vieja para siempre.
+      await planGrupoService.save({
+        ...editPlanPreview.planOriginal,
+        fecha_inicio_plan: editPlanPreview.fechaInicio,
+        fecha_fin_plan: editPlanPreview.fechaFin,
+      } as unknown as PlanGrupo);
+
       const { actualizados, agregados, eliminados, fallidos } =
         await persistirFilasEditables(editPlanPreview.codigo_plan_grupo, editPlanPreview.rows, usuario);
 
+      const superados = await desactivarPlanesLaminadoSuperados(CODIGO_GRUPO_LAMINADO, editPlanPreview.fechaInicio, editPlanPreview.codigo_plan_grupo, /pfd/i.test(editPlanPreview.valor));
+      const sufijoSuperados = superados > 0 ? ` ${superados} Plan Grupo previo(s) del mismo día o anterior fueron desactivados.` : '';
+
       if (fallidos === 0) {
-        addNotification('success', `Plan Grupo #${editPlanPreview.codigo_plan_grupo} actualizado: ${actualizados} modificados, ${agregados} agregados, ${eliminados} eliminados.`);
+        addNotification('success', `Plan Grupo #${editPlanPreview.codigo_plan_grupo} actualizado (vigencia ${editPlanPreview.fechaInicio} a ${editPlanPreview.fechaFin}): ${actualizados} modificados, ${agregados} agregados, ${eliminados} eliminados.${sufijoSuperados}`);
       } else {
-        addNotification('warning', `Plan Grupo #${editPlanPreview.codigo_plan_grupo} actualizado con errores: ${actualizados} modificados, ${agregados} agregados, ${eliminados} eliminados, ${fallidos} fallidos.`);
+        addNotification('warning', `Plan Grupo #${editPlanPreview.codigo_plan_grupo} actualizado con errores: ${actualizados} modificados, ${agregados} agregados, ${eliminados} eliminados, ${fallidos} fallidos.${sufijoSuperados}`);
       }
       fetchNecesidadesPlanta();
       setEditPlanPreview(null);
@@ -2484,7 +2842,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     } finally {
       setIsSavingEditPlan(false);
     }
-  }, [editPlanPreview, addNotification, fetchNecesidadesPlanta, persistirFilasEditables]);
+  }, [editPlanPreview, addNotification, fetchNecesidadesPlanta, persistirFilasEditables, desactivarPlanesLaminadoSuperados]);
 
   const toggleGroup = (key: string) => {
     const next = new Set(expandedGroups);
@@ -2626,9 +2984,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       .filter(m => String(getProp(m, ['MAQUINA'])).toUpperCase().includes('LOOPER'))
       .filter(m => {
         if (selectedDates.size === 0) return true;
-        const iniStr = getProp(m, ['FECHA_OT_PRG_INI']).trim();
-        const d = iniStr.includes('T') ? iniStr.split('T')[0] : iniStr;
-        return selectedDates.has(d);
+        // fechaLocalEcuador, no split('T')[0]: FECHA_OT_PRG_INI es UTC real, selectedDates son
+        // fechas locales del calendario — mismo bug de zona horaria que en Corte Espuma.
+        return selectedDates.has(fechaLocalEcuador(getProp(m, ['FECHA_OT_PRG_INI'])));
       })
       .map(m => {
         const iniStr = getProp(m, ['FECHA_OT_PRG_INI']).trim();
@@ -2639,7 +2997,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           || (isValid(ini) && isValid(fin) ? (fin.getTime() - ini.getTime()) / 3600000 : 0);
         return {
           maquina: getProp(m, ['MAQUINA']),
-          fecha: iniStr.includes('T') ? iniStr.split('T')[0] : iniStr,
+          fecha: fechaLocalEcuador(iniStr),
           horas
         };
       });
@@ -2815,12 +3173,90 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     setCorridaFechas(prev => ({ ...prev, [corridaId]: fecha }));
   };
 
-  const handleExportTxt = () => {
+  // Antes de exportar el TXT que genera las Provisionales reales en SAP, valida que el ciclo P2→P3
+  // con Venta Externa esté cerrado para los materiales cuyo origen es Venta Externa (planGruposVentaExternaSet):
+  // debe existir una Respuesta P3 nuestra (grupo Laminado, no PFD) cuya fecha_modificacion sea
+  // EXACTAMENTE un día después de la línea del P2 origen — misma regla "revisión hoy, devolución
+  // mañana" que ya valida "Data Aprobada" en Venta Externa (ver fetchDataAprobada ahí), pero
+  // verificada del lado de Laminado, automáticamente, sin necesitar un clic manual de "aprobar": no
+  // hay ningún campo "aprobado" persistido — se recalcula en vivo contra la API cada vez, igual que el
+  // resto del módulo. Materiales sin origen Venta Externa (Forros/Muebles/Prensado) no se validan acá.
+  const validarAprobacionVentaExterna = useCallback(async (materiales: string[]): Promise<string[]> => {
+    const materialesVE = materiales.filter(m => {
+      const origenes = materialOrigenesPlantaMap.get(String(Number(m)));
+      return !!origenes && Array.from(origenes.keys()).some(c => planGruposVentaExternaSet.has(c));
+    });
+    if (materialesVE.length === 0) return [];
+
+    const [planesRes, detallesRes] = await Promise.all([planGrupoService.getAll(), detalleTacticoService.getAll()]);
+    const planes = planesRes.data || [];
+    const detalles = detallesRes.data || [];
+    const planPorCodigo = new Map(planes.map(pg => [pg.codigo_plan_grupo, pg]));
+
+    return materialesVE.filter(m => {
+      const matNum = Number(m);
+      const origenesVE = Array.from(materialOrigenesPlantaMap.get(String(matNum))?.keys() || [])
+        .filter(c => planGruposVentaExternaSet.has(c));
+
+      const aprobado = origenesVE.some(codigoPadre => {
+        // Se valida contra la FECHA DEL PLAN, no contra `fecha_modificacion`. Antes se exigía que la
+        // respuesta tuviera `fecha_modificacion` = la de la línea P2 + 1 día, y eso NUNCA podía
+        // cumplirse: la API devuelve ese campo vacío al insertar y solo lo llena al actualizar —
+        // verificado en producción, 31.312 de 44.328 filas de detalle_tactico (71%) y los 85 de 85
+        // plan_grupo lo traen en null. Resultado: el export quedaba bloqueado aunque el P3 existiera.
+        // Caso real: material 30017862 con P2 #263 (12-ago) y su P3 #269 (12-ago, cantidad 54) ya
+        // grabado, y aun así se reportaba como "sin Respuesta P3 aprobada".
+        //
+        // Criterio vigente: existe al menos un P3 ACTIVO que referencia ese P2 para ese material, y
+        // su plan no es anterior al P2 que responde.
+        const planP2 = planPorCodigo.get(codigoPadre);
+        const fechaP2 = soloFecha(planP2?.fecha_inicio_plan);
+
+        const respuestas = detalles.filter(d =>
+          d.estado === 'A' &&
+          d.codigo_plan_grupo_padre === codigoPadre &&
+          Number(d.codigo_material) === matNum &&
+          d.codigo_plan_grupo !== codigoPadre &&
+          esPlanP3(planPorCodigo.get(d.codigo_plan_grupo)?.valor)
+        );
+        if (respuestas.length === 0) return false;
+
+        return respuestas.some(r => {
+          const planP3 = planPorCodigo.get(r.codigo_plan_grupo);
+          if (!planP3 || planP3.estado !== 'A') return false;
+          const fechaP3 = soloFecha(planP3.fecha_inicio_plan);
+          // Sin fecha en alguno de los dos, basta con que el P3 exista y esté activo.
+          if (!fechaP2 || !fechaP3) return true;
+          return fechaP3 >= fechaP2;
+        });
+      });
+
+      return !aprobado; // se reporta como "no aprobado" (queda en el array de faltantes)
+    });
+  }, [materialOrigenesPlantaMap, planGruposVentaExternaSet]);
+
+  const handleExportTxt = useCallback(async () => {
     const rows = outputPlanRows;
     if (rows.length === 0) {
       addNotification('warning', 'No hay datos para exportar.');
       return;
     }
+
+    setIsValidandoExportTxt(true);
+    try {
+      const materiales = Array.from(new Set(rows.map(r => r.material)));
+      const noAprobados = await validarAprobacionVentaExterna(materiales);
+      if (noAprobados.length > 0) {
+        addNotification('error', `Exportación bloqueada: ${noAprobados.length} material(es) con origen Venta Externa aún no tienen Respuesta P3 aprobada (fecha correcta) — ${noAprobados.join(', ')}. Genera/corrige el P3 antes de exportar.`);
+        return;
+      }
+    } catch (e) {
+      addNotification('error', `No se pudo validar la aprobación de Venta Externa: ${(e as Error).message}. Exportación cancelada por seguridad.`);
+      return;
+    } finally {
+      setIsValidandoExportTxt(false);
+    }
+
     // Estructura fija de carga SAP: Material, Centro, Clase de orden, Cantidad,
     // Inicio programado, Clase de programación, Clave. Centro/Clase de orden/Clase de
     // programación/Clave son siempre el mismo valor para esta línea de producción.
@@ -2839,7 +3275,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-  };
+  }, [outputPlanRows, addNotification, validarAprobacionVentaExterna]);
 
   const renderTopConsolidation = () => {
     const isSaturated = totalsUnified.totalRuns > 6;
@@ -3077,8 +3513,17 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           </div>
         </div>
         <div className="flex items-center gap-3">
-           <Button onClick={handleProcessResumen} disabled={isProcessingResumen} className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl h-10 px-6 text-[10px] font-black uppercase tracking-widest shadow-lg flex items-center gap-2">
-              {isProcessingResumen ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} GENERAR NECESIDADES
+           <Button onClick={handleSincronizar} disabled={isLoading} variant={datosCargados ? 'outline' : 'default'} className={cn(
+             "rounded-xl h-10 px-6 text-[10px] font-black uppercase tracking-widest flex items-center gap-2",
+             datosCargados ? "border-red-200 text-red-700 hover:bg-red-50" : "bg-red-600 text-white hover:bg-red-700 shadow-lg"
+           )}>
+              {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Sincronizar
+           </Button>
+           {/* Familia "Generar Necesidades": trae/calcula datos (sync o explosión BOM) sin escribir
+               nada — outline, tono índigo. "Generar Respuestas" (escribe Plan Grupo/Detalle Táctico
+               real) es sólido/primario. Mismos 2 niveles en los 4 módulos tácticos. */}
+           <Button onClick={handleProcessResumen} disabled={isProcessingResumen} variant="outline" className="rounded-xl h-10 px-6 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 border-indigo-200 text-indigo-700 hover:bg-indigo-50">
+              {isProcessingResumen ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Generar Necesidades
            </Button>
            <Popover>
             <PopoverTrigger asChild>
@@ -3116,6 +3561,20 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           </Popover>
         </div>
       </div>
+
+      {/* Estado vacío inicial: el módulo no consulta SAP al abrirse. Mismo criterio y misma
+          redacción compacta que Corte Espuma y Venta Externa (ver [[carga_manual_modulos_tacticos]]). */}
+      {!datosCargados && !isLoading && (
+        <div
+          className="flex items-center gap-2.5 rounded-xl border border-dashed border-red-200 bg-red-50/40 px-4 py-2.5 text-left"
+          title="Este módulo no consulta SAP al abrirse. Sincronizar trae Grupos, Restricciones, Provisionales, FERT, KPI Looper, Inventario, Habilidades y Mantenimiento."
+        >
+          <RefreshCw className="w-4 h-4 text-red-600 shrink-0" />
+          <p className="text-[11px] font-bold text-slate-600">
+            Sin datos cargados — pulsa <span className="font-black text-red-700">Sincronizar</span> para traerlos.
+          </p>
+        </div>
+      )}
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid grid-cols-5 h-11 bg-gray-100/50 p-1.5 rounded-2xl border border-gray-200 mb-8">
@@ -3436,7 +3895,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               className="h-10 px-4 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-black text-[10px] uppercase tracking-widest shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-1.5 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed transition-all"
             >
               {isSavingPlan ? <Loader2 className="w-4 h-4 animate-spin" /> : <ClipboardList className="w-4 h-4" />}
-              {isSavingPlan ? 'Guardando...' : 'Guardar Plan'}
+              {isSavingPlan ? 'Guardando...' : 'Generar Respuestas · Plan'}
             </button>
             <button
               onClick={handleOpenGuardarPlanPFD}
@@ -3444,7 +3903,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               className="h-10 px-4 rounded-full bg-amber-600 hover:bg-amber-700 text-white font-black text-[10px] uppercase tracking-widest shadow-lg shadow-amber-600/30 flex items-center justify-center gap-1.5 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed transition-all"
             >
               {isSavingPlanPFD ? <Loader2 className="w-4 h-4 animate-spin" /> : <ClipboardList className="w-4 h-4" />}
-              {isSavingPlanPFD ? 'Guardando...' : 'Guardar Plan PFD'}
+              {isSavingPlanPFD ? 'Guardando...' : 'Generar Respuestas · Plan PFD'}
             </button>
             <button
               onClick={handleOpenEditarPlan}
@@ -3452,7 +3911,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               className="h-10 px-4 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white font-black text-[10px] uppercase tracking-widest shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-1.5 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed transition-all"
             >
               {isLoadingEditPlan ? <Loader2 className="w-4 h-4 animate-spin" /> : <Pencil className="w-4 h-4" />}
-              {isLoadingEditPlan ? 'Cargando...' : 'Editar Plan'}
+              {isLoadingEditPlan ? 'Cargando...' : 'Generar Respuestas · Editar Plan'}
             </button>
           </div>
 
@@ -3664,8 +4123,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                             #{p.codigo_plan_grupo}{idx === 0 && <span className="ml-2 text-[8px] font-black uppercase text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-1.5 py-0.5">Último guardado</span>}
                           </td>
                           <td className="px-3 py-2">{p.valor}</td>
-                          <td className="px-3 py-2 font-mono">{p.fecha_inicio_plan ? String(p.fecha_inicio_plan).split('T')[0] : '—'}</td>
-                          <td className="px-3 py-2 font-mono">{p.fecha_fin_plan ? String(p.fecha_fin_plan).split('T')[0] : '—'}</td>
+                          <td className="px-3 py-2 font-mono">{soloFecha(p.fecha_inicio_plan) || '—'}</td>
+                          <td className="px-3 py-2 font-mono">{soloFecha(p.fecha_fin_plan) || '—'}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -3774,11 +4233,12 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               Se actualiza automáticamente al guardar o editar un plan. Usa este botón si otra área registró cambios.
             </p>
             <Button
-              onClick={fetchNecesidadesPlanta}
+              onClick={() => fetchNecesidadesPlanta()}
               disabled={necesidadesPlantaLoading}
-              className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl h-10 px-6 text-[10px] font-black uppercase tracking-widest shadow-lg flex items-center gap-2"
+              variant="outline"
+              className="rounded-xl h-10 px-6 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 border-indigo-200 text-indigo-700 hover:bg-indigo-50"
             >
-              {necesidadesPlantaLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Actualizar
+              {necesidadesPlantaLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Actualizar P2
             </Button>
           </div>
           {necesidadesPlantaLoading ? (
@@ -3943,8 +4403,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <Button onClick={handleExportTxt} className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl h-10 px-6 text-[10px] font-black uppercase tracking-widest shadow-lg flex items-center gap-2">
-                <Download className="w-4 h-4" /> Exportar TXT
+              <Button onClick={handleExportTxt} disabled={isValidandoExportTxt} className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl h-10 px-6 text-[10px] font-black uppercase tracking-widest shadow-lg flex items-center gap-2">
+                {isValidandoExportTxt ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />} {isValidandoExportTxt ? 'Validando P3…' : 'Exportar TXT'}
               </Button>
             </div>
           </div>

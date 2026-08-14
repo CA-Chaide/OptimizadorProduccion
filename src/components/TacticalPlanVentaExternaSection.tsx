@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { ShoppingCart, Package, Loader2, LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, TrendingUp, Box, X, Layers, Wand2, Save, ClipboardCheck, RefreshCw } from 'lucide-react';
+import { ShoppingCart, Package, Loader2, LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, TrendingUp, Box, X, Layers, Wand2, Save, ClipboardCheck, RefreshCw, Clock, Search } from 'lucide-react';
 import { Card } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from '@/components/ui/button';
 import { grupoService } from '@/services/grupo.service';
@@ -14,6 +15,8 @@ import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion, PlanGrupo, DetalleTactico } from '@/types/interfaces';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { nextBusinessDay as nextBusinessDayCal, cargarDiasNoLaborables, fechaLocalEcuador, type DiasNoLaborables } from '@/lib/dias-laborables';
+import { guardarEnCache, leerDeCache } from '@/lib/cache-modulos';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, parseISO, addMonths, subMonths, addDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 import {
@@ -55,12 +58,15 @@ const parseQty = (val: unknown): number => {
   return isNaN(n) ? 0 : n;
 };
 
-// Normaliza fecha_inicio_plan/fecha_fin_plan (a veces con sufijo horario "...T00:00:00") a
-// 'yyyy-MM-dd' — mismo criterio que usa Corte y Laminado para comparar rangos de PlanGrupo.
+// Normaliza fecha_inicio_plan/fecha_fin_plan/fecha_modificacion a 'yyyy-MM-dd'. Delega en
+// fechaLocalEcuador (@/lib/dias-laborables): el sufijo horario NO siempre es "T00:00:00" — un plan
+// grabado a media tarde/noche en Ecuador llega en UTC con esa hora real, y recortar el ISO a lo
+// bruto podía devolver el día calendario SIGUIENTE (mismo bug documentado en Corte Espuma,
+// explotarPFFParaCentro). Mismo criterio que usa Corte y Laminado.
 const soloFecha = (v: unknown): string => {
   const s = String(v ?? '').trim();
   if (!s || s === 'null' || s === 'undefined') return '';
-  return s.includes('T') ? s.split('T')[0] : s;
+  return fechaLocalEcuador(s);
 };
 
 // Solo el plan "P3" es una respuesta real de Corte y Laminado contra el P2 — "PFD" es una
@@ -68,21 +74,99 @@ const soloFecha = (v: unknown): string => {
 // forzando a 0 los que no tienen corrida) y no debe contarse como material efectivamente recibido.
 const esPlanP3 = (valor: unknown): boolean => /\bp3\b/i.test(String(valor || ''));
 
+// Día hábil: lunes a viernes MENOS los feriados / días no trabajados del calendario configurado
+// (Configuraciones → Calendario Área) — ver @/lib/dias-laborables. Dentro del componente se usa el
+// wrapper siguienteDiaHabil, que ya lleva ese calendario cargado. El día que se adopte sábado como
+// laborable, eso se resuelve ahí y aplica a todos los módulos a la vez.
+
+// Tab "Pendientes": solo Espumas (Corte Espuma consume esta demanda) — el resto de sectores del
+// mismo endpoint (Colchones, Muebles, etc.) no aplica a este módulo.
+const SECTOR_ESPUMAS = '09 ESPUMAS';
+
+// Cod.Buscar: clave de cruce entre "Pendientes Totales" y "Órdenes FERT", igual a la fórmula ya
+// usada en el archivo Excel de origen: [@POSICION]*1 & [@PEDIDO]*1 & [@MATERIAL]*1 — el "*1" fuerza
+// cada valor a número (elimina ceros a la izquierda) antes de concatenarlos como texto.
+const buildCodBuscar = (posicion: unknown, pedido: unknown, material: unknown): string => {
+  const num = (v: unknown) => String(parseQty(v));
+  return `${num(posicion)}${num(pedido)}${num(material)}`;
+};
+
+// Clasificación MTO/MTS de una orden Provisional por su ClaseOrden — confirmado con datos reales
+// (verificado que KD siempre trae PEDIDOVENTAS real y LA siempre lo trae vacío/"000000"): KD = MTO
+// (bajo pedido, con cliente), LA = MTS (sin cliente). Es solo una ETIQUETA informativa — no excluye
+// filas del listado, eso se controla por RESPCTRLPROD (ver filterData), no por ClaseOrden.
+const clasificarClaseOrden = (claseOrden: unknown): string => {
+  const c = String(claseOrden || '').trim().toUpperCase();
+  if (c === 'KD') return 'MTO';
+  if (c === 'LA') return 'MTS';
+  return c || '—';
+};
+
+// A diferencia de `String(v || '')`, no descarta 0/"" legítimos (ej. CANT_PEND_ENTREGA: 0) —
+// solo cae a '' cuando el campo realmente no vino (null/undefined).
+const numOrEmpty = (v: unknown): string => (v === null || v === undefined || v === '') ? '' : String(v);
+
+interface PendienteRow {
+  pedido: string;
+  posicion: string;
+  codBuscar: string;
+  cantPedida: string;
+  centro: string;
+  fechaPedido: string;
+  fechaEntrega: string;
+  ciudadDestino: string;
+  volPend: string;
+  // Cruce contra Órdenes FERT por Cod.Buscar (POSICION+PEDIDO+MATERIAL) — fecha de entrega de la
+  // Orden FERT que ya cubre este pedido/posición/material, si existe.
+  fechaEntregaFert: string;
+}
+
+// Snapshot de lo que este módulo tiene cargado. Se guarda al sincronizar y se restaura al volver de
+// otro módulo, para no perder el trabajo en curso solo por navegar — mismo patrón que Corte Espuma
+// (ver @/lib/cache-modulos y [[persistencia_datos_modulos]]).
+const CACHE_VENTA_EXTERNA = 'tactica-venta-externa';
+interface SnapshotVentaExterna {
+  grupos: Grupo[];
+  restricciones: Restriccion[];
+  ordenes: any[];
+  ordenesFert: any[];
+  tiemposEnsamblado: any[];
+  diasNoLaborables: string[];
+}
+
 export const TacticalPlanVentaExternaSection: React.FC = () => {
   const { addNotification } = useAppContext();
 
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState('resumen');
+  // El módulo YA NO sincroniza solo al abrirse — ver handleSincronizar. Este flag distingue "todavía
+  // no se pidió nada" del estado vacío real, para mostrar el aviso correcto.
+  const [datosCargados, setDatosCargados] = useState(false);
   const [grupos, setGrupos] = useState<Grupo[]>([]);
   const [restricciones, setRestricciones] = useState<Restriccion[]>([]);
   const [ordenes, setOrders] = useState<any[]>([]);
   const [ordenesFert, setOrdersFert] = useState<any[]>([]);
   const [tiemposEnsamblado, setTiemposEnsamblado] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
+  // Días NO laborables (feriados + días que la planta decide no trabajar) del calendario configurado.
+  // Vacío = solo se saltan fines de semana. Se carga en el init de abajo.
+  const [diasNoLaborables, setDiasNoLaborables] = useState<DiasNoLaborables>(new Set<string>());
+  const siguienteDiaHabil = useCallback((d: Date) => nextBusinessDayCal(d, diasNoLaborables), [diasNoLaborables]);
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
   const [viewDate, setViewDate] = useState(new Date());
   const [expandedCategorias1000, setExpandedCategorias1000] = useState<string[]>([]);
   const [expandedCategorias2000, setExpandedCategorias2000] = useState<string[]>([]);
+
+  // Tab "Pendientes": pedidos aún no entregados (getPendientesTotales), con filtro por texto
+  // (Pedido/Material) y por rango de Fecha de Entrega, agrupados por Material. Se carga de forma
+  // perezosa (solo al abrir el tab por primera vez) por el volumen de registros (+20K).
+  const [pendientesTotales, setPendientesTotales] = useState<any[]>([]);
+  const [isLoadingPendientes, setIsLoadingPendientes] = useState(false);
+  const [pendientesCargados, setPendientesCargados] = useState(false);
+  const [pendientesSearch, setPendientesSearch] = useState('');
+  const [pendientesFechaDesde, setPendientesFechaDesde] = useState('');
+  const [pendientesFechaHasta, setPendientesFechaHasta] = useState('');
+  const [expandedPendientesMateriales, setExpandedPendientesMateriales] = useState<string[]>([]);
 
   // Necesidad P2 (Plan de Grupo origen para Laminado/Espumas) — ambas se calculan explotando la
   // lista de materiales de las Órdenes FERT (Provisionales NO aplica para este paso).
@@ -92,9 +176,9 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const [necesidadRollos2000, setNecesidadRollos2000] = useState<NecesidadMaterial[]>([]);
   const [isExplodingBom, setIsExplodingBom] = useState(false);
   const [bomProgress, setBomProgress] = useState({ current: 0, total: 0 });
-  // Diagnóstico de la última corrida de "Calcular Necesidad": qué FERT llegaron a explotarse (ya
-  // pasaron centro + restricciones + ventana de fechas) pero no aportaron ninguna línea de Espuma/
-  // Rollo, y cuáles fallaron al consultar el Maestro de Materiales — ver explodeNecesidadesFert.
+  // Diagnóstico de la última corrida de "Calcular Necesidad": qué Provisionales llegaron a explotarse
+  // (ya pasaron centro + restricciones + fecha) pero no aportaron ninguna línea de Espuma/Rollo, y
+  // cuáles fallaron al consultar el Maestro de Materiales — ver explodeNecesidadesProvisionales.
   const [bomDiagnostico, setBomDiagnostico] = useState<{ sinMatch: string[]; conError: string[] }>({ sinMatch: [], conError: [] });
   const [savingPlanP2, setSavingPlanP2] = useState<Record<string, boolean>>({});
   const [planP2Generado, setPlanP2Generado] = useState<Record<string, number>>({});
@@ -105,22 +189,14 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const [dataAprobada, setDataAprobada] = useState<Record<string, DataAprobadaRow[]>>({});
   const [isLoadingDataAprobada, setIsLoadingDataAprobada] = useState(false);
 
-  // Restricción de negocio: el filtro de fecha de "Resumen" no debe cubrir más de 3 días — evita que
-  // el usuario arme una selección tan amplia que el rango "desde-hasta" que se guarda en el P2 (ver
-  // ventanaP2) deje de representar una ventana operativa real.
-  const MAX_DIAS_SELECCION = 3;
+  // Calendario "abierto": sin tope de rango entre la fecha más antigua y la más nueva seleccionada
+  // (antes limitado a 3 días). El usuario confirmó liberar esta restricción a propósito — el filtro
+  // también sirve para seleccionar una fecha fuera de la ventana operativa normal, para evaluación de
+  // tiempo/what-if, no solo para el rango real hoy+1..hoy+3.
   const toggleSelectedDate = (dateStr: string) => {
-    setSelectedDates(prev => {
-      if (prev.includes(dateStr)) return prev.filter(d => d !== dateStr);
-      const siguiente = [...prev, dateStr];
-      const ordenadas = [...siguiente].sort();
-      const spanDias = Math.round((parseISO(ordenadas[ordenadas.length - 1]).getTime() - parseISO(ordenadas[0]).getTime()) / 86400000) + 1;
-      if (spanDias > MAX_DIAS_SELECCION) {
-        addNotification('warning', `La selección de fechas no puede cubrir más de ${MAX_DIAS_SELECCION} días.`);
-        return prev;
-      }
-      return siguiente;
-    });
+    setSelectedDates(prev => (
+      prev.includes(dateStr) ? prev.filter(d => d !== dateStr) : [...prev, dateStr]
+    ));
   };
 
   useEffect(() => { setMounted(true); }, []);
@@ -160,8 +236,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       
       setOrders(resProv.data || []);
       setOrdersFert(resFert.data || []);
+      return { ordenes: resProv.data || [], ordenesFert: resFert.data || [] };
     } catch (error) {
       console.error('Error cargando órdenes:', error);
+      return { ordenes: [], ordenesFert: [] };
     }
   };
 
@@ -179,39 +257,98 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
         }
       }
       setTiemposEnsamblado(allTiempos);
+      return allTiempos;
     } catch (error) {
       console.error('Error cargando tiempos:', error);
+      return [];
     }
   };
 
-  useEffect(() => {
-    if (!mounted) return;
-    const init = async () => {
-      setIsLoading(true);
-      const groups = await fetchGrupos();
+  // Sincronización manual: se dispara con el botón "Sincronizar" del encabezado, no al abrir el
+  // módulo — mismo criterio que Corte Espuma (ver [[carga_manual_modulos_tacticos]]). Entrar a mirar
+  // no debe costar 4 llamadas pesadas a SAP (Provisionales/FERT ~20K filas cada una) cada vez.
+  const handleSincronizar = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const [groups, dias] = await Promise.all([
+        fetchGrupos(),
+        cargarDiasNoLaborables(),
+      ]);
       const ids = groups.map(g => g.codigo_grupo);
-      await Promise.all([
+      const [restrs, ordenesRes, tiempos] = await Promise.all([
         fetchRestricciones(ids),
         fetchOrdenes(),
-        fetchTiemposEnsamblado(groups)
+        fetchTiemposEnsamblado(groups),
       ]);
+      setDiasNoLaborables(dias);
+      setDatosCargados(true);
+      guardarEnCache<SnapshotVentaExterna>(CACHE_VENTA_EXTERNA, {
+        grupos: groups,
+        restricciones: restrs,
+        ordenes: ordenesRes.ordenes,
+        ordenesFert: ordenesRes.ordenesFert,
+        tiemposEnsamblado: tiempos,
+        diasNoLaborables: [...dias],
+      });
+    } finally {
       setIsLoading(false);
-    };
-    init();
+    }
+  }, []);
+
+  // Rehidratación: si ya se había sincronizado en esta sesión, se recupera lo trabajado en vez de
+  // dejar el módulo vacío al volver de otro módulo (ver @/lib/cache-modulos).
+  useEffect(() => {
+    if (!mounted) return;
+    const snap = leerDeCache<SnapshotVentaExterna>(CACHE_VENTA_EXTERNA);
+    if (snap) {
+      setGrupos(snap.grupos);
+      setRestricciones(snap.restricciones);
+      setOrders(snap.ordenes);
+      setOrdersFert(snap.ordenesFert);
+      setTiemposEnsamblado(snap.tiemposEnsamblado);
+      setDiasNoLaborables(new Set(snap.diasNoLaborables));
+      setDatosCargados(true);
+    }
   }, [mounted]);
 
-  // Logic for dates with orders in the calendar
+  const fetchPendientesTotales = useCallback(async () => {
+    setIsLoadingPendientes(true);
+    try {
+      const res = await serviciosService.getPendientesTotales(1, 20000);
+      setPendientesTotales(res.data || []);
+    } catch (error) {
+      console.error('Error cargando pendientes:', error);
+    } finally {
+      setIsLoadingPendientes(false);
+      setPendientesCargados(true);
+    }
+  }, []);
+
+  // Carga perezosa: solo trae los +20K registros de Pendientes la primera vez que se abre el tab, y
+  // solo si ya se sincronizó lo base — abrir el tab sin datos no debe disparar esta consulta sola.
+  useEffect(() => {
+    if (datosCargados && activeTab === 'pendientes' && !pendientesCargados && !isLoadingPendientes) {
+      fetchPendientesTotales();
+    }
+  }, [datosCargados, activeTab, pendientesCargados, isLoadingPendientes, fetchPendientesTotales]);
+
+  // Días con datos para el punto/resalte del calendario "Fecha" — compartido entre los tabs
+  // Provisionales y FERT, así que debe incluir fechas de AMBAS fuentes (antes solo miraba
+  // ordenesFert: un día con órdenes Provisionales pero sin FERT aparecía apagado, como si no tuviera
+  // datos, cuando trabajabas en el tab de Provisionales).
   const datesWithOrders = useMemo(() => {
     const dates = new Set<string>();
-    ordenesFert.forEach(o => {
-      const d = String(o.FECHA || o.FECHAINICIO || '').trim();
+    [...ordenesFert, ...ordenes].forEach(o => {
+      // Mismo criterio que filterData: FECHAFIN si existe (Provisionales), si no FECHA/FECHAINICIO
+      // (FERT) — el punto del calendario debe marcar el mismo día que realmente hace match al filtrar.
+      const d = String(o.FECHAFIN || o.FECHA || o.FECHAINICIO || '').trim();
       if (d && d !== 'null' && d !== 'undefined') {
         const normalized = d.includes('T') ? d.split('T')[0] : d;
         dates.add(normalized);
       }
     });
     return dates;
-  }, [ordenesFert]);
+  }, [ordenesFert, ordenes]);
 
   const calendarDays = useMemo(() => {
     const start = startOfMonth(viewDate);
@@ -260,19 +397,25 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     
     const groupIds = relevantGroups.map(g => g.codigo_grupo);
     const groupRest = restricciones.filter(r => groupIds.includes(r.codigo_grupo));
-    
+
+    // Comparación insensible a mayúsculas/minúsculas: verificado con datos reales que la restricción
+    // de Venta Externa Centro 1000 se guardó como nombre_restriccion="RespCtrlProd" (no "RESPCTRLPROD"
+    // exacto) — con comparación exacta, respCodes quedaba vacío y el filtro de responsable no
+    // aplicaba nada, dejando pasar cualquier responsable sin que nadie lo notara.
+    const nombreRestriccion = (r: Restriccion) => String(r.nombre_restriccion || '').trim().toUpperCase();
+
     const respCodes = groupRest
-      .filter(r => r.nombre_restriccion === 'RESPCTRLPROD')
+      .filter(r => nombreRestriccion(r) === 'RESPCTRLPROD')
       .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
       .filter(v => v !== '');
-    
+
     const almCodes = groupRest
-      .filter(r => r.nombre_restriccion === 'ALMACEN')
+      .filter(r => nombreRestriccion(r) === 'ALMACEN')
       .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
       .filter(v => v !== '');
 
     const sectorCodes = groupRest
-      .filter(r => r.nombre_restriccion === 'SECTOR')
+      .filter(r => nombreRestriccion(r) === 'SECTOR')
       .flatMap(r => r.valor_restriccion.split(/[,&]/).map(v => v.trim()))
       .filter(v => v !== '');
 
@@ -289,11 +432,27 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       const itemSectorValue = String(o.SECTORDESC || o.Sector || o.SECTOR || '').trim();
       const matchSector = sectorCodes.length === 0 || itemSectorValue === '' || sectorCodes.some(code => itemSectorValue.includes(code));
 
+
       if (applyDateFilter) {
-        const itemDateFull = String(o.FECHA || o.FECHAINICIO || '').trim();
-        const itemDate = itemDateFull.includes('T') ? itemDateFull.split('T')[0] : itemDateFull;
         const fechas = dateOverride ?? selectedDates;
-        const matchDate = fechas.length === 0 || fechas.includes(itemDate);
+        const soloFechaStr = (v: unknown) => {
+          const s = String(v ?? '').trim();
+          return s.includes('T') ? s.split('T')[0] : s;
+        };
+        const itemInicio = soloFechaStr(o.FECHA || o.FECHAINICIO);
+        const itemFin = soloFechaStr(o.FECHAFIN);
+        // Provisionales trae FECHAINICIO (constante en el dato real — no diferencia por orden, no
+        // sirve para filtrar) y FECHAFIN (sí varía por orden, es la fecha real de vencimiento). Se
+        // probó FECHAFIN >= fecha seleccionada (mostrar la cola completa hacia adelante), pero el
+        // usuario lo rechazó explícitamente: necesita que sea rastreable 1:1 con la selección — si
+        // eliges el 12 de agosto, ves SOLO lo que vence exactamente el 12, nada antes ni después. Si
+        // la orden no trae FECHAFIN (caso FERT), se mantiene la misma coincidencia exacta contra
+        // FECHA/FECHAINICIO de siempre.
+        const matchDate = fechas.length === 0
+          ? true
+          : itemFin
+            ? fechas.includes(itemFin)
+            : fechas.includes(itemInicio);
         return matchResp && matchAlm && matchSector && matchDate;
       }
 
@@ -303,19 +462,55 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
 
   const provC1000 = useMemo(() => filterData(ordenes, '1000'), [ordenes, grupos, restricciones, selectedDates]);
   const provC2000 = useMemo(() => filterData(ordenes, '2000'), [ordenes, grupos, restricciones, selectedDates]);
-  const fertC1000 = useMemo(() => filterData(ordenesFert, '1000'), [ordenesFert, grupos, restricciones, selectedDates]);
-  const fertC2000 = useMemo(() => filterData(ordenesFert, '2000'), [ordenesFert, grupos, restricciones, selectedDates]);
 
-  // Ventana de generación del P2 (Espumas/Rollos): vuelve a depender de la selección del usuario
-  // (selectedDates, el mismo filtro "Fecha" de Resumen) en vez de una ventana fija hoy+1..hoy+3.
-  // Dos correcciones sobre el comportamiento anterior a esa ventana fija:
-  //  1) Sin fecha seleccionada, NO se explota nada (antes, sin selección, filterData dejaba pasar
-  //     TODAS las FERT sin filtro — ver fertC1000VentanaP2 más abajo).
-  //  2) Si se marcan fechas sueltas no contiguas, el rango "desde-hasta" que se guarda en el P2 se
-  //     rellena con TODOS los días entre el mínimo y el máximo (eachDayOfInterval) — así nunca hay
-  //     saltos, aunque el usuario no haya tocado cada día intermedio uno por uno.
-  // El tope de amplitud (MAX_DIAS_SELECCION, ya aplicado en toggleSelectedDate) evita que ese
-  // relleno termine cubriendo una ventana operativa poco realista.
+  // TEMPORAL — diagnóstico para confirmar si la restricción RESPCTRLPROD/ALMACEN realmente excluye
+  // algo en Provisionales Centro 1000, o si simplemente TODA la data ya comparte el mismo valor (y
+  // por eso "parece" que no filtra nada). Compara el total de Centro 1000 (sin restricción) contra
+  // el total ya filtrado (provC1000) y lista los valores distintos de RESPCONTROLPROD/ALMACEN vistos.
+  useEffect(() => {
+    if (ordenes.length === 0) return;
+    const soloCentro1000 = ordenes.filter(o => String(o.CENTRO || o.Centro || o.centro || '').trim() === '1000');
+    const respsDistintos = new Set(soloCentro1000.map(o => String(o.RESPCTRLPROD || o.RESPCONTROLPROD || o.RespCtrlProd || o.RespControlProd || '').trim()));
+    const almsDistintos = new Set(soloCentro1000.map(o => String(o.ALMACEN || o.Almacen || o.almacen || '').trim()));
+    console.log('[DEBUG Provisionales] Centro 1000 sin restricción:', soloCentro1000.length, '| con restricción (provC1000):', provC1000.length);
+    console.log('[DEBUG Provisionales] Valores RESPCTRLPROD distintos en Centro 1000:', Array.from(respsDistintos));
+    console.log('[DEBUG Provisionales] Valores ALMACEN distintos en Centro 1000:', Array.from(almsDistintos));
+  }, [ordenes, provC1000]);
+  // (Se eliminaron fertC1000/fertC2000, las FERT filtradas por el selector "Fecha": eran las únicas
+  //  consumidoras del selector en el lado FERT y alimentaban "Resumen Necesidades", que ahora usa su
+  //  propio corte hoy-hacia-atrás — ver fertC1000HastaHoy más abajo. El selector "Fecha" quedó como
+  //  exclusivo de Provisionales, que es lo que se había decidido.)
+
+  // Tab "Órdenes FERT": ya NO se filtra por el selector "Fecha" (a diferencia de fertC1000/fertC2000
+  // de arriba, que siguen date-filtradas porque alimentan las tarjetas de "Resumen Necesidades",
+  // summaryData1000/2000 — eso no se tocó). El selector "Fecha" ahora es específico de Provisionales;
+  // FERT queda como tab de referencia/comparación, solo con las restricciones de Venta Externa
+  // (RESPCTRLPROD/ALMACEN/SECTOR) aplicadas, mostrando todas las fechas a la vez.
+  const fertC1000SinFecha = useMemo(() => filterData(ordenesFert, '1000', false), [ordenesFert, grupos, restricciones]);
+  const fertC2000SinFecha = useMemo(() => filterData(ordenesFert, '2000', false), [ordenesFert, grupos, restricciones]);
+
+  // "Resumen Necesidades": Órdenes FERT de HOY HACIA ATRÁS. Regla del usuario — el P2 son las
+  // necesidades del día siguiente (hoy+1) y salen de las Provisionales; las FERT ya fechadas hasta hoy
+  // son el otro lado del flujo (lo ya ejecutado/comprometido) y NO entran en ese cálculo de
+  // necesidades. Son dos vistas distintas y mezclarlas es lo que hacía que este tab no cuadrara con
+  // "Plan P2": antes usaba `fertC1000/fertC2000`, filtradas por el selector "Fecha", que ya pasó a ser
+  // específico de Provisionales — el resumen quedaba atado a fechas futuras que no le corresponden.
+  // Mismo criterio de corte que ya usa Corte Espuma para separar FERT vigente de FERT de ciclo
+  // anterior (ver fertKgPorMaterialPorCentro allá).
+  const fechaCorteFert = format(new Date(), 'yyyy-MM-dd');
+  const soloFertHastaHoy = (data: Record<string, unknown>[]) => data.filter(o => {
+    const fecha = String(o.FECHA || o.Fecha || '').split('T')[0];
+    return fecha && fecha <= fechaCorteFert;
+  });
+  const fertC1000HastaHoy = useMemo(() => soloFertHastaHoy(filterData(ordenesFert, '1000', false)), [ordenesFert, grupos, restricciones]);
+  const fertC2000HastaHoy = useMemo(() => soloFertHastaHoy(filterData(ordenesFert, '2000', false)), [ordenesFert, grupos, restricciones]);
+
+  // Ventana informativa de selección (Espumas/Rollos): resume selectedDates en {inicio, fin, fechas}
+  // para mostrar en la UI ("Ventana de Producción") y en el mensaje de resultado — ya no se usa para
+  // filtrar Provisionales (provC1000/provC2000 filtran directo por FECHAFIN vía filterData, ver ahí).
+  // Sin tope de amplitud (antes MAX_DIAS_SELECCION limitaba a 3 días) — el calendario quedó "abierto"
+  // a propósito, para poder seleccionar una fecha fuera de la ventana operativa normal como evaluación
+  // de tiempo/what-if, no solo el rango real hoy+1..hoy+3.
   const ventanaP2 = useMemo(() => {
     if (selectedDates.length === 0) return { inicio: '', fin: '', fechas: [] as string[] };
     const ordenadas = [...selectedDates].sort();
@@ -324,8 +519,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     const fechas = eachDayOfInterval({ start: parseISO(inicio), end: parseISO(fin) }).map(d => format(d, 'yyyy-MM-dd'));
     return { inicio, fin, fechas };
   }, [selectedDates]);
-  const fertC1000VentanaP2 = useMemo(() => selectedDates.length === 0 ? [] : filterData(ordenesFert, '1000', true, ventanaP2.fechas), [ordenesFert, grupos, restricciones, ventanaP2, selectedDates]);
-  const fertC2000VentanaP2 = useMemo(() => selectedDates.length === 0 ? [] : filterData(ordenesFert, '2000', true, ventanaP2.fechas), [ordenesFert, grupos, restricciones, ventanaP2, selectedDates]);
   const tiemposC1000 = useMemo(() => filterData(tiemposEnsamblado, '1000', false), [tiemposEnsamblado, grupos, restricciones]);
   const tiemposC2000 = useMemo(() => filterData(tiemposEnsamblado, '2000', false), [tiemposEnsamblado, grupos, restricciones]);
 
@@ -354,28 +547,90 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   };
 
   // --- Necesidad P2 (origen para Corte Espuma / Corte y Laminado) ---
-  // Ambas necesidades salen de explotar la lista de materiales (BOM) de las Órdenes FERT
-  // generadas — las Provisionales NO aplican para este paso (dato distinto, no forma parte del
-  // segundo nivel de componentes de las órdenes FERT).
+  // Ambas necesidades salen de explotar la lista de materiales (BOM) de las Órdenes PROVISIONALES
+  // (provC1000/provC2000, ya filtradas por centro/RESPCTRLPROD/ALMACEN/ClaseOrden y por la fecha
+  // seleccionada — ver filterData) — antes se usaban las Órdenes FERT, pero el proceso ya no depende
+  // de ellas (ver conversación: FERT queda como tab de referencia/comparación, sin alimentar nada).
 
   // Idéntico al cleanCode de Corte y Laminado (mismo criterio de limpieza de código SAP).
   const cleanCode = (v: unknown) => String(v || '').replace(/^0+/, '').trim();
 
   const DESCRIPCION_ESPUMA = 'ESPUMA';
 
-  // Explota la lista de materiales de cada orden FERT única del centro: el FERT es una orden de PT
-  // (Producto Terminado) cuyo segundo nivel de BOM es, por definición, el semielaborado que la
-  // origina (ej. FERT 20006865 "ROLLO D19..." → HALB 30008368 "LAMINA CILINDRICA D19..." en NIVEL 2).
-  // Sin restricción de nivel: se toma CUALQUIER fila cuya descripción coincida con "ESPUMA" o "LAMINA
-  // CILINDRICA", sin importar en qué NIVEL del árbol aparezca — mismo criterio que ya usa Corte y
-  // Laminado para su propia explosión de láminas (ver laminaRows en TacticalPlanCorteLaminadoSection).
-  // Antes se exigía NIVEL 2 exacto (o NIVEL 3 solo si era variante CONV de un NIVEL 2 ya capturado)
-  // para evitar coincidencias de texto en niveles más profundos y no relacionados, pero esa
-  // restricción terminó descartando necesidades reales (el panel de diagnóstico mostraba FERT con
-  // pedido real cuyo semielaborado no calzaba con ese patrón exacto de nivel) — se retira.
-  const explodeNecesidadesFert = async (centro: string, fertOrders: any[], onStep: () => void): Promise<{ espumas: NecesidadMaterial[]; rollos: NecesidadMaterial[]; sinMatch: string[]; conError: string[] }> => {
+  // Fallback de nomenclatura para cuando el componente no tiene responsable conocido (mismo esquema
+  // que ES_LAMINA_CORTADA en Corte Espuma, pero con el patrón de nombres real de Venta Externa: aquí
+  // las láminas se llaman "LAMINA ESPUMA D…" o "LAMINA CILINDRICA D…", no "LAMINA D…" a secas).
+  // Verificado contra los 84 materiales reales: los 81 componentes legítimos EMPIEZAN por "LAMINA";
+  // los 3 químicos de formulación que se colaban antes (40000849/50/51, "FLEXPUR VISC…ESPUMA VISC",
+  // hijos de 30014085 "BLOQUE FORMULADO D40 VISCO", responsable 005 = Formulación) empiezan por
+  // "FLEXPUR" — el patrón los excluye solo, sin necesitar un tope de nivel inventado en el código.
+  const ES_LAMINA_VENTA_EXTERNA = (desc: string): boolean => /^LAMINA\b/.test(String(desc || '').trim().toUpperCase());
+
+  // Responsable de Control de Producción por material, armado con las órdenes que este módulo ya
+  // carga (Provisionales + FERT completas, sin filtrar). Verificado: resuelve 81 de 81 componentes
+  // HALB reales sin necesitar el inventario, y deja sin responsable exactamente a los 3 químicos.
+  const responsableDeMaterial = useMemo(() => {
+    const map = new Map<string, string>();
+    const registrar = (filas: Record<string, unknown>[], campos: string[]) => {
+      filas.forEach(o => {
+        const code = cleanCode(o.MATERIAL || o.CodMaterial);
+        if (!code || map.has(code)) return;
+        for (const c of campos) {
+          const r = String(o[c] || '').trim();
+          if (r) { map.set(code, r); return; }
+        }
+      });
+    };
+    registrar(ordenes, ['RESPCONTROLPROD', 'RESPCTRLPROD']);
+    registrar(ordenesFert, ['RESPCTRLPROD', 'RESPCONTROLPROD']);
+    return map;
+  }, [ordenes, ordenesFert]);
+
+  // Responsables que fabrican el HALB (el componente a producir), por centro — restricción
+  // `Hojas_Rutas_Materiales` del grupo de Venta Externa. Mismo patrón que ya usa Corte Espuma con
+  // RespCtrlProd_Verticales: el criterio lo mantiene el negocio en las restricciones, no una lista de
+  // nombres en el código.
+  //
+  // Los dos niveles del flujo quedan así, cada uno con su propia restricción:
+  //   RESPCTRLPROD           → quién es dueño del FERT/PT que se vende (018&045 c1000 · 018 c2000)
+  //   Hojas_Rutas_Materiales → quién fabrica el HALB del nivel inferior (038&014 c1000 · 038 c2000)
+  //
+  // Los valores coinciden exactamente con lo que muestran los datos reales: de los 81 componentes
+  // HALB de los materiales de Venta Externa, 74 son del responsable 038 (Corte Espuma) y 1 del 014
+  // (30017862, LAMINA CILINDRICA). El lookup se acota a los grupos de Venta Externa (`grupos` en este
+  // módulo ya viene filtrado a 18/19) — la misma restricción existe en el grupo 8 con otro
+  // significado y no debe mezclarse.
+  //
+  // Si la restricción no existiera, se acepta cualquier componente con responsable conocido: ya
+  // alcanza para dejar fuera los químicos de formulación, que no tienen ninguno.
+  const responsablesHalbPorCentro = useMemo(() => {
+    const porCentro: Record<string, { lista: string[]; definida: boolean }> = {};
+    (['1000', '2000'] as const).forEach(centro => {
+      const idsGrupo = grupos.filter(g => String(g.centro).trim() === centro).map(g => g.codigo_grupo);
+      const restr = restricciones.find(r =>
+        idsGrupo.includes(r.codigo_grupo) &&
+        r.estado === 'A' &&
+        String(r.nombre_restriccion || '').trim().toUpperCase() === 'HOJAS_RUTAS_MATERIALES'
+      );
+      porCentro[centro] = restr
+        ? { lista: String(restr.valor_restriccion || '').split(/[,&]/).map(v => v.trim()).filter(Boolean), definida: true }
+        : { lista: [], definida: false };
+    });
+    return porCentro;
+  }, [grupos, restricciones]);
+
+  // Explota la lista de materiales de cada orden Provisional única del centro: se toma CUALQUIER fila
+  // del árbol de BOM cuya descripción coincida con "ESPUMA" o "LAMINA CILINDRICA", sin importar en qué
+  // NIVEL aparezca — mismo criterio que ya usa Corte y Laminado para su propia explosión de láminas
+  // (ver laminaRows en TacticalPlanCorteLaminadoSection). Este es el filtro real de relevancia: un
+  // material Provisional real (con RESP/ClaseOrden correctos) puede seguir sin pertenecer a la
+  // Necesidad de Espuma/Rollo si su BOM no contiene ninguno de esos componentes — verificado con datos
+  // reales (material 20013403 "BASE RESIFLEX...": su BOM son químicos crudos — TDI, POLYOL, aminas —
+  // y partes no-espuma, sin ningún componente ESPUMA/LAMINA CILINDRICA; queda correctamente en
+  // sinMatch, no en la Necesidad, aunque la orden en sí sea legítima).
+  const explodeNecesidadesProvisionales = async (centro: string, provOrders: any[], onStep: () => void): Promise<{ espumas: NecesidadMaterial[]; rollos: NecesidadMaterial[]; sinMatch: string[]; conError: string[] }> => {
     const materialQty = new Map<string, number>();
-    fertOrders.forEach(o => {
+    provOrders.forEach(o => {
       const info = extractMaterialInfo(o);
       if (!info.code) return;
       const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
@@ -384,10 +639,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
 
     const espumasMap = new Map<string, NecesidadMaterial>();
     const rollosMap = new Map<string, NecesidadMaterial>();
-    // Diagnóstico: distingue, para cada FERT que SÍ llegó hasta acá (ya pasó centro + restricciones
-    // + ventana de fechas), entre "la consulta BOM falló" (conError) y "la consulta respondió pero
+    // Diagnóstico: distingue, para cada Provisional que SÍ llegó hasta acá (ya pasó centro +
+    // restricciones + fecha), entre "la consulta BOM falló" (conError) y "la consulta respondió pero
     // ninguna fila coincidió con ESPUMA/LAMINA CILINDRICA" (sinMatch) — antes ambos casos
-    // desaparecían en silencio, sin dejar rastro de por qué un material con pedido FERT real no
+    // desaparecían en silencio, sin dejar rastro de por qué un material con pedido real no
     // terminaba en la tabla de Necesidad.
     const sinMatch: string[] = [];
     const conError: string[] = [];
@@ -400,12 +655,29 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
         if (Array.isArray(rawData)) {
           rawData.forEach((row: any) => {
             const desc = String(row.DESCRIPCION_COMPONENTE || '').toUpperCase();
+            // Candidato: la descripción tiene que mencionar espuma o rollo en algún punto. Esto NO
+            // decide la relevancia todavía, solo acota qué filas vale la pena evaluar — igual que
+            // TIENE_COMPONENTE_ESPUMA en Corte Espuma.
             const esEspuma = desc.includes(DESCRIPCION_ESPUMA);
             const esRollo = desc.includes(DESCRIPCION_ROLLO);
             if (!esEspuma && !esRollo) return;
 
             const compCode = cleanCode(row.COMPONENTE);
             if (!compCode) return;
+
+            // Relevancia por RESPONSABLE — mismo esquema que usa el PFF de Corte Espuma, sin límite
+            // de nivel: se recorre TODO el árbol y se decide por quién fabrica el componente, no por
+            // dónde aparece. La restricción `Hojas_Rutas_Materiales` del grupo (018/19) es el
+            // criterio autoritativo; el patrón de nombres es solo el respaldo cuando no hay
+            // responsable que consultar (componente sin ninguna orden abierta ahora mismo — caso
+            // real: 30005709/30005761, láminas legítimas sin demanda activa en este momento).
+            const respComp = responsableDeMaterial.get(compCode);
+            const reglaHalb = responsablesHalbPorCentro[centro];
+            const esDeVentaExterna = respComp
+              ? (!reglaHalb?.definida || reglaHalb.lista.includes(respComp))
+              : ES_LAMINA_VENTA_EXTERNA(desc);
+            if (!esDeVentaExterna) return;
+
             encontroMatch = true;
             const cantAcum = Number(row.CANTIDAD_ACUMULADA || row.CANTIDAD_UNITARIA || 0);
             const target = esRollo ? rollosMap : espumasMap;
@@ -439,14 +711,14 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     setBomDiagnostico({ sinMatch: [], conError: [] });
     try {
       const uniqueMaterialCount = (orders: any[]) => new Set(orders.map(o => extractMaterialInfo(o).code).filter(Boolean)).size;
-      const total = uniqueMaterialCount(fertC1000VentanaP2) + uniqueMaterialCount(fertC2000VentanaP2);
+      const total = uniqueMaterialCount(provC1000) + uniqueMaterialCount(provC2000);
       let current = 0;
       setBomProgress({ current: 0, total });
       const onStep = () => setBomProgress({ current: ++current, total });
 
       const [n1000, n2000] = [
-        await explodeNecesidadesFert('1000', fertC1000VentanaP2, onStep),
-        await explodeNecesidadesFert('2000', fertC2000VentanaP2, onStep),
+        await explodeNecesidadesProvisionales('1000', provC1000, onStep),
+        await explodeNecesidadesProvisionales('2000', provC2000, onStep),
       ];
       setNecesidadEspumas1000(n1000.espumas);
       setNecesidadEspumas2000(n2000.espumas);
@@ -458,8 +730,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       setBomDiagnostico({ sinMatch, conError });
 
       const incidencias = [
-        sinMatch.length > 0 ? `${sinMatch.length} FERT sin Espuma/Rollo detectado en su BOM` : null,
-        conError.length > 0 ? `${conError.length} FERT con error al consultar el BOM` : null,
+        sinMatch.length > 0 ? `${sinMatch.length} Provisional(es) sin Espuma/Rollo detectado en su BOM` : null,
+        conError.length > 0 ? `${conError.length} Provisional(es) con error al consultar el BOM` : null,
       ].filter(Boolean).join(' · ');
       const nivel = sinMatch.length + conError.length > 0 ? 'warning' : 'success';
       addNotification(nivel, `Necesidad calculada (ventana ${ventanaP2.inicio} → ${ventanaP2.fin}) — Centro 1000: ${n1000.espumas.length} espumas / ${n1000.rollos.length} rollos. Centro 2000: ${n2000.espumas.length} espumas / ${n2000.rollos.length} rollos.${incidencias ? ` (${incidencias})` : ''}`);
@@ -468,7 +740,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     } finally {
       setIsExplodingBom(false);
     }
-  }, [fertC1000VentanaP2, fertC2000VentanaP2, ventanaP2, selectedDates, addNotification]);
+  }, [provC1000, provC2000, ventanaP2, selectedDates, addNotification]);
 
   // Consulta inversa: antes de (re)generar un P2, revisa si ya existe uno activo para ese centro+tipo
   // y, de existir, si algún plan P3 (u otro consumidor) ya ejecutó contra él — un DetalleTactico
@@ -477,16 +749,26 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   // si no fue consumido, se desactiva (estado 'I') y se libera el paso para crear el nuevo.
   const verificarPlanP2Activo = async (centro: '1000' | '2000', tipo: 'ESPUMAS' | 'ROLLOS') => {
     const grupoCentro = grupos.find(g => String(g.centro).trim() === centro);
-    if (!grupoCentro) return { grupoCentro: null as Grupo | null, planActivo: null as PlanGrupo | null, planesP3: [] as PlanGrupo[], detallesPlanActivo: [] as DetalleTactico[] };
+    if (!grupoCentro) return { grupoCentro: null as Grupo | null, planActivo: null as PlanGrupo | null, planesActivos: [] as PlanGrupo[], planesP3: [] as PlanGrupo[], detallesPlanActivo: [] as DetalleTactico[] };
 
     const valorRegex = new RegExp(`plan\\s*t[aá]ctico.*centro.*${centro}.*p2.*${tipo}`, 'i');
     const planesRes = await planGrupoService.getAll();
     const todosLosPlanes = planesRes.data || [];
-    const planActivo = todosLosPlanes.find(pg =>
-      pg.estado === 'A' && pg.codigo_grupo === grupoCentro.codigo_grupo && valorRegex.test(String(pg.valor || ''))
-    ) || null;
 
-    if (!planActivo) return { grupoCentro, planActivo: null, planesP3: [], detallesPlanActivo: [] as DetalleTactico[] };
+    // TODOS los P2 activos de este centro+tipo, no solo el primero que aparezca. Antes esto era un
+    // .find(): si por cualquier motivo quedaban dos o más activos (corridas previas, un plan mal
+    // fechado que no se apagó), solo se desactivaba uno y el resto quedaba vivo para siempre,
+    // conviviendo con el plan nuevo. Se ordenan por fecha y código descendente para que `planActivo`
+    // sea el MÁS RECIENTE — es el único candidato razonable a reconciliar.
+    const planesActivos = todosLosPlanes
+      .filter(pg => pg.estado === 'A' && pg.codigo_grupo === grupoCentro.codigo_grupo && valorRegex.test(String(pg.valor || '')))
+      .sort((a, b) => {
+        const porFecha = soloFecha(b.fecha_inicio_plan).localeCompare(soloFecha(a.fecha_inicio_plan));
+        return porFecha !== 0 ? porFecha : b.codigo_plan_grupo - a.codigo_plan_grupo;
+      });
+    const planActivo = planesActivos[0] || null;
+
+    if (!planActivo) return { grupoCentro, planActivo: null, planesActivos, planesP3: [], detallesPlanActivo: [] as DetalleTactico[] };
 
     const detallesRes = await detalleTacticoService.getAll();
     const todosLosDetalles = detallesRes.data || [];
@@ -502,7 +784,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
 
     const detallesPlanActivo = todosLosDetalles.filter(d => d.estado === 'A' && d.codigo_plan_grupo === planActivo.codigo_plan_grupo);
 
-    return { grupoCentro, planActivo, planesP3, detallesPlanActivo };
+    return { grupoCentro, planActivo, planesActivos, planesP3, detallesPlanActivo };
   };
 
   type ResultadoGeneracionP2 = {
@@ -532,40 +814,79 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
 
     setSavingPlanP2(prev => ({ ...prev, [key]: true }));
     try {
-      const { grupoCentro, planActivo, planesP3, detallesPlanActivo } = await verificarPlanP2Activo(centro, tipo);
+      const { grupoCentro, planActivo, planesActivos, planesP3, detallesPlanActivo } = await verificarPlanP2Activo(centro, tipo);
       if (!grupoCentro) {
         return { centro, tipo, status: 'error', mensaje: `No se encontró el grupo de Venta Externa para el Centro ${centro}.` };
-      }
-      if (planActivo && planesP3.length > 0) {
-        return {
-          centro, tipo, status: 'bloqueado',
-          mensaje: `${TIPO_TAG[tipo]} Centro ${centro}: el Plan #${planActivo.codigo_plan_grupo} ya fue ejecutado por el/los Plan(es) P3 #${planesP3.map(p => p.codigo_plan_grupo).join(', #')}. Coordina con esa área antes de reemplazarlo.`,
-        };
       }
 
       const user = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('user') || '{}') : {};
       const usuario = user?.name || 'admin';
 
-      // La generación es diaria: si ya hay un Plan P2 activo (y ningún P3 lo consumió todavía), NO
-      // se crea uno nuevo ni se toca el plan_grupo en sí (planGrupoService.save() sobre un plan
-      // existente fue lo que dejó huérfanas las filas de detalle_tactico la vez anterior — el
-      // backend no lo actualiza in-place). En vez de eso, se reconcilia por material contra el mismo
-      // codigo_plan_grupo: actualiza cantidad si el material ya tenía línea, agrega línea nueva si es
-      // un material que apareció recién.
+      // El P2 (necesidad de HALB) se graba SIEMPRE a hoy + 1 día hábil, desacoplado del filtro "Fecha"
+      // (selectedDates) — ese filtro solo decide qué órdenes Provisionales entran a la explosión de
+      // BOM (ver provC1000/provC2000), no la fecha que se graba en el plan.
+      const fechaPlanP2 = format(siguienteDiaHabil(new Date()), 'yyyy-MM-dd');
+
+      // La generación es diaria, pero acotada al MISMO día hábil (antes se reconciliaba el mismo
+      // Plan Grupo indefinidamente, sin importar cuántos días hubieran pasado — un plan de hace 3
+      // días terminaba representando la necesidad de hoy, con su propia fecha_inicio_plan sin
+      // actualizar). Si el plan activo ya es de hoy (mismo fechaPlanP2), se reconcilia por material
+      // sobre el mismo codigo_plan_grupo (actualiza cantidad si el material ya tenía línea, agrega
+      // línea nueva si es un material que apareció recién) — evita duplicar planes si se corre varias
+      // veces el mismo día. Si el plan activo es de un día ANTERIOR, se crea un plan NUEVO con la
+      // fecha de hoy y el anterior se desactiva (estado -> 'I') con el mismo criterio ya probado en
+      // Corte y Laminado (ver desactivarPlanGrupo ahí): solo se apaga el PlanGrupo, sus
+      // DetalleTactico NO cambian de estado — evita el bug de filas huérfanas que causó
+      // planGrupoService.save() sobre un plan existente la vez anterior.
+      const planActivoEsDeHoy = planActivo && soloFecha(planActivo.fecha_inicio_plan) === fechaPlanP2;
+
+      // El bloqueo solo aplica si se intenta REGENERAR EL MISMO CICLO que un P3 ya respondió — cambiar
+      // en silencio las cantidades de un P2 que Corte Espuma/Laminado ya usó para fechar SU respuesta
+      // sí rompería esa trazabilidad. Un P2 de un ciclo distinto (de un día anterior, como #122/#123
+      // fechados hoy mientras se genera el ciclo de mañana) no bloquea aunque tenga P3 encima — su P3
+      // respondió a ESE ciclo, ya cerrado desde la perspectiva del ciclo que se está generando ahora;
+      // no hace falta "coordinar" nada, se desactiva y se sigue (ver rama de abajo). Antes se
+      // comparaba la fecha del P3 contra "hoy" (planesP3Abiertos), pero eso bloqueaba igual un P3
+      // fechado exactamente hoy — que es precisamente el caso normal al generar el ciclo de mañana.
+      if (planActivoEsDeHoy && planActivo && planesP3.length > 0) {
+        return {
+          centro, tipo, status: 'bloqueado',
+          mensaje: `${TIPO_TAG[tipo]} Centro ${centro}: el Plan #${planActivo.codigo_plan_grupo} (mismo ciclo que se está generando) ya fue ejecutado por el/los Plan(es) P3 #${planesP3.map(p => p.codigo_plan_grupo).join(', #')}. Coordina con esa área antes de reemplazarlo.`,
+        };
+      }
+
       let codigoPlanGrupo: number;
       let esActualizacion = false;
-      if (planActivo) {
+      const planesDesactivados: number[] = [];
+
+      // Apaga TODOS los P2 activos de este centro+tipo salvo el que se indique conservar. Un plan P2
+      // vigente por centro+tipo y nada más: si se crea uno nuevo (o se ajusta uno existente), los
+      // anteriores dejan de representar la necesidad y deben quedar en 'I'. Solo se apaga el
+      // PlanGrupo — sus DetalleTactico NO cambian de estado, para no dejar filas huérfanas (mismo
+      // criterio ya probado en Corte y Laminado, ver desactivarPlanGrupo ahí).
+      const desactivarOtrosPlanes = async (conservar: number | null) => {
+        for (const pg of planesActivos) {
+          if (pg.codigo_plan_grupo === conservar) continue;
+          await planGrupoService.save({ ...pg, estado: 'I' } as unknown as PlanGrupo);
+          planesDesactivados.push(pg.codigo_plan_grupo);
+        }
+      };
+
+      if (planActivoEsDeHoy && planActivo) {
         codigoPlanGrupo = planActivo.codigo_plan_grupo;
         esActualizacion = true;
+        // Se reconcilia el del día, pero cualquier otro que siguiera activo igual se apaga.
+        await desactivarOtrosPlanes(codigoPlanGrupo);
       } else {
+        await desactivarOtrosPlanes(null);
         const planPayload = {
           codigo_plan_grupo: 0,
           codigo_grupo: grupoCentro.codigo_grupo,
           codigo_familia_grupo: null,
           codigo_plan: null,
           valor: `Plan Táctico - Centro ${centro} - P2 - ${TIPO_TAG[tipo]}`,
-          fecha_inicio_plan: ventanaP2.inicio,
-          fecha_fin_plan: ventanaP2.fin,
+          fecha_inicio_plan: fechaPlanP2,
+          fecha_fin_plan: fechaPlanP2,
           estado: 'A',
           usuario_creacion: usuario,
         };
@@ -573,7 +894,11 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
         codigoPlanGrupo = planResponse.data.codigo_plan_grupo;
       }
 
-      const existentePorMaterial = new Map(detallesPlanActivo.map(d => [String(Number(d.codigo_material)), d]));
+      // Solo hay líneas "ya existentes" para reconciliar cuando seguimos sobre el plan de hoy — un
+      // plan recién creado (o recién reemplazado) empieza sin detalle previo.
+      const existentePorMaterial = esActualizacion
+        ? new Map(detallesPlanActivo.map(d => [String(Number(d.codigo_material)), d]))
+        : new Map<string, DetalleTactico>();
 
       let actualizados = 0;
       let agregados = 0;
@@ -606,7 +931,17 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       }
 
       setPlanP2Generado(prev => ({ ...prev, [key]: codigoPlanGrupo }));
-      const accion = esActualizacion ? `actualizado (${agregados} agregados, ${actualizados} refrescados)` : `creado (${agregados} materiales)`;
+      const sufijoP3Cerrados = planesDesactivados.length > 0 && planesP3.length > 0
+        ? ` (ya cerrado por Plan(es) P3 #${planesP3.map(p => p.codigo_plan_grupo).join(', #')})`
+        : '';
+      const sufijoDesactivado = planesDesactivados.length > 0
+        ? ` Plan(es) anterior(es) #${planesDesactivados.join(', #')}${sufijoP3Cerrados} desactivado(s).`
+        : '';
+      // El sufijo de desactivación va en ambos caminos: reconciliar el plan del día también puede
+      // haber apagado otros planes que seguían activos.
+      const accion = esActualizacion
+        ? `actualizado (${agregados} agregados, ${actualizados} refrescados).${sufijoDesactivado}`
+        : `creado (${agregados} materiales) para ${fechaPlanP2}.${sufijoDesactivado}`;
       if (fallidos === 0) {
         return { centro, tipo, status: 'ok', codigoPlan: codigoPlanGrupo, mensaje: `${TIPO_TAG[tipo]} Centro ${centro}: Plan #${codigoPlanGrupo} ${accion}.` };
       }
@@ -616,7 +951,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     } finally {
       setSavingPlanP2(prev => ({ ...prev, [key]: false }));
     }
-  }, [grupos, necesidadEspumas1000, necesidadEspumas2000, necesidadRollos1000, necesidadRollos2000, ventanaP2]);
+  }, [grupos, necesidadEspumas1000, necesidadEspumas2000, necesidadRollos1000, necesidadRollos2000, ventanaP2, siguienteDiaHabil]);
 
   // Botón individual por bloque: genera un solo subgrupo y notifica su resultado puntual.
   const handleGenerarPlanP2 = useCallback(async (centro: '1000' | '2000', tipo: 'ESPUMAS' | 'ROLLOS') => {
@@ -779,8 +1114,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     );
   };
 
-  const summaryData1000 = useMemo(() => calculateSummary(fertC1000, '1000'), [fertC1000]);
-  const summaryData2000 = useMemo(() => calculateSummary(fertC2000, '2000'), [fertC2000]);
+  const summaryData1000 = useMemo(() => calculateSummary(fertC1000HastaHoy, '1000'), [fertC1000HastaHoy]);
+  const summaryData2000 = useMemo(() => calculateSummary(fertC2000HastaHoy, '2000'), [fertC2000HastaHoy]);
 
   // Agrupación por Categoría Técnica (la categoría ya embebe la densidad, p.ej. D40ESP)
   const groupByCategoria = (data: typeof summaryData1000) => {
@@ -810,6 +1145,89 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       horasEmpaque: all.reduce((sum, r) => sum + r.totalTiempoEmpaque, 0)
     };
   }, [summaryData1000, summaryData2000]);
+
+  // Mapa Cod.Buscar → Fecha de Órdenes FERT (mismo cruce que Pendientes, ver buildCodBuscar): usa
+  // TODAS las FERT cargadas (sin el filtro de centro/responsable/fecha que aplican fertC1000/
+  // fertC2000), porque Pendientes no está acotado a esos mismos criterios.
+  // Verificado contra la respuesta real de OrdenesFertPaginadas: NO existe un campo propio de
+  // "fecha entrega" ahí — se usa "FECHA" (fecha planificada/ejecución de la orden FERT), que es la
+  // misma que ya se muestra como columna "Fecha" en la tabla de ese tab.
+  const fertFechaEntregaPorCodBuscar = useMemo(() => {
+    const map = new Map<string, string>();
+    ordenesFert.forEach(o => {
+      const cod = buildCodBuscar(o.POSICION, o.PEDIDO, o.MATERIAL);
+      const fecha = String(o.FECHA || '').split('T')[0];
+      if (cod && fecha) map.set(cod, fecha);
+    });
+    return map;
+  }, [ordenesFert]);
+
+  // Tab "Pendientes": fijo a SECTOR "09 ESPUMAS" (único sector que consume este módulo), filtra por
+  // texto (Pedido o Material) y por rango de Fecha de Entrega, luego agrupa por Material (Accordion)
+  // para no listar +20K filas planas.
+  const pendientesFiltrados = useMemo(() => {
+    const search = pendientesSearch.trim().toLowerCase();
+    const desde = pendientesFechaDesde ? parseISO(pendientesFechaDesde) : null;
+    const hasta = pendientesFechaHasta ? parseISO(pendientesFechaHasta) : null;
+    return pendientesTotales.filter((p) => {
+      const sector = String(p.SECTOR || '').trim().toUpperCase();
+      if (sector !== SECTOR_ESPUMAS) return false;
+      const pedido = String(p.PEDIDO || '').trim();
+      const material = String(p.MATERIAL || '').trim();
+      const descripcion = String(p.DESCRIPCION_MATERIAL || '').trim();
+      if (search && !pedido.toLowerCase().includes(search) && !material.toLowerCase().includes(search) && !descripcion.toLowerCase().includes(search)) {
+        return false;
+      }
+      // fechaLocalEcuador: FECHA_ENTREGA es un timestamp UTC real (confirmado, ej.
+      // "2026-01-07T05:00:00.000Z") — mismo bug de zona horaria que en Corte Espuma.
+      const fechaStr = fechaLocalEcuador(p.FECHA_ENTREGA);
+      if ((desde || hasta) && !fechaStr) return false;
+      if (desde || hasta) {
+        const fecha = parseISO(fechaStr);
+        if (desde && fecha < desde) return false;
+        if (hasta && fecha > hasta) return false;
+      }
+      return true;
+    });
+  }, [pendientesTotales, pendientesSearch, pendientesFechaDesde, pendientesFechaHasta]);
+
+  // Separado por CENTRO (1000/2000) — antes un mismo material mezclaba pedidos de ambas plantas bajo
+  // el mismo grupo, sin distinguir de dónde sale cada uno.
+  const pendientesAgrupadosPorCentro = useMemo(() => {
+    const maps: Record<'1000' | '2000', Map<string, { material: string; descripcion: string; pedidos: PendienteRow[] }>> = {
+      '1000': new Map(),
+      '2000': new Map(),
+    };
+    pendientesFiltrados.forEach((p) => {
+      const centro = String(p.CENTRO || '').trim();
+      if (centro !== '1000' && centro !== '2000') return;
+      const material = String(p.MATERIAL || '').trim();
+      const codBuscar = buildCodBuscar(p.POSICION, p.PEDIDO, p.MATERIAL);
+      const map = maps[centro];
+      if (!map.has(material)) {
+        map.set(material, { material, descripcion: String(p.DESCRIPCION_MATERIAL || '').trim(), pedidos: [] });
+      }
+      map.get(material)!.pedidos.push({
+        pedido: String(p.PEDIDO || '').trim(),
+        posicion: String(p.POSICION || '').trim(),
+        codBuscar,
+        cantPedida: numOrEmpty(p.CANT_PEDIDA),
+        centro,
+        // El endpoint no trae "FECHA_PEDIDO": la fecha del pedido viene en "FECHA". fechaLocalEcuador
+        // por el mismo motivo que arriba: son timestamps UTC reales, no fechas planas.
+        fechaPedido: fechaLocalEcuador(p.FECHA),
+        fechaEntrega: fechaLocalEcuador(p.FECHA_ENTREGA),
+        ciudadDestino: String(p.CIUDAD_DESTINO || '').trim(),
+        // El endpoint no trae "VOL_PEND": el volumen pendiente de entrega viene en "VOLUMENPENDIENTEENTREGA".
+        volPend: numOrEmpty(p.VOLUMENPENDIENTEENTREGA),
+        fechaEntregaFert: fertFechaEntregaPorCodBuscar.get(codBuscar) || '',
+      });
+    });
+    return {
+      '1000': Array.from(maps['1000'].values()).sort((a, b) => b.pedidos.length - a.pedidos.length),
+      '2000': Array.from(maps['2000'].values()).sort((a, b) => b.pedidos.length - a.pedidos.length),
+    };
+  }, [pendientesFiltrados, fertFechaEntregaPorCodBuscar]);
 
   // Popover del filtro "Fecha" — se usa tanto en Resumen (filtro de vista) como en Plan P2 (ahora
   // también controla la ventana de generación del P2, ver ventanaP2), para no obligar al usuario a
@@ -870,16 +1288,37 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
             <p className="text-xs text-gray-500 font-medium">Control de Órdenes FERT y Programación Técnica</p>
           </div>
         </div>
+        <Button onClick={handleSincronizar} disabled={isLoading} variant={datosCargados ? 'outline' : 'default'} className={cn(
+          "rounded-2xl h-10 px-6 gap-2 font-bold text-xs uppercase",
+          datosCargados ? "border-green-200 text-green-700 hover:bg-green-50" : "bg-green-600 text-white hover:bg-green-700 shadow-lg"
+        )}>
+          {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Sincronizar
+        </Button>
       </div>
 
+      {/* Estado vacío inicial: el módulo no consulta SAP al abrirse. Mismo criterio y misma
+          redacción compacta que Corte Espuma (ver [[carga_manual_modulos_tacticos]]). */}
+      {!datosCargados && !isLoading && (
+        <div
+          className="flex items-center gap-2.5 rounded-xl border border-dashed border-green-200 bg-green-50/40 px-4 py-2.5 text-left"
+          title="Este módulo no consulta SAP al abrirse. Sincronizar trae Grupos, Restricciones, Provisionales, FERT y Tiempos de Ensamblado."
+        >
+          <RefreshCw className="w-4 h-4 text-green-600 shrink-0" />
+          <p className="text-[11px] font-bold text-slate-600">
+            Sin datos cargados — pulsa <span className="font-black text-green-700">Sincronizar</span> para traerlos.
+          </p>
+        </div>
+      )}
+
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-5 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
+        <TabsList className="grid grid-cols-6 h-10 bg-gray-50/80 p-1 rounded-xl border border-gray-100 mb-6">
           {[
-            { v: 'resumen', l: 'Resumen', i: LayoutDashboard },
+            { v: 'resumen', l: 'Resumen Necesidades', i: LayoutDashboard },
             { v: 'ordenes', l: 'Provisionales', i: Package },
             { v: 'ordenesFert', l: 'FERT', i: ShoppingCart },
             { v: 'planP2', l: 'Plan P2', i: Layers },
-            { v: 'dataAprobada', l: 'Data Aprobada', i: ClipboardCheck }
+            { v: 'dataAprobada', l: 'Data Aprobada', i: ClipboardCheck },
+            { v: 'pendientes', l: 'Pendientes', i: Clock }
           ].map(tab => (
             <TabsTrigger key={tab.v} value={tab.v} className="gap-2 text-[9px] font-bold uppercase transition-all data-[state=active]:bg-white data-[state=active]:shadow-sm">
               <tab.i className="w-3.5 h-3.5" /> {tab.l}
@@ -888,33 +1327,20 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
         </TabsList>
 
         <TabsContent value="resumen" className="space-y-6 animate-in fade-in duration-300">
-          {/* Header con Filtro de Fechas (multi-selección) */}
+          {/* Se quitó el selector "Fecha" de este header: el contenido (summaryData1000/2000) es
+              carga de FERT ejecutada hasta hoy — ya NO depende de selectedDates desde que se corrigió
+              ese criterio (ver fertC1000HastaHoy/fertC2000HastaHoy). El filtro seguía mostrándose y
+              cambiando el título ("3 fechas seleccionadas"...) sin que eligiera nada realmente, lo
+              que confundía sobre qué se estaba mirando. El filtro "Fecha" real de Provisionales sigue
+              en su propio tab, intacto. */}
           <div className="flex justify-between items-center bg-gray-50/50 p-4 rounded-2xl border border-gray-100">
             <div className="flex items-center gap-4 text-left">
               <div className="p-2 bg-primary/10 rounded-xl"><CalendarIcon className="w-5 h-5 text-primary" /></div>
               <div>
                 <p className="text-[10px] font-bold uppercase text-gray-400 tracking-wider">Carga Operativa</p>
-                <h3 className="text-sm font-black text-gray-700 uppercase">
-                  {selectedDates.length === 0
-                    ? 'PLAN MAESTRO CONSOLIDADO'
-                    : selectedDates.length === 1
-                      ? format(parseISO(selectedDates[0]), 'EEEE, d MMMM yyyy', { locale: es })
-                      : `${selectedDates.length} FECHAS SELECCIONADAS`}
-                </h3>
-                {selectedDates.length > 1 && (
-                  <div className="flex flex-wrap gap-1 mt-1.5">
-                    {[...selectedDates].sort().map(d => (
-                      <Badge key={d} variant="outline" className="text-[9px] font-mono gap-1 pr-1 border-primary/20 text-primary bg-primary/5">
-                        {format(parseISO(d), 'd MMM', { locale: es })}
-                        <button onClick={() => toggleSelectedDate(d)} className="hover:bg-primary/10 rounded-full p-0.5"><X className="w-2.5 h-2.5" /></button>
-                      </Badge>
-                    ))}
-                  </div>
-                )}
+                <h3 className="text-sm font-black text-gray-700 uppercase">Ejecutado hasta hoy (FERT)</h3>
               </div>
             </div>
-
-            {fechaPopover}
           </div>
 
           {/* Estadísticas de Carga - Dashboard Superior */}
@@ -980,7 +1406,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                                   <p className="text-xs font-mono font-black text-gray-900">{group.totalCantidad.toLocaleString()}</p>
                                 </div>
                                 <div>
-                                  <p className="text-[8px] font-black uppercase text-amber-500 tracking-wider">T. Empaque (H)</p>
+                                  <p className="text-[8px] font-black uppercase text-amber-500 tracking-wider">Tiempo Planchas (H)</p>
                                   <p className="text-xs font-mono font-black text-amber-600">{group.totalTiempoEmpaque.toFixed(2)}</p>
                                 </div>
                               </div>
@@ -995,7 +1421,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                                   <th className="px-3 py-2 border-r border-gray-100 bg-blue-50/50 text-blue-800">Espesor</th>
                                   <th className="px-3 py-2 border-r border-gray-100">Órdenes</th>
                                   <th className="px-3 py-2 border-r border-gray-100 font-black">Unidades</th>
-                                  <th className="px-4 py-2 text-center text-amber-700 bg-amber-50/30">Tiempo PL Empaque (H)</th>
+                                  <th className="px-4 py-2 text-center text-amber-700 bg-amber-50/30">Tiempo Planchas (H)</th>
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-gray-50 text-[11px]">
@@ -1033,6 +1459,36 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="ordenes" className="space-y-8 animate-in fade-in duration-300">
+          {/* El selector "Fecha" ahora filtra específicamente este tab (ver filterData/provC1000) —
+              antes solo era visible en "Resumen Necesidades", así que aquí no había forma de ver ni
+              cambiar qué fechas estaban acotando la tabla. Mismo patrón que el header de Resumen. */}
+          <div className="flex justify-between items-center bg-gray-50/50 p-4 rounded-2xl border border-gray-100">
+            <div className="flex items-center gap-4 text-left flex-1 min-w-0">
+              <div className="p-2 bg-primary/10 rounded-xl"><CalendarIcon className="w-5 h-5 text-primary" /></div>
+              <div className="min-w-0">
+                <p className="text-[10px] font-bold uppercase text-gray-400 tracking-wider">Filtro de Provisionales</p>
+                <h3 className="text-sm font-black text-gray-700 uppercase">
+                  {selectedDates.length === 0
+                    ? 'TODAS LAS FECHAS'
+                    : selectedDates.length === 1
+                      ? format(parseISO(selectedDates[0]), 'EEEE, d MMMM yyyy', { locale: es })
+                      : `${selectedDates.length} FECHAS SELECCIONADAS`}
+                </h3>
+                {selectedDates.length > 1 && (
+                  <div className="flex flex-wrap gap-1 mt-1.5">
+                    {[...selectedDates].sort().map(d => (
+                      <Badge key={d} variant="outline" className="text-[9px] font-mono gap-1 pr-1 border-primary/20 text-primary bg-primary/5">
+                        {format(parseISO(d), 'd MMM', { locale: es })}
+                        <button onClick={() => toggleSelectedDate(d)} className="hover:bg-primary/10 rounded-full p-0.5"><X className="w-2.5 h-2.5" /></button>
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            {fechaPopover}
+          </div>
+
           {[
             { t: 'Quito 1000 - Órdenes Provisionales', d: provC1000, b: 'bg-green-600', c: 'text-green-700', lookup: tiempoLookup1000 },
             { t: 'Guayaquil 2000 - Órdenes Provisionales', d: provC2000, b: 'bg-indigo-600', c: 'text-indigo-700', lookup: tiempoLookup2000 }
@@ -1047,6 +1503,13 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                     <thead className="bg-gray-50 sticky top-0 z-10 text-[9px] font-bold uppercase text-gray-400 border-b border-gray-100">
                       <tr>
                         <th className="px-3 py-4 border-r border-gray-100">Orden</th>
+                        {/* Pedido/Posición/Cod.Buscar — mismas columnas que ya tiene la tabla de Órdenes FERT
+                            (ver TabsContent "ordenesFert" más abajo), agregadas acá para poder cruzar
+                            Provisionales contra "Pendientes" por el mismo codBuscar (POSICION+PEDIDO+MATERIAL).
+                            Si la orden provisional no trae POSICION/PEDIDO en la API, se verá "—" en toda la
+                            columna — eso confirma que el dato no existe ahí y hay que buscarlo en otro lado. */}
+                        <th className="px-3 py-4 border-r border-gray-100">Pedido</th>
+                        <th className="px-3 py-4 border-r border-gray-100">Posición</th>
                         <th className="px-3 py-4 border-r border-gray-100">Fecha</th>
                         <th className="px-3 py-4 border-r border-gray-100">Material</th>
                         <th className="px-3 py-4 border-r border-gray-100 text-left">Descripción</th>
@@ -1059,7 +1522,15 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         <th className="px-3 py-4 border-r border-gray-100 text-teal-700 bg-teal-50/20 font-black">T. Estándar (Min)</th>
                         <th className="px-3 py-4 border-r border-gray-100 text-amber-700 bg-amber-50/20 font-black">T. Empaque (H)</th>
                         <th className="px-3 py-4 border-r border-gray-100 font-bold">Máquina</th>
-                        <th className="px-3 py-4">ALM.</th>
+                        <th className="px-3 py-4 border-r border-gray-100">ALM.</th>
+                        {/* Visible para poder auditar en la propia tabla que el filtro de restricción
+                            (filterData, RESPCTRLPROD 018/045) realmente está acotando — antes no se podía
+                            verificar esto sin cruzar contra un export aparte de SAP. */}
+                        <th className="px-3 py-4 border-r border-gray-100 bg-slate-50 text-slate-700 font-black">Resp.</th>
+                        {/* ClaseOrden traducida a MTO (KD, con cliente) / MTS (LA, sin cliente) — confirmado
+                            con datos reales. Solo informativo, no filtra filas de la lista. */}
+                        <th className="px-3 py-4 border-r border-gray-100 bg-purple-50/20 text-purple-900 font-black">Tipo (MTO/MTS)</th>
+                        <th className="px-3 py-4 font-mono text-gray-500">Cod.Buscar</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50 text-[10px]">
@@ -1069,11 +1540,35 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         const empaqueHours = (qty * PACKING_TIME_PER_UNIT_SECONDS) / 3600;
                         const maquina = o.MAQUINA || o.Maquina || o.RECURSO || '—';
                         const tiempoEstandar = matchTiempoEstandar(info.code, maquina, center.lookup);
+                        // Confirmado con datos reales (export de OrdenesProvisionalesPaginados): el campo NO
+                        // se llama PEDIDO/POSICION como en FERT — se llama PEDIDOVENTAS/POSICIONPEDIDO. Por
+                        // eso salían vacíos antes. buildCodBuscar trata ausentes como 0 (parseQty), no como
+                        // vacío — sin esta guarda, una orden sin pedido mostraba igual un Cod.Buscar "armado"
+                        // con ceros, que parece un código real pero no lo es.
+                        // "000000" es el placeholder de las órdenes LA (sin cliente) — es un string no
+                        // vacío (truthy en JS), así que hay que descartarlo explícitamente además de
+                        // vacío/undefined; si no, seguía calculando un Cod.Buscar falso con ceros.
+                        const esValorAusente = (v: unknown) => !v || /^0+$/.test(String(v).trim());
+                        const tienePedidoOPosicion = !esValorAusente(o.POSICIONPEDIDO) || !esValorAusente(o.PEDIDOVENTAS);
+                        const codBuscar = tienePedidoOPosicion ? buildCodBuscar(o.POSICIONPEDIDO, o.PEDIDOVENTAS, o.MATERIAL) : '—';
+                        // El filtro "Fecha" ahora compara contra FECHAFIN cuando existe (ver filterData) —
+                        // se muestra esa como fecha principal, con FECHAINICIO como referencia secundaria,
+                        // para que la tabla coincida con lo que realmente se está filtrando.
+                        const fechaInicioDisplay = o.FECHA || o.FECHAINICIO || '—';
+                        const fechaFinDisplay = o.FECHAFIN;
+                        const claseOrden = clasificarClaseOrden(o.ClaseOrden);
 
                         return (
                           <tr key={i} className="hover:bg-gray-50/50 transition-colors">
                             <td className="px-3 py-2 font-medium text-gray-900 border-r border-gray-100">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
-                            <td className="px-3 py-2 border-r border-gray-100 font-mono text-[9px] text-gray-400">{o.FECHAINICIO || o.FECHA || '—'}</td>
+                            <td className="px-3 py-2 font-mono text-gray-700 border-r border-gray-100">{o.PEDIDOVENTAS || '—'}</td>
+                            <td className="px-3 py-2 font-mono text-gray-700 border-r border-gray-100">{o.POSICIONPEDIDO || '—'}</td>
+                            <td className="px-3 py-2 border-r border-gray-100 font-mono text-[9px]">
+                              {fechaFinDisplay
+                                ? <span className="text-gray-700 font-bold">{fechaFinDisplay}</span>
+                                : <span className="text-gray-400">{fechaInicioDisplay}</span>}
+                              {fechaFinDisplay && <span className="block text-gray-300">inicio {fechaInicioDisplay}</span>}
+                            </td>
                             <td className="px-3 py-2 font-mono font-bold text-primary border-r border-gray-100 tracking-tighter">{info.code}</td>
                             <td className="px-3 py-2 text-left border-r border-gray-50 truncate max-w-[180px] text-gray-500 uppercase">{info.desc}</td>
                             <td className="px-3 py-2 text-blue-800 border-r border-gray-100 bg-blue-50/5 uppercase font-bold">{String(o.CATEGORIA || '—')}</td>
@@ -1085,7 +1580,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                             <td className="px-3 py-2 font-mono font-bold text-teal-600 border-r border-gray-100 bg-teal-50/10">{tiempoEstandar !== null ? tiempoEstandar.toFixed(4) : '—'}</td>
                             <td className="px-3 py-2 font-mono font-bold text-amber-600 border-r border-gray-100 bg-amber-50/10">{empaqueHours.toFixed(2)}</td>
                             <td className="px-3 py-2 font-bold text-gray-700 border-r border-gray-100 uppercase">{maquina}</td>
-                            <td className="px-3 py-2 font-medium text-gray-400">{o.Almacen || o.ALMACEN || '—'}</td>
+                            <td className="px-3 py-2 font-medium text-gray-400 border-r border-gray-100">{o.Almacen || o.ALMACEN || '—'}</td>
+                            <td className="px-3 py-2 font-mono font-bold text-slate-700 bg-slate-50/50 border-r border-gray-100">{o.RESPCTRLPROD || o.RESPCONTROLPROD || o.RespCtrlProd || o.RespControlProd || '—'}</td>
+                            <td className="px-3 py-2 font-mono font-bold text-purple-700 bg-purple-50/10 border-r border-gray-100">{claseOrden}</td>
+                            <td className="px-3 py-2 font-mono text-gray-500">{codBuscar}</td>
                           </tr>
                         );
                       })}
@@ -1098,9 +1596,12 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="ordenesFert" className="space-y-8 animate-in fade-in duration-300">
+          <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest -mt-2">
+            Vista de referencia — no depende del filtro &quot;Fecha&quot; (ese selector ahora solo filtra el tab Provisionales). Muestra todas las Órdenes FERT con las restricciones de Venta Externa aplicadas.
+          </p>
           {[
-            { t: 'Quito 1000 - Órdenes FERT', d: fertC1000, b: 'bg-green-600', c: 'text-green-700', lookup: tiempoLookup1000 },
-            { t: 'Guayaquil 2000 - Órdenes FERT', d: fertC2000, b: 'bg-indigo-600', c: 'text-indigo-700', lookup: tiempoLookup2000 }
+            { t: 'Quito 1000 - Órdenes FERT', d: fertC1000SinFecha, b: 'bg-green-600', c: 'text-green-700', lookup: tiempoLookup1000 },
+            { t: 'Guayaquil 2000 - Órdenes FERT', d: fertC2000SinFecha, b: 'bg-indigo-600', c: 'text-indigo-700', lookup: tiempoLookup2000 }
           ].map((center, idx) => (
             <div key={idx} className="space-y-4">
               <h3 className={cn("text-[11px] font-bold uppercase flex items-center gap-2 px-1", center.c)}>
@@ -1112,6 +1613,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                     <thead className="bg-gray-50 sticky top-0 z-10 text-[9px] font-bold uppercase text-gray-400 border-b border-gray-100">
                       <tr>
                         <th className="px-3 py-4 border-r border-gray-100">Orden</th>
+                        <th className="px-3 py-4 border-r border-gray-100">Pedido</th>
+                        <th className="px-3 py-4 border-r border-gray-100">Posición</th>
                         <th className="px-3 py-4 border-r border-gray-100">Fecha</th>
                         <th className="px-3 py-4 border-r border-gray-100">Material</th>
                         <th className="px-3 py-4 border-r border-gray-100 text-left">Descripción</th>
@@ -1124,7 +1627,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         <th className="px-3 py-4 border-r border-gray-100 text-teal-700 bg-teal-50/20 font-black">T. Estándar (Min)</th>
                         <th className="px-3 py-4 border-r border-gray-100 text-amber-700 bg-amber-50/20 font-black">T. Empaque (H)</th>
                         <th className="px-3 py-4 border-r border-gray-100 font-bold">Máquina</th>
-                        <th className="px-3 py-4">ALM.</th>
+                        <th className="px-3 py-4 border-r border-gray-100">ALM.</th>
+                        <th className="px-3 py-4 font-mono text-gray-500">Cod.Buscar</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50 text-[10px]">
@@ -1134,10 +1638,13 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         const empaqueHours = (qty * PACKING_TIME_PER_UNIT_SECONDS) / 3600;
                         const maquina = o.MAQUINA || o.RECURSO || '—';
                         const tiempoEstandar = matchTiempoEstandar(info.code, maquina, center.lookup);
+                        const codBuscar = buildCodBuscar(o.POSICION, o.PEDIDO, o.MATERIAL);
 
                         return (
                           <tr key={i} className="hover:bg-gray-50/50 transition-colors">
                             <td className="px-3 py-2 font-medium text-gray-900 border-r border-gray-100">{o.ORDEN || '—'}</td>
+                            <td className="px-3 py-2 font-mono text-gray-700 border-r border-gray-100">{o.PEDIDO || '—'}</td>
+                            <td className="px-3 py-2 font-mono text-gray-700 border-r border-gray-100">{o.POSICION || '—'}</td>
                             <td className="px-3 py-2 border-r border-gray-100 font-mono text-[9px] text-gray-400">{o.FECHA || '—'}</td>
                             <td className="px-3 py-2 font-mono font-bold text-primary border-r border-gray-100 tracking-tighter">{info.code}</td>
                             <td className="px-3 py-2 text-left border-r border-gray-50 truncate max-w-[180px] text-gray-500 uppercase">{info.desc}</td>
@@ -1150,7 +1657,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                             <td className="px-3 py-2 font-mono font-bold text-teal-600 border-r border-gray-100 bg-teal-50/10">{tiempoEstandar !== null ? tiempoEstandar.toFixed(4) : '—'}</td>
                             <td className="px-3 py-2 font-mono font-bold text-amber-600 border-r border-gray-100 bg-amber-50/10">{empaqueHours.toFixed(2)}</td>
                             <td className="px-3 py-2 font-bold text-gray-700 border-r border-gray-50 uppercase">{maquina}</td>
-                            <td className="px-3 py-2 font-medium text-gray-400">{o.ALMACEN || '—'}</td>
+                            <td className="px-3 py-2 font-medium text-gray-400 border-r border-gray-100">{o.ALMACEN || '—'}</td>
+                            <td className="px-3 py-2 font-mono text-gray-500">{codBuscar}</td>
                           </tr>
                         );
                       })}
@@ -1167,8 +1675,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
               <div className="text-left">
                 <p className="text-[10px] font-bold uppercase text-gray-400 tracking-wider">Necesidad Origen (P2)</p>
-                <h3 className="text-sm font-black text-gray-700 uppercase">Espumas + Rollos (BOM de Órdenes FERT)</h3>
-                <p className="text-[10px] text-gray-400 mt-1">Ambas necesidades se calculan explotando la lista de materiales de las Órdenes FERT generadas (Provisionales no aplica para este paso): componentes &quot;ESPUMA&quot; → Corte Espuma, &quot;LAMINA CILINDRICA&quot; → Corte y Laminado.</p>
+                <h3 className="text-sm font-black text-gray-700 uppercase">Espumas + Rollos (BOM de Órdenes Provisionales)</h3>
+                <p className="text-[10px] text-gray-400 mt-1">Ambas necesidades se calculan explotando la lista de materiales de las Órdenes Provisionales (FERT queda como tab de referencia, ya no alimenta este cálculo): componentes &quot;ESPUMA&quot; → Corte Espuma, &quot;LAMINA CILINDRICA&quot; → Corte y Laminado.</p>
                 <div className="flex items-center gap-1.5 mt-2 flex-wrap">
                   {selectedDates.length === 0 ? (
                     <Badge className="bg-amber-50 text-amber-700 border-amber-200 text-[9px] font-black uppercase gap-1.5">
@@ -1179,23 +1687,25 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                       <CalendarIcon className="w-3 h-3" /> Ventana de Producción: {format(parseISO(ventanaP2.inicio), 'd MMM', { locale: es })} → {format(parseISO(ventanaP2.fin), 'd MMM yyyy', { locale: es })}
                     </Badge>
                   )}
-                  <span className="text-[9px] text-gray-400 font-bold uppercase">Definida por el filtro &quot;Fecha&quot; (máx. {MAX_DIAS_SELECCION} días, sin saltos entre el mínimo y el máximo seleccionado)</span>
+                  <span className="text-[9px] text-gray-400 font-bold uppercase">Definida por el filtro &quot;Fecha&quot; (sin tope de días, sin saltos entre el mínimo y el máximo seleccionado)</span>
                 </div>
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 {fechaPopover}
-                <Button onClick={handleCalcularNecesidadRollos} disabled={isExplodingBom || selectedDates.length === 0} className="h-10 px-6 rounded-2xl gap-2 font-bold text-xs uppercase">
+                {/* Familia "Generar Necesidades": trae/calcula datos (sync o explosión BOM) sin
+                    escribir nada — outline, tono índigo. "Generar Respuestas" (escribe Plan Grupo/
+                    Detalle Táctico real) es sólido/primario. Mismos 2 niveles en los 4 módulos tácticos. */}
+                <Button onClick={handleCalcularNecesidadRollos} disabled={isExplodingBom || selectedDates.length === 0} variant="outline" className="h-10 px-6 rounded-2xl gap-2 font-bold text-xs uppercase border-indigo-200 text-indigo-700 hover:bg-indigo-50">
                   {isExplodingBom ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
-                  {isExplodingBom ? `Explotando BOM ${bomProgress.current}/${bomProgress.total}` : 'Calcular Necesidad (BOM FERT)'}
+                  {isExplodingBom ? `Explotando BOM ${bomProgress.current}/${bomProgress.total}` : 'Generar Necesidades · BOM Provisionales'}
                 </Button>
                 <Button
                   onClick={handleGenerarTodosPlanesP2}
                   disabled={isSavingAllPlanP2 || isExplodingBom || (necesidadEspumas1000.length === 0 && necesidadEspumas2000.length === 0 && necesidadRollos1000.length === 0)}
-                  variant="outline"
-                  className="h-10 px-6 rounded-2xl gap-2 font-bold text-xs uppercase border-primary/30 text-primary hover:bg-primary/5"
+                  className="h-10 px-6 rounded-2xl gap-2 font-bold text-xs uppercase"
                 >
                   {isSavingAllPlanP2 ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                  Generar Todos los P2
+                  Generar Respuestas · Todos P2
                 </Button>
               </div>
             </div>
@@ -1253,7 +1763,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                             className="h-7 px-3 rounded-lg gap-1.5 font-bold text-[9px] uppercase"
                           >
                             {savingPlanP2[key] ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
-                            Generar P2
+                            Generar Respuestas · P2
                           </Button>
                         </div>
                       </div>
@@ -1296,7 +1806,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
               <h3 className="text-sm font-black text-gray-700 uppercase">Respuesta del Plan Consumidor</h3>
               <p className="text-[10px] text-gray-400 mt-1">Por cada material que enviamos en nuestro P2, busca si algún Plan P3 (consumidor real, no PFD) ya respondió — un DetalleTactico cuyo <span className="font-mono">codigo_plan_grupo_padre</span> apunta a nuestro plan. La columna "Fechas" avisa si esa respuesta NO se guardó exactamente un día después de nuestra línea (regla "revisión hoy, devolución mañana").</p>
             </div>
-            <Button onClick={fetchDataAprobada} disabled={isLoadingDataAprobada} className="h-10 px-6 rounded-2xl gap-2 font-bold text-xs uppercase shrink-0">
+            <Button onClick={fetchDataAprobada} disabled={isLoadingDataAprobada} variant="outline" className="h-10 px-6 rounded-2xl gap-2 font-bold text-xs uppercase shrink-0 border-indigo-200 text-indigo-700 hover:bg-indigo-50">
               {isLoadingDataAprobada ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
               Actualizar
             </Button>
@@ -1369,6 +1879,134 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                       </tbody>
                     </table>
                   </div>
+                </Card>
+              </div>
+            );
+          })}
+        </TabsContent>
+
+        <TabsContent value="pendientes" className="space-y-6 animate-in fade-in duration-300">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-gray-50/50 p-4 rounded-2xl border border-gray-100">
+            <div className="text-left">
+              <p className="text-[10px] font-bold uppercase text-gray-400 tracking-wider">Pedidos sin entregar</p>
+              <h3 className="text-sm font-black text-gray-700 uppercase">Pendientes Totales</h3>
+            </div>
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <Input
+                  value={pendientesSearch}
+                  onChange={(e) => setPendientesSearch(e.target.value)}
+                  placeholder="Buscar Pedido, Material o Descripción..."
+                  className="h-10 pl-9 rounded-2xl border-gray-200 text-xs w-full sm:w-72"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="date"
+                  value={pendientesFechaDesde}
+                  onChange={(e) => setPendientesFechaDesde(e.target.value)}
+                  className="h-10 rounded-2xl border-gray-200 text-xs"
+                />
+                <span className="text-[10px] font-bold text-gray-400 uppercase">a</span>
+                <Input
+                  type="date"
+                  value={pendientesFechaHasta}
+                  onChange={(e) => setPendientesFechaHasta(e.target.value)}
+                  className="h-10 rounded-2xl border-gray-200 text-xs"
+                />
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={fetchPendientesTotales}
+                disabled={isLoadingPendientes}
+                className="h-10 px-4 rounded-2xl gap-2 font-bold text-[10px] uppercase border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+              >
+                <RefreshCw className={cn("w-3.5 h-3.5", isLoadingPendientes && "animate-spin")} /> Actualizar
+              </Button>
+            </div>
+          </div>
+
+          {(['1000', '2000'] as const).map(centro => {
+            const grupos = pendientesAgrupadosPorCentro[centro];
+            const totalPedidos = grupos.reduce((s, g) => s + g.pedidos.length, 0);
+            const nombrePlanta = centro === '1000' ? 'UIO' : 'GYE';
+            return (
+              <div key={centro} className="space-y-3">
+                <div className="flex items-center justify-between px-1">
+                  <h3 className="text-[11px] font-black uppercase flex items-center gap-2 tracking-widest text-amber-700">
+                    <div className="w-2.5 h-2.5 rounded-full bg-amber-600" /> Pedidos Pendientes — Centro {centro} ({nombrePlanta})
+                  </h3>
+                  <Badge variant="outline" className="text-[9px] font-bold border-gray-200 text-gray-400">
+                    {totalPedidos.toLocaleString()} pedidos · {grupos.length.toLocaleString()} materiales
+                  </Badge>
+                </div>
+
+                <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
+                  {isLoadingPendientes ? (
+                    <div className="py-16 flex flex-col items-center justify-center gap-3 text-gray-400">
+                      <Loader2 className="w-6 h-6 animate-spin" />
+                      <p className="text-[10px] font-bold uppercase tracking-widest">Cargando pendientes...</p>
+                    </div>
+                  ) : grupos.length === 0 ? (
+                    <div className="py-16 text-center text-gray-400 font-bold uppercase tracking-widest opacity-30">Sin pedidos pendientes</div>
+                  ) : (
+                    <div className="max-h-[600px] overflow-y-auto px-4">
+                      <Accordion type="multiple" value={expandedPendientesMateriales} onValueChange={setExpandedPendientesMateriales} className="divide-y divide-gray-50">
+                        {grupos.map(group => (
+                          <AccordionItem key={group.material} value={`${centro}::${group.material}`} className="border-b-0">
+                            <AccordionTrigger className="hover:no-underline py-3 px-2">
+                              <div className="flex items-center justify-between w-full pr-4 text-left">
+                                <div className="flex items-center gap-3">
+                                  <Badge className="bg-amber-50 text-amber-800 font-mono font-bold text-[9px] border-amber-200">{group.material}</Badge>
+                                  <p className="text-xs font-black text-gray-700 uppercase truncate max-w-[360px]">{group.descripcion || 'Sin descripción'}</p>
+                                </div>
+                                <div>
+                                  <p className="text-[8px] font-black uppercase text-gray-400 tracking-wider">Pedidos</p>
+                                  <p className="text-xs font-mono font-bold text-amber-600 text-right">{group.pedidos.length}</p>
+                                </div>
+                              </div>
+                            </AccordionTrigger>
+                            <AccordionContent>
+                              <div className="overflow-x-auto">
+                              <table className="w-full border-collapse text-center font-sans bg-gray-50/40 rounded-xl overflow-hidden">
+                                <thead className="bg-gray-50 text-[9px] font-black uppercase text-gray-400 border-b border-gray-100">
+                                  <tr>
+                                    <th className="px-4 py-2 border-r border-gray-100 text-left">Pedido</th>
+                                    <th className="px-3 py-2 border-r border-gray-100">Posición</th>
+                                    <th className="px-3 py-2 border-r border-gray-100">Cant. Pedida</th>
+                                    <th className="px-3 py-2 border-r border-gray-100">Vol. Pend.</th>
+                                    <th className="px-3 py-2 border-r border-gray-100">Fecha Pedido</th>
+                                    <th className="px-3 py-2 border-r border-gray-100">Fecha Entrega</th>
+                                    <th className="px-3 py-2 border-r border-gray-100 text-left">Ciudad Destino</th>
+                                    <th className="px-3 py-2 border-r border-gray-100 font-mono text-gray-500">Cod.Buscar</th>
+                                    <th className="px-4 py-2 bg-teal-50/40 text-teal-700">FERT · Fecha Entrega</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-50 text-[11px]">
+                                  {group.pedidos.map((p, i) => (
+                                    <tr key={i} className="hover:bg-gray-50/50 transition-colors">
+                                      <td className="px-4 py-2 font-mono font-bold text-gray-700 border-r border-gray-100 text-left">{p.pedido}</td>
+                                      <td className="px-3 py-2 font-mono text-gray-500 border-r border-gray-100">{p.posicion || '—'}</td>
+                                      <td className="px-3 py-2 font-mono text-gray-700 border-r border-gray-100">{p.cantPedida || '—'}</td>
+                                      <td className="px-3 py-2 font-mono text-gray-700 border-r border-gray-100">{p.volPend || '—'}</td>
+                                      <td className="px-3 py-2 font-mono text-gray-500 border-r border-gray-100">{p.fechaPedido || '—'}</td>
+                                      <td className="px-3 py-2 font-mono text-gray-500 border-r border-gray-100">{p.fechaEntrega || '—'}</td>
+                                      <td className="px-3 py-2 text-left text-gray-500 uppercase border-r border-gray-100">{p.ciudadDestino || '—'}</td>
+                                      <td className="px-3 py-2 font-mono text-gray-500 border-r border-gray-100">{p.codBuscar}</td>
+                                      <td className="px-4 py-2 font-mono font-bold bg-teal-50/10 text-teal-700">{p.fechaEntregaFert || '—'}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                              </div>
+                            </AccordionContent>
+                          </AccordionItem>
+                        ))}
+                      </Accordion>
+                    </div>
+                  )}
                 </Card>
               </div>
             );
