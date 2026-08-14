@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useRef, useImperativeHandle } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef, useImperativeHandle } from 'react';
 import * as XLSX from 'xlsx';
 import { serviciosService } from '@/services/servicios.service';
 import { ecuadorHolidaysService } from '@/services/ecuador-holidays.service';
@@ -73,14 +73,23 @@ const loadLastTableAssignments = (centro: string): TableAssignments => {
   return {};
 };
 
+// Factor de eficiencia: del tiempo del turno, la fracción realmente productiva de una persona.
+const EFFICIENCY_FACTOR = 0.87;
+
+// Horas productivas por persona en una mesa = horas del turno × factor de eficiencia
+// (8 h → 6.96 · 9 h → 7.83 · 10 h → 8.7). Es el tiempo BASE de cada mesa, al que después se le
+// aplican el porcentaje de la persona, su calificación, los mantenimientos preventivos y los
+// descuentos generales de horas (ver mesaCapacityByTable).
+const productiveHoursPerTable = (shiftHours: number) => Math.round(shiftHours * EFFICIENCY_FACTOR * 100) / 100;
+
 // Horarios de trabajo disponibles para la planificación táctica.
 // displayEndTime: hora de fin que se MUESTRA al usuario (menú de horario y línea de fin de turno del
 // Diagrama de Gantt). Es puramente visual — endTime (usado en el cálculo de solapamiento con
 // Mantenimientos Preventivos) y hoursPerTable (usado en el cálculo de capacidad) NO cambian.
 const SHIFT_SCHEDULES = [
-  { id: '8h', label: '8 horas / 07:00 - 15:45', hoursPerTable: 6.96, startTime: '07:00', endTime: '16:45', displayEndTime: '15:45' },
-  { id: '9h', label: '9 horas / 07:00 - 17:00', hoursPerTable: 7.83, startTime: '07:00', endTime: '17:00', displayEndTime: '17:00' },
-  { id: '10h', label: '10 horas / 07:00 a 18:00', hoursPerTable: 6.96, startTime: '07:00', endTime: '18:00', displayEndTime: '18:00' },
+  { id: '8h', label: '8 horas / 07:00 - 15:45', shiftHours: 8, hoursPerTable: productiveHoursPerTable(8), startTime: '07:00', endTime: '16:45', displayEndTime: '15:45' },
+  { id: '9h', label: '9 horas / 07:00 - 17:00', shiftHours: 9, hoursPerTable: productiveHoursPerTable(9), startTime: '07:00', endTime: '17:00', displayEndTime: '17:00' },
+  { id: '10h', label: '10 horas / 07:00 a 18:00', shiftHours: 10, hoursPerTable: productiveHoursPerTable(10), startTime: '07:00', endTime: '18:00', displayEndTime: '18:00' },
 ] as const;
 
 // Ecuador (America/Guayaquil) está en UTC-5 todo el año, sin horario de verano
@@ -161,6 +170,15 @@ const MINUTOS_POR_MUEBLE_EQUIVALENTE = 32.21;
 const SECTOR_CAMAS = '02 BASES-CABECERO-CAMA';
 const SECTOR_MUEBLES = '03 MUEBLES FABRICACIÓN';
 
+// Una orden cuyo material tiene, en el Cubo de Inventarios de SAP, un Sector explícito que NO es
+// Camas ni Muebles (ej. Colchones, Telas) no pertenece a esta área, aunque su RespCtrlProd coincida
+// por error/superposición con los códigos válidos de Muebles (ver restricción "RespCtrlProd"). Se
+// excluye de plano de la planificación, sin reportarla como error de "Fecha de Entrega no encontrada".
+// Si SAP no tiene Sector cargado (vacío), no se excluye aquí: se deja que resolveSectorReparacion
+// intente deducirlo por descripción (materiales "MUEBLE DE REPARACIÓN").
+const esSectorAjenoAMuebles = (sectorSAP: string | undefined): boolean =>
+    !!sectorSAP && sectorSAP !== SECTOR_CAMAS && sectorSAP !== SECTOR_MUEBLES;
+
 // Mesas de Línea 2 (Muebles) habilitadas como válvula de alivio para Camas: solo se usan cuando la
 // Línea 1 (Línea de Camas) ya no tiene capacidad disponible en ninguna de sus mesas habituales.
 const CAMAS_OVERFLOW_MESA_IDS = [12, 13];
@@ -180,6 +198,42 @@ const classifyMaterialSize = (sector: string | null, minutos: number): MaterialS
     if (minutos <= thresholds.pequeñoMax) return 'Pequeño';
     if (minutos <= thresholds.medianoMax) return 'Mediano';
     return 'Grande';
+};
+
+// Los "MUEBLES DE REPARACIÓN" (Grupo de Artículos 2022, tipo HALB) vienen SIN Sector en el Cubo de
+// Inventarios, por lo que quedaban sin clasificación de tamaño y ninguna mesa los aceptaba: aparecían
+// en la alerta "material(es) sin mesa asignada" y no se planificaban. Mientras el maestro de SAP no
+// tenga el Sector, este se deduce de la descripción: la parte que sigue a "MUEBLE DE REPARACIÓN"
+// nombra el producto que se repara (CAMA 160, CABECERO, BASE = Línea de Camas; OTTOMAN, BENCH,
+// VELADOR, RECLINABLE, MIRAGE, ... = Línea de Muebles).
+const REPARACION_PREFIX_REGEX = /^MUEBLE\s+(DE\s+)?REPARACI[OÓ]N\s*/;
+
+// Productos reparados que pertenecen al Sector de Camas. DUO va aquí porque el producto terminado
+// "DUO" es la BASE DUO (Sector 02); en Muebles solo existe como FORRO BASE DUO (componente).
+// Cualquier otro producto de reparación (modelos de mueble) se trata como Muebles.
+const REPARACION_CAMAS_KEYWORDS = ['CAMA', 'CABECERO', 'BASE', 'DUO'];
+
+// Sector deducido para un material de reparación; null si el material no es de reparación
+const resolveSectorReparacion = (nombre: string): string | null => {
+    const descripcion = nombre.toUpperCase().trim();
+    if (!REPARACION_PREFIX_REGEX.test(descripcion)) return null;
+
+    const producto = descripcion.replace(REPARACION_PREFIX_REGEX, '');
+    const esCama = REPARACION_CAMAS_KEYWORDS.some(palabra => new RegExp(`\\b${palabra}\\b`).test(producto));
+    return esCama ? SECTOR_CAMAS : SECTOR_MUEBLES;
+};
+
+// Reparaciones que NO se hacen en las mesas del plan de Muebles, sino en las mesas de Línea 2 – Muebles
+// que quedan fuera de la planificación y sirven de apoyo a la Línea de Camas (las marcadas con
+// "Habilitar para Camas"). Hoy aplica solo al plastificado ("MUEBLE DE REPARACIÓN PLAST.").
+const REPARACION_APOYO_CAMAS_KEYWORDS = ['PLAST'];
+
+const esReparacionApoyoCamas = (nombre: string): boolean => {
+    const descripcion = nombre.toUpperCase().trim();
+    if (!REPARACION_PREFIX_REGEX.test(descripcion)) return false;
+
+    const producto = descripcion.replace(REPARACION_PREFIX_REGEX, '');
+    return REPARACION_APOYO_CAMAS_KEYWORDS.some(palabra => producto.includes(palabra));
 };
 
 // Formatea una fecha a "DD-MM-YYYY" (mismo formato que el mapa de Fechas de Entrega construido desde getPendientesTotales)
@@ -503,14 +557,11 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
         const movableOrderKey = (o: UnifiedOrder) => `${o.source}-${o.id}-${o.material}`;
         const isRecalcLogicNow = planningResult.planningStepResult >= 2;
         // Horas de "movableOrders" que YA están incluidas en planningResult.totalHoursRequired: en Paso
-        // 2/3, handleRunPlanning fusiona en immediateOrders las que tienen fecha propia = fecha objetivo
-        // (ver "movableOrdersParaHoy"). Hay que restarlas de la base para no contarlas dos veces al
-        // recomponer el total en vivo a partir del estado de los checkboxes.
+        // 2/3, handleRunPlanning las fusiona todas en immediateOrders (todas tienen fecha propia = fecha
+        // objetivo). Hay que restarlas de la base para no contarlas dos veces al recomponer el total en
+        // vivo a partir del estado de los checkboxes.
         const movableBaseHoras = isRecalcLogicNow
-            ? planningResult.movableOrders.reduce((sum, o) => {
-                const enFechaObjetivo = !!o.fechaPropia && toDateKey(o.fechaPropia) === toDateKey(planningResult.targetDate);
-                return enFechaObjetivo ? sum + o.horas : sum;
-            }, 0)
+            ? planningResult.movableOrders.reduce((sum, o) => sum + o.horas, 0)
             : 0;
         const requiredBaseline = planningResult.totalHoursRequired - movableBaseHoras;
         const checkedHoras = planningResult.movableOrders.reduce((sum, o) => {
@@ -690,7 +741,9 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
             const pedido = String(row.PEDIDOVENTAS || '').trim();
             const posicionPedido = String(row.POSICIONPEDIDO || '').trim();
             const tipo: 'MTO' | 'MTS' = pedido ? 'MTO' : 'MTS';
-            const sector = materialSectorMap.get(material) ?? null;
+            const sectorSAP = materialSectorMap.get(material);
+            if (esSectorAjenoAMuebles(sectorSAP)) return;
+            const sector = sectorSAP ?? resolveSectorReparacion(nombre);
             const tiempoUnitMin = globalTiemposMap.get(material) ?? 0;
 
             // El Centro de ENTREGA (destino Quito/Guayaquil) es el que rige la ventana de prioridad,
@@ -745,7 +798,9 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
             const centroProduccion = String(row.CENTRO || '').trim();
             const pedido = String(row.PEDIDO || '').trim();
             const tipo: 'MTO' | 'MTS' = pedido ? 'MTO' : 'MTS';
-            const sector = materialSectorMap.get(material) ?? null;
+            const sectorSAP = materialSectorMap.get(material);
+            if (esSectorAjenoAMuebles(sectorSAP)) return;
+            const sector = sectorSAP ?? resolveSectorReparacion(nombre);
             const tiempoUnitMin = globalTiemposMap.get(material) ?? 0;
 
             const posicionFert = String(row.POSICION || '').trim();
@@ -1086,6 +1141,52 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
 
         return { totalHours, mesasConDatos, equivalentUnits };
     }, [mesaCapacityByTable]);
+
+    // Sugerencia para cubrir el Déficit de Capacidad de "Horas Requeridas (Compromisos Inmediatos)":
+    // evalúa dos palancas independientes (subir el horario de trabajo vs. activar más mesas) y estima
+    // cuál de las dos cubre el déficit con el menor cambio. Es una estimación orientativa (asume que la
+    // capacidad escala proporcionalmente a las horas del turno y que las mesas nuevas rendirían el
+    // promedio de las ya asignadas), no un recálculo exacto de mantenimientos/descuentos por mesa.
+    const capacityShortageSuggestion = useMemo(() => {
+        if (!planningResult || !liveCapacityInfo) return null;
+        const deficit = -liveCapacityInfo.liveDeficit;
+        if (deficit <= 0.01) return null;
+
+        const totalCapacityActual = planningResult.totalCapacityAvailable;
+        const objetivoHoras = liveCapacityInfo.liveTotalHoursRequired;
+
+        // Opción A: subir el horario de trabajo (afecta a todas las mesas asignadas por igual)
+        const horasPorMesaBase = selectedShiftConfig.hoursPerTable > 0
+            ? totalCapacityActual / selectedShiftConfig.hoursPerTable
+            : 0;
+        let sugerenciaHorario: { label: string; horasEstimadas: number } | null = null;
+        for (const opcion of SHIFT_SCHEDULES) {
+            if (opcion.hoursPerTable <= selectedShiftConfig.hoursPerTable) continue;
+            const horasEstimadas = horasPorMesaBase * opcion.hoursPerTable;
+            if (horasEstimadas >= objetivoHoras) {
+                sugerenciaHorario = { label: opcion.label, horasEstimadas };
+                break;
+            }
+        }
+
+        // Opción B: activar mesas adicionales, usando el promedio de horas de las mesas ya asignadas
+        const avgHorasPorMesa = capacitySummary.mesasConDatos > 0
+            ? capacitySummary.totalHours / capacitySummary.mesasConDatos
+            : 0;
+        const mesasNecesarias = avgHorasPorMesa > 0 ? Math.ceil(deficit / avgHorasPorMesa) : null;
+        const mesasDisponibles = WORK_TABLES.length - (chosenTables?.length ?? 0);
+        const mesaFactible = mesasNecesarias !== null && mesasNecesarias <= mesasDisponibles;
+
+        // "Más conveniente": si con pocas mesas adicionales (≤2) alcanza y hay disponibles, se prioriza
+        // esa opción (cambio puntual, sin afectar el horario de todo el equipo); en otro caso, se
+        // prioriza subir el horario si con eso alcanza; si ninguna alcanza sola, se muestran ambas.
+        const recomendada: 'horario' | 'mesas' =
+            mesaFactible && (mesasNecesarias as number) <= 2 ? 'mesas'
+                : sugerenciaHorario ? 'horario'
+                    : 'mesas';
+
+        return { deficit, sugerenciaHorario, avgHorasPorMesa, mesasNecesarias, mesasDisponibles, mesaFactible, recomendada };
+    }, [planningResult, liveCapacityInfo, capacitySummary, selectedShiftConfig, chosenTables]);
 
     const updatePersonAssignment = (tableId: number, person: string) => {
         const duplicateTableId = person
@@ -1557,6 +1658,28 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
         });
     };
 
+    // P2 (Espuma) se guarda con una fecha distinta a planningTargetDate (ver comentario en
+    // handleSavePlanAndDetails): el próximo día laborable, no el 3er día laborable de la ventana.
+    // Se centraliza aquí para que la verificación/desactivación de planes existentes (que deben
+    // comparar cada sufijo contra SU propia fecha, no todos contra planningTargetDate) y el guardado
+    // usen siempre el mismo cálculo.
+    const computeFechaP2 = useCallback((): Date => {
+        if (workingWindow.length > 0) return workingWindow[0].date;
+        const fallback = new Date();
+        fallback.setHours(0, 0, 0, 0);
+        fallback.setDate(fallback.getDate() + 1);
+        return fallback;
+    }, [workingWindow]);
+
+    // Determina la fecha esperada de un PlanGrupo existente según su sufijo (P1.3/P1.5/PFSM usan
+    // planningTargetDate; P2 usa computeFechaP2), para poder comparar cada plan contra la fecha que
+    // realmente le corresponde en vez de comparar todos contra una sola fecha.
+    const expectedDateKeyFor = useCallback((valor: string): string | null => {
+        if (/P2\s*$/i.test(valor.trim())) return toDateKey(computeFechaP2());
+        if (!planningTargetDate) return null;
+        return toDateKey(planningTargetDate);
+    }, [computeFechaP2, planningTargetDate]);
+
     // Antes de confirmar la fecha objetivo (escoger mesas), se verifica si ya existe un Plan Táctico
     // guardado (PlanGrupo de Muebles, patrón "... - P1.3"/"... - P1.5"/"... - P2") para esa misma fecha,
     // para evitar duplicar o pisar sin darse cuenta un plan que ya se guardó. Se aceptan los 3 sufijos
@@ -1578,12 +1701,14 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
         setIsPlanCheckBusy(true);
         try {
             const res = await planGrupoService.getAll();
-            const targetKey = toDateKey(planningTargetDate);
             const existing = (res.data || []).find(p => {
                 if (p.codigo_grupo !== mueblesGrupo.codigo_grupo) return false;
                 if (p.estado !== 'A') return false;
-                if (!/P1\.3\s*$|P1\.5\s*$|P2\s*$|PFSM\s*$/i.test(String(p.valor || '').trim())) return false;
-                return toDateKey(new Date(p.fecha_inicio_plan)) === targetKey;
+                const valor = String(p.valor || '').trim();
+                if (!/P1\.3\s*$|P1\.5\s*$|P2\s*$|PFSM\s*$/i.test(valor)) return false;
+                const expectedKey = expectedDateKeyFor(valor);
+                if (!expectedKey) return false;
+                return toDateKey(new Date(p.fecha_inicio_plan)) === expectedKey;
             });
 
             setPlanCheckModal(existing ? { type: 'found', planGrupo: existing } : { type: 'not-found' });
@@ -1648,12 +1773,14 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
             // fecha (P1.3/P1.5/P2/PFSM), no solo el que disparó el modal, con el mismo filtro
             // usado en handleChooseTables.
             const res = await planGrupoService.getAll();
-            const targetKey = toDateKey(planningTargetDate);
             const planesADesactivar = (res.data || []).filter(p => {
                 if (p.codigo_grupo !== mueblesGrupo.codigo_grupo) return false;
                 if (p.estado !== 'A') return false;
-                if (!/P1\.3\s*$|P1\.5\s*$|P2\s*$|PFSM\s*$/i.test(String(p.valor || '').trim())) return false;
-                return toDateKey(new Date(p.fecha_inicio_plan)) === targetKey;
+                const valor = String(p.valor || '').trim();
+                if (!/P1\.3\s*$|P1\.5\s*$|P2\s*$|PFSM\s*$/i.test(valor)) return false;
+                const expectedKey = expectedDateKeyFor(valor);
+                if (!expectedKey) return false;
+                return toDateKey(new Date(p.fecha_inicio_plan)) === expectedKey;
             });
 
             await Promise.all(planesADesactivar.map(p => planGrupoService.save({ ...p, estado: 'I' })));
@@ -1774,29 +1901,30 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
         let immediateIds = new Set(immediateMap.keys());
         const deferredIds = new Set(deferredByCapacity.map(o => `${o.source}-${o.id}-${o.material}`));
 
-        // Órdenes Fert MTS cuya fecha de creación (FECHAORDEN) es hoy: SAP recién las liberó y todavía no
-        // se han comprometido en el plan de hoy, así que se sugieren como candidatas "movibles" en vez de
-        // absorberlas automáticamente en el relleno de capacidad (mtsSorted/extraOrders más abajo).
+        // Órdenes Fert MTS cuya fecha de creación (FECHAORDEN) es hoy: SAP recién las liberó y su fecha
+        // propia (FECHA) cae en un día posterior, así que no se absorben en el relleno de capacidad
+        // (mtsSorted/extraOrders más abajo) — se fabricarán en su propio día.
         const isCreatedToday = (o: UnifiedOrder) =>
             o.source === 'Fert' && o.tipo === 'MTS' && !!o.fechaOrden && toDateKey(o.fechaOrden) === toDateKey(new Date());
 
-        // Órdenes MTO que YA están planificadas para la fecha objetivo (fecha propia = hoy) pero cuya
-        // fecha de entrega cae fuera de la ventana de prioridad (no diferidas por capacidad, simplemente
+        // Órdenes MTO que YA están planificadas para la fecha objetivo (fecha propia = fecha objetivo) pero
+        // cuya fecha de entrega cae fuera de la ventana de prioridad (no diferidas por capacidad, simplemente
         // no son urgentes todavía): se pueden mover a un día posterior sin riesgo de incumplir al cliente.
         // No consumen la capacidad disponible ni se fabrican hoy.
-        const movableOrders = [
-            ...mtoOrders.filter(o => {
+        //
+        // Solo pueden aparecer aquí órdenes cuya fecha propia sea EXACTAMENTE la fecha objetivo: mover una
+        // orden que el ERP ya programó para otro día (anterior o posterior) no libera capacidad del día que
+        // se está planificando. Antes también se sumaban las Fert MTS recién creadas (FECHAORDEN = hoy) sin
+        // mirar su FECHA propia, y sobre unifiedOrders en vez de eligibleOrders, así que se listaban órdenes
+        // de días posteriores e incluso anteriores a la fecha objetivo.
+        const movableOrders = mtoOrders
+            .filter(o => {
                 const key = `${o.source}-${o.id}-${o.material}`;
                 if (immediateIds.has(key) || deferredIds.has(key)) return false;
                 if (!o.fechaPropia || toDateKey(o.fechaPropia) !== toDateKey(planningTargetDate)) return false;
                 return isBeyondPriorityWindow(o);
-            }),
-            ...unifiedOrders.filter(o => {
-                const key = `${o.source}-${o.id}-${o.material}`;
-                if (immediateIds.has(key) || deferredIds.has(key)) return false;
-                return isCreatedToday(o);
-            }),
-        ].sort((a, b) => a.fechaEntregaDate.getTime() - b.fechaEntregaDate.getTime());
+            })
+            .sort((a, b) => a.fechaEntregaDate.getTime() - b.fechaEntregaDate.getTime());
 
         let finalDeferredByCapacity: UnifiedOrder[] = deferredByCapacity;
 
@@ -1807,21 +1935,15 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
         // se sigue calculando y mostrando (sin excluirla del cálculo real) para que el usuario pueda
         // seguir ajustando la capacidad en rondas sucesivas hasta llegar a lo óptimo.
         //
-        // De "movableOrders" solo se fusionan las que realmente tienen fecha propia = fecha objetivo: las
-        // MTO ya cumplen esto por construcción, pero las Fert MTS "creadas hoy" (fechaOrden = hoy) NO
-        // necesariamente tienen su FECHA propia de producción en la fecha objetivo — pueden estar
-        // programadas semanas después y solo haberse liberado hoy en SAP. Antes se fusionaban todas sin
-        // filtrar, inflando el total de horas con órdenes que no correspondían a la planificación de hoy.
+        // "movableOrders" se fusiona completo porque, por construcción, todas sus órdenes tienen fecha
+        // propia = fecha objetivo; así el total de horas nunca se infla con órdenes de otros días.
         // Paso 2 y Paso 3 (Final) comparten esta lógica de "tomar tal cual lo que hay en SAP": el Paso 3
         // se ejecuta después de que el usuario movió en SAP las órdenes sugeridas en "Plan Grupo Recuperado"
         // para ajustar por la capacidad real de espuma, así que debe reflejar igual de fielmente lo que
         // realmente hay en SAP para la fecha objetivo.
         const isRecalcLogic = planningStep >= 2;
         if (isRecalcLogic) {
-            const movableOrdersParaHoy = movableOrders.filter(o =>
-                !!o.fechaPropia && toDateKey(o.fechaPropia) === toDateKey(planningTargetDate)
-            );
-            immediateOrders = [...immediateOrders, ...deferredByCapacity, ...movableOrdersParaHoy];
+            immediateOrders = [...immediateOrders, ...deferredByCapacity, ...movableOrders];
             immediateIds = new Set(immediateOrders.map(o => `${o.source}-${o.id}-${o.material}`));
             finalDeferredByCapacity = [];
             totalHoursRequired = immediateOrders.reduce((s, o) => s + o.horas, 0);
@@ -2160,6 +2282,14 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
         sortedOrders.forEach(order => {
             let candidates = eligibleMesaIds.filter(id => mesaAcceptsMaterial(id, order.sector, order.tamano));
 
+            // Las reparaciones de plastificado se hacen en las mesas de Muebles de apoyo a la Línea de
+            // Camas, no en las mesas del plan de Muebles. Si en esta distribución no hay ninguna mesa de
+            // apoyo escogida, se dejan las demás mesas de Muebles para que no queden sin asignar.
+            if (esReparacionApoyoCamas(order.nombre)) {
+                const mesasApoyo = candidates.filter(id => camasOverflowMesaIds.has(id));
+                if (mesasApoyo.length > 0) candidates = mesasApoyo;
+            }
+
             // Válvula de alivio: si la Línea 1 (Línea de Camas) ya no tiene capacidad disponible en
             // ninguna de sus mesas habituales, se habilitan las mesas de Línea 2 – Muebles marcadas con
             // el botón "Habilitar para Camas" (camasOverflowMesaIds) como mesas adicionales para colocar
@@ -2233,9 +2363,11 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
     // SOLO para efectos de "modular" (rebalancear) la distribución ya ejecutada. Las mesas de Línea 2 –
     // Muebles marcadas con "Habilitar para Camas" (camasOverflowMesaIds) se habilitan también como
     // destino de excedentes de Camas, igual que la válvula de alivio que ya existe en handleExecuteDistribution.
-    const mesaCompatibleParaModular = (mesaId: number, sector: string | null, tamano: MaterialSize | null): boolean => {
-        if (mesaAcceptsMaterial(mesaId, sector, tamano)) return true;
-        return sector === SECTOR_CAMAS && camasOverflowMesaIds.has(mesaId);
+    const mesaCompatibleParaModular = (mesaId: number, order: UnifiedOrder): boolean => {
+        // Las reparaciones de plastificado no salen de las mesas de apoyo a la Línea de Camas
+        if (esReparacionApoyoCamas(order.nombre)) return camasOverflowMesaIds.has(mesaId);
+        if (mesaAcceptsMaterial(mesaId, order.sector, order.tamano)) return true;
+        return order.sector === SECTOR_CAMAS && camasOverflowMesaIds.has(mesaId);
     };
 
     // "MODULAR DISTRIBUCIÓN DE MESAS": rebalancea la distribución ya ejecutada, moviendo materiales de
@@ -2286,7 +2418,7 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
                     const duracion = item.endHour - item.startHour;
                     const destinos = mesaIds
                         .filter(id => id !== sourceId)
-                        .filter(id => mesaCompatibleParaModular(id, item.order.sector, item.order.tamano))
+                        .filter(id => mesaCompatibleParaModular(id, item.order))
                         .filter(id => usedHoursOf(id) + duracion <= (capacityById.get(id) ?? 0))
                         .sort((a, b) => utilizationOf(a) - utilizationOf(b));
 
@@ -2551,11 +2683,44 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
                 });
             };
 
+            // Devuelve los códigos que cuelgan (a cualquier profundidad) de un "FORRO BASE" dentro de la
+            // explosión de un material padre. La explosión trae MATERIAL_PADRE por fila, así que se arma
+            // el árbol y se desciende desde cada "FORRO BASE" marcando toda su rama.
+            const getCodigosBajoForroBase = (components: any[]): Set<string> => {
+                const hijosPorPadre = new Map<string, any[]>();
+                const raices: string[] = [];
+                components.forEach((comp: any) => {
+                    const padre = String(comp.MATERIAL_PADRE || '').trim();
+                    const codigo = String(comp.COMPONENTE || '').trim();
+                    if (padre) {
+                        if (!hijosPorPadre.has(padre)) hijosPorPadre.set(padre, []);
+                        hijosPorPadre.get(padre)!.push(comp);
+                    }
+                    const desc = String(comp.DESCRIPCION_COMPONENTE || '').trim().toUpperCase();
+                    if (codigo && desc.startsWith('FORRO BASE')) raices.push(codigo);
+                });
+                const bajoForroBase = new Set<string>(raices);
+                const pendientes = [...raices];
+                while (pendientes.length > 0) {
+                    const actual = pendientes.pop()!;
+                    (hijosPorPadre.get(actual) || []).forEach((hijo: any) => {
+                        const codigoHijo = String(hijo.COMPONENTE || '').trim();
+                        if (codigoHijo && !bajoForroBase.has(codigoHijo)) {
+                            bajoForroBase.add(codigoHijo);
+                            pendientes.push(codigoHijo);
+                        }
+                    });
+                }
+                return bajoForroBase;
+            };
+
             responses.forEach((components, idx) => {
                 const material = allUniqueMaterials[idx];
                 const parentDemand = materialDemandMap.get(material) || 0;
                 const parentPastDemand = pastDemandMap.get(material) || 0;
                 if (parentDemand === 0 && parentPastDemand === 0) return;
+
+                const codigosBajoForroBase = getCodigosBajoForroBase(components);
 
                 components.forEach((comp: any) => {
                     const descripcion = String(comp.DESCRIPCION_COMPONENTE || '').trim();
@@ -2580,15 +2745,19 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
                     const esCojin = descripcionUpper.includes('FORRO COJIN') || descripcionUpper.includes('COJIN INTER');
 
                     // Semielaborados de espuma para muebles: la descripción inicia con "LAMINA" o "ESPUMA".
-                    // Excepción: "LAMINA CILINDRICA" en particular también aparece como semielaborado del
+                    // Excepción 1: "LAMINA CILINDRICA" en particular también aparece como semielaborado del
                     // "FORRO BASE" (no es espuma suelta de muebles) — el usuario confirmó que de esas solo
                     // deben devolverse las que tienen RespCtrlProd '014' (espuma genuina de muebles); el
                     // resto pertenece al proceso de Forros y no debe aparecer en esta tabla.
+                    // Excepción 2: toda espuma que descienda de un "FORRO BASE" (p. ej. las LAMINA
+                    // CILINDRICA que cuelgan de las BANDAS/ACOLCHADOS de un "FORRO BASE DUO", varios
+                    // niveles más abajo) se consume dentro del proceso de Forros, no en el de Espuma.
                     if (descripcionUpper.startsWith('LAMINA') || descripcionUpper.startsWith('ESPUMA')) {
                         const esLaminaCilindrica = descripcionSinAcentos.startsWith('LAMINA CILINDRICA');
                         const excluidaPorFiltroCilindrica = esLaminaCilindrica
                             && materialRespCtrlProdMap.get(normalizeMaterialCode(componente)) !== '014';
-                        if (!excluidaPorFiltroCilindrica) {
+                        const excluidaPorForroBase = codigosBajoForroBase.has(String(comp.MATERIAL_PADRE || '').trim());
+                        if (!excluidaPorFiltroCilindrica && !excluidaPorForroBase) {
                             const accum = ensure(grouped, componente, descripcion, unidad);
                             accum.totalNecesario += necesario;
                             recordOrigin(accum, material);
@@ -2823,13 +2992,7 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
                 // área de espuma programa con horizonte propio, pero igual debe caer en día laborable,
                 // saltando fines de semana y feriados de Ecuador vía workingWindow/holidaysMap).
                 if (hayP2) {
-                    const fechaP2 = workingWindow.length > 0 ? workingWindow[0].date : (() => {
-                        const fallback = new Date();
-                        fallback.setHours(0, 0, 0, 0);
-                        fallback.setDate(fallback.getDate() + 1);
-                        return fallback;
-                    })();
-                    const codigoPlanGrupoP2 = await savePlanGrupo('P2', fechaP2);
+                    const codigoPlanGrupoP2 = await savePlanGrupo('P2', computeFechaP2());
                     for (const comp of foamExplosionResults) {
                         await saveDetalle(codigoPlanGrupoP2, Number(comp.componente) || 0, comp.cantidadNetaAConseguir, '');
                     }
@@ -3309,6 +3472,34 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
                                 </div>
                             </div>
 
+                            {capacityShortageSuggestion && (
+                                <div className="bg-yellow-50 border border-yellow-300 rounded-lg p-3 flex items-start gap-2">
+                                    <Lightbulb className="w-4 h-4 text-yellow-600 mt-0.5 shrink-0" />
+                                    <div className="text-xs text-yellow-900">
+                                        <p className="font-bold mb-1">
+                                            Faltan {capacityShortageSuggestion.deficit.toFixed(2)} h para cubrir las Horas Requeridas (Compromisos Inmediatos). Para alcanzarlas, considere:
+                                        </p>
+                                        <ul className="space-y-0.5 list-disc list-inside">
+                                            <li className={cn(capacityShortageSuggestion.recomendada === 'horario' && 'font-bold')}>
+                                                {capacityShortageSuggestion.sugerenciaHorario
+                                                    ? <>Subir el horario de trabajo a <span className="font-bold">{capacityShortageSuggestion.sugerenciaHorario.label}</span> (alcanzaría ~{capacityShortageSuggestion.sugerenciaHorario.horasEstimadas.toFixed(2)} h de capacidad).</>
+                                                    : <>Subir el horario de trabajo no alcanza por sí solo con las opciones disponibles (máximo {SHIFT_SCHEDULES[SHIFT_SCHEDULES.length - 1].label}).</>
+                                                }
+                                                {capacityShortageSuggestion.recomendada === 'horario' && ' — Recomendado'}
+                                            </li>
+                                            <li className={cn(capacityShortageSuggestion.recomendada === 'mesas' && 'font-bold')}>
+                                                {capacityShortageSuggestion.mesasNecesarias !== null
+                                                    ? <>Aumentar {capacityShortageSuggestion.mesasNecesarias} mesa(s) de trabajo adicional(es) (de {capacityShortageSuggestion.mesasDisponibles} disponible(s) sin asignar), a ~{capacityShortageSuggestion.avgHorasPorMesa.toFixed(2)} h c/u.</>
+                                                    : <>No hay suficientes datos de mesas asignadas para estimar cuántas mesas adicionales harían falta.</>
+                                                }
+                                                {capacityShortageSuggestion.mesasNecesarias !== null && !capacityShortageSuggestion.mesaFactible && ' (no alcanzan las mesas disponibles)'}
+                                                {capacityShortageSuggestion.recomendada === 'mesas' && ' — Recomendado'}
+                                            </li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            )}
+
                             {planningResult.ptboAlerts.length > 0 && (
                                 <div className="bg-amber-50 border border-amber-300 rounded-lg p-3 flex items-start gap-2">
                                     <TriangleAlert className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
@@ -3582,12 +3773,12 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
                         </div>
                         <div className="p-6 space-y-3">
                             <p className="text-xs text-gray-600">
-                                Incluye dos tipos de órdenes: (1) MTO ya planificadas para hoy ({toDateKey(planningResult.targetDate)})
-                                cuya fecha de entrega cae fuera de la ventana de prioridad
-                                (Quito {toDateKey(addBusinessDays(planningResult.targetDate, 1))} · Guayaquil {toDateKey(addBusinessDays(planningResult.targetDate, 2))}), y
-                                (2) órdenes Fert MTS cuya fecha de creación (FECHAORDEN) es hoy ({toDateKey(new Date())}) — recién
-                                liberadas por SAP y sugeridas para su revisión, en vez de incluirse automáticamente en el relleno de
-                                capacidad. Ambas se pueden mover hacia adelante sin riesgo de incumplir una entrega.
+                                Solo incluye órdenes MTO cuya fecha de planificación en el ERP es exactamente la fecha
+                                objetivo ({toDateKey(planningResult.targetDate)}) y cuya fecha de entrega cae fuera de la ventana de prioridad
+                                (Quito {toDateKey(addBusinessDays(planningResult.targetDate, 1))} · Guayaquil {toDateKey(addBusinessDays(planningResult.targetDate, 2))}):
+                                se pueden mover hacia adelante sin riesgo de incumplir una entrega. Las órdenes programadas
+                                por el ERP para otro día (anterior o posterior) nunca aparecen aquí, porque moverlas no libera
+                                capacidad de la fecha que se está planificando.
                                 {planningResult.planningStepResult >= 2
                                     ? ' Ya están incluidas en el cálculo de capacidad, distribución de mesas y explosión de materiales de este Paso 2 (reflejan lo que hay hoy en SAP); si quiere seguir optimizando, muévalas también en SAP y presione "Actualizar Datos" de nuevo.'
                                     : ' No se incluyeron en el cálculo de capacidad de hoy; revíselas para decidir si conviene adelantar alguna.'}

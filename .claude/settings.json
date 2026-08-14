@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e ' *)",
+      "Bash(node \"C:\\\\Users\\\\SEBAST~1.GUE\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Proyectos-OptimizadorProduccion\\\\2468b10d-18ef-4853-b605-9dd5cf92ecda\\\\scratchpad\\\\analyze_pend.js\")",
+      "Bash(curl -s -m 30 -X POST \"https://apps.chaide.com/ProductionOptimizer/api/servicios/OrdenesFertPaginadas\" -H \"Content-Type: application/json\" -d '{\"page\":1,\"rowsPerPage\":1}')",
+      "Bash(curl -s -m 60 -X POST \"https://apps.chaide.com/ProductionOptimizer/api/servicios/OrdenesFertPaginadas\" -H \"Content-Type: application/json\" -d '{\"page\":1,\"rowsPerPage\":4268}' -o /tmp/fert_full.json)",
+      "Bash(node \"C:\\\\Users\\\\SEBAST~1.GUE\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Proyectos-OptimizadorProduccion\\\\2468b10d-18ef-4853-b605-9dd5cf92ecda\\\\scratchpad\\\\investigate_fert.js\")",
+      "Bash(npx tsc *)",
+      "Bash(curl -s -X POST \"https://apps.chaide.com/ProductionOptimizer/api/servicios/OrdenesFertPaginadas\" -H \"Content-Type: application/json\" -d '{\"page\":1,\"rowsPerPage\":5000}' -o \"/tmp/fert_all.json\" -w \"HTTP:%{http_code}\\\\n\")",
+      "Bash(curl -s -X POST \"https://apps.chaide.com/ProductionOptimizer/api/servicios/OrdenesProvisionalesAlphaPaginadas\" -H \"Content-Type: application/json\" -d '{\"page\":1,\"rowsPerPage\":1}')",
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>{const j=JSON.parse\\(d\\);console.log\\('total prov:',j.totalRegistros\\)}\\)\")",
+      "Bash(curl -s -X POST \"https://apps.chaide.com/ProductionOptimizer/api/servicios/tiemposEnsamblado\" -H \"Content-Type: application/json\" -d '{\"page\":1,\"rowsPerPage\":1}')",
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>{const j=JSON.parse\\(d\\);console.log\\('total:',j.totalRegistros\\); console.log\\(JSON.stringify\\(j.data[0],null,2\\)\\)}\\)\")",
+      "Bash(rm -f \"C:/Users/SEBAST~1.GUE/AppData/Local/Temp/plangrupo_all.json\" \"C:/Users/SEBAST~1.GUE/AppData/Local/Temp/detalletactico_all.json\")",
+      "Bash(curl -s -X POST \"https://apps.chaide.com/ProductionOptimizer/api/servicios/OrdenesFertPaginadas\" -H \"Content-Type: application/json\" -d '{\"page\":1,\"rowsPerPage\":5000}' -o \"/tmp/fert_kardex.json\" -w \"HTTP:%{http_code}\\\\n\")",
+      "Bash(curl -s -X POST \"https://apps.chaide.com/ProductionOptimizer/api/servicios/OrdenesProvisionalesAlphaPaginadas\" -H \"Content-Type: application/json\" -d '{\"page\":1,\"rowsPerPage\":3000}' -o \"/tmp/prov_kardex.json\" -w \"HTTP:%{http_code}\\\\n\")",
+      "Bash(rm -f \"C:/Users/SEBAST~1.GUE/AppData/Local/Temp/fert_kardex.json\" \"C:/Users/SEBAST~1.GUE/AppData/Local/Temp/prov_kardex.json\")",
+      "Bash(tee /tmp/tsc_out.txt)",
+      "Read(//tmp/**)",
+      "Bash(curl -s -X POST \"https://apps.chaide.com/ProductionOptimizer/api/servicios/OrdenesFertPaginadas\" -H \"Content-Type: application/json\" -d '{\"page\":1,\"rowsPerPage\":5000}' -o \"/tmp/fert_comp_check.json\" -w \"HTTP:%{http_code}\\\\n\")",
+      "Bash(curl -s -X POST \"https://apps.chaide.com/ProductionOptimizer/api/servicios/OrdenesProvisionalesAlphaPaginadas\" -H \"Content-Type: application/json\" -d '{\"page\":1,\"rowsPerPage\":3000}' -o \"/tmp/prov_comp_check.json\" -w \"HTTP:%{http_code}\\\\n\")",
+      "Bash(rm -f \"C:/Users/SEBAST~1.GUE/AppData/Local/Temp/fert_comp_check.json\" \"C:/Users/SEBAST~1.GUE/AppData/Local/Temp/prov_comp_check.json\")",
+      "Bash(rm -f \"/tmp/prov_pm2.json\" \"/tmp/fert_pm2.json\" 2>/dev/null; echo done)",
+      "Bash(ls -la \"C:\\\\Users\\\\sebastian.guerrero\\\\.claude\\\\projects\\\\c--Proyectos-OptimizadorProduccion\\\\memory\\\\\" 2>/dev/null || echo \"NO_DIR\")",
+      "Read(//c/Users/sebastian.guerrero/.claude/projects/c--Proyectos-OptimizadorProduccion/memory\" 2>/dev/**)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\SEBAST~1.GUE\\AppData\\Local\\Temp",
+      "\\tmp"
+    ]
+  }
+}
