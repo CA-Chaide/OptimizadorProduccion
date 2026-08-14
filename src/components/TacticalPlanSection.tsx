@@ -9,6 +9,7 @@ import { parseTacticalOrdersExcel } from '@/services/OptimizationService';
 import { TacticalSchedulingIcon, DataImportIcon, MAX_FILE_SIZE_MB } from '@/constants/constants';
 import { useAppContext } from '@/context/AppProvider';
 import { ProvisionalOrdersTabSection } from './ProvisionalOrdersTabSection';
+import { toFechaEcuador } from '@/lib/fecha-ecuador';
 
 
 interface TacticalPlanSectionProps {
@@ -17,14 +18,14 @@ interface TacticalPlanSectionProps {
 
 const getTodayString = () => {
     const today = new Date();
-    return today.toISOString().split('T')[0]; // YYYY-MM-DD
+    return toFechaEcuador(today); // YYYY-MM-DD
 };
 
 const getTargetDateString = (executionDate: string): string => {
     if (!executionDate) return '';
     const date = new Date(executionDate + 'T00:00:00');
     date.setDate(date.getDate() + 4);
-    return date.toISOString().split('T')[0];
+    return toFechaEcuador(date);
 };
 
 

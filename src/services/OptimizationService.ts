@@ -12,6 +12,7 @@ import {
 import { MONTH_NAMES, PROCESS_TYPE_OPTIONS, HOLIDAY_APPLIES_TO_OPTIONS, HOLIDAY_DAY_TYPE_OPTIONS } from '@/constants/constants'; 
 import { queryApi } from '@/hooks/useApiData';
 import { logger } from './LogService';
+import { toFechaEcuador } from '@/lib/fecha-ecuador';
 
 declare var XLSX: any; 
 
@@ -415,7 +416,7 @@ export const getMonthlyCapacityDetails = (year: number, month: number, constrain
     for (let day = 1; day <= daysInMonth; day++) {
         const date = new Date(year, month - 1, day);
         const dayOfWeek = date.getDay();
-        const holiday = constraints.holidays.find(h => h.date === date.toISOString().split('T')[0]);
+        const holiday = constraints.holidays.find(h => h.date === toFechaEcuador(date));
 
         if (holiday && holiday.dayType === 'asueto') continue;
 
