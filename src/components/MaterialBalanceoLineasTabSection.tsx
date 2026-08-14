@@ -31,6 +31,7 @@ interface MaterialBalanceoRow {
   minimo: number;
   maximo: number;
   cantPresupuesto: number;
+  prioridad: number;
 }
 
 interface DisplayRow extends MaterialBalanceoRow {
@@ -48,18 +49,30 @@ const EXPANDED_DATA_KEY = 'material_balanceo_expanded_data';
 const CENTROS = ["1000", "2000"] as const;
 type Centro = typeof CENTROS[number];
 
+// Mapeo de equivalencias Máquina -> Línea (igual al usado en "Fert" y "Previsionales"): la Línea
+// de un material se deriva de la Máquina de su orden Fert, no de patrones en Categoría.
+const MAQUINA_LINEA_MAP: Record<string, string> = {
+  'HR-ARM01': 'LINEA 1',
+  'HR-ARM02': 'LINEA 2',
+  'HR-ARM03': 'LINEA 3',
+  'HR-ARM05': 'LINEA 5',
+  'HR-ARM21': 'LINEA 1',
+  'HR-ARM22': 'LINEA 2',
+  'HR-ARM25': 'LINEA 5',
+};
+
 const INITIAL_DATA: MaterialBalanceoRow[] = [
-  { id: '1', material: '20007201', descripcion: 'CHN ZAFIRO 135X190X029', habilitado: true, minimo: 0, maximo: 100, cantPresupuesto: 0 },
-  { id: '2', material: '20004463', descripcion: 'CHN ZAFIRO 135X190X024', habilitado: true, minimo: 0, maximo: 100, cantPresupuesto: 0 },
-  { id: '3', material: '20004462', descripcion: 'CHN ZAFIRO 105X190X024', habilitado: true, minimo: 0, maximo: 100, cantPresupuesto: 0 },
-  { id: '4', material: '20007200', descripcion: 'CHN ZAFIRO 105X190X029', habilitado: true, minimo: 0, maximo: 100, cantPresupuesto: 0 },
-  { id: '5', material: '20003642', descripcion: 'CHN IMPERIAL 31 135X190X31', habilitado: true, minimo: 0, maximo: 100, cantPresupuesto: 0 },
-  { id: '6', material: '20006132', descripcion: 'CHN ALTERNATIVA ESPUMA 080X190X011', habilitado: false, minimo: 0, maximo: 100, cantPresupuesto: 0 },
-  { id: '7', material: '20003275', descripcion: 'CHN ALTERNATIVA ESPUMA 080X190X015', habilitado: false, minimo: 0, maximo: 100, cantPresupuesto: 0 },
-  { id: '8', material: '20006133', descripcion: 'CHN ALTERNATIVA ESPUMA 105X190X011', habilitado: false, minimo: 0, maximo: 100, cantPresupuesto: 0 },
-  { id: '9', material: '20003277', descripcion: 'CHN ALTERNATIVA ESPUMA 105X190X015', habilitado: true, minimo: 0, maximo: 100, cantPresupuesto: 0 },
-  { id: '10', material: '20006134', descripcion: 'CHN ALTERNATIVA ESPUMA 135X190X011', habilitado: true, minimo: 0, maximo: 100, cantPresupuesto: 0 },
-  { id: '11', material: '20003278', descripcion: 'CHN ALTERNATIVA ESPUMA 135X190X015', habilitado: true, minimo: 0, maximo: 100, cantPresupuesto: 0 },
+  { id: '1', material: '20007201', descripcion: 'CHN ZAFIRO 135X190X029', habilitado: true, minimo: 0, maximo: 100, cantPresupuesto: 0, prioridad: 0 },
+  { id: '2', material: '20004463', descripcion: 'CHN ZAFIRO 135X190X024', habilitado: true, minimo: 0, maximo: 100, cantPresupuesto: 0, prioridad: 0 },
+  { id: '3', material: '20004462', descripcion: 'CHN ZAFIRO 105X190X024', habilitado: true, minimo: 0, maximo: 100, cantPresupuesto: 0, prioridad: 0 },
+  { id: '4', material: '20007200', descripcion: 'CHN ZAFIRO 105X190X029', habilitado: true, minimo: 0, maximo: 100, cantPresupuesto: 0, prioridad: 0 },
+  { id: '5', material: '20003642', descripcion: 'CHN IMPERIAL 31 135X190X31', habilitado: true, minimo: 0, maximo: 100, cantPresupuesto: 0, prioridad: 0 },
+  { id: '6', material: '20006132', descripcion: 'CHN ALTERNATIVA ESPUMA 080X190X011', habilitado: false, minimo: 0, maximo: 100, cantPresupuesto: 0, prioridad: 0 },
+  { id: '7', material: '20003275', descripcion: 'CHN ALTERNATIVA ESPUMA 080X190X015', habilitado: false, minimo: 0, maximo: 100, cantPresupuesto: 0, prioridad: 0 },
+  { id: '8', material: '20006133', descripcion: 'CHN ALTERNATIVA ESPUMA 105X190X011', habilitado: false, minimo: 0, maximo: 100, cantPresupuesto: 0, prioridad: 0 },
+  { id: '9', material: '20003277', descripcion: 'CHN ALTERNATIVA ESPUMA 105X190X015', habilitado: true, minimo: 0, maximo: 100, cantPresupuesto: 0, prioridad: 0 },
+  { id: '10', material: '20006134', descripcion: 'CHN ALTERNATIVA ESPUMA 135X190X011', habilitado: true, minimo: 0, maximo: 100, cantPresupuesto: 0, prioridad: 0 },
+  { id: '11', material: '20003278', descripcion: 'CHN ALTERNATIVA ESPUMA 135X190X015', habilitado: true, minimo: 0, maximo: 100, cantPresupuesto: 0, prioridad: 0 },
 ];
 
 export const MaterialBalanceoLineasTabSection: React.FC = () => {
@@ -163,7 +176,8 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
           ...r,
           minimo: r.minimo !== undefined ? r.minimo : 0,
           maximo: r.maximo !== undefined ? r.maximo : 100,
-          cantPresupuesto: r.cantPresupuesto !== undefined ? r.cantPresupuesto : 0
+          cantPresupuesto: r.cantPresupuesto !== undefined ? r.cantPresupuesto : 0,
+          prioridad: r.prioridad !== undefined ? r.prioridad : 0
         }));
         setRows(dedupeRowsByMaterial(migrated));
       } catch (e) {
@@ -206,6 +220,7 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
           minimo: m.porc_minimo_balanceo,
           maximo: m.porc_maximo_balanceo,
           cantPresupuesto: 0,
+          prioridad: (m as any).prioridad ?? 0,
         }));
       return nuevas.length > 0 ? dedupeRowsByMaterial([...prevRows, ...nuevas]) : prevRows;
     });
@@ -226,7 +241,8 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
       habilitado: true,
       minimo: 0,
       maximo: 100,
-      cantPresupuesto: 0
+      cantPresupuesto: 0,
+      prioridad: 0
     };
     setRows([...rows, newRow]);
   };
@@ -260,18 +276,37 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
       const matNorm = normalizeMaterialCode(f.MATERIAL);
       if (!matNorm || map.has(matNorm)) return;
 
-      const cat = String(f.CATEGORIA || '').toUpperCase();
-      let linea = '';
-      if (cat.includes('L1')) linea = 'LINEA 1';
-      else if (cat.includes('L2')) linea = 'LINEA 2';
-      else if (cat.includes('L3')) linea = 'LINEA 3';
-      else if (cat.includes('L5') || cat.includes('B-B')) linea = 'LINEA 5';
-      else linea = String(f.LINEA || '').trim().toUpperCase();
+      const maquina = String(f.MAQUINA || f.Maquina || f.maquina || '').trim().toUpperCase();
+      const linea = MAQUINA_LINEA_MAP[maquina] || '';
 
       if (linea) map.set(matNorm, linea);
     });
     return map;
   }, [fertData]);
+
+  // Mapa Centro+Material -> Prioridad/Mínimo/Máximo, tomado de la tabla "Materiales de Balanceo"
+  // (administrada desde Grupos), filtrado al grupo "Ensamblado" y activo. Al estar indexado por
+  // Centro, un mismo Material puede tener valores distintos en Centro 1000 y Centro 2000.
+  const materialesBalanceoPorCentro = useMemo(() => {
+    const map = new Map<string, { prioridad: number; minimo: number; maximo: number }>();
+    materialesBalanceoApi.forEach((m: any) => {
+      const grupo = m.grupo || m;
+      const nombreGrupo = String(grupo?.nombre_grupo || '').toLowerCase();
+      if (!nombreGrupo.includes('ensamblado')) return;
+      if (m.estado !== 'A') return;
+
+      const centro = String(grupo?.centro || '').trim();
+      const materialNorm = normalizeMaterialCode(m.codigo_material);
+      if (!centro || !materialNorm) return;
+
+      map.set(`${centro}|${materialNorm}`, {
+        prioridad: Number(m.prioridad ?? 0),
+        minimo: Number(m.porc_minimo_balanceo ?? 0),
+        maximo: Number(m.porc_maximo_balanceo ?? 0),
+      });
+    });
+    return map;
+  }, [materialesBalanceoApi]);
 
   // LÓGICA DE UNIÓN: Línea se resuelve por Material contra la pestaña Fert. Puesto Trabajo, Tiempo (min)
   // y Centro se resuelven contra la pestaña Tiempos, cruzando esa Línea junto con el Material; cada
@@ -305,6 +340,11 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
             ? Number(presuMatch.cantidad_a_producir ?? 0)
             : baseRow.cantPresupuesto;
 
+          // VINCULACIÓN DE PRIORIDAD/MÍNIMO/MÁXIMO: tomados de "Materiales de Balanceo" (grupo
+          // Ensamblado) para este Centro puntual; si el material aún no está configurado ahí para
+          // este Centro, se conserva el valor propio de la fila.
+          const balanceoMatch = materialesBalanceoPorCentro.get(`${centro}|${materialNorm}`);
+
           results.push({
             ...baseRow,
             centro,
@@ -312,6 +352,9 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
             cantPresupuesto: cantPresupuestoFinal,
             puestoTrabajo: String(match.PuestoTrabajo || '-'),
             tiempoMin: Number(match.Tiempo_Min || 0),
+            prioridad: balanceoMatch ? balanceoMatch.prioridad : baseRow.prioridad,
+            minimo: balanceoMatch ? balanceoMatch.minimo : baseRow.minimo,
+            maximo: balanceoMatch ? balanceoMatch.maximo : baseRow.maximo,
             esFilaTecnica: true
           });
         });
@@ -329,10 +372,11 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
     });
 
     return results;
-  }, [rows, technicalData, presupuestoRefData, fertLineaByMaterial]);
+  }, [rows, technicalData, presupuestoRefData, fertLineaByMaterial, materialesBalanceoPorCentro]);
 
-  // Publicar la relación Centro + Línea + Material + Puesto Trabajo -> Cant Presupuesto para que otras
-  // pestañas (como Prog Tiempos) puedan tomar ese valor directamente, diferenciado por centro.
+  // Publicar la relación Centro + Línea + Material + Puesto Trabajo -> Cant Presupuesto (y también
+  // Mínimo/Máximo/Prioridad/Habilitado, propiedades del material) para que otras pestañas (Prog
+  // Tiempos, Rev Cap Halb) puedan tomarlas directamente, diferenciadas por centro.
   useEffect(() => {
     if (!isLoaded) return;
     const linkData = expandedRows
@@ -342,7 +386,11 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
         linea: String(r.linea || '').trim().toUpperCase(),
         material: normalizeMaterialCode(r.material),
         puestoTrabajo: String(r.puestoTrabajo || '').trim().toUpperCase().replace(/\s+/g, ' '),
-        cantPresupuesto: Number(r.cantPresupuesto || 0)
+        cantPresupuesto: Number(r.cantPresupuesto || 0),
+        minimo: Number(r.minimo || 0),
+        maximo: Number(r.maximo || 0),
+        prioridad: Number(r.prioridad || 0),
+        habilitado: !!r.habilitado
       }));
     localStorage.setItem(EXPANDED_DATA_KEY, JSON.stringify(linkData));
   }, [expandedRows, isLoaded]);
@@ -398,6 +446,7 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
                 <th className="px-4 py-3 text-left font-bold text-gray-600 uppercase tracking-wider border-r">Descripción</th>
                 <th className="px-4 py-3 text-left font-bold text-indigo-700 uppercase tracking-wider border-r bg-indigo-50/20">Puesto Trabajo</th>
                 <th className="px-4 py-3 text-right font-bold text-indigo-700 uppercase tracking-wider border-r bg-indigo-50/20">tiempo (min)</th>
+                <th className="px-4 py-3 text-center font-bold text-violet-700 uppercase tracking-wider w-24 border-r bg-violet-50/20">Prioridad</th>
                 <th className="px-4 py-3 text-center font-bold text-gray-600 uppercase tracking-wider w-24 border-r">Habilitado</th>
                 <th className="px-4 py-3 text-center font-bold text-gray-600 uppercase tracking-wider w-16 border-r">Acción</th>
                 <th className="px-4 py-3 text-center font-bold text-indigo-700 uppercase tracking-wider w-24 border-r bg-indigo-50/30">Cant Presupuesto</th>
@@ -408,7 +457,7 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
             <tbody className="bg-white divide-y divide-gray-200">
               {isLoadingTech && rowsForCentro.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="px-6 py-12 text-center text-gray-400">
+                  <td colSpan={12} className="px-6 py-12 text-center text-gray-400">
                     <div className="flex flex-col items-center gap-2">
                       <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
                       <span>Sincronizando información técnica de puestos...</span>
@@ -445,6 +494,19 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
                   <td className="px-4 py-1.5 border-r text-right font-mono font-bold text-indigo-700 bg-indigo-50/10">
                     {row.tiempoMin > 0 ? row.tiempoMin.toLocaleString(undefined, { minimumFractionDigits: 3 }) : '-'}
                   </td>
+                  <td className="px-2 py-1.5 border-r text-center bg-violet-50/5">
+                    {row.esFilaTecnica ? (
+                      <span className="font-bold text-violet-700">{row.prioridad}</span>
+                    ) : (
+                      <select
+                        value={row.prioridad}
+                        onChange={(e) => handleUpdateRow(row.id, 'prioridad', Number(e.target.value))}
+                        className="h-8 text-xs text-center border-none shadow-none bg-transparent focus:ring-1 focus:ring-indigo-500 font-bold text-violet-700 rounded"
+                      >
+                        {[0, 1, 2, 3, 4, 5].map(v => <option key={v} value={v}>{v}</option>)}
+                      </select>
+                    )}
+                  </td>
                   <td className="px-2 py-1.5 border-r text-center">
                     <div className="flex items-center justify-center">
                       <Checkbox
@@ -468,26 +530,34 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
                     {Number(row.cantPresupuesto || 0).toLocaleString()}
                   </td>
                   <td className="px-2 py-1.5 border-r text-center bg-indigo-50/5">
-                    <Input
-                      type="number"
-                      value={row.minimo}
-                      onChange={(e) => handleUpdateRow(row.id, 'minimo', Number(e.target.value))}
-                      className="h-8 text-xs text-center border-none shadow-none focus-visible:ring-1 focus-visible:ring-indigo-500 font-bold text-indigo-700"
-                    />
+                    {row.esFilaTecnica ? (
+                      <span className="font-bold text-indigo-700">{row.minimo}</span>
+                    ) : (
+                      <Input
+                        type="number"
+                        value={row.minimo}
+                        onChange={(e) => handleUpdateRow(row.id, 'minimo', Number(e.target.value))}
+                        className="h-8 text-xs text-center border-none shadow-none focus-visible:ring-1 focus-visible:ring-indigo-500 font-bold text-indigo-700"
+                      />
+                    )}
                   </td>
                   <td className="px-2 py-1.5 text-center bg-indigo-50/5">
-                    <Input
-                      type="number"
-                      value={row.maximo}
-                      onChange={(e) => handleUpdateRow(row.id, 'maximo', Number(e.target.value))}
-                      className="h-8 text-xs text-center border-none shadow-none focus-visible:ring-1 focus-visible:ring-indigo-500 font-bold text-indigo-700"
-                    />
+                    {row.esFilaTecnica ? (
+                      <span className="font-bold text-indigo-700">{row.maximo}</span>
+                    ) : (
+                      <Input
+                        type="number"
+                        value={row.maximo}
+                        onChange={(e) => handleUpdateRow(row.id, 'maximo', Number(e.target.value))}
+                        className="h-8 text-xs text-center border-none shadow-none focus-visible:ring-1 focus-visible:ring-indigo-500 font-bold text-indigo-700"
+                      />
+                    )}
                   </td>
                 </tr>
               ))}
               {rowsForCentro.length === 0 && !isLoadingTech && (
                 <tr>
-                  <td colSpan={11} className="px-6 py-12 text-center text-gray-400 italic">
+                  <td colSpan={12} className="px-6 py-12 text-center text-gray-400 italic">
                     No hay materiales configurados para este centro. Haga clic en "Añadir Línea" para comenzar.
                   </td>
                 </tr>
@@ -552,6 +622,7 @@ export const MaterialBalanceoLineasTabSection: React.FC = () => {
         <p className="text-xs">
           <b>Nota:</b> La columna <b>Línea</b> se vincula automáticamente por coincidencia de Material contra la pestaña Fert.
           Los valores de <b>Cant Presupuesto</b> toman el dato de <b>Cant. a Producir</b> de la pestaña Presupuesto, sincronizado automáticamente basándose en la coincidencia de Centro, Línea y Material.
+          Los valores de <b>Prioridad</b>, <b>Mínimo (%)</b> y <b>Máximo (%)</b> se toman de la tabla <b>Materiales de Balanceo</b> del grupo Ensamblado, diferenciados por Centro (un mismo material puede tener valores distintos en Centro 1000 y 2000); mientras el material no tenga configuración en esa tabla para el Centro resuelto, esos campos quedan editables manualmente.
         </p>
       </div>
     </div>

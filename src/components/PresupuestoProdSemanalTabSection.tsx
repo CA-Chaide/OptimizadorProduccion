@@ -33,6 +33,25 @@ const DIAS_LABORABLES_KEY_PREFIX = 'presupuesto_dias_laborables_';
 const CENTROS = ["1000", "2000"] as const;
 type Centro = typeof CENTROS[number];
 
+// Normaliza para comparar sin distinguir acentos/mayúsculas ni espacios extra
+const normalizeText = (val: any): string =>
+  String(val || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .replace(/[áàäâ]/g, 'a')
+    .replace(/[éèëê]/g, 'e')
+    .replace(/[íìïî]/g, 'i')
+    .replace(/[óòöô]/g, 'o')
+    .replace(/[úùüû]/g, 'u');
+
+// Esta pestaña solo debe presentar Línea 1, 2, 3 y 5 (por Centro): lista blanca en vez de negra,
+// para que cualquier otra categoría de linea_produccion (ej. "Forro Colchon", "Carruseles",
+// "Peticion de borrado", "Sin Linea" o cualquier valor nuevo/no previsto) quede excluida por defecto.
+const ALLOWED_LINEAS_PROD = new Set(
+  ["Linea 1", "Linea 2", "Linea 3", "Linea 5"].map(normalizeText)
+);
+
 // Helper para obtener el número de semana del año (ISO-8601)
 function getISOWeek(date: Date) {
   const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
@@ -146,6 +165,23 @@ export const PresupuestoProdSemanalTabSection: React.FC = () => {
         combinedData = [...combinedData, ...data];
       }
 
+      // El backend puede devolver más de un plan marcado como vigente a la vez (ej. "PMP-V-2" y
+      // "PMP-V-3" ambos con estado "A"), y cada Centro puede tener su propia versión vigente (no
+      // necesariamente la misma que otro Centro). Si se suman todos, cada material/centro/línea
+      // queda contado una vez por cada plan superpuesto, inflando el total. Se calcula el plan más
+      // reciente (mayor codigo_plan) POR CENTRO por separado, y se filtra cada fila contra el plan
+      // vigente de SU PROPIO Centro, antes de separar por Línea.
+      const planVigentePorCentro = new Map<string, number>();
+      combinedData.forEach((item: any) => {
+        const centro = String(item.centro ?? '').trim();
+        const cp = Number(item.codigo_plan) || 0;
+        if (cp > (planVigentePorCentro.get(centro) ?? 0)) planVigentePorCentro.set(centro, cp);
+      });
+      combinedData = combinedData.filter((item: any) => {
+        const centro = String(item.centro ?? '').trim();
+        return Number(item.codigo_plan) === planVigentePorCentro.get(centro);
+      });
+
       // Consolidar por material, centro y línea para mostrar totales del mes
       const consolidatedMap = new Map<string, any>();
       combinedData.forEach(item => {
@@ -163,7 +199,8 @@ export const PresupuestoProdSemanalTabSection: React.FC = () => {
       setPresupuestoData(finalData);
 
       if (finalData.length > 0) {
-        addNotification('success', `Se recuperaron y consolidaron ${combinedData.length} registros de ${MONTH_NAMES[Number(selectedMonth) - 1]} ${selectedYear}.`);
+        const planesTexto = Array.from(planVigentePorCentro.entries()).map(([c, p]) => `${c}: plan ${p}`).join(', ');
+        addNotification('success', `Se recuperaron y consolidaron ${combinedData.length} registros (${planesTexto}) de ${MONTH_NAMES[Number(selectedMonth) - 1]} ${selectedYear}.`);
       } else {
         addNotification('info', 'No se encontraron datos para los criterios seleccionados.');
       }
@@ -182,6 +219,11 @@ export const PresupuestoProdSemanalTabSection: React.FC = () => {
     presupuestoData.forEach(item => {
       const centro = String(item.centro || '').trim() as Centro;
       if (!CENTROS.includes(centro)) return;
+
+      const materialSinCeros = String(item.codigo_material || '').replace(/^0+/, '');
+      if (!materialSinCeros.startsWith('2')) return;
+
+      if (!ALLOWED_LINEAS_PROD.has(normalizeText(item.linea_produccion))) return;
 
       if (term) {
         const matches = (
@@ -206,9 +248,13 @@ export const PresupuestoProdSemanalTabSection: React.FC = () => {
   };
 
   // Datos consolidados con "cantidad_a_producir" ya calculada (según los Días Laborables del centro de cada fila),
-  // para que otras pestañas (como Mat Balanceo) puedan tomar directamente ese valor.
+  // para que otras pestañas (como Mat Balanceo) puedan tomar directamente ese valor. Se aplica el
+  // mismo filtro de Línea (solo 1/2/3/5) que la tabla visible, para que lo publicado no incluya
+  // categorías que esta pestaña ya no presenta.
   const enrichedPresupuestoData = useMemo(() => {
-    return presupuestoData.map(item => {
+    return presupuestoData
+      .filter(item => ALLOWED_LINEAS_PROD.has(normalizeText(item.linea_produccion)))
+      .map(item => {
       const centroStr = String(item.centro || '').trim();
       const proyectada = Number(item.cantidad_proyectada) || 0;
       const dias = (centroStr === '1000' || centroStr === '2000') ? diasLaborables[centroStr as Centro] : '';
@@ -291,6 +337,52 @@ export const PresupuestoProdSemanalTabSection: React.FC = () => {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, `Presupuesto_${centro}`);
     XLSX.writeFile(wb, `Presupuesto_Centro${centro}_${MONTH_NAMES[Number(selectedMonth) - 1]}_${selectedYear}.xlsx`);
+  };
+
+  // Un solo archivo con toda la información de la pestaña: una hoja de detalle por Centro
+  // (mismas columnas que "Exportar" por Centro) más una hoja "Resumen" con el total por Línea
+  // de cada Centro, para no tener que exportar cada Centro por separado.
+  const handleExportAll = () => {
+    const hasAnyData = CENTROS.some(centro => filteredDataByCentro[centro].length > 0);
+    if (!hasAnyData) return;
+
+    const wb = XLSX.utils.book_new();
+
+    CENTROS.forEach(centro => {
+      const data = filteredDataByCentro[centro];
+      if (data.length === 0) return;
+
+      const exportData = data.map(item => {
+        const proyectada = Number(item.cantidad_proyectada) || 0;
+        const producir = calcCantidadAProducir(proyectada, diasLaborables[centro]);
+        return {
+          'Material': String(item.codigo_material || '').replace(/^0+/, ''),
+          'Descripción': item.nombre || '',
+          'Centro': item.centro || '',
+          'Línea': item.linea_produccion || '',
+          'Cant. Proyectada': proyectada,
+          'Cant. a Producir': producir ?? 0
+        };
+      });
+
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      XLSX.utils.book_append_sheet(wb, ws, `Presupuesto_${centro}`);
+    });
+
+    const resumenData = CENTROS.flatMap(centro =>
+      summaryByLineaCentro[centro].map(row => ({
+        'Centro': centro,
+        'Línea': row.linea,
+        'Cant. Proyectada': row.proyectada,
+        'Cant. a Producir': row.producir
+      }))
+    );
+    if (resumenData.length > 0) {
+      const wsResumen = XLSX.utils.json_to_sheet(resumenData);
+      XLSX.utils.book_append_sheet(wb, wsResumen, 'Resumen');
+    }
+
+    XLSX.writeFile(wb, `Presupuesto_${MONTH_NAMES[Number(selectedMonth) - 1]}_${selectedYear}.xlsx`);
   };
 
   if (!mounted) return null;
@@ -497,6 +589,15 @@ export const PresupuestoProdSemanalTabSection: React.FC = () => {
               </button>
             )}
           </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportAll}
+            disabled={CENTROS.every(centro => filteredDataByCentro[centro].length === 0)}
+          >
+            <Download className="w-4 h-4 mr-2" />
+            Exportar Todo
+          </Button>
         </div>
       </div>
 

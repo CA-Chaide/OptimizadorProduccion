@@ -6,11 +6,10 @@ import { grupoService } from '@/services/grupo.service';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
 import { 
-  Activity, 
-  Loader2, 
-  Home, 
+  Activity,
+  Loader2,
+  Home,
   Download,
-  Target,
   ArrowRightLeft,
   AlertCircle
 } from 'lucide-react';
@@ -18,6 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from '@/lib/utils';
 import * as XLSX from 'xlsx';
+import { useTiempoFinalPorPuesto, useCantidadFinalPorPuesto, useTiempoInicialPorPuesto, useCantidadInicialPorPuesto } from '@/hooks/useProgTiemposCapacidad';
 
 interface SummaryRow {
   linea: string;
@@ -28,6 +28,8 @@ interface SummaryRow {
   tiempoOrdPrev: number;
   totalCantidad: number;
   totalTiempo: number;
+  cantInicial: number;
+  tiempoInicial: number;
   puestosObjetivo: number;
 }
 
@@ -64,9 +66,43 @@ const normalizeKey = (text: string) => {
     .toUpperCase();
 };
 
+// Mapeo de equivalencias M\u00e1quina -> L\u00ednea (igual al usado en "Fert" y "Previsionales"): la L\u00ednea
+// de una orden Fert/Previsional se deriva de su M\u00e1quina, no de patrones en Categor\u00eda.
+const MAQUINA_LINEA_MAP: Record<string, string> = {
+  'HR-ARM01': 'LINEA 1',
+  'HR-ARM02': 'LINEA 2',
+  'HR-ARM03': 'LINEA 3',
+  'HR-ARM05': 'LINEA 5',
+  'HR-ARM21': 'LINEA 1',
+  'HR-ARM22': 'LINEA 2',
+  'HR-ARM25': 'LINEA 5',
+};
+
+// Rendimiento a aplicar sobre "Tiempo Disponible" segun la Linea del puesto (todos los puestos de
+// una misma linea usan el mismo factor: Armado/Cerrado de LINEA 1 -> Rend L1, etc.), igual criterio
+// que ya se usa para ponderar "Total Tiempo".
+const getRendFactor = (lineaNormalized: string, rends: Record<string, number>): number => {
+  if (lineaNormalized.includes('1')) return rends.L1;
+  if (lineaNormalized.includes('2')) return rends.L2;
+  if (lineaNormalized.includes('3')) return rends.L3;
+  if (lineaNormalized.includes('5')) return rends.L5;
+  return 1;
+};
+
 export const RevCapacidadTabSection: React.FC = () => {
   const inspector = useRuntimeInspector('RevCapacidadTab');
   const { addNotification } = useAppContext();
+  // "Total Tiempo" y "Total Cantidad" por Centro+Línea+Puesto, publicados por "Prog Tiempos" (ambos
+  // basados en su columna "Cant Reprog"). Cuando existen, reemplazan el cálculo propio de esta
+  // pestaña para que los ajustes hechos en Prog Tiempos se reflejen tanto en el % Ocupación como en
+  // la Cantidad Total mostrada aquí — de lo contrario quedarían inconsistentes entre sí.
+  const tiempoFinalPorPuesto = useTiempoFinalPorPuesto();
+  const cantidadFinalPorPuesto = useCantidadFinalPorPuesto();
+  // "Tiempo inicial"/"Cant inicial": la demanda cruda (SIN el ajuste de Cant Reprog) tal como la
+  // calcula "Total Cantidad"/"Tiempo Total" en "Prog Tiempos" — el contrapunto de las columnas de
+  // arriba, que sí reflejan el ajuste.
+  const tiempoInicialPorPuesto = useTiempoInicialPorPuesto();
+  const cantidadInicialPorPuesto = useCantidadInicialPorPuesto();
 
   const [technicalData, setTechnicalData] = useState<any[]>([]);
   const [fertOrders, setFertOrders] = useState<any[]>([]);
@@ -158,13 +194,8 @@ export const RevCapacidadTabSection: React.FC = () => {
 
     fertOrders.forEach(o => {
       if (normalizeDateISO(o.FECHA || o.fecha) === targetDateISO && String(o.CENTRO || '').trim() === selectedCenter) {
-        const cat = String(o.CATEGORIA || '').toUpperCase();
-        let linea = '';
-        if (cat.includes('L1')) linea = 'LINEA 1';
-        else if (cat.includes('L2')) linea = 'LINEA 2';
-        else if (cat.includes('L3')) linea = 'LINEA 3';
-        else if (cat.includes('L5') || cat.includes('B-B')) linea = 'LINEA 5';
-        else linea = normalizeKey(o.LINEA || '');
+        const maquina = String(o.MAQUINA || o.Maquina || o.maquina || '').trim().toUpperCase();
+        const linea = MAQUINA_LINEA_MAP[maquina] || '';
 
         const material = normalizeMaterialCode(o.MATERIAL || o.CodMaterial);
         const key = `${linea}|${material}`;
@@ -181,13 +212,8 @@ export const RevCapacidadTabSection: React.FC = () => {
 
     provisionalOrders.forEach(o => {
       if (normalizeDateISO(o.FECHAINICIO || o.fecha_inicio) === targetDateISO && String(o.Centro || '').trim() === selectedCenter) {
-        const cat = String(o.CATEGORIA || '').toUpperCase();
-        let linea = '';
-        if (cat.includes('L1')) linea = 'LINEA 1';
-        else if (cat.includes('L2')) linea = 'LINEA 2';
-        else if (cat.includes('L3')) linea = 'LINEA 3';
-        else if (cat.includes('L5') || cat.includes('B-B')) linea = 'LINEA 5';
-        else linea = normalizeKey(o.LINEA || '');
+        const maquina = String(o.Maquina || o.MAQUINA || o.maquina || '').trim().toUpperCase();
+        const linea = MAQUINA_LINEA_MAP[maquina] || '';
 
         const material = normalizeMaterialCode(o.MATERIAL || o.CodMaterial || o.Material);
         const key = `${linea}|${material}`;
@@ -215,11 +241,12 @@ export const RevCapacidadTabSection: React.FC = () => {
       const matKey = `${lineNormalized}|${normalizeMaterialCode(row.CodMaterial)}`;
 
       if (!map.has(key)) {
-        map.set(key, { 
-          linea: lineNormalized, puesto: puestoRaw, 
-          cantOrdFab: 0, cantOrdPrev: 0, 
+        map.set(key, {
+          linea: lineNormalized, puesto: puestoRaw,
+          cantOrdFab: 0, cantOrdPrev: 0,
           tiempoOrdFab: 0, tiempoOrdPrev: 0,
           totalCantidad: 0, totalTiempo: 0,
+          cantInicial: 0, tiempoInicial: 0,
           puestosObjetivo: RESTRICCIONES_PUESTOS[key] || 0
         });
       }
@@ -241,10 +268,35 @@ export const RevCapacidadTabSection: React.FC = () => {
       entry.tiempoOrdPrev += ((qPrev * tUnit) / 60) * rendFactor;
       entry.totalCantidad = entry.cantOrdFab + entry.cantOrdPrev;
       entry.totalTiempo = entry.tiempoOrdFab + entry.tiempoOrdPrev;
+      // Respaldo de "Cant/Tiempo inicial" mientras "Prog Tiempos" no haya publicado nada: el mismo
+      // cálculo propio de "Total Cantidad"/"Total Tiempo" de arriba, con las mismas condiciones
+      // (Centro+Línea+Puesto, fecha de programación, Rendimiento).
+      entry.cantInicial = entry.totalCantidad;
+      entry.tiempoInicial = entry.totalTiempo;
     });
 
-    return Array.from(map.values()).sort((a, b) => a.linea.localeCompare(b.linea) || a.puesto.localeCompare(b.puesto));
-  }, [technicalData, selectedCenter, fertSumMap, prevSumMap, currentRends]);
+    const result = Array.from(map.values());
+    // Si "Prog Tiempos" ya publicó un "Tiempo Final" y una "Cant Reprog" para este Centro+Línea+
+    // Puesto, esos valores mandan sobre el cálculo propio de arriba (así el % Ocupación Y la
+    // Cantidad Total reflejan los ajustes hechos en Prog Tiempos, de forma consistente entre sí).
+    // Si todavía no hay nada publicado, se conserva el cálculo propio (demanda cruda) como respaldo.
+    // "Cant inicial"/"Tiempo inicial" toman, con el mismo criterio, el "Total Cantidad"/"Tiempo
+    // Total" de Prog Tiempos SIN el ajuste de Cant Reprog: la foto de la demanda original.
+    result.forEach(entry => {
+      const puestoNorm = entry.puesto.trim().toUpperCase().replace(/\s+/g, ' ');
+      const key = `${selectedCenter}|${entry.linea}|${puestoNorm}`;
+      const tiempoPublicado = tiempoFinalPorPuesto[key];
+      if (tiempoPublicado !== undefined) entry.totalTiempo = tiempoPublicado;
+      const cantidadPublicada = cantidadFinalPorPuesto[key];
+      if (cantidadPublicada !== undefined) entry.totalCantidad = cantidadPublicada;
+      const tiempoInicialPublicado = tiempoInicialPorPuesto[key];
+      if (tiempoInicialPublicado !== undefined) entry.tiempoInicial = tiempoInicialPublicado;
+      const cantidadInicialPublicada = cantidadInicialPorPuesto[key];
+      if (cantidadInicialPublicada !== undefined) entry.cantInicial = cantidadInicialPublicada;
+    });
+
+    return result.sort((a, b) => a.linea.localeCompare(b.linea) || a.puesto.localeCompare(b.puesto));
+  }, [technicalData, selectedCenter, fertSumMap, prevSumMap, currentRends, tiempoFinalPorPuesto, cantidadFinalPorPuesto, tiempoInicialPorPuesto, cantidadInicialPorPuesto]);
 
   // Sincronizar y guardar en localStorage
   useEffect(() => {
@@ -292,10 +344,14 @@ export const RevCapacidadTabSection: React.FC = () => {
       const key = `${selectedCenter}|${r.linea}|${r.puesto}`;
       const t1 = editablePuestosT1[key] ?? r.puestosObjetivo;
       const t2 = editablePuestosT2[key] ?? 0;
-      const dispTime = (t1 * currentHorasT1) + (t2 * currentHorasT2);
-      
+      const dispTime = ((t1 * currentHorasT1) + (t2 * currentHorasT2)) * getRendFactor(r.linea, currentRends);
+      // "Total Cantidad" (general) solo suma el Puesto "Armado" de cada línea: los demás puestos
+      // (Cerrado L1, Cerrado1/2 L2, Cerrado L3) son pasos posteriores del MISMO material, así que
+      // sumarlos también duplicaría la cantidad real.
+      const esArmado = r.puesto.trim().toLowerCase() === 'armado';
+
       return {
-        totalCant: acc.totalCant + r.totalCantidad,
+        totalCant: acc.totalCant + (esArmado ? r.totalCantidad : 0),
         totalTime: acc.totalTime + r.totalTiempo,
         totalPuestos: acc.totalPuestos + (r.totalTiempo / (currentHorasT1 || 1)),
         totalT1: acc.totalT1 + t1,
@@ -336,16 +392,17 @@ export const RevCapacidadTabSection: React.FC = () => {
                 const key = `${selectedCenter}|${r.linea}|${r.puesto}`;
                 const t1 = editablePuestosT1[key] ?? r.puestosObjetivo;
                 const t2 = editablePuestosT2[key] ?? 0;
-                const disp = (t1 * currentHorasT1) + (t2 * currentHorasT2);
+                const disp = ((t1 * currentHorasT1) + (t2 * currentHorasT2)) * getRendFactor(r.linea, currentRends);
                 return {
                   'Línea': r.linea, 'Puesto Trabajo': r.puesto,
+                  'Cant inicial': r.cantInicial,
+                  'Tiempo inicial': Number(r.tiempoInicial.toFixed(2)),
+                  'Total Cantidad': r.totalCantidad,
                   'Total Tiempo (h)': Number(r.totalTiempo.toFixed(2)),
-                  'No. Puestos': Number((r.totalTiempo / (currentHorasT1 || 1)).toFixed(2)),
                   'Puestos T1': t1,
                   'Puestos T2': t2,
                   'Tiempo Disponible (h)': Number(disp.toFixed(2)),
-                  'Diferencia (h)': Number((disp - r.totalTiempo).toFixed(2)),
-                  'Puestos Objetivo': r.puestosObjetivo
+                  'Diferencia (h)': Number((disp - r.totalTiempo).toFixed(2))
                 };
               });
               const ws = XLSX.utils.json_to_sheet(exportRows);
@@ -433,18 +490,20 @@ export const RevCapacidadTabSection: React.FC = () => {
                 <tr>
                   <th className="px-4 py-3 text-left border">Línea</th>
                   <th className="px-4 py-3 text-left border">Puesto Trabajo</th>
+                  <th className="px-4 py-3 text-right border text-purple-700 bg-purple-50/10">Cant inicial</th>
+                  <th className="px-4 py-3 text-right border text-indigo-700 bg-indigo-50/10">Tiempo inicial</th>
+                  <th className="px-4 py-3 text-right border text-purple-700 bg-purple-50/30">Total Cantidad</th>
                   <th className="px-4 py-3 text-right border bg-indigo-50/30">Total Tiempo (h)</th>
-                  <th className="px-4 py-3 text-right border text-blue-700 bg-blue-50/30">No. Puestos</th>
                   <th className="px-4 py-3 text-right border text-indigo-700 bg-indigo-50/50">Puestos T1</th>
                   <th className="px-4 py-3 text-right border text-indigo-700 bg-indigo-50/50">Puestos T2</th>
                   <th className="px-4 py-3 text-right border text-green-700 bg-green-50/30 font-bold">Tiempo Disponible</th>
-                  <th className="px-4 py-3 text-right border text-indigo-800 bg-indigo-100/50">Puestos Objetivo</th>
                   <th className="px-4 py-3 text-right border text-teal-700">Diferencia (h)</th>
+                  <th className="px-4 py-3 text-right border text-violet-700 bg-violet-50/30">% Ocupación</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {isLoading ? (
-                  <tr><td colSpan={9} className="px-6 py-12 text-center text-gray-500"><Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" /> Cargando...</td></tr>
+                  <tr><td colSpan={11} className="px-6 py-12 text-center text-gray-500"><Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" /> Cargando...</td></tr>
                 ) : summaryData.length > 0 ? (() => {
                   const items: React.ReactNode[] = [];
                   const lines = [...new Set(summaryData.map(r => r.linea))];
@@ -452,21 +511,23 @@ export const RevCapacidadTabSection: React.FC = () => {
                     const rows = summaryData.filter(r => r.linea === lineName);
                     rows.forEach((r, idx) => {
                       const key = `${selectedCenter}|${r.linea}|${r.puesto}`;
-                      const calcPuestos = Number((r.totalTiempo / (currentHorasT1 || 1)).toFixed(2));
-                      
+
                       const t1 = editablePuestosT1[key] ?? r.puestosObjetivo;
                       const t2 = editablePuestosT2[key] ?? 0;
-                      
-                      const dispTime = (t1 * currentHorasT1) + (t2 * currentHorasT2);
+
+                      const dispTime = ((t1 * currentHorasT1) + (t2 * currentHorasT2)) * getRendFactor(r.linea, currentRends);
                       const deltaHours = dispTime - r.totalTiempo;
-                      
+                      const ocupacion = dispTime > 0 ? (r.totalTiempo / dispTime) * 100 : 0;
+
                       items.push(
                         <tr key={key} className="hover:bg-gray-50 transition-colors">
                           {idx === 0 && <td rowSpan={rows.length} className="px-4 py-3 font-bold text-gray-900 border align-top bg-gray-50/50">{lineName}</td>}
                           <td className="px-4 py-3 font-medium text-gray-700 border">{r.puesto}</td>
+                          <td className="px-4 py-3 text-right border text-purple-700 bg-purple-50/5">{r.cantInicial.toLocaleString()}</td>
+                          <td className="px-4 py-3 text-right border text-indigo-700 bg-indigo-50/5">{r.tiempoInicial.toFixed(2)}</td>
+                          <td className="px-4 py-3 text-right font-bold border text-purple-700 bg-purple-50/5">{r.totalCantidad.toLocaleString()}</td>
                           <td className="px-4 py-3 text-right font-bold border bg-indigo-50/5">{r.totalTiempo.toFixed(2)}</td>
-                          <td className="px-4 py-3 text-right font-bold border text-blue-700 bg-blue-50/5">{isMounted ? calcPuestos.toFixed(2) : '-'}</td>
-                          
+
                           <td className="px-0 py-0 border bg-white min-w-[80px]">
                             <input 
                               type="number" 
@@ -500,11 +561,11 @@ export const RevCapacidadTabSection: React.FC = () => {
                           <td className="px-4 py-3 text-right font-bold border text-green-700 bg-green-50/10">
                             {isMounted ? `${dispTime.toFixed(1)}h` : '-'}
                           </td>
-                          <td className="px-4 py-3 text-right font-bold border text-indigo-900 bg-indigo-100/20">
-                            <span className="inline-flex items-center gap-1"><Target className="w-3 h-3 opacity-30" /> {r.puestosObjetivo}</span>
-                          </td>
                           <td className={cn("px-4 py-3 text-right font-bold border font-mono", deltaHours < 0 ? "text-red-600 bg-red-50" : deltaHours > 0 ? "text-green-600 bg-green-50" : "text-gray-400")}>
                             {isMounted ? (deltaHours > 0 ? `+${deltaHours.toFixed(2)}` : deltaHours.toFixed(2)) : '-'}
+                          </td>
+                          <td className="px-4 py-3 text-right font-bold border text-violet-700 bg-violet-50/10">
+                            {isMounted ? `${ocupacion.toFixed(1)}%` : '-'}
                           </td>
                         </tr>
                       );
@@ -512,20 +573,22 @@ export const RevCapacidadTabSection: React.FC = () => {
                   });
                   return items;
                 })() : (
-                  <tr><td colSpan={9} className="px-6 py-12 text-center text-gray-400 italic">Sin datos.</td></tr>
+                  <tr><td colSpan={11} className="px-6 py-12 text-center text-gray-400 italic">Sin datos.</td></tr>
                 )}
               </tbody>
               {summaryData.length > 0 && (
                 <tfoot className="bg-gray-800 text-white font-bold text-[11px] sticky bottom-0">
                   <tr>
-                    <td colSpan={2} className="px-4 py-3 text-right uppercase border-r border-gray-700">Total General:</td>
+                    <td colSpan={4} className="px-4 py-3 text-right uppercase border-r border-gray-700">Total General:</td>
+                    <td className="px-4 py-3 text-right font-mono border-r border-gray-700 text-purple-300">{grandTotals.totalCant.toLocaleString()}</td>
                     <td className="px-4 py-3 text-right font-mono border-r border-gray-700 text-indigo-300">{grandTotals.totalTime.toFixed(2)}</td>
-                    <td className="px-4 py-3 text-right font-mono border-r border-gray-700 text-blue-300">{isMounted ? grandTotals.totalPuestos.toFixed(2) : '-'}</td>
                     <td className="px-4 py-3 text-right font-mono border-r border-gray-700 text-indigo-300">{grandTotals.totalT1}</td>
                     <td className="px-4 py-3 text-right font-mono border-r border-gray-700 text-indigo-300">{grandTotals.totalT2}</td>
                     <td className="px-4 py-3 text-right font-mono border-r border-gray-700 text-green-300">{isMounted ? `${grandTotals.totalDispTime.toFixed(1)}h` : '-'}</td>
-                    <td className="px-4 py-3 text-right font-mono border-r border-gray-700 text-indigo-300">{grandTotals.totalObjetivo}</td>
-                    <td className="px-4 py-3 text-right text-teal-300">{isMounted ? (grandTotals.totalDispTime - grandTotals.totalTime).toFixed(2) : '-'}h</td>
+                    <td className="px-4 py-3 text-right font-mono border-r border-gray-700 text-teal-300">{isMounted ? (grandTotals.totalDispTime - grandTotals.totalTime).toFixed(2) : '-'}h</td>
+                    <td className="px-4 py-3 text-right text-violet-300">
+                      {isMounted ? `${(grandTotals.totalDispTime > 0 ? (grandTotals.totalTime / grandTotals.totalDispTime) * 100 : 0).toFixed(1)}%` : '-'}
+                    </td>
                   </tr>
                 </tfoot>
               )}

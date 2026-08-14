@@ -16,7 +16,9 @@ import {
   Activity,
   CheckCircle2,
   LayoutGrid,
-  Boxes
+  Boxes,
+  Layers,
+  ClipboardCheck
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -29,7 +31,10 @@ import { TiemposEnsambladoTabSection } from './TiemposEnsambladoTabSection';
 import { PresupuestoProdSemanalTabSection } from './PresupuestoProdSemanalTabSection';
 import { ExplosionMaterialesTabSection } from './ExplosionMaterialesTabSection';
 import { RevCapacidadTabSection } from './RevCapacidadTabSection';
+import { RevCapHalbTabSection } from './RevCapHalbTabSection';
 import { PlanPropuestoTabSection } from './PlanPropuestoTabSection';
+import { PlanFinalTabSection } from './PlanFinalTabSection';
+import { ResumenPlanFinalTabSection } from './ResumenPlanFinalTabSection';
 import { MaterialBalanceoLineasTabSection } from './MaterialBalanceoLineasTabSection';
 import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
@@ -149,6 +154,10 @@ export const TacticalPlan2Section: React.FC = () => {
             <Clock className="w-3.5 h-3.5" />
             Prog Tiempos
           </TabsTrigger>
+          <TabsTrigger value="rev_cap_halb" className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold uppercase tracking-tight transition-all data-[state=active]:bg-white data-[state=active]:text-indigo-700 data-[state=active]:shadow-sm rounded-lg">
+            <Layers className="w-3.5 h-3.5" />
+            Rev cap Halb
+          </TabsTrigger>
           <TabsTrigger value="rev_capacidad" className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold uppercase tracking-tight transition-all data-[state=active]:bg-white data-[state=active]:text-indigo-700 data-[state=active]:shadow-sm rounded-lg">
             <Activity className="w-3.5 h-3.5" />
             Rev Capacidad
@@ -156,6 +165,14 @@ export const TacticalPlan2Section: React.FC = () => {
           <TabsTrigger value="plan_propuesto" className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold uppercase tracking-tight transition-all data-[state=active]:bg-indigo-600 data-[state=active]:text-white data-[state=active]:shadow-md rounded-lg border border-indigo-200">
             <CheckCircle2 className="w-3.5 h-3.5" />
             Plan Propuesto
+          </TabsTrigger>
+          <TabsTrigger value="plan_final" className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold uppercase tracking-tight transition-all data-[state=active]:bg-indigo-600 data-[state=active]:text-white data-[state=active]:shadow-md rounded-lg border border-indigo-200">
+            <Layers className="w-3.5 h-3.5" />
+            Plan Final
+          </TabsTrigger>
+          <TabsTrigger value="resumen_plan_final" className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold uppercase tracking-tight transition-all data-[state=active]:bg-indigo-600 data-[state=active]:text-white data-[state=active]:shadow-md rounded-lg border border-indigo-200">
+            <ClipboardCheck className="w-3.5 h-3.5" />
+            Resumen Plan final
           </TabsTrigger>
         </TabsList>
 
@@ -271,7 +288,7 @@ export const TacticalPlan2Section: React.FC = () => {
           <Card>
             <CardHeader>
               <CardTitle>Explosion Materiales</CardTitle>
-              <CardDescription>Datos de la tabla ReporteExplosionMateriales.</CardDescription>
+              <CardDescription>Explosión de materiales por Centro+Material, vía MaestroMaterialesExplosionPaginado.</CardDescription>
             </CardHeader>
             <CardContent>
               <ExplosionMaterialesTabSection />
@@ -340,6 +357,17 @@ export const TacticalPlan2Section: React.FC = () => {
           </Card>
         </TabsContent>
 
+        <TabsContent value="rev_cap_halb">
+          <Card>
+            <CardHeader>
+              <CardTitle>Rev cap Halb</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <RevCapHalbTabSection />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         <TabsContent value="rev_capacidad">
           <Card>
             <CardHeader>
@@ -360,6 +388,30 @@ export const TacticalPlan2Section: React.FC = () => {
             </CardHeader>
             <CardContent>
               <PlanPropuestoTabSection groups={grupos} />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="plan_final">
+          <Card>
+            <CardHeader>
+              <CardTitle>Plan Final</CardTitle>
+              <CardDescription>Unificación de los Planes Tácticos "PFF" de Centro 1000 y 2000, filtrados por Día programación.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <PlanFinalTabSection />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="resumen_plan_final">
+          <Card>
+            <CardHeader>
+              <CardTitle>Resumen Plan final</CardTitle>
+              <CardDescription>Total de cantidad por Centro, Línea y Puesto trabajo, agregado a partir de "Plan Final".</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ResumenPlanFinalTabSection />
             </CardContent>
           </Card>
         </TabsContent>

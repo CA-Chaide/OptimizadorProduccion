@@ -275,15 +275,26 @@ export const serviciosService = {
     return response.json();
   },
 
-  async getExplosionMateriales(page: number, rowsPerPage: number): Promise<BodyResponse<any>> {
-    const response = await fetch(API_URL + "/ExplosionMaterialesPaginadas", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ page: page, rowsPerPage: rowsPerPage }),
-    });
-    if (!response.ok) {
-      throw new Error(`Error ${response.status}: Failed to fetch Explosion Materiales`);
+async getMaestroMaterialesExplosion(centro: string, material: string, page: number, rowsPerPage: number): Promise<BodyResponse<any>> {
+    try {
+      const response = await fetch(API_URL + "/MaestroMaterialesExplosionPaginado", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          Centro: String(centro),
+          Fert: String(material),
+          page: page,
+          rowsPerPage: rowsPerPage,
+        }),
+      });
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({ message: "Error de red al consultar el Maestro de Materiales." }));
+        throw new Error(errorBody.message || `Error API (${response.status}) al consultar el Maestro de Materiales.`);
+      }
+      return response.json();
+    } catch (e) {
+      throw e;
     }
-    return response.json();
   },
+
 };

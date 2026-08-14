@@ -13,6 +13,19 @@ import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
+// Mapeo de equivalencias Máquina -> Línea: la columna "Línea" se llena únicamente a partir de la
+// Máquina de la orden (ya no por patrones en Categoría). Máquinas fuera de esta tabla no
+// pertenecen a ninguna línea de armado y quedan sin Línea.
+const MAQUINA_LINEA_MAP: Record<string, string> = {
+  'HR-ARM01': 'LINEA 1',
+  'HR-ARM02': 'LINEA 2',
+  'HR-ARM03': 'LINEA 3',
+  'HR-ARM05': 'LINEA 5',
+  'HR-ARM21': 'LINEA 1',
+  'HR-ARM22': 'LINEA 2',
+  'HR-ARM25': 'LINEA 5',
+};
+
 interface OrdenFert {
   CENTRO: string;
   ORDEN: string;
@@ -37,6 +50,7 @@ interface OrdenFert {
   ENLINEA: number;
   MAQUINA: string;
   PEDIDO: string;
+  POSICION: string;
   CANTPROGPESONETO: number;
   SECTOR?: string;
   ETIQUETA?: string;
@@ -88,15 +102,9 @@ export const OrdenesFertTabSection: React.FC = () => {
       
       let orders: OrdenFert[] = rawData.map(o => {
         const cat = String(o.CATEGORIA || o.Categoria || '').toUpperCase();
-        let calculatedLinea = '';
-        
-        // Lógica de llenado de columna LINEA según PATRONES en CATEGORIA
-        if (cat.includes('L1')) calculatedLinea = 'LINEA 1';
-        else if (cat.includes('L2')) calculatedLinea = 'LINEA 2';
-        else if (cat.includes('L3')) calculatedLinea = 'LINEA 3';
-        else if (cat.includes('L5')) calculatedLinea = 'LINEA 5';
-        else if (cat.includes('B-B')) calculatedLinea = 'LINEA 5';
-        else calculatedLinea = (o.LINEA || o.Linea || o.linea || '').trim().toUpperCase();
+        const maquina = String(o.MAQUINA || o.Maquina || o.maquina || '').trim().toUpperCase();
+        // Lógica de llenado de columna LINEA según la Máquina de la orden (tabla de equivalencias)
+        const calculatedLinea = MAQUINA_LINEA_MAP[maquina] || '';
 
         return {
           ...o,
@@ -162,7 +170,7 @@ export const OrdenesFertTabSection: React.FC = () => {
     return base.filter(o => {
       if (selectedSector !== "ALL" && String(o.SECTOR || '').trim().toUpperCase() !== selectedSector) return false;
       if (term) {
-        return [o.ORDEN, o.MATERIAL, o.NOMBRE, o.PEDIDO, o.SECTOR, o.ETIQUETA, o.CATEGORIA, o.LINEA].some(v => String(v || '').toLowerCase().includes(term));
+        return [o.ORDEN, o.MATERIAL, o.NOMBRE, o.PEDIDO, o.POSICION, o.SECTOR, o.ETIQUETA, o.CATEGORIA, o.LINEA].some(v => String(v || '').toLowerCase().includes(term));
       }
       return true;
     });
@@ -175,6 +183,29 @@ export const OrdenesFertTabSection: React.FC = () => {
       acc.pend += safeNum(o.CANTPENDIENTE);
       return acc;
     }, { prog: 0, entreg: 0, pend: 0 });
+  }, [currentViewOrders]);
+
+  // Resumen de Cant Pendiente por Fecha y Línea, solo para las sub-pestañas de Centro (no aplica a
+  // "Vista Bruta", que mezcla ambos centros).
+  const summaryByDateLine = useMemo(() => {
+    const map = new Map<string, Map<string, number>>();
+    const linesSet = new Set<string>();
+
+    currentViewOrders.forEach(o => {
+      const date = String(o.FECHA || '').trim() || 'Sin Fecha';
+      const line = String(o.LINEA || '').trim() || 'Sin Línea';
+      const qty = safeNum(o.CANTPENDIENTE);
+
+      linesSet.add(line);
+      if (!map.has(date)) map.set(date, new Map());
+      const lineMap = map.get(date)!;
+      lineMap.set(line, (lineMap.get(line) || 0) + qty);
+    });
+
+    const dates = Array.from(map.keys()).sort();
+    const lines = Array.from(linesSet).sort();
+
+    return { map, dates, lines };
   }, [currentViewOrders]);
 
   const startIndex = (currentPage - 1) * rowsPerPage;
@@ -226,6 +257,75 @@ export const OrdenesFertTabSection: React.FC = () => {
           ))}
         </TabsList>
 
+        {/* --- Resumen de Cant Pendiente por Fecha y Línea (solo en sub-pestañas de Centro) --- */}
+        {selectedTab !== 'raw_view' && summaryByDateLine.dates.length > 0 && (
+          <div className="bg-white rounded-lg shadow-sm border overflow-hidden mb-4">
+            <div className="px-4 py-2 bg-indigo-50/60 border-b flex items-center gap-2">
+              <ClipboardList className="w-3.5 h-3.5 text-indigo-600" />
+              <span className="text-[11px] font-bold text-indigo-700 uppercase tracking-wider">
+                Resumen de Cant Pendiente por Fecha y Línea
+              </span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-2 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Fecha</th>
+                    {summaryByDateLine.lines.map(line => (
+                      <th key={line} className="px-4 py-2 text-right text-[10px] font-bold text-indigo-700 uppercase tracking-wider">
+                        {line}
+                      </th>
+                    ))}
+                    <th className="px-4 py-2 text-right text-[10px] font-bold text-gray-700 uppercase tracking-wider bg-gray-100">Total</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {summaryByDateLine.dates.map(date => {
+                    const lineMap = summaryByDateLine.map.get(date)!;
+                    const rowTotal = summaryByDateLine.lines.reduce((sum, line) => sum + (lineMap.get(line) || 0), 0);
+                    return (
+                      <tr key={date} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-4 py-2 whitespace-nowrap text-xs font-medium text-gray-600">{date}</td>
+                        {summaryByDateLine.lines.map(line => {
+                          const qty = lineMap.get(line) || 0;
+                          return (
+                            <td key={line} className="px-4 py-2 whitespace-nowrap text-xs text-right text-gray-600 font-mono">
+                              {qty > 0 ? qty.toLocaleString() : '-'}
+                            </td>
+                          );
+                        })}
+                        <td className="px-4 py-2 whitespace-nowrap text-xs text-right font-bold text-indigo-700 bg-gray-50 font-mono">
+                          {rowTotal.toLocaleString()}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  <tr className="bg-indigo-50/40 border-t-2 border-indigo-100">
+                    <td className="px-4 py-2 whitespace-nowrap text-xs font-bold text-gray-700 uppercase">Total</td>
+                    {summaryByDateLine.lines.map(line => {
+                      const colTotal = summaryByDateLine.dates.reduce(
+                        (sum, date) => sum + (summaryByDateLine.map.get(date)!.get(line) || 0),
+                        0
+                      );
+                      return (
+                        <td key={line} className="px-4 py-2 whitespace-nowrap text-xs text-right font-bold text-indigo-700 font-mono">
+                          {colTotal.toLocaleString()}
+                        </td>
+                      );
+                    })}
+                    <td className="px-4 py-2 whitespace-nowrap text-xs text-right font-bold text-indigo-800 bg-indigo-100/60 font-mono">
+                      {summaryByDateLine.dates.reduce((sum, date) => {
+                        const lineMap = summaryByDateLine.map.get(date)!;
+                        return sum + summaryByDateLine.lines.reduce((s, line) => s + (lineMap.get(line) || 0), 0);
+                      }, 0).toLocaleString()}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
         <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
@@ -239,11 +339,12 @@ export const OrdenesFertTabSection: React.FC = () => {
                   <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[120px]">Máquina</th>
                   <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[100px]">Material</th>
                   <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[120px]">Fecha</th>
+                  <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[100px]">Pedido Ventas</th>
+                  <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[90px]">Posición</th>
                   <th colSpan={2} className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Orden / Nombre</th>
                   <th className="px-4 py-3 text-right text-[10px] font-bold text-gray-700 uppercase bg-gray-100/50 min-w-[80px]">PROG</th>
                   <th className="px-4 py-3 text-right text-green-700 uppercase bg-green-50/30 min-w-[80px]">ENTREG</th>
                   <th className="px-4 py-3 text-right text-amber-700 uppercase bg-amber-50/30 min-w-[80px]">PENDIENTE</th>
-                  <th className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[100px]">Pedido</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -257,20 +358,21 @@ export const OrdenesFertTabSection: React.FC = () => {
                     <td className="px-3 py-2 font-mono text-gray-600">{o.MAQUINA || '-'}</td>
                     <td className="px-3 py-2 font-mono text-gray-900 font-bold">{o.MATERIAL}</td>
                     <td className="px-3 py-2 text-gray-500">{o.FECHA}</td>
+                    <td className="px-3 py-2 text-gray-600 font-mono">{o.PEDIDO || '-'}</td>
+                    <td className="px-3 py-2 text-gray-600 font-mono">{o.POSICION || '-'}</td>
                     <td className="px-3 py-2 font-bold text-indigo-600">{o.ORDEN}</td>
                     <td className="px-3 py-2 text-gray-600 truncate max-w-[150px]">{o.NOMBRE}</td>
                     <td className="px-4 py-2 text-right font-bold text-gray-700 bg-gray-100/10">{o.CANTPROGRAMADA.toLocaleString()}</td>
                     <td className="px-4 py-2 text-right font-bold text-green-600 bg-green-50/10">{o.CANTENTREGADA.toLocaleString()}</td>
                     <td className="px-4 py-2 text-right font-bold text-amber-600 bg-amber-50/20">{o.CANTPENDIENTE.toLocaleString()}</td>
-                    <td className="px-3 py-2 text-gray-600 font-mono">{o.PEDIDO || '-'}</td>
                   </tr>
                 )) : (
-                  <tr><td colSpan={14} className="px-6 py-12 text-center text-gray-400 italic">No se encontraron órdenes.</td></tr>
+                  <tr><td colSpan={15} className="px-6 py-12 text-center text-gray-400 italic">No se encontraron órdenes.</td></tr>
                 )}
               </tbody>
               <tfoot className="bg-gray-800 text-white font-bold text-[10px] sticky bottom-0 z-10">
                 <tr>
-                  <td colSpan={11} className="px-4 py-3 text-right uppercase border-r border-gray-700">TOTALES:</td>
+                  <td colSpan={12} className="px-4 py-3 text-right uppercase border-r border-gray-700">TOTALES:</td>
                   <td className="px-4 py-3 text-right">{totals.prog.toLocaleString()}</td>
                   <td className="px-4 py-3 text-right text-green-300">{totals.entreg.toLocaleString()}</td>
                   <td className="px-4 py-3 text-right text-amber-300">{totals.pend.toLocaleString()}</td>

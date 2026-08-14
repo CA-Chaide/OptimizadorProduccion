@@ -6,13 +6,26 @@ import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
 import { useRuntimeInspector } from '@/services/RuntimeInspector';
 import { useAppContext } from '@/context/AppProvider';
-import { Package, Loader2, Home, Search, X, Filter, UserCheck } from 'lucide-react';
+import { Package, Loader2, Home, Search, X, Filter, UserCheck, ChevronDown, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { ProvisionalOrder } from '@/types/types';
 import type { Grupo, Restriccion } from '@/types/interfaces';
+
+// Mapeo de equivalencias Máquina -> Línea: la columna "Línea" se llena únicamente a partir de la
+// Máquina de la orden (ya no por patrones en Categoría). Máquinas fuera de esta tabla no
+// pertenecen a ninguna línea de armado y quedan sin Línea.
+const MAQUINA_LINEA_MAP: Record<string, string> = {
+  'HR-ARM01': 'LINEA 1',
+  'HR-ARM02': 'LINEA 2',
+  'HR-ARM03': 'LINEA 3',
+  'HR-ARM05': 'LINEA 5',
+  'HR-ARM21': 'LINEA 1',
+  'HR-ARM22': 'LINEA 2',
+  'HR-ARM25': 'LINEA 5',
+};
 
 export const ProvisionalOrdersTabSection: React.FC = () => {
   const inspector = useRuntimeInspector('ProvisionalOrdersTab');
@@ -31,6 +44,16 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(20);
+  const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
+
+  const toggleDate = (date: string) => {
+    setExpandedDates(prev => {
+      const next = new Set(prev);
+      if (next.has(date)) next.delete(date);
+      else next.add(date);
+      return next;
+    });
+  };
 
   const normalizeMaterialCode = (code: string | number): string => {
     return String(code || '').trim().slice(-8);
@@ -43,7 +66,7 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
       const [groupsRes, restRes, pageResponse] = await Promise.all([
         grupoService.getAll(),
         restriccionService.getAll(),
-        serviciosService.OrdenesProvisionalesAlphaPaginados(1, 10000)
+        serviciosService.OrdenesProvisionalesPaginados(1, 10000)
       ]);
 
       // 1. Procesar Grupos y Centros
@@ -60,16 +83,10 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
       if (pageResponse && pageResponse.data) {
         const rawOrders = Array.isArray(pageResponse.data) ? pageResponse.data : [];
         
-        // Mapeo dinámico de LINEA basada en CATEGORIA
+        // Mapeo de LINEA según la Máquina de la orden (tabla de equivalencias)
         const mappedOrders = rawOrders.map((o: any) => {
-          const cat = String(o.CATEGORIA || '').toUpperCase();
-          let calculatedLinea = '';
-          
-          if (cat.includes('L1')) calculatedLinea = 'LINEA 1';
-          else if (cat.includes('L2')) calculatedLinea = 'LINEA 2';
-          else if (cat.includes('L3')) calculatedLinea = 'LINEA 3';
-          else if (cat.includes('L5') || cat.includes('B-B')) calculatedLinea = 'LINEA 5';
-          else calculatedLinea = String(o.LINEA || '').trim().toUpperCase();
+          const maquina = String(o.Maquina || o.MAQUINA || o.maquina || '').trim().toUpperCase();
+          const calculatedLinea = MAQUINA_LINEA_MAP[maquina] || '';
 
           return {
             ...o,
@@ -176,6 +193,16 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
     return { map, dates, lines };
   }, [currentCenterOrders]);
 
+  const ordersByDate = useMemo(() => {
+    const map = new Map<string, typeof currentCenterOrders>();
+    currentCenterOrders.forEach(order => {
+      const date = String(order.FECHAINICIO || '').trim() || 'Sin Fecha';
+      if (!map.has(date)) map.set(date, []);
+      map.get(date)!.push(order);
+    });
+    return map;
+  }, [currentCenterOrders]);
+
   const totalPagesLocal = Math.max(1, Math.ceil(currentCenterOrders.length / rowsPerPage));
   const startIndex = (currentPage - 1) * rowsPerPage;
   const endIndex = startIndex + rowsPerPage;
@@ -255,6 +282,7 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
+                    <th className="px-4 py-2 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider w-8"></th>
                     <th className="px-4 py-2 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Fecha</th>
                     {summaryByDateLine.lines.map(line => (
                       <th key={line} className="px-4 py-2 text-right text-[10px] font-bold text-indigo-700 uppercase tracking-wider">
@@ -268,24 +296,69 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
                   {summaryByDateLine.dates.map(date => {
                     const lineMap = summaryByDateLine.map.get(date)!;
                     const rowTotal = summaryByDateLine.lines.reduce((sum, line) => sum + (lineMap.get(line) || 0), 0);
+                    const isExpanded = expandedDates.has(date);
+                    const dateOrders = ordersByDate.get(date) || [];
                     return (
-                      <tr key={date} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-4 py-2 whitespace-nowrap text-xs font-medium text-gray-600">{date}</td>
-                        {summaryByDateLine.lines.map(line => {
-                          const qty = lineMap.get(line) || 0;
-                          return (
-                            <td key={line} className="px-4 py-2 whitespace-nowrap text-xs text-right text-gray-600 font-mono">
-                              {qty > 0 ? qty.toLocaleString() : '-'}
+                      <React.Fragment key={date}>
+                        <tr
+                          className="hover:bg-gray-50 transition-colors cursor-pointer"
+                          onClick={() => toggleDate(date)}
+                        >
+                          <td className="px-4 py-2 whitespace-nowrap text-gray-400">
+                            {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                          </td>
+                          <td className="px-4 py-2 whitespace-nowrap text-xs font-medium text-gray-600">{date}</td>
+                          {summaryByDateLine.lines.map(line => {
+                            const qty = lineMap.get(line) || 0;
+                            return (
+                              <td key={line} className="px-4 py-2 whitespace-nowrap text-xs text-right text-gray-600 font-mono">
+                                {qty > 0 ? qty.toLocaleString() : '-'}
+                              </td>
+                            );
+                          })}
+                          <td className="px-4 py-2 whitespace-nowrap text-xs text-right font-bold text-indigo-700 bg-gray-50 font-mono">
+                            {rowTotal.toLocaleString()}
+                          </td>
+                        </tr>
+                        {isExpanded && (
+                          <tr className="bg-slate-50/70">
+                            <td colSpan={summaryByDateLine.lines.length + 3} className="px-4 py-3">
+                              <div className="border rounded-md overflow-hidden bg-white">
+                                <table className="min-w-full divide-y divide-gray-200">
+                                  <thead className="bg-gray-50">
+                                    <tr>
+                                      <th className="px-3 py-1.5 text-left text-[9px] font-bold text-gray-500 uppercase tracking-wider">Orden</th>
+                                      <th className="px-3 py-1.5 text-left text-[9px] font-bold text-gray-500 uppercase tracking-wider">Categoría</th>
+                                      <th className="px-3 py-1.5 text-left text-[9px] font-bold text-indigo-700 uppercase tracking-wider">Línea</th>
+                                      <th className="px-3 py-1.5 text-left text-[9px] font-bold text-gray-500 uppercase tracking-wider">Material</th>
+                                      <th className="px-3 py-1.5 text-left text-[9px] font-bold text-gray-500 uppercase tracking-wider">Nombre</th>
+                                      <th className="px-3 py-1.5 text-right text-[9px] font-bold text-gray-500 uppercase tracking-wider">Cantidad</th>
+                                      <th className="px-3 py-1.5 text-center text-[9px] font-bold text-indigo-700 uppercase tracking-wider">Resp. Ctrl.</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-gray-100">
+                                    {dateOrders.map((order, idx) => (
+                                      <tr key={`${order.ORDENPREVISIONAL}-${idx}`} className="hover:bg-gray-50">
+                                        <td className="px-3 py-1.5 whitespace-nowrap text-xs font-bold text-indigo-600 font-mono">{order.ORDENPREVISIONAL}</td>
+                                        <td className="px-3 py-1.5 whitespace-nowrap text-xs text-gray-600">{order.CATEGORIA || '-'}</td>
+                                        <td className="px-3 py-1.5 whitespace-nowrap text-[10px] font-bold text-indigo-700">{order.LINEA || '-'}</td>
+                                        <td className="px-3 py-1.5 whitespace-nowrap text-xs font-mono text-gray-600">{formatMaterial(order.CodMaterial || order.MATERIAL)}</td>
+                                        <td className="px-3 py-1.5 text-xs text-gray-600 max-w-xs truncate" title={order.NOMBRE}>{order.NOMBRE}</td>
+                                        <td className="px-3 py-1.5 whitespace-nowrap text-xs font-bold text-right text-indigo-600">{(Number(order.CANTIDAD) || 0).toLocaleString()}</td>
+                                        <td className="px-3 py-1.5 whitespace-nowrap text-xs text-center font-bold text-indigo-700">{order.RESPCONTROLPROD}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
                             </td>
-                          );
-                        })}
-                        <td className="px-4 py-2 whitespace-nowrap text-xs text-right font-bold text-indigo-700 bg-gray-50 font-mono">
-                          {rowTotal.toLocaleString()}
-                        </td>
-                      </tr>
+                          </tr>
+                        )}
+                      </React.Fragment>
                     );
                   })}
                   <tr className="bg-indigo-50/40 border-t-2 border-indigo-100">
+                    <td className="px-4 py-2"></td>
                     <td className="px-4 py-2 whitespace-nowrap text-xs font-bold text-gray-700 uppercase">Total</td>
                     {summaryByDateLine.lines.map(line => {
                       const colTotal = summaryByDateLine.dates.reduce(
@@ -354,6 +427,7 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
                   <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Nombre</th>
                   <th className="px-6 py-3 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider">Cantidad</th>
                   <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Pedido Ventas</th>
+                  <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Posición Pedido</th>
                   <th className="px-6 py-3 text-center text-[10px] font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50/30">Resp. Ctrl.</th>
                   <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Almacén</th>
                   <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">F. Inicio</th>
@@ -370,6 +444,7 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
                     <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate" title={order.NOMBRE}>{order.NOMBRE}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-right text-indigo-600">{(Number(order.CANTIDAD) || 0).toLocaleString()}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-mono">{order.Pedidoventas || order.PEDIDOVENTAS || '-'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-mono">{order.POSICIONPEDIDO || order.PosicionPedido || '-'}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-center font-bold text-indigo-700 bg-indigo-50/10">{order.RESPCONTROLPROD}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{order.Almacen}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{order.FECHAINICIO}</td>
@@ -377,7 +452,7 @@ export const ProvisionalOrdersTabSection: React.FC = () => {
                   </tr>
                 )) : (
                   <tr>
-                    <td colSpan={11} className="px-6 py-12 text-center text-gray-400 italic">
+                    <td colSpan={12} className="px-6 py-12 text-center text-gray-400 italic">
                       No se encontraron órdenes para el centro {selectedCenter} que cumplan con la restricción RespCtrlProd.
                     </td>
                   </tr>
