@@ -18,6 +18,7 @@ import {
     Activity,
     ClipboardList,
     Link2,
+    Scissors,
 } from 'lucide-react';
 import { ProcessType, Holiday, HolidayScope } from '@/types/types'; 
 
@@ -43,6 +44,7 @@ export enum ActiveView {
   TACTICAL_SCHEDULING_FORROS = 'TACTICAL_SCHEDULING_FORROS',
   WORK_SHIFT_PLANNING = 'WORK_SHIFT_PLANNING',
   DICTIONARY = 'DICTIONARY',
+  CUT_LAMINATION_PLAN = 'CUT_LAMINATION_PLAN',
   PARAMETROS = 'PARAMETROS',
   PARAMETROS_TURNOS = 'PARAMETROS_TURNOS',
   PARAMETROS_TIPO_DETALLE = 'PARAMETROS_TIPO_DETALLE',
@@ -65,6 +67,7 @@ export const PlanIcon = () => <ListChecks className="w-5 h-5" />;
 export const TacticalSchedulingIcon = () => <CalendarClock className="w-5 h-5" />;
 export const WorkShiftIcon = () => <CalendarCheck className="w-5 h-5" />;
 export const RealDataIcon = () => <DatabaseZap className="w-5 h-5" />;
+export const CutLaminationIcon = () => <Scissors className="w-5 h-5" />;
 export const InventoryNeedsIcon = () => <Sheet className="w-5 h-5" />;
 export const CapacityIcon = () => <Activity className="w-5 h-5" />;
 export const ConnectionsIcon = () => <Link2 className="w-5 h-5" />;
@@ -119,6 +122,8 @@ const NAVIGATION_ITEMS = [
   { id: ActiveView.TACTICAL_SCHEDULING_FORROS, label: 'Programación Táctica Forros', icon: <TacticalSchedulingIcon />, href: '/dashboard/opciones/programacion-tactica-forros' },
   { id: ActiveView.WORK_SHIFT_PLANNING, label: 'Planificación de Turnos', icon: <WorkShiftIcon />, href: '/dashboard/opciones/planificacion-turnos' },
   { id: ActiveView.DICTIONARY, label: 'Diccionario de Datos', icon: <RealDataIcon />, href: '/dashboard/opciones/diccionario-datos' },
+  { id: ActiveView.CUT_LAMINATION_PLAN, label: 'Plan de Corte y Laminado', icon: <CutLaminationIcon />, href: '/dashboard/opciones/corte-laminado' },
+  { id: ActiveView.PRODUCTION_PLAN, label: 'Plan de Producción', icon: <CapacityIcon />, href: '/dashboard/opciones/plan-produccion' },
   { id: ActiveView.PARAMETROS, label: 'Parámetros', icon: <ClipboardList />, href: '/dashboard/parametros' },
   { id: ActiveView.PARAMETROS_TURNOS, label: 'Turnos', icon: <WorkShiftIcon />, href: '/dashboard/parametros/turnos' },
   { id: ActiveView.PARAMETROS_TIPO_DETALLE, label: 'Tipos de Detalle', icon: <PlanIcon />, href: '/dashboard/parametros/tipo-detalle' },
@@ -143,6 +148,8 @@ export const OPCIONES_ITEMS: ActiveView[] = [
   ActiveView.TACTICAL_SCHEDULING_FORROS,
   ActiveView.WORK_SHIFT_PLANNING,
   ActiveView.DICTIONARY,
+  ActiveView.PRODUCTION_PLAN,
+  ActiveView.CUT_LAMINATION_PLAN,
 ];
 
 // Items que van dentro de la sección "Parámetros" (contraíble)

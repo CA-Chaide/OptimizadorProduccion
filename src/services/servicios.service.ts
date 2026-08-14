@@ -427,6 +427,20 @@ export const serviciosService = {
     return response.json();
   },
 
+  async getKPIMaestroLooper(): Promise<BodyResponse<any>> {
+    const response = await fetch(API_URL + "/KPIMaestroLooper", {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    });
+    if (!response.ok) {
+      const errorBody = await response
+        .json()
+        .catch(() => ({ message: "Error desconocido" }));
+      throw new Error(errorBody.message || "Error al obtener KPI Maestro Looper");
+    }
+    return response.json();
+  },
+
   async ReporteExplosionMateriales(rows: number, rowsPerPage: number): Promise<BodyResponse<any>> {
     const response = await fetch(API_URL + "/ReporteExplosionMateriales", {
       method: "POST",
