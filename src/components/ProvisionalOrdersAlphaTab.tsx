@@ -149,6 +149,19 @@ const addBusinessDays = (date: Date, days: number): Date => {
     return result;
 };
 
+// Suma N días CALENDARIO (sin saltar fines de semana ni feriados) a una fecha. Usada para las fechas
+// de archivo de "Primer Nivel"/"Segundo Nivel" de Muebles (hoy+2 / hoy+1), que el usuario definió como
+// aritmética de calendario simple, no días laborables.
+const addCalendarDays = (date: Date, days: number): Date => {
+    const result = new Date(date);
+    result.setHours(0, 0, 0, 0);
+    result.setDate(result.getDate() + days);
+    return result;
+};
+
+const formatFechaDDMMYYYY = (date: Date): string =>
+    `${String(date.getDate()).padStart(2, '0')}.${String(date.getMonth() + 1).padStart(2, '0')}.${date.getFullYear()}`;
+
 interface PlanningDay {
     date: Date;
     key: string;
@@ -178,6 +191,24 @@ const SECTOR_MUEBLES = '03 MUEBLES FABRICACIÓN';
 // intente deducirlo por descripción (materiales "MUEBLE DE REPARACIÓN").
 const esSectorAjenoAMuebles = (sectorSAP: string | undefined): boolean =>
     !!sectorSAP && sectorSAP !== SECTOR_CAMAS && sectorSAP !== SECTOR_MUEBLES;
+
+// Responsables de Control de Fabricación que definen las tablas "Primer Nivel"/"Segundo Nivel" de la
+// Explosión de Materiales de Muebles (independiente de la descripción del componente).
+const RESP_CTRL_PROD_PRIMER_NIVEL = ['026', '033'];
+const RESP_CTRL_PROD_SEGUNDO_NIVEL = ['042', '037'];
+
+// Dentro de "Primer Nivel", los semielaborados cuya descripción empieza con "FORRO FALSO COSIDO" o
+// "FORRO COJIN INTER" se graban en su archivo descargable (txt/Excel) con hoy+1 en vez de hoy+2 (el
+// resto de la tabla) — proceso más corto según el usuario.
+const esExcepcionFechaCortaPrimerNivel = (descripcion: string): boolean => {
+    const d = descripcion.trim().toUpperCase();
+    return d.startsWith('FORRO FALSO COSIDO') || d.startsWith('FORRO COJIN INTER');
+};
+
+// "Segundo Nivel" excluye por completo (ni en pantalla ni en los archivos) los semielaborados cuya
+// descripción contenga "PET", "MASCOTA" o "FUN" (líneas de producto ajenas a Muebles).
+const esExcluidoSegundoNivel = (descripcionUpper: string): boolean =>
+    descripcionUpper.includes('PET') || descripcionUpper.includes('MASCOTA') || descripcionUpper.includes('FUN');
 
 // Mesas de Línea 2 (Muebles) habilitadas como válvula de alivio para Camas: solo se usan cuando la
 // Línea 1 (Línea de Camas) ya no tiene capacidad disponible en ninguna de sus mesas habituales.
@@ -580,12 +611,11 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
 
     // Estado para la Explosión de Materiales (semielaborados de espuma: Lamina/Espuma)
     const [foamExplosionResults, setFoamExplosionResults] = useState<FoamComponentNeed[]>([]);
-    // Estado para la Explosión de Materiales (semielaborados de forros: RESPCTRLPROD '026')
-    const [forroExplosionResults, setForroExplosionResults] = useState<FoamComponentNeed[]>([]);
-    // Estado para la Explosión de Materiales (semielaborados de estructuras: RESPCTRLPROD '033')
-    const [estructuraExplosionResults, setEstructuraExplosionResults] = useState<FoamComponentNeed[]>([]);
-    // Estado para la Explosión de Materiales (semielaborados de cojines: descripción contiene "FORRO COJIN" o "COJIN INTER")
-    const [cojinExplosionResults, setCojinExplosionResults] = useState<FoamComponentNeed[]>([]);
+    // Estado para la Explosión de Materiales (Semielaborados de Primer Nivel: RESPCTRLPROD '026' o '033')
+    const [primerNivelExplosionResults, setPrimerNivelExplosionResults] = useState<FoamComponentNeed[]>([]);
+    // Estado para la Explosión de Materiales (Semielaborados de Segundo Nivel: RESPCTRLPROD '042' o '037',
+    // excluyendo descripciones con "PET"/"MASCOTA"/"FUN")
+    const [segundoNivelExplosionResults, setSegundoNivelExplosionResults] = useState<FoamComponentNeed[]>([]);
     // Estado para la Explosión de Materiales (telas: "TELA MUEBLES"), comparadas contra Stock Actual
     const [telaExplosionResults, setTelaExplosionResults] = useState<TelaComponentNeed[]>([]);
     // Estado para la Explosión de Materiales (cascos: "CASCO"), comparados contra Stock Actual
@@ -1499,9 +1529,8 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
         setMesaDistribution(null);
         setUnassignedDistributionOrders([]);
         setFoamExplosionResults([]);
-        setForroExplosionResults([]);
-        setEstructuraExplosionResults([]);
-        setCojinExplosionResults([]);
+        setPrimerNivelExplosionResults([]);
+        setSegundoNivelExplosionResults([]);
         setTelaExplosionResults([]);
         setCascoExplosionResults([]);
         const nextStep: 1 | 2 | 3 = forcePasoFinal ? 3 : lastStep === 0 ? 1 : lastStep === 1 ? 2 : 3;
@@ -2140,9 +2169,17 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
         XLSX.writeFile(workbook, `Detalle_Planificacion_Tactica_${fechaArchivo}.xlsx`);
     };
 
-    // Exporta a Excel una tabla de Explosión de Materiales (Espuma/Forros/Estructuras), con el Kardex
-    // (Stock Actual, Consumo de Órdenes Pasadas Pendientes, Disponible Real y Cantidad Neta Requerida)
-    const exportComponentNeedsToExcel = (data: FoamComponentNeed[], sheetName: string, fileLabel: string) => {
+    // Exporta a Excel una tabla de Explosión de Materiales (Espuma/Primer Nivel/Segundo Nivel), con el
+    // Kardex (Stock Actual, Consumo de Órdenes Pasadas Pendientes, Disponible Real y Cantidad Neta
+    // Requerida). Si se pasa getFecha, se agrega una columna "Fecha" (DD.MM.AAAA) calculada por fila —
+    // usada por Primer Nivel (hoy+2, hoy+1 en la excepción "FORRO FALSO COSIDO"/"FORRO COJIN INTER") y
+    // Segundo Nivel (hoy+1). Espuma no la usa (se deja sin columna de Fecha, sin cambios).
+    const exportComponentNeedsToExcel = (
+        data: FoamComponentNeed[],
+        sheetName: string,
+        fileLabel: string,
+        getFecha?: (c: FoamComponentNeed) => Date,
+    ) => {
         if (data.length === 0) return;
 
         const rows = data.map(c => ({
@@ -2155,6 +2192,7 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
             'Producción Propia Pendiente': Number(c.produccionPropiaPendiente.toFixed(2)),
             'Disponible Real': c.disponibleReal ?? '',
             'Cantidad Neta Requerida': Number(c.cantidadNetaAConseguir.toFixed(2)),
+            ...(getFecha ? { 'Fecha': formatFechaDDMMYYYY(getFecha(c)) } : {}),
         }));
 
         const worksheet = XLSX.utils.json_to_sheet(rows);
@@ -2166,21 +2204,21 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
     };
 
     // Genera el archivo .txt para carga en el LSMW de SAP a partir de una tabla de Explosión de
-    // Materiales (Forros/Estructuras/Cojines). Formato por línea (campos separados por TAB):
+    // Materiales (Primer Nivel/Segundo Nivel). Formato por línea (campos separados por TAB):
     // Componente <TAB> 1000 <TAB> ZMOQ <TAB> Cantidad Neta Requerida (entero) <TAB> Fecha(DD.MM.AAAA) <TAB> 1 <TAB> 0000
-    // Se excluyen los componentes cuya Cantidad Neta Requerida redondeada sea 0.
-    // La fecha del archivo es hoy + 2 días laborables (segundo día de la Ventana de Fabricación),
-    // NO la fecha objetivo de planificación (que es el 3er día laborable, workingWindow[2]).
-    const exportComponentNeedsToLSMW = (data: FoamComponentNeed[], fileLabel: string) => {
-        if (data.length === 0 || !planningResult) return;
-
-        const fecha = workingWindow.length >= 2 ? workingWindow[1].date : planningResult.targetDate;
-        const fechaTexto = `${String(fecha.getDate()).padStart(2, '0')}.${String(fecha.getMonth() + 1).padStart(2, '0')}.${fecha.getFullYear()}`;
+    // Se excluyen los componentes cuya Cantidad Neta Requerida redondeada sea 0. getFecha calcula la
+    // fecha POR FILA (Primer Nivel mezcla hoy+2 con hoy+1 según la excepción de descripción).
+    const exportComponentNeedsToLSMW = (
+        data: FoamComponentNeed[],
+        fileLabel: string,
+        getFecha: (c: FoamComponentNeed) => Date,
+    ) => {
+        if (data.length === 0) return;
 
         const lines = data
             .map(c => ({ ...c, cantidadRedondeada: Math.round(c.cantidadNetaAConseguir) }))
             .filter(c => c.cantidadRedondeada > 0)
-            .map(c => `${c.componente}\t1000\tZMOQ\t${c.cantidadRedondeada}\t${fechaTexto}\t1\t0000`);
+            .map(c => `${c.componente}\t1000\tZMOQ\t${c.cantidadRedondeada}\t${formatFechaDDMMYYYY(getFecha(c))}\t1\t0000`);
 
         if (lines.length === 0) return;
 
@@ -2195,6 +2233,14 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
     };
+
+    // Primer Nivel: hoy+2 días calendario, EXCEPTO los semielaborados cuya descripción empieza con
+    // "FORRO FALSO COSIDO" o "FORRO COJIN INTER" (hoy+1) — ver esExcepcionFechaCortaPrimerNivel.
+    const fechaPrimerNivelPara = useCallback((c: FoamComponentNeed): Date =>
+        addCalendarDays(new Date(), esExcepcionFechaCortaPrimerNivel(c.descripcion) ? 1 : 2), []);
+
+    // Segundo Nivel: hoy+1 día calendario para todos los componentes de la tabla.
+    const fechaSegundoNivelPara = useCallback((_c: FoamComponentNeed): Date => addCalendarDays(new Date(), 1), []);
 
     const handleExportTelasExcel = () => {
         if (telaExplosionResults.length === 0) return;
@@ -2347,9 +2393,8 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
         setUnassignedDistributionOrders(unassigned);
         // Una nueva distribución invalida cualquier explosión de materiales previa
         setFoamExplosionResults([]);
-        setForroExplosionResults([]);
-        setEstructuraExplosionResults([]);
-        setCojinExplosionResults([]);
+        setPrimerNivelExplosionResults([]);
+        setSegundoNivelExplosionResults([]);
         setTelaExplosionResults([]);
         setCascoExplosionResults([]);
 
@@ -2470,9 +2515,8 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
         setMesaDistribution(newDistribution);
         // Una redistribución invalida cualquier explosión de materiales previa (misma regla que al ejecutar la distribución)
         setFoamExplosionResults([]);
-        setForroExplosionResults([]);
-        setEstructuraExplosionResults([]);
-        setCojinExplosionResults([]);
+        setPrimerNivelExplosionResults([]);
+        setSegundoNivelExplosionResults([]);
         setTelaExplosionResults([]);
         setCascoExplosionResults([]);
 
@@ -2656,9 +2700,8 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
                 origenesMap: Map<string, Set<string>>;
             };
             const grouped = new Map<string, RawComponentAccum>();
-            const groupedForros = new Map<string, RawComponentAccum>();
-            const groupedEstructuras = new Map<string, RawComponentAccum>();
-            const groupedCojines = new Map<string, RawComponentAccum>();
+            const groupedPrimerNivel = new Map<string, RawComponentAccum>();
+            const groupedSegundoNivel = new Map<string, RawComponentAccum>();
             const groupedTelas = new Map<string, RawComponentAccum>();
             const groupedCascos = new Map<string, RawComponentAccum>();
             // Kardex: consumo de cada componente por parte de las órdenes de días pasados pendientes,
@@ -2741,8 +2784,7 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
                     }
                     if (necesario <= 0) return;
 
-                    // Semielaborados de cojines para muebles: la descripción contiene "FORRO COJIN" o "COJIN INTER"
-                    const esCojin = descripcionUpper.includes('FORRO COJIN') || descripcionUpper.includes('COJIN INTER');
+                    const respCtrlProdComponente = materialRespCtrlProdMap.get(normalizeMaterialCode(componente));
 
                     // Semielaborados de espuma para muebles: la descripción inicia con "LAMINA" o "ESPUMA".
                     // Excepción 1: "LAMINA CILINDRICA" en particular también aparece como semielaborado del
@@ -2764,24 +2806,19 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
                         }
                     }
 
-                    // Semielaborados de forros para muebles: la descripción inicia con "FORRO" y pertenece al RESPCTRLPROD '026'
-                    // (se excluyen los forros de cojín, que van a su propia categoría más abajo)
-                    if (descripcionUpper.startsWith('FORRO') && !esCojin && materialRespCtrlProdMap.get(normalizeMaterialCode(componente)) === '026') {
-                        const accum = ensure(groupedForros, componente, descripcion, unidad);
+                    // Semielaborados de Primer Nivel para Muebles: cualquier componente cuyo RESPCTRLPROD (Cubo
+                    // de Inventarios) sea '026' o '033' — ya no se filtra por prefijo de descripción ("FORRO"/
+                    // "ESTRUCTURA"), el criterio pasó a ser puramente el responsable de control de fabricación.
+                    if (respCtrlProdComponente && RESP_CTRL_PROD_PRIMER_NIVEL.includes(respCtrlProdComponente)) {
+                        const accum = ensure(groupedPrimerNivel, componente, descripcion, unidad);
                         accum.totalNecesario += necesario;
                         recordOrigin(accum, material);
                     }
 
-                    // Semielaborados de estructuras para muebles: la descripción inicia con "ESTRUCTURA" y pertenece al RESPCTRLPROD '033'
-                    if (descripcionUpper.startsWith('ESTRUCTURA') && materialRespCtrlProdMap.get(normalizeMaterialCode(componente)) === '033') {
-                        const accum = ensure(groupedEstructuras, componente, descripcion, unidad);
-                        accum.totalNecesario += necesario;
-                        recordOrigin(accum, material);
-                    }
-
-                    // Semielaborados de cojines para muebles: descripción contiene "FORRO COJIN" o "COJIN INTER"
-                    if (esCojin) {
-                        const accum = ensure(groupedCojines, componente, descripcion, unidad);
+                    // Semielaborados de Segundo Nivel para Muebles: RESPCTRLPROD '042' o '037', excluyendo las
+                    // líneas de producto ajenas a Muebles (descripción con "PET"/"MASCOTA"/"FUN").
+                    if (respCtrlProdComponente && RESP_CTRL_PROD_SEGUNDO_NIVEL.includes(respCtrlProdComponente) && !esExcluidoSegundoNivel(descripcionUpper)) {
+                        const accum = ensure(groupedSegundoNivel, componente, descripcion, unidad);
                         accum.totalNecesario += necesario;
                         recordOrigin(accum, material);
                     }
@@ -2838,14 +2875,11 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
             const sorted = Array.from(grouped.values()).map(withKardex(true)).sort((a, b) => b.cantidadNetaAConseguir - a.cantidadNetaAConseguir);
             setFoamExplosionResults(sorted);
 
-            const sortedForros = Array.from(groupedForros.values()).map(withKardex(true)).sort((a, b) => b.cantidadNetaAConseguir - a.cantidadNetaAConseguir);
-            setForroExplosionResults(sortedForros);
+            const sortedPrimerNivel = Array.from(groupedPrimerNivel.values()).map(withKardex(true)).sort((a, b) => b.cantidadNetaAConseguir - a.cantidadNetaAConseguir);
+            setPrimerNivelExplosionResults(sortedPrimerNivel);
 
-            const sortedEstructuras = Array.from(groupedEstructuras.values()).map(withKardex(true)).sort((a, b) => b.cantidadNetaAConseguir - a.cantidadNetaAConseguir);
-            setEstructuraExplosionResults(sortedEstructuras);
-
-            const sortedCojines = Array.from(groupedCojines.values()).map(withKardex(true)).sort((a, b) => b.cantidadNetaAConseguir - a.cantidadNetaAConseguir);
-            setCojinExplosionResults(sortedCojines);
+            const sortedSegundoNivel = Array.from(groupedSegundoNivel.values()).map(withKardex(true)).sort((a, b) => b.cantidadNetaAConseguir - a.cantidadNetaAConseguir);
+            setSegundoNivelExplosionResults(sortedSegundoNivel);
 
             // Telas: Alerta de Stock con el mismo criterio de la pestaña "Telas" (StockActual bruto < 300 = "CRÍTICO")
             const sortedTelas: TelaComponentNeed[] = Array.from(groupedTelas.values())
@@ -2872,10 +2906,10 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
                 setStockAlertDialogOpen(true);
             }
 
-            if (sorted.length > 0 || sortedForros.length > 0 || sortedEstructuras.length > 0 || sortedCojines.length > 0 || sortedTelas.length > 0 || sortedCascos.length > 0) {
-                addNotification('success', `Explosión completada: ${sorted.length} semielaborado(s) de espuma, ${sortedForros.length} de forro, ${sortedEstructuras.length} de estructura, ${sortedCojines.length} de cojín, ${sortedTelas.length} de tela y ${sortedCascos.length} de casco identificado(s).`);
+            if (sorted.length > 0 || sortedPrimerNivel.length > 0 || sortedSegundoNivel.length > 0 || sortedTelas.length > 0 || sortedCascos.length > 0) {
+                addNotification('success', `Explosión completada: ${sorted.length} semielaborado(s) de espuma, ${sortedPrimerNivel.length} de primer nivel, ${sortedSegundoNivel.length} de segundo nivel, ${sortedTelas.length} de tela y ${sortedCascos.length} de casco identificado(s).`);
             } else {
-                addNotification('warning', 'No se encontraron semielaborados de espuma, forro, estructura, cojín, tela ni casco en la explosión de estos materiales.');
+                addNotification('warning', 'No se encontraron semielaborados de espuma, primer nivel, segundo nivel, tela ni casco en la explosión de estos materiales.');
             }
         } catch (error) {
             console.error('Error en la explosión de materiales:', error);
@@ -2888,7 +2922,7 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
     const handleSavePlanAndDetails = async () => {
         const executedOrders = planningResult ? [...planningResult.immediateOrders, ...planningResult.extraOrders] : [];
         const hayP13 = executedOrders.length > 0;
-        const hayP15 = forroExplosionResults.length > 0 || estructuraExplosionResults.length > 0 || cojinExplosionResults.length > 0;
+        const hayP15 = primerNivelExplosionResults.length > 0 || segundoNivelExplosionResults.length > 0;
         const hayP2 = foamExplosionResults.length > 0;
         // Paso 3 (Final): "Guardar Plan Táctico Final" NO vuelve a guardar P1.3/P1.5/P2 (ya se guardaron
         // en Paso 1/2) — únicamente guarda un Plan de Grupo "PFSM" (Plan Final de Semielaborados de
@@ -2973,17 +3007,18 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
                     }
                 }
 
-                // 2. P1.5 — Explosión de Materiales: Semielaborados de Forros (026) + Estructuras (033) + Cojines
+                // 2. P1.5 — Explosión de Materiales: Semielaborados de Primer Nivel (026/033) + Segundo
+                // Nivel (042/037). El resp_ctrl_prod real de cada componente se toma del Cubo de
+                // Inventarios (materialRespCtrlProdMap), ya que ambas tablas ya no son mono-código.
                 if (hayP15) {
                     const codigoPlanGrupoP15 = await savePlanGrupo('P1.5');
-                    for (const comp of forroExplosionResults) {
-                        await saveDetalle(codigoPlanGrupoP15, Number(comp.componente) || 0, comp.cantidadNetaAConseguir, '026');
+                    for (const comp of primerNivelExplosionResults) {
+                        const respCtrlProd = materialRespCtrlProdMap.get(normalizeMaterialCode(comp.componente)) || '';
+                        await saveDetalle(codigoPlanGrupoP15, Number(comp.componente) || 0, comp.cantidadNetaAConseguir, respCtrlProd);
                     }
-                    for (const comp of estructuraExplosionResults) {
-                        await saveDetalle(codigoPlanGrupoP15, Number(comp.componente) || 0, comp.cantidadNetaAConseguir, '033');
-                    }
-                    for (const comp of cojinExplosionResults) {
-                        await saveDetalle(codigoPlanGrupoP15, Number(comp.componente) || 0, comp.cantidadNetaAConseguir, '');
+                    for (const comp of segundoNivelExplosionResults) {
+                        const respCtrlProd = materialRespCtrlProdMap.get(normalizeMaterialCode(comp.componente)) || '';
+                        await saveDetalle(codigoPlanGrupoP15, Number(comp.componente) || 0, comp.cantidadNetaAConseguir, respCtrlProd);
                     }
                 }
 
@@ -3012,7 +3047,7 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
                 ? [`PFSM (${executedOrders.length} orden(es))`]
                 : [
                     hayP13 ? `P1.3 (${executedOrders.length} orden(es))` : null,
-                    hayP15 ? `P1.5 (${forroExplosionResults.length + estructuraExplosionResults.length + cojinExplosionResults.length} detalle(s))` : null,
+                    hayP15 ? `P1.5 (${primerNivelExplosionResults.length + segundoNivelExplosionResults.length} detalle(s))` : null,
                     hayP2 ? `P2 (${foamExplosionResults.length} detalle(s))` : null,
                 ].filter(Boolean);
             addNotification('success', `${esPasoFinal ? 'Plan Táctico Final guardado' : 'Plan Táctico guardado'}: ${partes.join(', ')}.`);
@@ -3049,9 +3084,8 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
         setMesaDistribution(null);
         setUnassignedDistributionOrders([]);
         setFoamExplosionResults([]);
-        setForroExplosionResults([]);
-        setEstructuraExplosionResults([]);
-        setCojinExplosionResults([]);
+        setPrimerNivelExplosionResults([]);
+        setSegundoNivelExplosionResults([]);
         setTelaExplosionResults([]);
         setCascoExplosionResults([]);
         setStockAlertDialogOpen(false);
@@ -4091,16 +4125,16 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
                     </div>
                 )}
 
-                {forroExplosionResults.length > 0 && (
+                {primerNivelExplosionResults.length > 0 && (
                     <div className="bg-white border border-gray-200 rounded-xl shadow-md overflow-hidden">
                         <div className="flex items-center justify-between gap-2 px-6 py-4 bg-gradient-to-r from-teal-700 to-cyan-700">
                             <div className="flex items-center gap-2">
                                 <Layers className="w-5 h-5 text-teal-100" />
-                                <h3 className="text-sm font-bold text-white uppercase tracking-wide">Explosión de Materiales — Semielaborados de Forros para Muebles</h3>
+                                <h3 className="text-sm font-bold text-white uppercase tracking-wide">Explosión de Materiales - Semielaborados de Primer Nivel de Muebles</h3>
                             </div>
                             <div className="flex items-center gap-2 shrink-0">
                                 <Button
-                                    onClick={() => exportComponentNeedsToLSMW(forroExplosionResults, 'Forros')}
+                                    onClick={() => exportComponentNeedsToLSMW(primerNivelExplosionResults, 'PrimerNivel', fechaPrimerNivelPara)}
                                     size="sm"
                                     className="h-8 bg-white/10 hover:bg-white/20 text-white gap-1.5 text-xs"
                                 >
@@ -4108,7 +4142,7 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
                                     Descargar .txt LSMW
                                 </Button>
                                 <Button
-                                    onClick={() => exportComponentNeedsToExcel(forroExplosionResults, 'Forros', 'Explosion_Materiales_Forros')}
+                                    onClick={() => exportComponentNeedsToExcel(primerNivelExplosionResults, 'PrimerNivel', 'Explosion_Materiales_PrimerNivel', fechaPrimerNivelPara)}
                                     size="sm"
                                     className="h-8 bg-white/10 hover:bg-white/20 text-white gap-1.5 text-xs"
                                 >
@@ -4134,7 +4168,7 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        {forroExplosionResults.map((comp, idx) => (
+                                        {primerNivelExplosionResults.map((comp, idx) => (
                                             <TableRow key={comp.componente} className={cn("border-b border-gray-200", idx % 2 === 1 && "bg-gray-50/70")}>
                                                 <TableCell className="text-[11px] font-mono font-semibold text-gray-800 border-r border-gray-200">{comp.componente}</TableCell>
                                                 <TableCell className="text-[11px] text-gray-700 border-r border-gray-200">{comp.descripcion}</TableCell>
@@ -4164,7 +4198,7 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
                                         <TableRow className="bg-teal-50 hover:bg-teal-50 border-t-2 border-teal-300">
                                             <TableCell colSpan={8} className="text-[11px] font-extrabold text-teal-900 uppercase text-right border-r border-teal-200">Total General (Neto Requerido)</TableCell>
                                             <TableCell className="text-[11px] text-center font-mono font-extrabold text-teal-900">
-                                                {forroExplosionResults.reduce((s, c) => s + c.cantidadNetaAConseguir, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                {primerNivelExplosionResults.reduce((s, c) => s + c.cantidadNetaAConseguir, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                             </TableCell>
                                         </TableRow>
                                     </TableFooter>
@@ -4174,16 +4208,16 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
                     </div>
                 )}
 
-                {estructuraExplosionResults.length > 0 && (
+                {segundoNivelExplosionResults.length > 0 && (
                     <div className="bg-white border border-gray-200 rounded-xl shadow-md overflow-hidden">
                         <div className="flex items-center justify-between gap-2 px-6 py-4 bg-gradient-to-r from-slate-700 to-zinc-700">
                             <div className="flex items-center gap-2">
                                 <Layers className="w-5 h-5 text-slate-100" />
-                                <h3 className="text-sm font-bold text-white uppercase tracking-wide">Explosión de Materiales — Semielaborados de Estructuras para Muebles</h3>
+                                <h3 className="text-sm font-bold text-white uppercase tracking-wide">Explosión de Materiales - Semielaborados de Segundo Nivel de Muebles</h3>
                             </div>
                             <div className="flex items-center gap-2 shrink-0">
                                 <Button
-                                    onClick={() => exportComponentNeedsToLSMW(estructuraExplosionResults, 'Estructuras')}
+                                    onClick={() => exportComponentNeedsToLSMW(segundoNivelExplosionResults, 'SegundoNivel', fechaSegundoNivelPara)}
                                     size="sm"
                                     className="h-8 bg-white/10 hover:bg-white/20 text-white gap-1.5 text-xs"
                                 >
@@ -4191,7 +4225,7 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
                                     Descargar .txt LSMW
                                 </Button>
                                 <Button
-                                    onClick={() => exportComponentNeedsToExcel(estructuraExplosionResults, 'Estructuras', 'Explosion_Materiales_Estructuras')}
+                                    onClick={() => exportComponentNeedsToExcel(segundoNivelExplosionResults, 'SegundoNivel', 'Explosion_Materiales_SegundoNivel', fechaSegundoNivelPara)}
                                     size="sm"
                                     className="h-8 bg-white/10 hover:bg-white/20 text-white gap-1.5 text-xs"
                                 >
@@ -4217,7 +4251,7 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        {estructuraExplosionResults.map((comp, idx) => (
+                                        {segundoNivelExplosionResults.map((comp, idx) => (
                                             <TableRow key={comp.componente} className={cn("border-b border-gray-200", idx % 2 === 1 && "bg-gray-50/70")}>
                                                 <TableCell className="text-[11px] font-mono font-semibold text-gray-800 border-r border-gray-200">{comp.componente}</TableCell>
                                                 <TableCell className="text-[11px] text-gray-700 border-r border-gray-200">{comp.descripcion}</TableCell>
@@ -4247,90 +4281,7 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
                                         <TableRow className="bg-slate-50 hover:bg-slate-50 border-t-2 border-slate-300">
                                             <TableCell colSpan={8} className="text-[11px] font-extrabold text-slate-900 uppercase text-right border-r border-slate-200">Total General (Neto Requerido)</TableCell>
                                             <TableCell className="text-[11px] text-center font-mono font-extrabold text-slate-900">
-                                                {estructuraExplosionResults.reduce((s, c) => s + c.cantidadNetaAConseguir, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                            </TableCell>
-                                        </TableRow>
-                                    </TableFooter>
-                                </Table>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {cojinExplosionResults.length > 0 && (
-                    <div className="bg-white border border-gray-200 rounded-xl shadow-md overflow-hidden">
-                        <div className="flex items-center justify-between gap-2 px-6 py-4 bg-gradient-to-r from-fuchsia-700 to-purple-700">
-                            <div className="flex items-center gap-2">
-                                <Layers className="w-5 h-5 text-fuchsia-100" />
-                                <h3 className="text-sm font-bold text-white uppercase tracking-wide">Explosión de Materiales — Semielaborados de Cojines para Muebles</h3>
-                            </div>
-                            <div className="flex items-center gap-2 shrink-0">
-                                <Button
-                                    onClick={() => exportComponentNeedsToLSMW(cojinExplosionResults, 'Cojines')}
-                                    size="sm"
-                                    className="h-8 bg-white/10 hover:bg-white/20 text-white gap-1.5 text-xs"
-                                >
-                                    <Download className="w-3.5 h-3.5" />
-                                    Descargar .txt LSMW
-                                </Button>
-                                <Button
-                                    onClick={() => exportComponentNeedsToExcel(cojinExplosionResults, 'Cojines', 'Explosion_Materiales_Cojines')}
-                                    size="sm"
-                                    className="h-8 bg-white/10 hover:bg-white/20 text-white gap-1.5 text-xs"
-                                >
-                                    <FileSpreadsheet className="w-3.5 h-3.5" />
-                                    Exportar a Excel
-                                </Button>
-                            </div>
-                        </div>
-                        <div className="p-6">
-                            <div className="border border-gray-300 rounded-lg overflow-auto max-h-[50vh]">
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow className="bg-gray-100 hover:bg-gray-100 border-b-2 border-gray-300 sticky top-0 z-10">
-                                            <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase border-r border-gray-200">Componente</TableHead>
-                                            <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase border-r border-gray-200">Descripción</TableHead>
-                                            <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase text-center border-r border-gray-200">Unidad</TableHead>
-                                            <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase text-center border-r border-gray-200">Cantidad Total Necesaria</TableHead>
-                                            <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase text-center border-r border-gray-200">Stock Actual</TableHead>
-                                            <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase text-center border-r border-gray-200">Consumo Órdenes Pasadas</TableHead>
-                                            <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase text-center border-r border-gray-200">Producción Propia Pendiente</TableHead>
-                                            <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase text-center border-r border-gray-200">Disponible Real</TableHead>
-                                            <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase text-center">Cantidad Neta Requerida</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {cojinExplosionResults.map((comp, idx) => (
-                                            <TableRow key={comp.componente} className={cn("border-b border-gray-200", idx % 2 === 1 && "bg-gray-50/70")}>
-                                                <TableCell className="text-[11px] font-mono font-semibold text-gray-800 border-r border-gray-200">{comp.componente}</TableCell>
-                                                <TableCell className="text-[11px] text-gray-700 border-r border-gray-200">{comp.descripcion}</TableCell>
-                                                <TableCell className="text-[11px] text-center text-gray-600 border-r border-gray-200">{comp.unidad}</TableCell>
-                                                <TableCell className="text-[11px] text-center font-mono text-gray-700 border-r border-gray-200">
-                                                    {comp.totalNecesario.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                                </TableCell>
-                                                <TableCell className="text-[11px] text-center font-mono text-gray-600 border-r border-gray-200">
-                                                    {comp.stockActual !== null ? comp.stockActual.toLocaleString() : '—'}
-                                                </TableCell>
-                                                <TableCell className="text-[11px] text-center font-mono text-gray-600 border-r border-gray-200">
-                                                    {comp.consumoOrdenesPasadas.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                                </TableCell>
-                                                <TableCell className="text-[11px] text-center font-mono text-gray-600 border-r border-gray-200">
-                                                    {comp.produccionPropiaPendiente.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                                </TableCell>
-                                                <TableCell className="text-[11px] text-center font-mono text-gray-600 border-r border-gray-200">
-                                                    {comp.disponibleReal !== null ? comp.disponibleReal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
-                                                </TableCell>
-                                                <TableCell className="text-[11px] text-center font-mono font-bold text-fuchsia-700">
-                                                    {comp.cantidadNetaAConseguir.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                                </TableCell>
-                                            </TableRow>
-                                        ))}
-                                    </TableBody>
-                                    <TableFooter className="sticky bottom-0">
-                                        <TableRow className="bg-fuchsia-50 hover:bg-fuchsia-50 border-t-2 border-fuchsia-300">
-                                            <TableCell colSpan={8} className="text-[11px] font-extrabold text-fuchsia-900 uppercase text-right border-r border-fuchsia-200">Total General (Neto Requerido)</TableCell>
-                                            <TableCell className="text-[11px] text-center font-mono font-extrabold text-fuchsia-900">
-                                                {cojinExplosionResults.reduce((s, c) => s + c.cantidadNetaAConseguir, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                {segundoNivelExplosionResults.reduce((s, c) => s + c.cantidadNetaAConseguir, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                             </TableCell>
                                         </TableRow>
                                     </TableFooter>
@@ -4863,8 +4814,7 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
                 </div>
             )}
 
-            {(foamExplosionResults.length > 0 || forroExplosionResults.length > 0 || estructuraExplosionResults.length > 0
-                || cojinExplosionResults.length > 0
+            {(foamExplosionResults.length > 0 || primerNivelExplosionResults.length > 0 || segundoNivelExplosionResults.length > 0
                 || (planningResult !== null && (planningResult.immediateOrders.length > 0 || planningResult.extraOrders.length > 0))) && (
                 <button
                     type="button"
@@ -5091,10 +5041,9 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
                                             <TableCell className="text-[11px] text-center font-mono font-bold text-indigo-700 border-r border-gray-200">{d.cantidad_produccion_neta}</TableCell>
                                             <TableCell className="text-[11px] text-center border-r border-gray-200">{d.resp_ctrl_prod || '—'}</TableCell>
                                             <TableCell className="text-[11px] text-center">
-                                                {d.resp_ctrl_prod === '026' ? 'Forros'
-                                                    : d.resp_ctrl_prod === '033' ? 'Estructuras'
+                                                {RESP_CTRL_PROD_PRIMER_NIVEL.includes(d.resp_ctrl_prod || '') ? 'Primer Nivel'
+                                                    : RESP_CTRL_PROD_SEGUNDO_NIVEL.includes(d.resp_ctrl_prod || '') ? 'Segundo Nivel'
                                                     : /P1\.3\s*$|PFSM\s*$/i.test(planCheckModal.planGrupo.valor) ? 'Planificación Ejecutada'
-                                                    : /P1\.5\s*$/i.test(planCheckModal.planGrupo.valor) ? 'Cojines'
                                                     : 'Espuma'}
                                             </TableCell>
                                         </TableRow>
