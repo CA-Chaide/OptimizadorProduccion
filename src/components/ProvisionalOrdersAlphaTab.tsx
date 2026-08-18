@@ -206,9 +206,29 @@ const esExcepcionFechaCortaPrimerNivel = (descripcion: string): boolean => {
 };
 
 // "Segundo Nivel" excluye por completo (ni en pantalla ni en los archivos) los semielaborados cuya
-// descripción contenga "PET", "MASCOTA" o "FUN" (líneas de producto ajenas a Muebles).
+// descripción contenga "PET", "MASCOTA" o "FUN" (líneas de producto ajenas a Muebles), o que empiecen
+// con "TELA" (ej. "TELA DE APROVECHAMIENTO", código 30020937, RespCtrlProd '037' — el usuario no quiere
+// telas en esta tabla bajo ninguna circunstancia).
 const esExcluidoSegundoNivel = (descripcionUpper: string): boolean =>
-    descripcionUpper.includes('PET') || descripcionUpper.includes('MASCOTA') || descripcionUpper.includes('FUN');
+    descripcionUpper.includes('PET') || descripcionUpper.includes('MASCOTA') || descripcionUpper.includes('FUN')
+    || descripcionUpper.startsWith('TELA');
+
+// "Primer Nivel" excluye por completo (ni en pantalla ni en los archivos):
+// - Descripción que EMPIEZA con "COJIN CILINDRICO" o "FORRO COJIN CILINDRICO" (ej. código 30025771,
+//   "FORRO COJIN CILINDRICO ELEMENTA ARENA"): material ficticio en SAP, se fabrica con un proveedor
+//   externo. Sus componentes reales ("FORRO COJIN"/"COJIN INTER", sin "CILINDRICO") sí quedan en la
+//   tabla, porque son entradas independientes del árbol de la explosión (no dependen de este filtro).
+// - Descripción que CONTIENE "BASE" o "ENSAMBLE": materiales ficticios que se fabrican en otra área
+//   productiva (confirmado por el usuario: comparación de texto simple por fila, sin recorrer el
+//   árbol de componentes).
+// - Descripción que CONTIENE "MASCOTA" o "PET": líneas de producto ajenas a Muebles.
+const esExcluidoPrimerNivel = (descripcionUpper: string): boolean =>
+    descripcionUpper.startsWith('COJIN CILINDRICO') ||
+    descripcionUpper.startsWith('FORRO COJIN CILINDRICO') ||
+    descripcionUpper.includes('BASE') ||
+    descripcionUpper.includes('ENSAMBLE') ||
+    descripcionUpper.includes('MASCOTA') ||
+    descripcionUpper.includes('PET');
 
 // Mesas de Línea 2 (Muebles) habilitadas como válvula de alivio para Camas: solo se usan cuando la
 // Línea 1 (Línea de Camas) ya no tiene capacidad disponible en ninguna de sus mesas habituales.
@@ -2808,8 +2828,10 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
 
                     // Semielaborados de Primer Nivel para Muebles: cualquier componente cuyo RESPCTRLPROD (Cubo
                     // de Inventarios) sea '026' o '033' — ya no se filtra por prefijo de descripción ("FORRO"/
-                    // "ESTRUCTURA"), el criterio pasó a ser puramente el responsable de control de fabricación.
-                    if (respCtrlProdComponente && RESP_CTRL_PROD_PRIMER_NIVEL.includes(respCtrlProdComponente)) {
+                    // "ESTRUCTURA"), el criterio pasó a ser puramente el responsable de control de fabricación,
+                    // excluyendo los materiales ficticios (COJIN CILINDRICO/BASE/ENSAMBLE) y las líneas de
+                    // producto ajenas a Muebles (MASCOTA/PET) — ver esExcluidoPrimerNivel.
+                    if (respCtrlProdComponente && RESP_CTRL_PROD_PRIMER_NIVEL.includes(respCtrlProdComponente) && !esExcluidoPrimerNivel(descripcionUpper)) {
                         const accum = ensure(groupedPrimerNivel, componente, descripcion, unidad);
                         accum.totalNecesario += necesario;
                         recordOrigin(accum, material);
@@ -2872,13 +2894,17 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
                 };
             };
 
-            const sorted = Array.from(grouped.values()).map(withKardex(true)).sort((a, b) => b.cantidadNetaAConseguir - a.cantidadNetaAConseguir);
+            // Espuma/Primer Nivel/Segundo Nivel NO muestran (ni exportan) componentes cuya Cantidad Neta
+            // Requerida sea <= 0 (ya cubierto por el kardex: el stock disponible ya alcanza lo necesario).
+            const sorted = Array.from(grouped.values()).map(withKardex(true)).filter(c => c.cantidadNetaAConseguir > 0).sort((a, b) => b.cantidadNetaAConseguir - a.cantidadNetaAConseguir);
             setFoamExplosionResults(sorted);
 
-            const sortedPrimerNivel = Array.from(groupedPrimerNivel.values()).map(withKardex(true)).sort((a, b) => b.cantidadNetaAConseguir - a.cantidadNetaAConseguir);
+            // Primer Nivel/Segundo Nivel se muestran y exportan (Excel/txt) en orden alfabético por
+            // descripción, a diferencia de las demás tablas de esta explosión (que ordenan por cantidad).
+            const sortedPrimerNivel = Array.from(groupedPrimerNivel.values()).map(withKardex(true)).filter(c => c.cantidadNetaAConseguir > 0).sort((a, b) => a.descripcion.localeCompare(b.descripcion, 'es'));
             setPrimerNivelExplosionResults(sortedPrimerNivel);
 
-            const sortedSegundoNivel = Array.from(groupedSegundoNivel.values()).map(withKardex(true)).sort((a, b) => b.cantidadNetaAConseguir - a.cantidadNetaAConseguir);
+            const sortedSegundoNivel = Array.from(groupedSegundoNivel.values()).map(withKardex(true)).filter(c => c.cantidadNetaAConseguir > 0).sort((a, b) => a.descripcion.localeCompare(b.descripcion, 'es'));
             setSegundoNivelExplosionResults(sortedSegundoNivel);
 
             // Telas: Alerta de Stock con el mismo criterio de la pestaña "Telas" (StockActual bruto < 300 = "CRÍTICO")
