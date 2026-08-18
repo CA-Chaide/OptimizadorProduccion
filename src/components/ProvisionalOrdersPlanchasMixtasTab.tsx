@@ -44,13 +44,35 @@ const TURNOS_PM: { id: TurnoId; label: string; startTime: string; icon: typeof S
     { id: 'noche', label: 'Turno Noche', startTime: '21:00', icon: Moon },
 ];
 
-// Duraciones de jornada posibles para cualquiera de los dos turnos (la de 11.7h es para demanda alta / sobretiempo)
-const SHIFT_DURATIONS_PM = [
+interface ShiftDurationOptionPM {
+    id: string;
+    label: string;
+    hours: number; // Horas usadas en TODOS los cálculos de capacidad
+    startTime?: string; // Solo Noche: la hora de inicio cambia según la duración elegida (Día siempre inicia a turno.startTime)
+    displayHours?: number; // Solo Noche: horas de reloj reales (hours + 1h de receso) para pintar la hora de salida
+}
+
+// Turno Día: duraciones de jornada posibles, siempre inicia a las 07:00 (la de 11.7h es para demanda
+// alta / sobretiempo)
+const SHIFT_DURATIONS_PM_DIA: ShiftDurationOptionPM[] = [
     { id: '8.7h', label: '8.7 horas / 07:00 a 15:45', hours: 8.7 },
     { id: '9.7h', label: '9.7 horas / 07:00 a 17:00', hours: 9.7 },
     { id: '10.7h', label: '10.7 horas / 07:00 a 18:00', hours: 10.7 },
     { id: '11.7h', label: '11.7 horas / 07:00 a 19:00 (Demanda Alta)', hours: 11.7 },
-] as const;
+];
+
+// Turno Noche: a diferencia del Turno Día, la HORA DE INICIO cambia según la duración elegida (las 3
+// opciones terminan siempre a las 05:30 del día siguiente). "hours" (el valor usado en el cálculo de
+// capacidad) descuenta 1h de receso frente a las horas de reloj reales transcurridas ("displayHours").
+const SHIFT_DURATIONS_PM_NOCHE: ShiftDurationOptionPM[] = [
+    { id: 'noche_8h', label: '8 horas / 21:00 a 05:30', startTime: '21:00', hours: 7.5, displayHours: 8.5 },
+    { id: 'noche_9h', label: '9 horas / 20:00 a 05:30', startTime: '20:00', hours: 8.5, displayHours: 9.5 },
+    { id: 'noche_10h', label: '10 horas / 19:00 a 05:30', startTime: '19:00', hours: 9.5, displayHours: 10.5 },
+];
+
+// Devuelve las duraciones de jornada válidas para un turno — Día y Noche tienen listas independientes.
+const getShiftDurationsPara = (turnoId: TurnoId): ShiftDurationOptionPM[] =>
+    turnoId === 'noche' ? SHIFT_DURATIONS_PM_NOCHE : SHIFT_DURATIONS_PM_DIA;
 
 // Rango de utilización de capacidad considerado eficiente (ni mucho déficit ni mucho desperdicio). Fuera
 // de este rango se evalúa la Propuesta de Ajuste de Capacidad (turno o mesas).
@@ -247,7 +269,7 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
     // Configuración de los dos turnos: habilitado, duración de jornada y mesas asignadas a cada uno.
     // Por defecto solo el Turno Día está habilitado (con las 5 mesas), ya que es lo usual.
     const [turnoEnabled, setTurnoEnabled] = useState<Record<TurnoId, boolean>>({ dia: true, noche: false });
-    const [turnoDuration, setTurnoDuration] = useState<Record<TurnoId, string>>({ dia: SHIFT_DURATIONS_PM[0].id, noche: SHIFT_DURATIONS_PM[0].id });
+    const [turnoDuration, setTurnoDuration] = useState<Record<TurnoId, string>>({ dia: SHIFT_DURATIONS_PM_DIA[0].id, noche: SHIFT_DURATIONS_PM_NOCHE[0].id });
     const [turnoStations, setTurnoStations] = useState<Record<TurnoId, Set<number>>>({
         dia: new Set(WORK_STATIONS_PM.map(s => s.id)),
         noche: new Set(),
@@ -507,7 +529,7 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
     // eso está "Actualizar Datos". Mismo patrón que "Planificación Nueva" en Planificación Táctica Muebles.
     const handleNuevaPlanificacion = () => {
         setTurnoEnabled({ dia: true, noche: false });
-        setTurnoDuration({ dia: SHIFT_DURATIONS_PM[0].id, noche: SHIFT_DURATIONS_PM[0].id });
+        setTurnoDuration({ dia: SHIFT_DURATIONS_PM_DIA[0].id, noche: SHIFT_DURATIONS_PM_NOCHE[0].id });
         setTurnoStations({ dia: new Set(WORK_STATIONS_PM.map(s => s.id)), noche: new Set() });
         setMedicalAppointments([]);
         setShowMedicalForm(false);
@@ -653,7 +675,7 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
         const slots: PMSlot[] = [];
         TURNOS_PM.forEach(turno => {
             if (!turnoEnabled[turno.id]) return;
-            const durationHours = SHIFT_DURATIONS_PM.find(d => d.id === turnoDuration[turno.id])?.hours ?? 0;
+            const durationHours = getShiftDurationsPara(turno.id).find(d => d.id === turnoDuration[turno.id])?.hours ?? 0;
             turnoStations[turno.id].forEach(stationId => {
                 slots.push({ turno: turno.id, stationId, capacityHours: durationHours });
             });
@@ -980,12 +1002,13 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
             const mesasActuales = turnoStations[turno.id].size;
             if (mesasActuales === 0) return;
             const duracionActualId = turnoDuration[turno.id];
-            const duracionActualHoras = SHIFT_DURATIONS_PM.find(d => d.id === duracionActualId)?.hours ?? 0;
+            const duracionesTurno = getShiftDurationsPara(turno.id);
+            const duracionActualHoras = duracionesTurno.find(d => d.id === duracionActualId)?.hours ?? 0;
             // Capacidad de TODOS los demás slots (otros turnos, o este mismo turno sin contar sus propias mesas)
             const capacidadOtrosSlots = capacidadDisponible - (mesasActuales * duracionActualHoras);
 
             // Opción prioritaria: cambiar la duración de jornada de este turno (subir o bajar el turno)
-            SHIFT_DURATIONS_PM.forEach(d => {
+            duracionesTurno.forEach(d => {
                 if (d.id === duracionActualId) return;
                 const capacidadResultante = Math.max(0, capacidadOtrosSlots + (mesasActuales * d.hours) - deduccionesFijas);
                 if (capacidadResultante <= 0) return;
@@ -994,7 +1017,7 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
                     turno: turno.id,
                     tipo: 'turno',
                     nuevaDuracionId: d.id,
-                    descripcion: `${turno.label}: cambiar jornada de ${SHIFT_DURATIONS_PM.find(x => x.id === duracionActualId)?.label} a ${d.label}`,
+                    descripcion: `${turno.label}: cambiar jornada de ${duracionesTurno.find(x => x.id === duracionActualId)?.label} a ${d.label}`,
                     capacidadResultante,
                     utilizacionPct: (totalHorasRequeridas / capacidadResultante) * 100,
                 });
@@ -1592,15 +1615,21 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
                     {TURNOS_PM.map(turno => {
                         const Icon = turno.icon;
                         const enabled = turnoEnabled[turno.id];
-                        const durationHours = SHIFT_DURATIONS_PM.find(d => d.id === turnoDuration[turno.id])?.hours ?? 0;
-                        const endTime = addHoursToTime(turno.startTime, durationHours);
+                        const duracionesTurno = getShiftDurationsPara(turno.id);
+                        const selectedDuration = duracionesTurno.find(d => d.id === turnoDuration[turno.id]);
+                        const durationHours = selectedDuration?.hours ?? 0;
+                        // Turno Noche: la hora de inicio real cambia según la duración elegida, y la hora de
+                        // salida se calcula con las horas de reloj (displayHours), no con las de cálculo de
+                        // capacidad (hours, que ya tienen descontado 1h de receso) — ver SHIFT_DURATIONS_PM_NOCHE.
+                        const effectiveStartTime = selectedDuration?.startTime ?? turno.startTime;
+                        const endTime = addHoursToTime(effectiveStartTime, selectedDuration?.displayHours ?? durationHours);
                         return (
                             <div key={turno.id} className={cn("border rounded-lg p-4 space-y-3", enabled ? "border-indigo-200 bg-indigo-50/30" : "border-gray-200 bg-gray-50/50")}>
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-2">
                                         <Icon className={cn("w-4 h-4", enabled ? "text-indigo-600" : "text-gray-400")} />
                                         <span className={cn("text-xs font-bold uppercase", enabled ? "text-gray-800" : "text-gray-400")}>{turno.label}</span>
-                                        <span className="text-[10px] font-mono text-gray-400">({turno.startTime} - {endTime})</span>
+                                        <span className="text-[10px] font-mono text-gray-400">({effectiveStartTime} - {endTime})</span>
                                     </div>
                                     <Switch
                                         checked={enabled}
@@ -1615,7 +1644,7 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
                                                 <SelectValue placeholder="Duración de jornada" />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                {SHIFT_DURATIONS_PM.map(d => (
+                                                {duracionesTurno.map(d => (
                                                     <SelectItem key={d.id} value={d.id} className="text-xs">{d.label}</SelectItem>
                                                 ))}
                                             </SelectContent>
