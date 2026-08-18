@@ -6,13 +6,14 @@ import { usePathname } from 'next/navigation';
 import { MainNav } from '@/components/main-nav';
 import { Toaster } from "@/components/ui/toaster";
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { TacticalPlanMueblesSection, TacticalPlanPlanchasMixtasSection } from '@/components';
+import { TacticalPlanMueblesSection, TacticalPlanPlanchasMixtasSection, TacticalPlanTallerCorteSection } from '@/components';
 
-// Rutas de los dos "Proyectos" cuyo estado se debe conservar al navegar entre ellos (y hacia/desde
+// Rutas de los tres "Proyectos" cuyo estado se debe conservar al navegar entre ellos (y hacia/desde
 // cualquier otra página). Se mantienen SIEMPRE montados (solo ocultos con CSS) una vez visitados, en
 // vez de dejar que Next.js los desmonte al cambiar de ruta — así no se pierde el progreso de la
-// planificación en curso de ninguno de los dos al ir y volver.
+// planificación en curso de ninguno de los tres al ir y volver.
 const MUEBLES_PATH = '/dashboard/opciones/programacion-tactica-muebles';
+const TALLER_CORTE_PATH = '/dashboard/opciones/programacion-tactica-taller-corte';
 const PLANCHAS_MIXTAS_PATH = '/dashboard/opciones/programacion-tactica-planchas-mixtas';
 
 export default function DashboardLayout({
@@ -23,20 +24,23 @@ export default function DashboardLayout({
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const pathname = usePathname();
   const isMueblesActive = pathname === MUEBLES_PATH;
+  const isTallerCorteActive = pathname === TALLER_CORTE_PATH;
   const isPlanchasMixtasActive = pathname === PLANCHAS_MIXTAS_PATH;
 
   // Una vez que el usuario visita cada Proyecto, se marca como "visitado" y a partir de ahí se
   // mantiene montado (oculto con CSS si no es el activo) para toda la sesión. Antes de la primera
   // visita no se monta, para no pagar el costo de descarga de datos de un Proyecto que nunca se abrió.
   const [visitedMuebles, setVisitedMuebles] = useState(isMueblesActive);
+  const [visitedTallerCorte, setVisitedTallerCorte] = useState(isTallerCorteActive);
   const [visitedPlanchasMixtas, setVisitedPlanchasMixtas] = useState(isPlanchasMixtasActive);
 
   useEffect(() => {
     if (isMueblesActive) setVisitedMuebles(true);
+    if (isTallerCorteActive) setVisitedTallerCorte(true);
     if (isPlanchasMixtasActive) setVisitedPlanchasMixtas(true);
-  }, [isMueblesActive, isPlanchasMixtasActive]);
+  }, [isMueblesActive, isTallerCorteActive, isPlanchasMixtasActive]);
 
-  const isPersistedProjectRoute = isMueblesActive || isPlanchasMixtasActive;
+  const isPersistedProjectRoute = isMueblesActive || isTallerCorteActive || isPlanchasMixtasActive;
 
   return (
     <div className="flex h-screen bg-gray-100">
@@ -77,6 +81,13 @@ export default function DashboardLayout({
             <div className={isMueblesActive ? '' : 'hidden'}>
               <div className="container mx-auto py-4">
                 <TacticalPlanMueblesSection />
+              </div>
+            </div>
+          )}
+          {visitedTallerCorte && (
+            <div className={isTallerCorteActive ? '' : 'hidden'}>
+              <div className="container mx-auto py-4">
+                <TacticalPlanTallerCorteSection />
               </div>
             </div>
           )}

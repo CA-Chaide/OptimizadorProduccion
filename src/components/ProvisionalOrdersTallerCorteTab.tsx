@@ -1,0 +1,775 @@
+'use client';
+
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { serviciosService } from '@/services/servicios.service';
+import { ecuadorHolidaysService } from '@/services/ecuador-holidays.service';
+import { Loader2, PlayCircle, LayoutGrid, Gauge, Clock, Sun, Moon, RefreshCw, TriangleAlert, Scissors } from 'lucide-react';
+import { Table, TableHeader, TableBody, TableFooter, TableRow, TableHead, TableCell } from '@/components/ui/table';
+import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
+import { cn } from '@/lib/utils';
+
+const normalizeMaterialCode = (code: string | number): string => String(code).trim().slice(-8);
+
+// Centro de fabricación del Taller de Corte para la Planificación (Quito)
+const CENTRO_TC = '1000';
+
+// Responsable de Control de Fabricación de los forros de Muebles que se planifican en este módulo —
+// SOLAMENTE '026' (no '033' Estructuras, que es otra área/tabla — ver Planificación Táctica Muebles).
+const RESP_CTRL_PROD_FORROS = '026';
+
+// Mismo criterio ya usado en "Explosión de Materiales - Semielaborados de Primer Nivel de Muebles"
+// (ProvisionalOrdersAlphaTab.tsx: esExcluidoPrimerNivel), duplicado aquí a propósito porque los módulos
+// tácticos de este repo mantienen su lógica de negocio deliberadamente aislada:
+// - Empieza con "COJIN CILINDRICO" o "FORRO COJIN CILINDRICO": material ficticio en SAP, se fabrica con
+//   un proveedor externo.
+// - Contiene "BASE" o "ENSAMBLE": materiales ficticios, se fabrican en otra área productiva.
+// - Contiene "MASCOTA" o "PET": líneas de producto ajenas a Muebles.
+const esExcluidoTallerCorte = (descripcionUpper: string): boolean =>
+    descripcionUpper.startsWith('COJIN CILINDRICO') ||
+    descripcionUpper.startsWith('FORRO COJIN CILINDRICO') ||
+    descripcionUpper.includes('BASE') ||
+    descripcionUpper.includes('ENSAMBLE') ||
+    descripcionUpper.includes('MASCOTA') ||
+    descripcionUpper.includes('PET');
+
+// "TAPA T. FALSO NEGRO ..." y los forros de proceso corto ya conocidos ("FORRO FALSO COSIDO"/"FORRO
+// COJIN INTER") se fabrican, según el histórico real de Órdenes Fert (PUESTOTRABAJO), en un puesto de
+// trabajo dedicado aparte ("TC-USN01") — no en ninguna de las 10 cosedoras TC-COS01..TC-COS10.
+const esExcepcionUSN = (descripcionUpper: string): boolean =>
+    descripcionUpper.startsWith('TAPA T. FALSO NEGRO') ||
+    descripcionUpper.startsWith('FORRO FALSO COSIDO') ||
+    descripcionUpper.startsWith('FORRO COJIN INTER');
+
+// TC-COS04 fabrica ÚNICAMENTE los forros de cama (descripción empieza con "FORRO CAMA")
+const esForroCama = (descripcionUpper: string): boolean => descripcionUpper.startsWith('FORRO CAMA');
+
+// Un forro se clasifica "grande" cuando su tiempo unitario manual (pestaña "Tiempos") supera 1h30 —
+// umbral que define qué puede fabricarse en TC-COS01/02/03.
+const GRANDE_MIN_MINUTOS = 90;
+
+const MACHINE_IDS = ['TC-COS01', 'TC-COS02', 'TC-COS03', 'TC-COS04', 'TC-COS05', 'TC-COS06', 'TC-COS07', 'TC-COS08', 'TC-COS09', 'TC-COS10', 'TC-USN01'] as const;
+type MachineId = typeof MACHINE_IDS[number];
+
+// Especialización de cada cosedora (evaluada en orden de prioridad):
+// 1. TC-USN01: ÚNICA que acepta "TAPA T. FALSO NEGRO"/forros de proceso corto (esExcepcionUSN) — no
+//    recibe nada más.
+// 2. TC-COS04: ÚNICA que acepta forros de cama (esForroCama) — no recibe nada más.
+// 3. TC-COS01/02/03: SOLO forros "grandes" (tiempo unitario > 90 min), dedicadas.
+// 4. TC-COS05..TC-COS10: todo lo demás (no cama, no USN) — pool general, incluye forros grandes como
+//    excedente cuando TC-COS01-03 no alcanzan (confirmado con el histórico real de PUESTOTRABAJO: un
+//    mismo material aparece repartido entre COS01-03 y COS05-07 en distintas órdenes).
+const machineAcceptsMaterial = (machineId: MachineId, descripcionUpper: string, tiempoUnitMin: number | null): boolean => {
+    if (esExcepcionUSN(descripcionUpper)) return machineId === 'TC-USN01';
+    if (machineId === 'TC-USN01') return false;
+    if (esForroCama(descripcionUpper)) return machineId === 'TC-COS04';
+    if (machineId === 'TC-COS04') return false;
+    if (machineId === 'TC-COS01' || machineId === 'TC-COS02' || machineId === 'TC-COS03') {
+        return tiempoUnitMin !== null && tiempoUnitMin > GRANDE_MIN_MINUTOS;
+    }
+    return true;
+};
+
+type TurnoId = 'dia' | 'noche';
+
+const TURNOS_TC: { id: TurnoId; label: string; startTime: string; icon: typeof Sun }[] = [
+    { id: 'dia', label: 'Turno Día', startTime: '07:00', icon: Sun },
+    { id: 'noche', label: 'Turno Noche', startTime: '21:00', icon: Moon },
+];
+
+interface ShiftDurationOptionTC {
+    id: string;
+    label: string;
+    hours: number; // Horas usadas en el cálculo de capacidad
+    startTime?: string; // Solo Noche: la hora de inicio cambia según la duración elegida
+    displayHours?: number; // Solo Noche: horas de reloj reales (hours + 1h de receso) para pintar la hora de salida
+}
+
+// Turno Día: mismas 3 duraciones (y misma hora de inicio 07:00) que "Planificación Táctica Muebles",
+// sin el factor de eficiencia/mantenimiento preventivo de ese módulo (no solicitado aquí).
+const SHIFT_DURATIONS_TC_DIA: ShiftDurationOptionTC[] = [
+    { id: 'dia_8h', label: '8 horas / 07:00 - 15:45', hours: 8 },
+    { id: 'dia_9h', label: '9 horas / 07:00 - 17:00', hours: 9 },
+    { id: 'dia_10h', label: '10 horas / 07:00 a 18:00', hours: 10 },
+];
+
+// Turno Noche: mismo patrón ya implementado para "Planificación Táctica Planchas Mixtas"
+// (SHIFT_DURATIONS_PM_NOCHE) — la hora de inicio cambia según la duración elegida, las 3 terminan a las
+// 05:30 del día siguiente; "hours" (cálculo de capacidad) trae descontada 1h de receso frente a
+// "displayHours" (horas de reloj reales, solo para pintar la hora de salida).
+const SHIFT_DURATIONS_TC_NOCHE: ShiftDurationOptionTC[] = [
+    { id: 'noche_8h', label: '8 horas / 21:00 a 05:30', startTime: '21:00', hours: 7.5, displayHours: 8.5 },
+    { id: 'noche_9h', label: '9 horas / 20:00 a 05:30', startTime: '20:00', hours: 8.5, displayHours: 9.5 },
+    { id: 'noche_10h', label: '10 horas / 19:00 a 05:30', startTime: '19:00', hours: 9.5, displayHours: 10.5 },
+];
+
+const getShiftDurationsParaTC = (turnoId: TurnoId): ShiftDurationOptionTC[] =>
+    turnoId === 'noche' ? SHIFT_DURATIONS_TC_NOCHE : SHIFT_DURATIONS_TC_DIA;
+
+// Suma horas a una hora "HH:MM" y devuelve la hora final, dando la vuelta al día siguiente si aplica
+const addHoursToTime = (startTime: string, hours: number): string => {
+    const [h, m] = startTime.split(':').map(Number);
+    const totalMinutes = Math.round((h * 60 + m + hours * 60) % (24 * 60));
+    const endH = Math.floor(totalMinutes / 60);
+    const endM = totalMinutes % 60;
+    return `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
+};
+
+// Fecha "hoy + offsetDays" (días CALENDARIO) en formato "YYYY-MM-DD"
+const getDateKeyOffset = (offsetDays: number): string => {
+    const d = new Date();
+    d.setDate(d.getDate() + offsetDays);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+};
+
+const toDateKey = (date: Date): string => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+};
+
+// Suma N días laborables (omite sábado, domingo y feriados de Ecuador) — mismo criterio que
+// "Planificación Táctica Planchas Mixtas"/"Planificación Táctica Muebles"
+const addBusinessDays = (date: Date, days: number, holidaysSet: Set<string>): Date => {
+    const result = new Date(date);
+    let remaining = days;
+    while (remaining > 0) {
+        result.setDate(result.getDate() + 1);
+        const dayOfWeek = result.getDay();
+        const isHoliday = holidaysSet.has(toDateKey(result));
+        if (dayOfWeek !== 0 && dayOfWeek !== 6 && !isHoliday) {
+            remaining--;
+        }
+    }
+    return result;
+};
+
+const getBusinessDateKeyOffset = (businessDays: number, holidaysSet: Set<string>): string =>
+    toDateKey(addBusinessDays(new Date(), businessDays, holidaysSet));
+
+// Escala fija del eje X del Diagrama de Gantt (en horas) — igual patrón que Muebles/Planchas Mixtas
+const GANTT_HOURS_SCALE = 12;
+
+interface TCOrder {
+    id: string;
+    source: 'Previsional' | 'Fert';
+    material: string;
+    nombre: string;
+    cantidad: number;
+    tiempoUnitMin: number | null;
+    horas: number | null;
+    fecha: string;
+}
+
+interface MachineScheduleItem {
+    order: TCOrder;
+    startHour: number;
+    endHour: number;
+    overflow: boolean;
+}
+
+interface MachineDistributionEntry {
+    turno: TurnoId;
+    machineId: MachineId;
+    capacityHours: number;
+    usedHours: number;
+    items: MachineScheduleItem[];
+}
+
+interface CapacitySummary {
+    capacidadDisponible: number;
+    tiempoRequerido: number;
+    utilizacionPct: number;
+    materialesSinTiempo: number;
+}
+
+interface ProvisionalOrdersTallerCorteTabProps {
+    // Tiempo unitario manual (minutos) por código de material, ya normalizado — persistido en la
+    // pestaña "Tiempos" (ver TacticalPlanTallerCorteSection).
+    tiemposManualMap: Map<string, number>;
+    // Reporta hacia arriba (TacticalPlanTallerCorteSection) los materiales de forro detectados en la
+    // tabla inicial, para que la pestaña "Tiempos" sepa qué materiales necesitan tiempo unitario.
+    onMaterialesDetectados: (materiales: { codigo: string; descripcion: string }[]) => void;
+}
+
+export const ProvisionalOrdersTallerCorteTab: React.FC<ProvisionalOrdersTallerCorteTabProps> = ({ tiemposManualMap, onMaterialesDetectados }) => {
+    const [isLoading, setIsLoading] = useState(false);
+    const [downloadProgress, setDownloadProgress] = useState({ current: 0, total: 0 });
+    const [allPrevisionalRaw, setAllPrevisionalRaw] = useState<any[]>([]);
+    const [allFertRaw, setAllFertRaw] = useState<any[]>([]);
+    const [holidaysSet, setHolidaysSet] = useState<Set<string>>(new Set());
+
+    const [turnoEnabled, setTurnoEnabled] = useState<Record<TurnoId, boolean>>({ dia: true, noche: false });
+    const [turnoDuration, setTurnoDuration] = useState<Record<TurnoId, string>>({ dia: SHIFT_DURATIONS_TC_DIA[0].id, noche: SHIFT_DURATIONS_TC_NOCHE[0].id });
+    const [turnoMachines, setTurnoMachines] = useState<Record<TurnoId, Set<MachineId>>>({ dia: new Set(MACHINE_IDS), noche: new Set() });
+
+    const [capacitySummary, setCapacitySummary] = useState<CapacitySummary | null>(null);
+    const [machineDistribution, setMachineDistribution] = useState<Map<string, MachineDistributionEntry> | null>(null);
+    const [unassignedOrders, setUnassignedOrders] = useState<TCOrder[]>([]);
+
+    const toggleTurnoMachine = (turno: TurnoId, machineId: MachineId) => {
+        setTurnoMachines(prev => {
+            const next = new Set(prev[turno]);
+            if (next.has(machineId)) next.delete(machineId);
+            else next.add(machineId);
+            return { ...prev, [turno]: next };
+        });
+    };
+
+    useEffect(() => {
+        const fetchHolidays = async () => {
+            try {
+                const start = new Date();
+                const end = new Date(start);
+                end.setDate(end.getDate() + 14);
+                const holidays = await ecuadorHolidaysService.getHolidaysForRange(start, end);
+                setHolidaysSet(new Set(holidays.map(h => h.date)));
+            } catch (error) {
+                console.error('Error al cargar feriados para Taller de Corte:', error);
+            }
+        };
+        fetchHolidays();
+    }, []);
+
+    const fetchAllData = useCallback(async () => {
+        setIsLoading(true);
+        setDownloadProgress({ current: 0, total: 0 });
+        try {
+            const provExplore = await serviciosService.getOrdenesProvisionalesAlphaPaginados(1, 1);
+            const totalProv = provExplore.totalRegistros || 0;
+            let combinedProv: any[] = [];
+            if (totalProv > 0) {
+                const BATCH = 20000;
+                const pages = Math.ceil(totalProv / BATCH);
+                for (let i = 1; i <= pages; i++) {
+                    const res = await serviciosService.getOrdenesProvisionalesAlphaPaginados(i, BATCH);
+                    if (res.data) {
+                        combinedProv = combinedProv.concat(Array.isArray(res.data) ? res.data : [res.data]);
+                        setDownloadProgress({ current: combinedProv.length, total: totalProv });
+                    }
+                }
+            }
+            setAllPrevisionalRaw(combinedProv);
+
+            const fertExplore = await serviciosService.getOrdenesFert(1, 1);
+            const totalFert = fertExplore.totalRegistros || 0;
+            let combinedFert: any[] = [];
+            if (totalFert > 0) {
+                const BATCH = 20000;
+                const pages = Math.ceil(totalFert / BATCH);
+                for (let i = 1; i <= pages; i++) {
+                    const res = await serviciosService.getOrdenesFert(i, BATCH);
+                    if (res.data) {
+                        combinedFert = combinedFert.concat(Array.isArray(res.data) ? res.data : [res.data]);
+                        setDownloadProgress({ current: totalProv + combinedFert.length, total: totalProv + totalFert });
+                    }
+                }
+            }
+            setAllFertRaw(combinedFert);
+        } catch (error) {
+            console.error('Error al descargar datos del Taller de Corte:', error);
+        } finally {
+            setIsLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchAllData();
+    }, [fetchAllData]);
+
+    // Tabla inicial: Órdenes Previsionales + Fert de forros (RespCtrlProd '026'), Centro 1000, excluyendo
+    // materiales ficticios/ajenos — misma ventana de fechas que "Planificación Táctica Planchas Mixtas":
+    // Previsional MTS (sin PEDIDOVENTAS): hoy o mañana. Previsional MTO (con PEDIDOVENTAS): mañana o
+    // pasado mañana. Fert: únicamente mañana, con CANTPENDIENTE > 0.
+    const tcOrders = useMemo<TCOrder[]>(() => {
+        const todayKey = getDateKeyOffset(0);
+        const tomorrowKey = getBusinessDateKeyOffset(1, holidaysSet);
+        const dayAfterTomorrowKey = getBusinessDateKeyOffset(2, holidaysSet);
+        const result: TCOrder[] = [];
+
+        allPrevisionalRaw.forEach((row: any) => {
+            if (String(row.RESPCONTROLPROD || '').trim() !== RESP_CTRL_PROD_FORROS) return;
+            if (String(row.Centro || '').trim() !== CENTRO_TC) return;
+            const nombre = String(row.NOMBRE || '').trim();
+            if (esExcluidoTallerCorte(nombre.toUpperCase())) return;
+
+            const fechaKey = String(row.FECHAINICIO || '').trim().slice(0, 10);
+            const esMTO = !!String(row.PEDIDOVENTAS || '').trim();
+            const fechaValida = esMTO
+                ? (fechaKey === tomorrowKey || fechaKey === dayAfterTomorrowKey)
+                : (fechaKey === todayKey || fechaKey === tomorrowKey);
+            if (!fechaValida) return;
+
+            const cantidad = Number(row.CANTIDAD) || 0;
+            if (cantidad <= 0) return;
+
+            const material = normalizeMaterialCode(row.MATERIAL || row.CodMaterial || '');
+            const tiempoUnitMin = tiemposManualMap.get(material) ?? null;
+            result.push({
+                id: String(row.ORDENPREVISIONAL || ''),
+                source: 'Previsional',
+                material,
+                nombre,
+                cantidad,
+                tiempoUnitMin,
+                horas: tiempoUnitMin !== null ? (tiempoUnitMin * cantidad) / 60 : null,
+                fecha: fechaKey,
+            });
+        });
+
+        allFertRaw.forEach((row: any) => {
+            if (String(row.RESPCTRLPROD || '').trim() !== RESP_CTRL_PROD_FORROS) return;
+            if (String(row.CENTRO || '').trim() !== CENTRO_TC) return;
+            const nombre = String(row.NOMBRE || '').trim();
+            if (esExcluidoTallerCorte(nombre.toUpperCase())) return;
+
+            const fechaKey = String(row.FECHA || '').trim().slice(0, 10);
+            if (fechaKey !== tomorrowKey) return;
+
+            const cantidad = Number(row.CANTPENDIENTE) || 0;
+            if (cantidad <= 0) return;
+
+            const material = normalizeMaterialCode(row.MATERIAL || '');
+            const tiempoUnitMin = tiemposManualMap.get(material) ?? null;
+            result.push({
+                id: String(row.ORDEN || ''),
+                source: 'Fert',
+                material,
+                nombre,
+                cantidad,
+                tiempoUnitMin,
+                horas: tiempoUnitMin !== null ? (tiempoUnitMin * cantidad) / 60 : null,
+                fecha: fechaKey,
+            });
+        });
+
+        return result.sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+    }, [allPrevisionalRaw, allFertRaw, holidaysSet, tiemposManualMap]);
+
+    // Reporta hacia arriba los materiales distintos detectados, para la pestaña "Tiempos"
+    useEffect(() => {
+        const map = new Map<string, string>();
+        tcOrders.forEach(o => {
+            if (!map.has(o.material)) map.set(o.material, o.nombre);
+        });
+        const materiales = Array.from(map.entries())
+            .map(([codigo, descripcion]) => ({ codigo, descripcion }))
+            .sort((a, b) => a.descripcion.localeCompare(b.descripcion, 'es'));
+        onMaterialesDetectados(materiales);
+    }, [tcOrders, onMaterialesDetectados]);
+
+    const totalHorasRequeridas = useMemo(
+        () => tcOrders.reduce((s, o) => s + (o.horas ?? 0), 0),
+        [tcOrders]
+    );
+    const materialesSinTiempoCount = useMemo(
+        () => new Set(tcOrders.filter(o => o.tiempoUnitMin === null).map(o => o.material)).size,
+        [tcOrders]
+    );
+
+    // Slots de capacidad activos: una combinación Turno + Máquina por cada cosedora habilitada en cada
+    // turno activo — mismo patrón que "Planificación Táctica Planchas Mixtas" (activeSlots)
+    const activeSlots = useMemo(() => {
+        const slots: { turno: TurnoId; machineId: MachineId; capacityHours: number }[] = [];
+        TURNOS_TC.forEach(turno => {
+            if (!turnoEnabled[turno.id]) return;
+            const durationHours = getShiftDurationsParaTC(turno.id).find(d => d.id === turnoDuration[turno.id])?.hours ?? 0;
+            turnoMachines[turno.id].forEach(machineId => {
+                slots.push({ turno: turno.id, machineId, capacityHours: durationHours });
+            });
+        });
+        return slots;
+    }, [turnoEnabled, turnoDuration, turnoMachines]);
+
+    const capacidadDisponibleActual = useMemo(() => activeSlots.reduce((s, slot) => s + slot.capacityHours, 0), [activeSlots]);
+
+    const handleCalcularPlanificacion = () => {
+        if (activeSlots.length === 0) {
+            setCapacitySummary(null);
+            return;
+        }
+        const utilizacionPct = capacidadDisponibleActual > 0 ? (totalHorasRequeridas / capacidadDisponibleActual) * 100 : 0;
+        setCapacitySummary({
+            capacidadDisponible: capacidadDisponibleActual,
+            tiempoRequerido: totalHorasRequeridas,
+            utilizacionPct,
+            materialesSinTiempo: materialesSinTiempoCount,
+        });
+        // Un nuevo cálculo invalida cualquier distribución previa
+        setMachineDistribution(null);
+        setUnassignedOrders([]);
+    };
+
+    // "DISTRIBUCIÓN DE MÁQUINAS DE COSER": bin-packing best-fit-decreasing (mismo algoritmo que
+    // handleExecuteDistribution de "Planificación Táctica Muebles") restringido por
+    // machineAcceptsMaterial en vez de mesaAcceptsMaterial.
+    const handleDistribuirMaquinas = () => {
+        if (activeSlots.length === 0) return;
+
+        const remaining = new Map<string, number>();
+        const items = new Map<string, MachineScheduleItem[]>();
+        activeSlots.forEach(slot => {
+            const key = `${slot.turno}-${slot.machineId}`;
+            remaining.set(key, slot.capacityHours);
+            items.set(key, []);
+        });
+
+        const ordersConTiempo = tcOrders.filter(o => o.horas !== null && o.horas > 0);
+        const sortedOrders = [...ordersConTiempo].sort((a, b) => (b.horas ?? 0) - (a.horas ?? 0));
+        const unassigned: TCOrder[] = [];
+
+        sortedOrders.forEach(order => {
+            const descUpper = order.nombre.toUpperCase();
+            const candidates = activeSlots.filter(slot => machineAcceptsMaterial(slot.machineId, descUpper, order.tiempoUnitMin));
+            if (candidates.length === 0) {
+                unassigned.push(order);
+                return;
+            }
+
+            const keys = candidates.map(slot => `${slot.turno}-${slot.machineId}`);
+            const fitting = keys.filter(k => (remaining.get(k) ?? 0) >= (order.horas ?? 0));
+            const pool = fitting.length > 0 ? fitting : keys;
+            const chosen = pool.reduce((best, k) => ((remaining.get(k) ?? 0) > (remaining.get(best) ?? 0) ? k : best), pool[0]);
+
+            const arr = items.get(chosen)!;
+            const startHour = arr.reduce((s, it) => s + (it.endHour - it.startHour), 0);
+            const overflow = (order.horas ?? 0) > (remaining.get(chosen) ?? 0);
+            arr.push({ order, startHour, endHour: startHour + (order.horas ?? 0), overflow });
+            remaining.set(chosen, (remaining.get(chosen) ?? 0) - (order.horas ?? 0));
+        });
+
+        const distribution = new Map<string, MachineDistributionEntry>();
+        activeSlots.forEach(slot => {
+            const key = `${slot.turno}-${slot.machineId}`;
+            const slotItems = items.get(key) ?? [];
+            distribution.set(key, {
+                turno: slot.turno,
+                machineId: slot.machineId,
+                capacityHours: slot.capacityHours,
+                usedHours: slotItems.reduce((s, it) => s + (it.endHour - it.startHour), 0),
+                items: slotItems,
+            });
+        });
+
+        setMachineDistribution(distribution);
+        const sinTiempo = tcOrders.filter(o => o.horas === null || o.horas <= 0);
+        setUnassignedOrders([...unassigned, ...sinTiempo]);
+    };
+
+    if (isLoading && allPrevisionalRaw.length === 0 && allFertRaw.length === 0) {
+        return (
+            <div className="flex flex-col items-center justify-center py-20 bg-gray-50 rounded-xl border-2 border-dashed gap-4">
+                <Loader2 className="w-12 h-12 animate-spin text-indigo-600" />
+                <div className="text-center">
+                    <p className="text-sm font-bold text-gray-700">Descargando datos del Taller de Corte...</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                        Procesados {downloadProgress.current.toLocaleString()} de {downloadProgress.total.toLocaleString()} registros
+                    </p>
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="space-y-6">
+            {/* TABLA INICIAL: NECESIDADES DE FORRO (026) */}
+            <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+                <div className="flex items-center justify-between px-6 py-4 bg-gradient-to-r from-slate-900 to-indigo-900">
+                    <div className="flex items-center gap-2">
+                        <Scissors className="w-5 h-5 text-indigo-200" />
+                        <h3 className="text-sm font-bold text-white uppercase tracking-wide">Necesidades de Forro (Taller de Corte)</h3>
+                    </div>
+                    <Button
+                        onClick={fetchAllData}
+                        disabled={isLoading}
+                        size="sm"
+                        className="h-8 bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 font-bold gap-2"
+                    >
+                        {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                        Actualizar Datos
+                    </Button>
+                </div>
+                <div className="p-4">
+                    <p className="text-[11px] text-gray-500 mb-3">
+                        RespCtrlProd <span className="font-bold">{RESP_CTRL_PROD_FORROS}</span>, Centro <span className="font-bold">{CENTRO_TC}</span>:
+                        Previsionales MTS (hoy {getDateKeyOffset(0)} o mañana {getBusinessDateKeyOffset(1, holidaysSet)}), Previsionales MTO
+                        (mañana {getBusinessDateKeyOffset(1, holidaysSet)} o pasado mañana {getBusinessDateKeyOffset(2, holidaysSet)}) y Fert
+                        (únicamente mañana, {getBusinessDateKeyOffset(1, holidaysSet)}) — {tcOrders.length} línea(s) encontrada(s).
+                    </p>
+                    <div className="border rounded-lg overflow-auto max-h-[50vh]">
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead className="text-center border-r border-dashed border-gray-300">Origen</TableHead>
+                                    <TableHead className="text-center border-r border-dashed border-gray-300">Material</TableHead>
+                                    <TableHead className="text-left border-r border-dashed border-gray-300">Descripción</TableHead>
+                                    <TableHead className="text-center border-r border-dashed border-gray-300">Fecha</TableHead>
+                                    <TableHead className="text-center border-r border-dashed border-gray-300">Cantidad</TableHead>
+                                    <TableHead className="text-center border-r border-dashed border-gray-300">Tiempo Unit. (min)</TableHead>
+                                    <TableHead className="text-center">Horas</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {tcOrders.map((o, idx) => (
+                                    <TableRow key={`${o.source}-${o.id}-${o.material}-${idx}`}>
+                                        <TableCell className="text-center border-r border-dashed border-gray-300">{o.source}</TableCell>
+                                        <TableCell className="text-center border-r border-dashed border-gray-300 font-mono">{o.material}</TableCell>
+                                        <TableCell className="text-left border-r border-dashed border-gray-300">{o.nombre}</TableCell>
+                                        <TableCell className="text-center border-r border-dashed border-gray-300">{o.fecha}</TableCell>
+                                        <TableCell className="text-center border-r border-dashed border-gray-300">{o.cantidad.toLocaleString()}</TableCell>
+                                        <TableCell className="text-center border-r border-dashed border-gray-300">
+                                            {o.tiempoUnitMin !== null ? o.tiempoUnitMin.toFixed(2) : (
+                                                <span className="inline-flex items-center gap-1 text-amber-600 font-semibold text-[11px]">
+                                                    <TriangleAlert className="w-3.5 h-3.5" /> Falta tiempo unitario
+                                                </span>
+                                            )}
+                                        </TableCell>
+                                        <TableCell className="text-center">{o.horas !== null ? o.horas.toFixed(2) : '—'}</TableCell>
+                                    </TableRow>
+                                ))}
+                                {tcOrders.length === 0 && (
+                                    <TableRow>
+                                        <TableCell colSpan={7} className="text-center py-6 text-gray-400 text-xs">
+                                            No se encontraron necesidades de forro para la ventana de fechas vigente.
+                                        </TableCell>
+                                    </TableRow>
+                                )}
+                            </TableBody>
+                            {tcOrders.length > 0 && (
+                                <TableFooter>
+                                    <TableRow>
+                                        <TableCell colSpan={6} className="text-right font-bold">Total Horas Requeridas</TableCell>
+                                        <TableCell className="text-center font-bold">{totalHorasRequeridas.toFixed(2)}</TableCell>
+                                    </TableRow>
+                                </TableFooter>
+                            )}
+                        </Table>
+                    </div>
+                </div>
+            </div>
+
+            {/* CONFIGURACIÓN DE COSEDORAS DISPONIBLES (POR TURNO) */}
+            <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm space-y-4">
+                <div className="flex items-center gap-2">
+                    <Clock className="w-5 h-5 text-indigo-600" />
+                    <h3 className="text-sm font-bold text-gray-800 uppercase tracking-tight">Turnos de Trabajo — Cosedoras</h3>
+                </div>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {TURNOS_TC.map(turno => {
+                        const Icon = turno.icon;
+                        const enabled = turnoEnabled[turno.id];
+                        const duracionesTurno = getShiftDurationsParaTC(turno.id);
+                        const selectedDuration = duracionesTurno.find(d => d.id === turnoDuration[turno.id]);
+                        const durationHours = selectedDuration?.hours ?? 0;
+                        const effectiveStartTime = selectedDuration?.startTime ?? turno.startTime;
+                        const endTime = addHoursToTime(effectiveStartTime, selectedDuration?.displayHours ?? durationHours);
+                        const machinesActivas = turnoMachines[turno.id].size;
+                        return (
+                            <div key={turno.id} className={cn("border rounded-lg p-4 space-y-3", enabled ? "border-indigo-200 bg-indigo-50/30" : "border-gray-200 bg-gray-50/50")}>
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <Icon className={cn("w-4 h-4", enabled ? "text-indigo-600" : "text-gray-400")} />
+                                        <span className={cn("text-xs font-bold uppercase", enabled ? "text-gray-800" : "text-gray-400")}>{turno.label}</span>
+                                        <span className="text-[10px] font-mono text-gray-400">({effectiveStartTime} - {endTime})</span>
+                                    </div>
+                                    <Switch
+                                        checked={enabled}
+                                        onCheckedChange={(checked) => setTurnoEnabled(prev => ({ ...prev, [turno.id]: checked }))}
+                                    />
+                                </div>
+
+                                {enabled && (
+                                    <>
+                                        <div className="flex items-center justify-between gap-4">
+                                            <Select value={turnoDuration[turno.id]} onValueChange={(val) => setTurnoDuration(prev => ({ ...prev, [turno.id]: val }))}>
+                                                <SelectTrigger className="h-8 text-xs font-semibold flex-1">
+                                                    <SelectValue placeholder="Duración de jornada" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {duracionesTurno.map(d => (
+                                                        <SelectItem key={d.id} value={d.id} className="text-xs">{d.label}</SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                            <div className="text-right shrink-0">
+                                                <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wide">Capacidad Habilitada</p>
+                                                <p className="text-lg font-extrabold text-indigo-700 leading-none">{machinesActivas} <span className="text-[10px] font-semibold text-gray-500">Máquinas</span></p>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {MACHINE_IDS.map(machineId => {
+                                                const active = turnoMachines[turno.id].has(machineId);
+                                                return (
+                                                    <button
+                                                        key={machineId}
+                                                        type="button"
+                                                        onClick={() => toggleTurnoMachine(turno.id, machineId)}
+                                                        className={cn(
+                                                            "px-2.5 py-1 rounded-md text-[10px] font-bold border transition-colors",
+                                                            active
+                                                                ? "bg-indigo-600 border-indigo-600 text-white"
+                                                                : "bg-white border-gray-300 text-gray-500 hover:border-indigo-300"
+                                                        )}
+                                                    >
+                                                        {machineId}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-dashed border-gray-200">
+                    <Button
+                        onClick={handleCalcularPlanificacion}
+                        disabled={activeSlots.length === 0}
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold gap-2"
+                    >
+                        <PlayCircle className="w-4 h-4" />
+                        Calcular Planificación
+                    </Button>
+                    <Button
+                        onClick={handleDistribuirMaquinas}
+                        disabled={activeSlots.length === 0}
+                        className="bg-orange-600 hover:bg-orange-700 text-white font-bold gap-2"
+                    >
+                        <LayoutGrid className="w-4 h-4" />
+                        Distribución de Máquinas de Coser
+                    </Button>
+                </div>
+            </div>
+
+            {/* RESUMEN DE CAPACIDAD */}
+            {capacitySummary && (
+                <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm space-y-3">
+                    <div className="flex items-center gap-2">
+                        <Gauge className="w-5 h-5 text-indigo-600" />
+                        <h3 className="text-sm font-bold text-gray-800 uppercase tracking-tight">Capacidad vs. Tiempo Requerido</h3>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                        <div className="border border-gray-200 rounded-lg p-3">
+                            <p className="text-[10px] font-bold text-gray-400 uppercase">Capacidad Disponible</p>
+                            <p className="text-xl font-extrabold text-gray-800">{capacitySummary.capacidadDisponible.toFixed(2)} h</p>
+                        </div>
+                        <div className="border border-gray-200 rounded-lg p-3">
+                            <p className="text-[10px] font-bold text-gray-400 uppercase">Tiempo Requerido</p>
+                            <p className="text-xl font-extrabold text-gray-800">{capacitySummary.tiempoRequerido.toFixed(2)} h</p>
+                        </div>
+                        <div className="border border-gray-200 rounded-lg p-3">
+                            <p className="text-[10px] font-bold text-gray-400 uppercase">Utilización</p>
+                            <p className={cn(
+                                "text-xl font-extrabold",
+                                capacitySummary.utilizacionPct > 100 ? 'text-red-600' : capacitySummary.utilizacionPct >= 85 ? 'text-emerald-700' : 'text-gray-800'
+                            )}>
+                                {capacitySummary.utilizacionPct.toFixed(0)}%
+                            </p>
+                        </div>
+                        <div className="border border-gray-200 rounded-lg p-3">
+                            <p className="text-[10px] font-bold text-gray-400 uppercase">Materiales sin Tiempo</p>
+                            <p className={cn("text-xl font-extrabold", capacitySummary.materialesSinTiempo > 0 ? 'text-amber-600' : 'text-gray-800')}>
+                                {capacitySummary.materialesSinTiempo}
+                            </p>
+                        </div>
+                    </div>
+                    {capacitySummary.materialesSinTiempo > 0 && (
+                        <p className="text-[11px] text-amber-700 flex items-center gap-1.5">
+                            <TriangleAlert className="w-3.5 h-3.5" />
+                            Hay {capacitySummary.materialesSinTiempo} material(es) sin tiempo unitario cargado en la pestaña "Tiempos" — no se incluyen en el tiempo requerido ni en la distribución.
+                        </p>
+                    )}
+                </div>
+            )}
+
+            {/* DIAGRAMA DE GANTT — DISTRIBUCIÓN DE MÁQUINAS DE COSER */}
+            {machineDistribution && machineDistribution.size > 0 && (
+                <div className="bg-white border border-gray-200 rounded-xl shadow-md overflow-hidden">
+                    <div className="flex items-center justify-between px-6 py-4 bg-gradient-to-r from-slate-900 to-purple-900">
+                        <div className="flex items-center gap-2">
+                            <LayoutGrid className="w-5 h-5 text-purple-200" />
+                            <h3 className="text-sm font-bold text-white uppercase tracking-wide">Diagrama de Gantt — Distribución de Máquinas de Coser</h3>
+                        </div>
+                    </div>
+                    <div className="p-6 space-y-6">
+                        {unassignedOrders.length > 0 && (
+                            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                                <p className="text-xs font-bold text-amber-800">{unassignedOrders.length} material(es) no asignado(s)</p>
+                                <p className="text-[11px] text-amber-700 mt-0.5">
+                                    Sin máquina elegible activa, o sin tiempo unitario cargado en la pestaña "Tiempos".
+                                </p>
+                            </div>
+                        )}
+
+                        {TURNOS_TC.filter(turno => turnoEnabled[turno.id]).map(turno => {
+                            const machinesTurno = Array.from(machineDistribution.values()).filter(m => m.turno === turno.id);
+                            if (machinesTurno.length === 0) return null;
+                            return (
+                                <div key={turno.id} className="space-y-3">
+                                    <h4 className="text-xs font-extrabold text-gray-700 uppercase tracking-wide border-b border-dashed border-gray-300 pb-1">{turno.label}</h4>
+                                    {machinesTurno.map(machine => {
+                                        const utilizacionPct = machine.capacityHours > 0 ? (machine.usedHours / machine.capacityHours) * 100 : 0;
+                                        return (
+                                            <div key={`${machine.turno}-${machine.machineId}`} className="flex items-stretch gap-3">
+                                                <div className="w-32 shrink-0 flex flex-col justify-center">
+                                                    <p className="text-xs font-bold text-gray-800">{machine.machineId}</p>
+                                                    <p className="text-sm font-extrabold text-gray-900 font-mono">{machine.usedHours.toFixed(2)} / {machine.capacityHours.toFixed(2)} h</p>
+                                                </div>
+                                                <div className="flex-1">
+                                                    <div className="relative h-10 bg-gray-50 border border-gray-200 rounded-md overflow-hidden">
+                                                        {machine.capacityHours > 0 && machine.capacityHours <= GANTT_HOURS_SCALE && (
+                                                            <div
+                                                                className="absolute top-0 bottom-0 border-l-[3px] border-dashed border-slate-600 z-20"
+                                                                style={{ left: `${(machine.capacityHours / GANTT_HOURS_SCALE) * 100}%` }}
+                                                                title={`Límite de capacidad: ${machine.capacityHours.toFixed(2)} h`}
+                                                            />
+                                                        )}
+                                                        {machine.items.map((item, idx) => {
+                                                            const left = (item.startHour / GANTT_HOURS_SCALE) * 100;
+                                                            const width = ((item.endHour - item.startHour) / GANTT_HOURS_SCALE) * 100;
+                                                            return (
+                                                                <div
+                                                                    key={`${item.order.source}-${item.order.id}-${item.order.material}-${idx}`}
+                                                                    className={cn(
+                                                                        "absolute top-0.5 bottom-0.5 border rounded-sm px-1 flex items-center overflow-hidden bg-indigo-200 border-indigo-300 text-indigo-900",
+                                                                        item.overflow && "ring-2 ring-red-600"
+                                                                    )}
+                                                                    style={{ left: `${left}%`, width: `${Math.max(width, 0.5)}%` }}
+                                                                    title={`${item.order.nombre} (${item.order.material}) — ${(item.endHour - item.startHour).toFixed(2)} h${item.overflow ? ' — EXCEDE CAPACIDAD' : ''}`}
+                                                                >
+                                                                    <span className="text-[9px] font-semibold truncate">{item.order.material}</span>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                                <div className="w-14 shrink-0 flex items-center justify-end">
+                                                    <span
+                                                        className={cn(
+                                                            "text-xs font-extrabold",
+                                                            utilizacionPct > 100 ? 'text-red-600' : utilizacionPct >= 90 ? 'text-emerald-700' : 'text-gray-600'
+                                                        )}
+                                                    >
+                                                        {utilizacionPct.toFixed(0)}%
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};

@@ -19,6 +19,7 @@ import {
     ClipboardList,
     Link2,
     Layers,
+    Scissors,
 } from 'lucide-react';
 import { ProcessType, Holiday, HolidayScope } from '@/types/types'; 
 
@@ -41,6 +42,7 @@ export enum ActiveView {
   TACTICAL_SCHEDULING = 'TACTICAL_SCHEDULING',
   TACTICAL_SCHEDULING_2 = 'TACTICAL_SCHEDULING_2',
   TACTICAL_SCHEDULING_MUEBLES = 'TACTICAL_SCHEDULING_MUEBLES',
+  TACTICAL_SCHEDULING_TALLER_CORTE = 'TACTICAL_SCHEDULING_TALLER_CORTE',
   TACTICAL_SCHEDULING_PLANCHAS_MIXTAS = 'TACTICAL_SCHEDULING_PLANCHAS_MIXTAS',
   WORK_SHIFT_PLANNING = 'WORK_SHIFT_PLANNING',
   DICTIONARY = 'DICTIONARY',
@@ -117,6 +119,7 @@ const NAVIGATION_ITEMS = [
   { id: ActiveView.TACTICAL_SCHEDULING, label: 'Programación Táctica', icon: <TacticalSchedulingIcon />, href: '/dashboard/opciones/programacion-tactica' },
   { id: ActiveView.TACTICAL_SCHEDULING_2, label: 'Programación Táctica colchones', icon: <CalendarClock className="w-5 h-5" />, href: '/dashboard/opciones/programacion-tactica-2' },
   { id: ActiveView.TACTICAL_SCHEDULING_MUEBLES, label: 'Programación Táctica Muebles', icon: <TacticalSchedulingIcon />, href: '/dashboard/opciones/programacion-tactica-muebles' },
+  { id: ActiveView.TACTICAL_SCHEDULING_TALLER_CORTE, label: 'Programación Táctica Taller de Corte', icon: <Scissors className="w-5 h-5" />, href: '/dashboard/opciones/programacion-tactica-taller-corte' },
   { id: ActiveView.TACTICAL_SCHEDULING_PLANCHAS_MIXTAS, label: 'Programación Táctica Planchas Mixtas', icon: <Layers className="w-5 h-5" />, href: '/dashboard/opciones/programacion-tactica-planchas-mixtas' },
   { id: ActiveView.WORK_SHIFT_PLANNING, label: 'Planificación de Turnos', icon: <WorkShiftIcon />, href: '/dashboard/opciones/planificacion-turnos' },
   { id: ActiveView.DICTIONARY, label: 'Diccionario de Datos', icon: <RealDataIcon />, href: '/dashboard/opciones/diccionario-datos' },
@@ -141,6 +144,7 @@ export const OPCIONES_ITEMS: ActiveView[] = [
   ActiveView.TACTICAL_SCHEDULING,
   ActiveView.TACTICAL_SCHEDULING_2,
   ActiveView.TACTICAL_SCHEDULING_MUEBLES,
+  ActiveView.TACTICAL_SCHEDULING_TALLER_CORTE,
   ActiveView.TACTICAL_SCHEDULING_PLANCHAS_MIXTAS,
   ActiveView.WORK_SHIFT_PLANNING,
   ActiveView.DICTIONARY,
@@ -149,6 +153,7 @@ export const OPCIONES_ITEMS: ActiveView[] = [
 // Items que van dentro de la sección "Proyectos" (contraíble)
 export const PROYECTOS_ITEMS: ActiveView[] = [
   ActiveView.TACTICAL_SCHEDULING_MUEBLES,
+  ActiveView.TACTICAL_SCHEDULING_TALLER_CORTE,
   ActiveView.TACTICAL_SCHEDULING_PLANCHAS_MIXTAS,
 ];
 
