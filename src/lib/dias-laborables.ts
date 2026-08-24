@@ -111,13 +111,29 @@ export const nextBusinessDay = (from: Date, feriados: DiasNoLaborables = SIN_DIA
 };
 
 /**
- * Suma N días HÁBILES. No equivale a encadenar nextBusinessDay sobre el resultado anterior desde
- * fuera: hay que aplicarlo N veces sobre la misma fecha que va avanzando (encadenarlo mal, por
- * ejemplo llamándolo dos veces sobre "hoy", da +3 en viernes en vez de +2).
+ * Día laborable anterior a una fecha: retrocede un día y sigue retrocediendo mientras caiga en fin
+ * de semana o en un día no laborable. Simétrico a nextBusinessDay. Siempre retrocede al menos un día.
+ */
+export const previousBusinessDay = (from: Date, feriados: DiasNoLaborables = SIN_DIAS_NO_LABORABLES): Date => {
+  const d = new Date(from);
+  d.setDate(d.getDate() - 1);
+  let guardia = 0;
+  while (esDiaNoLaborable(d, feriados) && guardia < 366) {
+    d.setDate(d.getDate() - 1);
+    guardia++;
+  }
+  return d;
+};
+
+/**
+ * Suma (o resta, con N negativo) N días HÁBILES. No equivale a encadenar nextBusinessDay sobre el
+ * resultado anterior desde fuera: hay que aplicarlo N veces sobre la misma fecha que va avanzando
+ * (encadenarlo mal, por ejemplo llamándolo dos veces sobre "hoy", da +3 en viernes en vez de +2).
  */
 export const addBusinessDays = (from: Date, n: number, feriados: DiasNoLaborables = SIN_DIAS_NO_LABORABLES): Date => {
   let d = new Date(from);
-  for (let i = 0; i < n; i++) d = nextBusinessDay(d, feriados);
+  const paso = n < 0 ? previousBusinessDay : nextBusinessDay;
+  for (let i = 0; i < Math.abs(n); i++) d = paso(d, feriados);
   return d;
 };
 

@@ -17,7 +17,8 @@ import {
   Box,
   TrendingUp,
   Table as TableIcon,
-  Info
+  Info,
+  Wand2
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -610,7 +611,10 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   const [ordenesFert, setOrdersFert] = useState<RawApiRow[]>([]);
   const [cuboInventarios, setCuboInventarios] = useState<CuboInventariosItem[]>([]);
   const [curadoData, setCuradoData] = useState<RawApiRow[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  // El módulo YA NO sincroniza solo al abrirse — mismo criterio que Corte Espuma/Venta Externa/
+  // Laminado (ver [[carga_manual_modulos_tacticos]], antes marcado como pendiente para este módulo).
+  const [isLoading, setIsLoading] = useState(false);
+  const [datosCargados, setDatosCargados] = useState(false);
 
   const [isProcessingResumen, setIsProcessingResumen] = useState(false);
   const [resumenProgress, setResumenProgress] = useState({ current: 0, total: 0 });
@@ -846,11 +850,10 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     setIsProcessingResumen(false);
   }, [provFiltradas, prodFiltradas, cuboInventarios, getStockEnCurado]);
 
-  // Se ejecuta automáticamente al cambiar los filtros/datos — no se espera un click de
-  // "generar/aceptar" para mostrar el resumen.
-  useEffect(() => {
-    if (mounted && !isLoading) handleProcessResumen();
-  }, [mounted, isLoading, handleProcessResumen]);
+  // handleProcessResumen ya NO se dispara solo (antes: automático al cambiar filtros/datos, sin
+  // pedir un click) — ahora es un paso manual y separado, el botón "Generar Necesidades" del
+  // encabezado, mismo patrón de 2 niveles que Corte Espuma/Venta Externa/Laminado (Sincronizar =
+  // trae datos crudos; Generar Necesidades = calcula con lo ya cargado).
 
   // Resumen dividido en dos secciones según el tipo de Bloque Formulado, derivado directamente
   // de la apertura ya extraída del material (no depende de que exista match en Control Curado,
@@ -984,16 +987,13 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         .map(([fecha, { total, matched }]) => `${fecha}: ${matched}/${total} filas matchean CURADO_SPACES`);
       inspector.captureVariable('curado_matches_por_fecha', fechaSummary, { description: 'Por cada fecha de curadoData, filas que matchean alguno de los dos espacios (LEADER/COFAMA) vs el total de ese día — usar para verificar si falta un día específico por el filtro ESTADO/MAQUINA/CORRIDAPROCESO' });
 
+      setDatosCargados(true);
     } catch {
       console.error('Error sincronizando datos formulacion');
     } finally {
       setIsLoading(false);
     }
   }, []);
-
-  useEffect(() => {
-    if (mounted) fetchDataAsync();
-  }, [mounted, fetchDataAsync]);
 
   const calendarDaysList = useMemo(() => {
     const start = startOfMonth(viewDate);
@@ -1393,11 +1393,18 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           <h2 className="text-xl font-black text-gray-800 uppercase tracking-tighter">Programación Táctica Formulación</h2>
         </div>
         <div className="flex items-center gap-2">
-          {/* Familia "Generar Necesidades": trae/calcula datos sin escribir nada — outline, tono
-              índigo. "Generar Respuestas" (escribe Plan Grupo/Detalle Táctico real) es sólido/
-              primario. Mismos 2 niveles en los 4 módulos tácticos. */}
-          <Button onClick={fetchDataAsync} disabled={isLoading || isProcessingResumen} variant="outline" className="h-9 px-5 rounded-xl gap-2 font-black text-[10px] uppercase active:scale-95 transition-all border-indigo-200 text-indigo-700 hover:bg-indigo-50">
-            {(isLoading || isProcessingResumen) ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Actualizar
+          {/* "Sincronizar": trae datos crudos de SAP sin calcular nada — mismo color/forma en los 4
+              módulos tácticos. "Generar Necesidades" (aparte, índigo outline): con esos datos ya
+              cargados, calcula el resumen (explosión BOM) — ya no se dispara solo, es un paso
+              manual, mismo patrón de 2 niveles que Corte Espuma/Venta Externa/Laminado. */}
+          <Button onClick={fetchDataAsync} disabled={isLoading} variant={datosCargados ? 'outline' : 'default'} className={cn(
+            "h-10 px-6 rounded-xl gap-2 font-black text-[10px] uppercase active:scale-95 transition-all",
+            datosCargados ? "border-blue-200 text-blue-700 hover:bg-blue-50" : "bg-blue-600 text-white hover:bg-blue-700 shadow-lg"
+          )}>
+            {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Sincronizar
+          </Button>
+          <Button onClick={handleProcessResumen} disabled={!datosCargados || isProcessingResumen} variant="outline" className="h-10 px-6 rounded-xl gap-2 font-black text-[10px] uppercase active:scale-95 transition-all border-indigo-200 text-indigo-700 hover:bg-indigo-50">
+            {isProcessingResumen ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />} Generar Necesidades
           </Button>
           <Popover>
             <PopoverTrigger asChild>
@@ -1433,6 +1440,21 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           </Popover>
         </div>
       </div>
+
+      {/* Estado vacío inicial: el módulo no consulta SAP al abrirse. Mismo criterio y misma
+          redacción compacta que Corte Espuma/Venta Externa/Laminado (ver
+          [[carga_manual_modulos_tacticos]]). */}
+      {!datosCargados && !isLoading && (
+        <div
+          className="flex items-center gap-2.5 rounded-xl border border-dashed border-blue-200 bg-blue-50/40 px-4 py-2.5 text-left"
+          title="Este módulo no consulta SAP al abrirse. Sincronizar trae Provisionales, FERT, Curado e Inventarios; Generar Necesidades calcula el resumen con esos datos ya cargados."
+        >
+          <RefreshCw className="w-4 h-4 text-blue-500 shrink-0" />
+          <p className="text-[11px] font-bold text-slate-600">
+            Sin datos cargados — pulsa <span className="font-black text-blue-700">Sincronizar</span> y luego <span className="font-black text-indigo-700">Generar Necesidades</span> para verlos.
+          </p>
+        </div>
+      )}
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid grid-cols-5 h-11 bg-gray-100/50 p-1.5 rounded-2xl border border-gray-200 mb-8">

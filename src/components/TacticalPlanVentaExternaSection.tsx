@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { ShoppingCart, Package, Loader2, LayoutDashboard, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Filter, TrendingUp, Box, X, Layers, Wand2, Save, ClipboardCheck, RefreshCw, Clock, Search } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -157,6 +158,25 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const [expandedCategorias1000, setExpandedCategorias1000] = useState<string[]>([]);
   const [expandedCategorias2000, setExpandedCategorias2000] = useState<string[]>([]);
 
+  // Llegada desde el botón "Diferir" de Corte Espuma (panel "sobre-ocupado — candidatos a diferir",
+  // ver renderDashboard en TacticalPlanEspumasSection.tsx): ese panel es puramente informativo ahí
+  // (no mueve ninguna fecha por sí solo), así que en vez de escribir el plan P2 desde otro módulo, se
+  // trae al planificador AQUÍ, al tab Plan P2, con la fecha sugerida ya preseleccionada en "Ventana
+  // de Producción" — la decisión final (confirmar esa fecha u otra, y regenerar) la sigue tomando el
+  // planificador en su propio flujo, igual que cualquier otra generación de P2. Solo se aplica UNA
+  // vez al montar (no en cada cambio de searchParams) para no pisar una selección manual posterior.
+  const searchParams = useSearchParams();
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    const fecha = searchParams.get('fecha');
+    const material = searchParams.get('material');
+    if (tab === 'p2') setActiveTab('planP2');
+    if (fecha) setSelectedDates([fecha]);
+    if (material) {
+      addNotification('info', `Vienes de Corte Espuma para diferir el material ${material}: confirma la fecha en "Ventana de Producción" (ya preseleccionada) y genera el P2 de Espumas para aplicarla.`);
+    }
+  }, []);
+
   // Tab "Pendientes": pedidos aún no entregados (getPendientesTotales), con filtro por texto
   // (Pedido/Material) y por rango de Fecha de Entrega, agrupados por Material. Se carga de forma
   // perezosa (solo al abrir el tab por primera vez) por el volumen de registros (+20K).
@@ -176,9 +196,9 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const [necesidadRollos2000, setNecesidadRollos2000] = useState<NecesidadMaterial[]>([]);
   const [isExplodingBom, setIsExplodingBom] = useState(false);
   const [bomProgress, setBomProgress] = useState({ current: 0, total: 0 });
-  // Diagnóstico de la última corrida de "Calcular Necesidad": qué Provisionales llegaron a explotarse
+  // Diagnóstico de la última corrida de "Calcular Necesidad": qué FERT llegaron a explotarse
   // (ya pasaron centro + restricciones + fecha) pero no aportaron ninguna línea de Espuma/Rollo, y
-  // cuáles fallaron al consultar el Maestro de Materiales — ver explodeNecesidadesProvisionales.
+  // cuáles fallaron al consultar el Maestro de Materiales — ver explodeNecesidadesFert.
   const [bomDiagnostico, setBomDiagnostico] = useState<{ sinMatch: string[]; conError: string[] }>({ sinMatch: [], conError: [] });
   const [savingPlanP2, setSavingPlanP2] = useState<Record<string, boolean>>({});
   const [planP2Generado, setPlanP2Generado] = useState<Record<string, number>>({});
@@ -463,6 +483,18 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const provC1000 = useMemo(() => filterData(ordenes, '1000'), [ordenes, grupos, restricciones, selectedDates]);
   const provC2000 = useMemo(() => filterData(ordenes, '2000'), [ordenes, grupos, restricciones, selectedDates]);
 
+  // Fuente de datos para GENERAR el P2 (cambio de fondo pedido por el usuario, revierte el criterio
+  // anterior "P2 sale de Provisionales, FERT queda fuera"): ahora el P2 se explota desde Órdenes FERT
+  // en vez de Provisionales — mismo `filterData` (centro + RESPCTRLPROD/ALMACEN/SECTOR + fecha), que
+  // ya sabía manejar la forma de FERT (sin FECHAFIN, cae a coincidencia exacta contra FECHA — ver el
+  // comentario dentro de filterData). SECTOR, que en Provisionales no filtraba nada porque el campo no
+  // existe ahí, en FERT SÍ tiene datos reales — verificar que no repita el bug de mayúsculas de
+  // RESPCTRLPROD si aparecen materiales excluidos sin explicación. `provC1000`/`provC2000` NO se
+  // tocan: siguen alimentando el tab "Provisionales", que ahora es solo de referencia (igual que FERT
+  // lo era antes de este cambio).
+  const fertC1000ParaP2 = useMemo(() => filterData(ordenesFert, '1000'), [ordenesFert, grupos, restricciones, selectedDates]);
+  const fertC2000ParaP2 = useMemo(() => filterData(ordenesFert, '2000'), [ordenesFert, grupos, restricciones, selectedDates]);
+
   // TEMPORAL — diagnóstico para confirmar si la restricción RESPCTRLPROD/ALMACEN realmente excluye
   // algo en Provisionales Centro 1000, o si simplemente TODA la data ya comparte el mismo valor (y
   // por eso "parece" que no filtra nada). Compara el total de Centro 1000 (sin restricción) contra
@@ -489,14 +521,13 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const fertC1000SinFecha = useMemo(() => filterData(ordenesFert, '1000', false), [ordenesFert, grupos, restricciones]);
   const fertC2000SinFecha = useMemo(() => filterData(ordenesFert, '2000', false), [ordenesFert, grupos, restricciones]);
 
-  // "Resumen Necesidades": Órdenes FERT de HOY HACIA ATRÁS. Regla del usuario — el P2 son las
-  // necesidades del día siguiente (hoy+1) y salen de las Provisionales; las FERT ya fechadas hasta hoy
-  // son el otro lado del flujo (lo ya ejecutado/comprometido) y NO entran en ese cálculo de
-  // necesidades. Son dos vistas distintas y mezclarlas es lo que hacía que este tab no cuadrara con
-  // "Plan P2": antes usaba `fertC1000/fertC2000`, filtradas por el selector "Fecha", que ya pasó a ser
-  // específico de Provisionales — el resumen quedaba atado a fechas futuras que no le corresponden.
-  // Mismo criterio de corte que ya usa Corte Espuma para separar FERT vigente de FERT de ciclo
-  // anterior (ver fertKgPorMaterialPorCentro allá).
+  // "Resumen Necesidades": Órdenes FERT de HOY HACIA ATRÁS — vista de "lo ya ejecutado/comprometido"
+  // (carga operativa, no necesidad futura), sin cambios por el giro a FERT en la generación del P2
+  // (ver fertC1000ParaP2 más arriba): ese cálculo usa FERT de la fecha SELECCIONADA (pasada o
+  // futura, según el filtro "Fecha"), mientras que ESTE resumen siempre corta en HOY exacto,
+  // independiente de esa selección — son dos ventanas de fecha distintas sobre la misma fuente
+  // (FERT), no hay que confundirlas. Mismo criterio de corte que ya usa Corte Espuma para separar
+  // FERT vigente de FERT de ciclo anterior (ver fertKgPorMaterialPorCentro allá).
   const fechaCorteFert = format(new Date(), 'yyyy-MM-dd');
   const soloFertHastaHoy = (data: Record<string, unknown>[]) => data.filter(o => {
     const fecha = String(o.FECHA || o.Fecha || '').split('T')[0];
@@ -547,10 +578,11 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   };
 
   // --- Necesidad P2 (origen para Corte Espuma / Corte y Laminado) ---
-  // Ambas necesidades salen de explotar la lista de materiales (BOM) de las Órdenes PROVISIONALES
-  // (provC1000/provC2000, ya filtradas por centro/RESPCTRLPROD/ALMACEN/ClaseOrden y por la fecha
-  // seleccionada — ver filterData) — antes se usaban las Órdenes FERT, pero el proceso ya no depende
-  // de ellas (ver conversación: FERT queda como tab de referencia/comparación, sin alimentar nada).
+  // Ambas necesidades salen de explotar la lista de materiales (BOM) de las Órdenes FERT
+  // (fertC1000ParaP2/fertC2000ParaP2, ya filtradas por centro/RESPCTRLPROD/ALMACEN/SECTOR y por la
+  // fecha seleccionada — ver filterData). Cambio de fondo (2026-08-14): antes se usaban Provisionales
+  // y FERT quedaba como tab de solo referencia; ahora es al revés — Provisionales sigue existiendo
+  // como tab de referencia, sin alimentar el P2.
 
   // Idéntico al cleanCode de Corte y Laminado (mismo criterio de limpieza de código SAP).
   const cleanCode = (v: unknown) => String(v || '').replace(/^0+/, '').trim();
@@ -628,9 +660,9 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   // reales (material 20013403 "BASE RESIFLEX...": su BOM son químicos crudos — TDI, POLYOL, aminas —
   // y partes no-espuma, sin ningún componente ESPUMA/LAMINA CILINDRICA; queda correctamente en
   // sinMatch, no en la Necesidad, aunque la orden en sí sea legítima).
-  const explodeNecesidadesProvisionales = async (centro: string, provOrders: any[], onStep: () => void): Promise<{ espumas: NecesidadMaterial[]; rollos: NecesidadMaterial[]; sinMatch: string[]; conError: string[] }> => {
+  const explodeNecesidadesFert = async (centro: string, fertOrders: any[], onStep: () => void): Promise<{ espumas: NecesidadMaterial[]; rollos: NecesidadMaterial[]; sinMatch: string[]; conError: string[] }> => {
     const materialQty = new Map<string, number>();
-    provOrders.forEach(o => {
+    fertOrders.forEach(o => {
       const info = extractMaterialInfo(o);
       if (!info.code) return;
       const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
@@ -711,14 +743,14 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     setBomDiagnostico({ sinMatch: [], conError: [] });
     try {
       const uniqueMaterialCount = (orders: any[]) => new Set(orders.map(o => extractMaterialInfo(o).code).filter(Boolean)).size;
-      const total = uniqueMaterialCount(provC1000) + uniqueMaterialCount(provC2000);
+      const total = uniqueMaterialCount(fertC1000ParaP2) + uniqueMaterialCount(fertC2000ParaP2);
       let current = 0;
       setBomProgress({ current: 0, total });
       const onStep = () => setBomProgress({ current: ++current, total });
 
       const [n1000, n2000] = [
-        await explodeNecesidadesProvisionales('1000', provC1000, onStep),
-        await explodeNecesidadesProvisionales('2000', provC2000, onStep),
+        await explodeNecesidadesFert('1000', fertC1000ParaP2, onStep),
+        await explodeNecesidadesFert('2000', fertC2000ParaP2, onStep),
       ];
       setNecesidadEspumas1000(n1000.espumas);
       setNecesidadEspumas2000(n2000.espumas);
@@ -730,8 +762,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       setBomDiagnostico({ sinMatch, conError });
 
       const incidencias = [
-        sinMatch.length > 0 ? `${sinMatch.length} Provisional(es) sin Espuma/Rollo detectado en su BOM` : null,
-        conError.length > 0 ? `${conError.length} Provisional(es) con error al consultar el BOM` : null,
+        sinMatch.length > 0 ? `${sinMatch.length} FERT sin Espuma/Rollo detectado en su BOM` : null,
+        conError.length > 0 ? `${conError.length} FERT con error al consultar el BOM` : null,
       ].filter(Boolean).join(' · ');
       const nivel = sinMatch.length + conError.length > 0 ? 'warning' : 'success';
       addNotification(nivel, `Necesidad calculada (ventana ${ventanaP2.inicio} → ${ventanaP2.fin}) — Centro 1000: ${n1000.espumas.length} espumas / ${n1000.rollos.length} rollos. Centro 2000: ${n2000.espumas.length} espumas / ${n2000.rollos.length} rollos.${incidencias ? ` (${incidencias})` : ''}`);
@@ -740,7 +772,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     } finally {
       setIsExplodingBom(false);
     }
-  }, [provC1000, provC2000, ventanaP2, selectedDates, addNotification]);
+  }, [fertC1000ParaP2, fertC2000ParaP2, ventanaP2, selectedDates, addNotification]);
 
   // Consulta inversa: antes de (re)generar un P2, revisa si ya existe uno activo para ese centro+tipo
   // y, de existir, si algún plan P3 (u otro consumidor) ya ejecutó contra él — un DetalleTactico
@@ -790,7 +822,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   type ResultadoGeneracionP2 = {
     centro: '1000' | '2000';
     tipo: 'ESPUMAS' | 'ROLLOS';
-    status: 'ok' | 'sin-datos' | 'bloqueado' | 'error';
+    status: 'ok' | 'sin-datos' | 'bloqueado' | 'error' | 'confirmar-reemplazo';
     mensaje: string;
     codigoPlan?: number;
   };
@@ -801,7 +833,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   // no consume de nadie más), codigo_plan_grupo_padre se auto-referencia al propio plan recién creado.
   // Se reutiliza tanto para el botón individual como para "Generar Todos", que la llama 4 veces
   // (una por cada combinación centro×tipo) y consolida los 4 resultados en un solo resumen.
-  const generarPlanP2Core = useCallback(async (centro: '1000' | '2000', tipo: 'ESPUMAS' | 'ROLLOS'): Promise<ResultadoGeneracionP2> => {
+  //
+  // `forzar`: solo aplica a ESPUMAS (ver más abajo) — confirma que se acepta reemplazar un P2 activo
+  // que está fechado para OTRO día distinto al que se está por grabar (ver status 'confirmar-reemplazo').
+  const generarPlanP2Core = useCallback(async (centro: '1000' | '2000', tipo: 'ESPUMAS' | 'ROLLOS', forzar = false): Promise<ResultadoGeneracionP2> => {
     const key = `${centro}-${tipo}`;
     const lineas = (tipo === 'ESPUMAS'
       ? (centro === '1000' ? necesidadEspumas1000 : necesidadEspumas2000)
@@ -822,10 +857,31 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       const user = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('user') || '{}') : {};
       const usuario = user?.name || 'admin';
 
-      // El P2 (necesidad de HALB) se graba SIEMPRE a hoy + 1 día hábil, desacoplado del filtro "Fecha"
-      // (selectedDates) — ese filtro solo decide qué órdenes Provisionales entran a la explosión de
-      // BOM (ver provC1000/provC2000), no la fecha que se graba en el plan.
-      const fechaPlanP2 = format(siguienteDiaHabil(new Date()), 'yyyy-MM-dd');
+      // ESPUMAS: el P2 se graba con la "fecha del PT" — la que el planificador seleccionó en el
+      // filtro "Ventana de Producción" (ventanaP2, ya usado para decidir qué FERT entran a la
+      // explosión de BOM, ver fertC1000ParaP2/fertC2000ParaP2). Antes se grababa SIEMPRE a hoy + 1
+      // día hábil, desacoplado de esa selección — mismo criterio que ya usa P1/PFF en Corte Espuma
+      // (grabar la fecha real de producción, no un offset fijo). ROLLOS no cambia: sigue fijo a
+      // hoy+1, es de Corte y Laminado, fuera de este ajuste. Fallback defensivo: si lineas.length>0
+      // aquí, ventanaP2 ya debería estar poblada (la necesidad de Espumas se filtró por selectedDates
+      // vía fertC1000ParaP2/fertC2000ParaP2) — si igual llegara vacía, se cae al viejo hoy+1.
+      const fechaPlanP2 = tipo === 'ESPUMAS'
+        ? (ventanaP2.fin || ventanaP2.inicio || format(siguienteDiaHabil(new Date()), 'yyyy-MM-dd'))
+        : format(siguienteDiaHabil(new Date()), 'yyyy-MM-dd');
+
+      // Salvaguarda: "Ventana de Producción" se dejó a propósito sin tope, para evaluar fechas fuera
+      // de la ventana operativa normal ("qué pasaría si") — ver su comentario. Con ESPUMAS ahora
+      // grabando esa fecha, generar con una fecha de prueba reemplazaría en silencio el plan activo
+      // real (con otra fecha), descuadrando la necesidad que ve Corte Espuma sin ningún aviso. Si hay
+      // un plan activo fechado para OTRO día que el que se va a grabar y todavía no se confirmó
+      // (forzar=false), se corta ANTES de escribir nada — el caller decide si confirma y reintenta
+      // con forzar=true.
+      if (tipo === 'ESPUMAS' && planActivo && !forzar && soloFecha(planActivo.fecha_inicio_plan) !== fechaPlanP2) {
+        return {
+          centro, tipo, status: 'confirmar-reemplazo',
+          mensaje: `${TIPO_TAG[tipo]} Centro ${centro}: ya existe un Plan #${planActivo.codigo_plan_grupo} activo fechado ${soloFecha(planActivo.fecha_inicio_plan)} — generar con la fecha seleccionada (${fechaPlanP2}) lo desactivará. ¿Continuar?`,
+        };
+      }
 
       // La generación es diaria, pero acotada al MISMO día hábil (antes se reconciliaba el mismo
       // Plan Grupo indefinidamente, sin importar cuántos días hubieran pasado — un plan de hace 3
@@ -840,18 +896,25 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       // planGrupoService.save() sobre un plan existente la vez anterior.
       const planActivoEsDeHoy = planActivo && soloFecha(planActivo.fecha_inicio_plan) === fechaPlanP2;
 
-      // El bloqueo solo aplica si se intenta REGENERAR EL MISMO CICLO que un P3 ya respondió — cambiar
-      // en silencio las cantidades de un P2 que Corte Espuma/Laminado ya usó para fechar SU respuesta
-      // sí rompería esa trazabilidad. Un P2 de un ciclo distinto (de un día anterior, como #122/#123
-      // fechados hoy mientras se genera el ciclo de mañana) no bloquea aunque tenga P3 encima — su P3
-      // respondió a ESE ciclo, ya cerrado desde la perspectiva del ciclo que se está generando ahora;
-      // no hace falta "coordinar" nada, se desactiva y se sigue (ver rama de abajo). Antes se
-      // comparaba la fecha del P3 contra "hoy" (planesP3Abiertos), pero eso bloqueaba igual un P3
-      // fechado exactamente hoy — que es precisamente el caso normal al generar el ciclo de mañana.
-      if (planActivoEsDeHoy && planActivo && planesP3.length > 0) {
+      // La advertencia solo aplica si se intenta REGENERAR EL MISMO CICLO que un P3 ya respondió —
+      // cambiar en silencio las cantidades de un P2 que Corte Espuma/Laminado ya usó para fechar SU
+      // respuesta sí rompería esa trazabilidad. Un P2 de un ciclo distinto (de un día anterior, como
+      // #122/#123 fechados hoy mientras se genera el ciclo de mañana) no advierte aunque tenga P3
+      // encima — su P3 respondió a ESE ciclo, ya cerrado desde la perspectiva del ciclo que se está
+      // generando ahora; no hace falta "coordinar" nada, se desactiva y se sigue (ver rama de abajo).
+      // Antes se comparaba la fecha del P3 contra "hoy" (planesP3Abiertos), pero eso bloqueaba igual
+      // un P3 fechado exactamente hoy — que es precisamente el caso normal al generar el ciclo de
+      // mañana.
+      //
+      // Antes esto era un bloqueo SIN salida ('bloqueado', sin forzar posible) — el usuario no tenía
+      // forma de regenerar el P2 salvo desactivando el plan a mano fuera de la app. Se cambió al mismo
+      // patrón de confirmación que ya usa el reemplazo por fecha distinta (status 'confirmar-reemplazo'
+      // + forzar=true): informa la consecuencia real (el P3 #438/#439 va a quedar huérfano de su
+      // origen) y deja que el usuario decida con conocimiento, en vez de dejarlo sin poder avanzar.
+      if (planActivoEsDeHoy && planActivo && planesP3.length > 0 && !forzar) {
         return {
-          centro, tipo, status: 'bloqueado',
-          mensaje: `${TIPO_TAG[tipo]} Centro ${centro}: el Plan #${planActivo.codigo_plan_grupo} (mismo ciclo que se está generando) ya fue ejecutado por el/los Plan(es) P3 #${planesP3.map(p => p.codigo_plan_grupo).join(', #')}. Coordina con esa área antes de reemplazarlo.`,
+          centro, tipo, status: 'confirmar-reemplazo',
+          mensaje: `${TIPO_TAG[tipo]} Centro ${centro}: el Plan #${planActivo.codigo_plan_grupo} (mismo ciclo que se está generando) ya fue ejecutado por el/los Plan(es) P3 #${planesP3.map(p => p.codigo_plan_grupo).join(', #')}. Si regeneras, ese P3 queda sin el P2 que lo originó (huérfano) y Corte Espuma/Laminado tendría que volver a responder. ¿Continuar de todas formas?`,
         };
       }
 
@@ -889,6 +952,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           fecha_fin_plan: fechaPlanP2,
           estado: 'A',
           usuario_creacion: usuario,
+          // Faltaba en el payload — la columna quedaba NULL en BD (verificado con datos reales,
+          // ver [[plan_grupo_fecha_creacion_faltante]]). Mismo patrón ya usado en
+          // grupo-operadores/components/form.tsx (fecha_creacion: new Date()).
+          fecha_creacion: new Date(),
         };
         const planResponse = await planGrupoService.save(planPayload as unknown as PlanGrupo);
         codigoPlanGrupo = planResponse.data.codigo_plan_grupo;
@@ -954,8 +1021,19 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   }, [grupos, necesidadEspumas1000, necesidadEspumas2000, necesidadRollos1000, necesidadRollos2000, ventanaP2, siguienteDiaHabil]);
 
   // Botón individual por bloque: genera un solo subgrupo y notifica su resultado puntual.
+  // 'confirmar-reemplazo' (solo ESPUMAS, ver generarPlanP2Core): se cortó ANTES de escribir porque la
+  // fecha seleccionada reemplazaría un plan activo fechado distinto — se confirma acá y, si se
+  // acepta, se reintenta la misma llamada con forzar=true.
   const handleGenerarPlanP2 = useCallback(async (centro: '1000' | '2000', tipo: 'ESPUMAS' | 'ROLLOS') => {
-    const resultado = await generarPlanP2Core(centro, tipo);
+    let resultado = await generarPlanP2Core(centro, tipo);
+    if (resultado.status === 'confirmar-reemplazo') {
+      if (window.confirm(resultado.mensaje)) {
+        resultado = await generarPlanP2Core(centro, tipo, true);
+      } else {
+        addNotification('warning', `${resultado.mensaje} (cancelado por el usuario, no se hizo ningún cambio)`);
+        return;
+      }
+    }
     const nivel = resultado.status === 'ok' ? 'success' : resultado.status === 'sin-datos' ? 'warning' : 'error';
     addNotification(nivel, resultado.mensaje);
   }, [generarPlanP2Core, addNotification]);
@@ -976,7 +1054,18 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
 
       const resultados: ResultadoGeneracionP2[] = [];
       for (const combo of combos) {
-        resultados.push(await generarPlanP2Core(combo.centro, combo.tipo));
+        let resultado = await generarPlanP2Core(combo.centro, combo.tipo);
+        // 'confirmar-reemplazo' (solo ESPUMAS): mismo criterio que el botón individual — se confirma
+        // acá antes de seguir con el resto del loop, y si se cancela se cuenta como 'bloqueado' (no
+        // se escribió nada, mismo tratamiento de notificación que ya existe para ese status).
+        if (resultado.status === 'confirmar-reemplazo') {
+          if (window.confirm(resultado.mensaje)) {
+            resultado = await generarPlanP2Core(combo.centro, combo.tipo, true);
+          } else {
+            resultado = { ...resultado, status: 'bloqueado', mensaje: `${resultado.mensaje} (cancelado por el usuario, no se hizo ningún cambio)` };
+          }
+        }
+        resultados.push(resultado);
       }
 
       const ok = resultados.filter(r => r.status === 'ok');
@@ -1288,9 +1377,12 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
             <p className="text-xs text-gray-500 font-medium">Control de Órdenes FERT y Programación Técnica</p>
           </div>
         </div>
+        {/* "Sincronizar": trae datos crudos de SAP sin calcular nada — mismo color/forma en los 4
+            módulos tácticos (azul), distinto de la familia "Generar Necesidades"/"Generar
+            Respuestas" (índigo/sólido, ver más abajo en el tab Plan P2). */}
         <Button onClick={handleSincronizar} disabled={isLoading} variant={datosCargados ? 'outline' : 'default'} className={cn(
-          "rounded-2xl h-10 px-6 gap-2 font-bold text-xs uppercase",
-          datosCargados ? "border-green-200 text-green-700 hover:bg-green-50" : "bg-green-600 text-white hover:bg-green-700 shadow-lg"
+          "rounded-xl h-10 px-6 gap-2 font-bold text-xs uppercase",
+          datosCargados ? "border-blue-200 text-blue-700 hover:bg-blue-50" : "bg-blue-600 text-white hover:bg-blue-700 shadow-lg"
         )}>
           {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Sincronizar
         </Button>
@@ -1300,12 +1392,12 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
           redacción compacta que Corte Espuma (ver [[carga_manual_modulos_tacticos]]). */}
       {!datosCargados && !isLoading && (
         <div
-          className="flex items-center gap-2.5 rounded-xl border border-dashed border-green-200 bg-green-50/40 px-4 py-2.5 text-left"
+          className="flex items-center gap-2.5 rounded-xl border border-dashed border-blue-200 bg-blue-50/40 px-4 py-2.5 text-left"
           title="Este módulo no consulta SAP al abrirse. Sincronizar trae Grupos, Restricciones, Provisionales, FERT y Tiempos de Ensamblado."
         >
-          <RefreshCw className="w-4 h-4 text-green-600 shrink-0" />
+          <RefreshCw className="w-4 h-4 text-blue-600 shrink-0" />
           <p className="text-[11px] font-bold text-slate-600">
-            Sin datos cargados — pulsa <span className="font-black text-green-700">Sincronizar</span> para traerlos.
+            Sin datos cargados — pulsa <span className="font-black text-blue-700">Sincronizar</span> para traerlos.
           </p>
         </div>
       )}
@@ -1675,8 +1767,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
               <div className="text-left">
                 <p className="text-[10px] font-bold uppercase text-gray-400 tracking-wider">Necesidad Origen (P2)</p>
-                <h3 className="text-sm font-black text-gray-700 uppercase">Espumas + Rollos (BOM de Órdenes Provisionales)</h3>
-                <p className="text-[10px] text-gray-400 mt-1">Ambas necesidades se calculan explotando la lista de materiales de las Órdenes Provisionales (FERT queda como tab de referencia, ya no alimenta este cálculo): componentes &quot;ESPUMA&quot; → Corte Espuma, &quot;LAMINA CILINDRICA&quot; → Corte y Laminado.</p>
+                <h3 className="text-sm font-black text-gray-700 uppercase">Espumas + Rollos (BOM de Órdenes FERT)</h3>
+                <p className="text-[10px] text-gray-400 mt-1">Ambas necesidades se calculan explotando la lista de materiales de las Órdenes FERT (Provisionales queda como tab de referencia, ya no alimenta este cálculo): componentes &quot;ESPUMA&quot; → Corte Espuma, &quot;LAMINA CILINDRICA&quot; → Corte y Laminado.</p>
                 <div className="flex items-center gap-1.5 mt-2 flex-wrap">
                   {selectedDates.length === 0 ? (
                     <Badge className="bg-amber-50 text-amber-700 border-amber-200 text-[9px] font-black uppercase gap-1.5">
@@ -1697,12 +1789,12 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                     Detalle Táctico real) es sólido/primario. Mismos 2 niveles en los 4 módulos tácticos. */}
                 <Button onClick={handleCalcularNecesidadRollos} disabled={isExplodingBom || selectedDates.length === 0} variant="outline" className="h-10 px-6 rounded-2xl gap-2 font-bold text-xs uppercase border-indigo-200 text-indigo-700 hover:bg-indigo-50">
                   {isExplodingBom ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
-                  {isExplodingBom ? `Explotando BOM ${bomProgress.current}/${bomProgress.total}` : 'Generar Necesidades · BOM Provisionales'}
+                  {isExplodingBom ? `Explotando BOM ${bomProgress.current}/${bomProgress.total}` : 'Generar Necesidades · BOM FERT'}
                 </Button>
                 <Button
                   onClick={handleGenerarTodosPlanesP2}
                   disabled={isSavingAllPlanP2 || isExplodingBom || (necesidadEspumas1000.length === 0 && necesidadEspumas2000.length === 0 && necesidadRollos1000.length === 0)}
-                  className="h-10 px-6 rounded-2xl gap-2 font-bold text-xs uppercase"
+                  className="h-10 px-6 rounded-2xl gap-2 font-bold text-xs uppercase bg-slate-900 hover:bg-slate-800 text-white"
                 >
                   {isSavingAllPlanP2 ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                   Generar Respuestas · Todos P2
@@ -1760,7 +1852,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                             size="sm"
                             onClick={() => handleGenerarPlanP2(center.centro, block.tipo)}
                             disabled={block.rows.length === 0 || !!savingPlanP2[key]}
-                            className="h-7 px-3 rounded-lg gap-1.5 font-bold text-[9px] uppercase"
+                            className="h-7 px-3 rounded-lg gap-1.5 font-bold text-[9px] uppercase bg-slate-900 hover:bg-slate-800 text-white"
                           >
                             {savingPlanP2[key] ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
                             Generar Respuestas · P2

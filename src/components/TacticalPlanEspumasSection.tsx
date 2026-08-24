@@ -2,6 +2,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { 
   Scissors,
   Package,
@@ -21,7 +22,6 @@ import {
   Save,
   Wand2,
   Truck,
-  Info,
   FileOutput
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -44,6 +44,7 @@ import { planGrupoService } from '@/services/plangrupo.service';
 import { detalleTacticoService } from '@/services/detalletactico.service';
 import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, PlanGrupo, DetalleTactico, Restriccion } from '@/types/interfaces';
+import type { BodyResponse } from '@/types/body-response';
 import { cn } from '@/lib/utils';
 import { nextBusinessDay as nextBusinessDayCal, addBusinessDays as addBusinessDaysCal, cargarDiasNoLaborables, fechaLocalEcuador, type DiasNoLaborables } from '@/lib/dias-laborables';
 import { guardarEnCache, leerDeCache, actualizarEnCache } from '@/lib/cache-modulos';
@@ -329,6 +330,14 @@ interface RespuestaP3Row {
   // Lo que se graba en DetalleTactico: en el P3 es la COBERTURA (cuánto de la necesidad ya está
   // resuelto); en el PFD es el FALTANTE (cuánto hay que fabricar). Ver respuestaSalidaRowsPorCentro.
   cantidadKg: number;
+  // cantidadKg convertido a UNIDADES (÷ pesoUN) — es lo que realmente se graba en
+  // cantidad_produccion_neta. El P2 que se está respondiendo (Venta Externa/Muebles/Prensado) pide y
+  // registra en UN, no en Kg; grabar cantidadKg tal cual producía comparaciones falsas ("parcial" con
+  // el flujo real ya completo) — verificado con datos reales: material 30008499 (100X200X4) respondía
+  // 211 "Kg" contra una necesidad P2 de 120 UN, mientras 30007130/30008498 quedaban cortos — los 3
+  // ratios Kg/UN observados (0.44 / 0.88 / 1.76) escalaban exactamente 1:2:4 con el espesor (X1/X2/X4),
+  // confirmando que el número grabado era peso, no unidades.
+  cantidadUnidades: number;
   necesidadKg: number;
   stockKg: number;
   provisionalKg: number;
@@ -389,6 +398,19 @@ const cleanCode = (code: unknown): string => {
 const parseQty = (val: unknown): number => {
   const n = Number(String(val || '').replace(/[^0-9.-]/g, ''));
   return isNaN(n) ? 0 : n;
+};
+
+// `new Date('yyyy-MM-dd')` (constructor ISO) fija la medianoche en UTC — si la zona horaria LOCAL del
+// entorno donde corre esto está detrás de UTC (Ecuador, UTC-5), la fecha calendario LOCAL de ese
+// instante ya es el día ANTERIOR. Cualquier aritmética de días hábiles hecha después (que opera con
+// getDate()/setDate(), en hora LOCAL) hereda ese día de menos — mismo bug de fondo que ya documenta
+// fechaLocalEcuador para lecturas, pero aplicado a un caso de ESCRITURA/aritmética: sumar o restar
+// días hábiles a una fecha 'yyyy-MM-dd' ya existente (ver restarDiasHabiles en renderDashboard/
+// renderAuditTable). El constructor `new Date(año, mes, día)` interpreta los números directo como
+// fecha LOCAL, sin ambigüedad UTC de por medio — evita el corrimiento sin importar la zona del server.
+const parseFechaLocal = (fecha: string): Date => {
+  const [y, m, d] = fecha.split('-').map(Number);
+  return new Date(y, (m || 1) - 1, d || 1);
 };
 
 // Sector de "Pendientes Totales" que corresponde a Corte Espuma — Colchones/Muebles/Prensado NO se
@@ -669,6 +691,7 @@ interface SnapshotCorteEspuma {
   ordenesProvisionales: RawApiRow[];
   ordenesFert: RawApiRow[];
   inventarioSAP: RawApiRow[];
+  cuboInventarios: RawApiRow[];
   tiemposCatalogo: RawApiRow[];
   mantenimientosSAP: RawApiRow[];
   kpiLooperData: RawApiRow[];
@@ -682,6 +705,7 @@ interface SnapshotCorteEspuma {
 
 export const TacticalPlanEspumasSection: React.FC = () => {
   const { addNotification } = useAppContext();
+  const router = useRouter();
 
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState('resumen');
@@ -701,6 +725,14 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const [pendientesCargados, setPendientesCargados] = useState(false);
   const [isLoadingPendientes, setIsLoadingPendientes] = useState(false);
   const [inventarioSAP, setInventarioSAP] = useState<RawApiRow[]>([]);
+  // Fuente aparte de InventarioAnioActual, para UNA sola cosa: el responsable de control de
+  // producción POR CENTRO (RespCtrlProd). Verificado con datos reales (material 30000203: Centro
+  // 2000 → RespCtrlProd 002, Centro 1000 → RespCtrlProd 013) que InventarioAnioActual/CODRESPPROD NO
+  // varía por centro (siempre el mismo valor sin importar qué CENTRO se consulte — parece un dato de
+  // maestro de material único, no el responsable real de control de producción de esa planta), y por
+  // eso materialRespCPPorCentro lo usaba mal — ver su comentario. CuboInventarios sí trae Centro +
+  // RespCtrlProd correctos por fila, confirmado contra la captura real que compartió el usuario.
+  const [cuboInventarios, setCuboInventarios] = useState<RawApiRow[]>([]);
   const [kpiLooperData, setKpiLooperData] = useState<RawApiRow[]>([]);
   const [mantenimientosSAP, setMantenimientosSAP] = useState<RawApiRow[]>([]);
   const [tiemposCatalogo, setTiemposCatalogo] = useState<RawApiRow[]>([]);
@@ -712,6 +744,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const [diasNoLaborables, setDiasNoLaborables] = useState<DiasNoLaborables>(new Set<string>());
   const siguienteDiaHabil = useCallback((d: Date) => nextBusinessDayCal(d, diasNoLaborables), [diasNoLaborables]);
   const sumarDiasHabiles = useCallback((d: Date, n: number) => addBusinessDaysCal(d, n, diasNoLaborables), [diasNoLaborables]);
+  // Fecha de PAREO de Capacidad Planificada (Nivel 1/2): la producción del PT en fecha X requiere que
+  // su componente (lámina) esté firme un día hábil ANTES — restarDiasHabiles(X, 1).
+  const restarDiasHabiles = useCallback((d: Date, n: number) => addBusinessDaysCal(d, -n, diasNoLaborables), [diasNoLaborables]);
 
   // Restricciones crudas del grupo Corte y Laminado de cada centro (se cargan en fetchDataAsync).
   const [restriccionesCorte, setRestriccionesCorte] = useState<Restriccion[]>([]);
@@ -772,6 +807,11 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   // innecesariamente lento). Cada fila ya trae su propio "centro", así que se combina en una sola
   // lista y el resto del pipeline (materialNecesidadesPlantaMapPorCentro, etc.) la separa solo.
   const [necesidadPFFData, setNecesidadPFFData] = useState<Record<'1000' | '2000', NecesidadPlantaRow[]>>({ '1000': [], '2000': [] });
+  // Capacidad Operativa Nivel 2 (ver renderDashboard): mismo PFF pero apuntando a hoy+2 días hábiles
+  // en vez de hoy+3 — red de seguridad para un ciclo que se quedó un día atrás del ideal (el plan
+  // sigue 'A' porque nada lo desactivó todavía). NO alimenta el tab "Necesidades Planta" ni la
+  // Respuesta P3 — es exclusivo del cálculo de Capacidad Planificada.
+  const [necesidadPFFNivel2Data, setNecesidadPFFNivel2Data] = useState<Record<'1000' | '2000', NecesidadPlantaRow[]>>({ '1000': [], '2000': [] });
   // Qué tipo de plan de Ensamblado se usó en la última corrida, por centro — P1 (evaluación inicial,
   // aún no liberado) o PFF (ya liberado a producción; el P1 se inactiva solo al generarlo). El botón
   // y el resumen usan esto para no decir "PFF" fijo cuando en realidad se leyó un P1 activo.
@@ -875,15 +915,12 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const [selectedDatesFert, setSelectedDatesFert] = useState<Set<string>>(new Set());
   const [viewDateProv, setViewDateProv] = useState<Date>(new Date());
   const [viewDateFert, setViewDateFert] = useState<Date>(new Date());
+  // Capacidad Operativa: selector de fecha FUNCIONAL, propio de este panel (independiente del
+  // selector de Órdenes FERT — preserva la auditoría puntual de ese tab sin efectos secundarios
+  // aquí). Por planta, igual que otros selectores del módulo. Vacío = sin evaluar nada todavía.
+  const [selectedDatesCapacidad, setSelectedDatesCapacidad] = useState<{ UIO: Set<string>; GYE: Set<string> }>({ UIO: new Set(), GYE: new Set() });
+  const [viewDateCapacidad, setViewDateCapacidad] = useState<Date>(new Date());
   const todayStr = format(new Date(), 'yyyy-MM-dd');
-  // FERT: la ventana hacia adelante no es "mañana" fijo, es el siguiente DÍA LABORABLE — si hoy es
-  // viernes, el siguiente laborable es el lunes (se salta sábado y domingo), y así cada día según
-  // corresponda. REVERTIDO (ver nota): se había ampliado a +3 días laborables para poder cruzar FERT
-  // contra P2 en la Respuesta P3, pero esta MISMA variable también acota qué órdenes FERT cuentan
-  // para "Capacidad Operativa" (horas de ocupación) — ampliarla aquí inflaba esas horas de más. La
-  // Respuesta P3 ahora tiene su PROPIA ventana independiente (ver fertAuditAllUIO/GYE, que ignoran
-  // este límite) — esta variable vuelve a ser exclusiva de Capacidad Operativa / la vista del tab.
-  const nextBusinessDayStr = useMemo(() => format(siguienteDiaHabil(new Date()), 'yyyy-MM-dd'), [siguienteDiaHabil]);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   // --- CONFIGURACIÓN DASHBOARDS ---
@@ -1018,6 +1055,16 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
       const looperMatch = kpiLooperData.find(k => cleanCode(k.Material) === info.code);
       const pesoUN = looperMatch ? safeNum(looperMatch.PesoUN) : (info.ancho * info.largo * info.esp * densVal) / 1000000;
+      // El campo UNIDAD de la orden (ST/M/KG conviven en el mismo endpoint, verificado con datos
+      // reales) NO se revisaba aquí — a diferencia de Corte y Laminado (materialProd014FertMap), que
+      // sí lo hace por el mismo motivo. Sin este check, una orden que ya viene en KG se multiplicaba
+      // OTRA VEZ por pesoUN como si "qty" fuera unidades, inflando el peso. Validado contra datos
+      // reales de hoy (2026-08-24): hay líneas UNIDAD=KG en Provisionales/FERT, pero ninguna cae hoy
+      // dentro de los responsables permitidos de Corte Espuma sin ya estar excluida por descripción
+      // (LAMINA DE APROVECHAMIENTO) — el bug no altera ningún número HOY, pero queda latente para el
+      // día que aparezca un material real de espuma en KG con un responsable permitido.
+      const unidadOrden = String(getProp(o, ['UNIDAD', 'Unidad', 'UNIDAD_MEDIDA'])).trim().toUpperCase();
+      const pesoTotal = unidadOrden === 'KG' ? qty : pesoUN * qty;
 
       const fechaOrden = String(getProp(o, ['FECHAINICIO', 'FECHA', 'FECHA_INICIO'])).split('T')[0];
       // La orden Provisional trae un RANGO propio (FECHAINICIO..FECHAFIN), no una fecha puntual —
@@ -1026,18 +1073,24 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const fechaOrdenFin = String(getProp(o, ['FECHAFIN', 'FECHA_FIN'])).split('T')[0] || fechaOrden;
 
       // Pre-auditoría: un material puede tener varias necesidades candidatas (distintas áreas o
-      // distintos Plan Grupo P2 con rangos de fecha distintos). Se prioriza la que TRASLAPA con el
-      // rango de ESTA orden (no basta con que la fecha de inicio de la orden caiga dentro del rango
-      // del plan — el plan puede cubrir solo el tramo final de la orden, como en el ejemplo de
-      // arriba: plan 07-21..07-21 traslapa con orden 07-17..07-21 en el día 07-21). Si ningún
-      // candidato traslapa, se usa el primero como referencia y se marca origenAmbiguo.
+      // distintos Plan Grupo P2 con rangos de fecha distintos). El criterio real es FECHAFIN de la
+      // orden — es la fecha con la que SAP "traduce" a qué necesidad responde (confirmado por el
+      // usuario con datos reales: material 30010853, orden #086 con Fin extr. 21/08 SÍ corresponde
+      // al Plan #375, fechado 21/08; orden #087, misma material, Fin extr. 24/08 NO corresponde a
+      // ese mismo plan, aunque su FECHAINICIO (20/08) caiga dentro del rango del plan — antes se
+      // comparaba el RANGO completo de la orden [FECHAINICIO,FECHAFIN] contra el del plan, lo que
+      // hacía que una orden ancha "rozara" de pasada un plan angosto y se le atribuyera igual).
+      // Se prioriza el candidato cuyo rango [fecha_inicio,fecha_fin] contiene el FECHAFIN de esta
+      // orden. Si ninguno contiene esa fecha, se usa el primero como referencia y se marca
+      // origenAmbiguo — esto aplica también con UN solo candidato: no hay "único candidato de
+      // confianza", si su fecha no corresponde, la etiqueta debe advertirlo igual.
       const origenCandidatos = materialAreaMap.get(String(Number(info.code))) || [];
       const origenEnRango = origenCandidatos.find(c =>
-        fechaOrden && fechaOrdenFin && c.fecha_inicio !== '—' && c.fecha_fin !== '—' &&
-        fechaOrden <= c.fecha_fin && fechaOrdenFin >= c.fecha_inicio
+        fechaOrdenFin && c.fecha_inicio !== '—' && c.fecha_fin !== '—' &&
+        fechaOrdenFin >= c.fecha_inicio && fechaOrdenFin <= c.fecha_fin
       );
       const origen = origenEnRango || origenCandidatos[0];
-      const origenAmbiguo = origenCandidatos.length > 1 && !origenEnRango;
+      const origenAmbiguo = origenCandidatos.length > 0 && !origenEnRango;
 
       return {
         orden: getProp(o, ['ORDENPREVISIONAL', 'ORDEN']) || '—',
@@ -1047,7 +1100,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         descripcion: info.desc,
         ancho: info.ancho, largo: info.largo, esp: info.esp, dens: info.dens,
         cant: qty,
-        peso: pesoUN * qty,
+        peso: pesoTotal,
         alturaTotal: hTotal,
         subBloques: subB,
         nroCargas: nLoads,
@@ -1076,7 +1129,12 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   // boundary 'future' (Provisionales): descarta fechas pasadas SIEMPRE, sin importar qué haya
   // seleccionado el usuario — ni siquiera "Ver Todo el Plan" (selección vacía) puede traer una
   // orden provisional de ayer, porque por lógica de sistema no debería existir/evaluarse.
-  // boundary 'past' (FERT): descarta lo que quede después de +3 días desde hoy (ver nextBusinessDayStr).
+  // boundary 'past' (FERT): antes descartaba todo lo posterior a hoy+1 día hábil — techo fijo que el
+  // usuario pidió quitar (selector "estático"), porque con Capacidad Planificada en 3 niveles ahora
+  // hay motivo real para mirar FERT de hoy+2/hoy+3 desde este mismo tab, no solo desde el tooltip.
+  // 'past' ya no aplica NINGÚN filtro de fecha propio — queda igual de abierto que 'future' lo es
+  // hacia el futuro. El nombre del boundary se conserva solo como etiqueta histórica de cuál tab lo
+  // usa (Provisionales vs FERT), ya no describe una restricción real distinta entre los dos.
   const getFilteredData = useCallback((rawData: RawApiRow[], centro: string, dates: Set<string>, boundary: 'future' | 'past') => {
     // Auditamos responsables de Corte (013, 038, 039, 044, 036, 034, 002)
     const allowed = allowedRespPorCentro(centro);
@@ -1094,19 +1152,29 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       // (fundas de tela), no solo lámina/espuma — ver ES_FORRO. Sin órdenes reales de FORRO en este
       // audit al momento de verificarlo (0 en Provisionales/FERT), pero es el mismo riesgo latente.
       if (ES_FORRO(desc)) return false;
+      // "LAMINA DE APROVECHAMIENTO" (material 30020501): confirmado por el usuario — son órdenes
+      // ANUALES de recuperación de retazo/desperdicio, no cortes reales. Su descripción no trae
+      // geometría (ancho/largo/esp quedan en 0), así que su cantidad (decenas de miles por orden) se
+      // multiplica por el tiempo unitario igual que cualquier material real — caso real detectado:
+      // ~94 órdenes de este material sumaban 10.659h de las 10.708h "totales" de Quito en Órdenes
+      // FERT (99.5% del número era este artefacto). Se excluye igual que PRENSAD/FORRO.
+      if (/APROVECHAMIENTO/i.test(desc)) return false;
       const dateRaw = String(getProp(o, ['FECHAINICIO', 'FECHA', 'FECHA_INICIO'])).trim();
       const date = dateRaw.includes('T') ? dateRaw.split('T')[0] : dateRaw;
       const dateFinRaw = String(getProp(o, ['FECHAFIN', 'FECHA_FIN'])).trim();
       const dateFin = (dateFinRaw.includes('T') ? dateFinRaw.split('T')[0] : dateFinRaw) || date;
       if (boundary === 'future' && date < todayStr) return false;
-      if (boundary === 'past' && date > nextBusinessDayStr) return false;
       if (dates.size === 0) return c === centro && allowed.includes(r);
-      // La orden trae un RANGO (FECHAINICIO..FECHAFIN), no una fecha puntual: coincide si CUALQUIER
-      // día seleccionado en el calendario cae dentro de ese rango, no solo si coincide con el inicio.
-      const enRango = Array.from(dates).some(d => d >= date && d <= dateFin);
-      return c === centro && allowed.includes(r) && enRango;
+      // Coincide si el día seleccionado es el FECHAFIN de la orden — mismo criterio que ya se usa
+      // para "Grupo/Área Origen" (ver origenEnRango) y para lo que se MUESTRA en la columna Fecha
+      // (ver fechaMostrada): FECHAFIN es la fecha con la que se determina a qué corresponde la orden,
+      // no su rango completo. Antes esto comparaba el RANGO [FECHAINICIO,FECHAFIN] contra las fechas
+      // seleccionadas — un día seleccionado (ej. 21) hacía aparecer órdenes cuyo FECHAFIN real era
+      // muy posterior (ej. 24), inconsistente con lo que la fila mostraba y con el filtro elegido.
+      const coincide = dates.has(dateFin);
+      return c === centro && allowed.includes(r) && coincide;
     });
-  }, [todayStr, nextBusinessDayStr, allowedRespPorCentro]);
+  }, [todayStr, allowedRespPorCentro]);
 
   const provAuditUIO = useMemo(() => auditMapper(getFilteredData(ordenesProvisionales, '1000', selectedDatesProv, 'future'), '1000'), [auditMapper, getFilteredData, ordenesProvisionales, selectedDatesProv]);
   const provAuditGYE = useMemo(() => auditMapper(getFilteredData(ordenesProvisionales, '2000', selectedDatesProv, 'future'), '2000'), [auditMapper, getFilteredData, ordenesProvisionales, selectedDatesProv]);
@@ -1145,6 +1213,38 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     if (!claves || claves.size === 0) return rows;
     return rows.filter(r => !claves.has(`${r.material}|${r.fecha}|${r.cant}`));
   }, [clavesProvisionalesTransformadas]);
+
+  // Capacidad Operativa Nivel 1/2 (ver renderDashboard): filas de FERT/Provisional de un centro cuyo
+  // RANGO (fecha..fechaFin) incluye `fechaPareo` — no coincidencia exacta contra `fecha`, porque un
+  // Provisional trae rango propio (fecha_inicio..fecha_fin), no un día puntual (mismo bug ya
+  // corregido para Respuesta P3, ver fechaOrdenCoincideConP2). Para FERT, que normalmente es un solo
+  // día (fecha===fechaFin), el rango se reduce solo a esa fecha exacta igual. `allowedRespPorCentro`
+  // + PRENSADO/FORRO/APROVECHAMIENTO: mismo filtro que getFilteredData aplica para los tabs —
+  // auditMapper (fuente de fertAuditAllUIO/GYE, provAuditAllUIO/GYE) no lo aplica por su cuenta.
+  const filasCentroEnFechaPareo = useCallback((rows: UnifiedRow[], centroId: '1000' | '2000', fechaPareo: string): UnifiedRow[] => {
+    const allowed = allowedRespPorCentro(centroId);
+    return rows.filter(r =>
+      r.fecha <= fechaPareo && fechaPareo <= r.fechaFin &&
+      allowed.includes(r.responsable) &&
+      !/PRENSAD/i.test(r.descripcion) && !ES_FORRO(r.descripcion) && !/APROVECHAMIENTO/i.test(r.descripcion)
+    );
+  }, [allowedRespPorCentro]);
+
+  // Selector de fecha de Capacidad Operativa (ver renderDashboard): mismo filtro base que
+  // filasCentroEnFechaPareo (allowed + PRENSAD/FORRO/APROVECHAMIENTO), pero con coincidencia de fecha
+  // EXACTA o ACUMULADA en vez de ventana de pareo — confirmado con el usuario con ejemplos reales:
+  //   'exacta': fechaFin === fecha (FERT real ejecutado ESE día concreto).
+  //   'hasta': fechaFin <= fecha (cobertura Provisional: cualquier lote con fecha fin hasta la
+  //   evaluada, INCLUSIVE los ya viejos — cuentan sin excepción, pueden ser Provisionales aún no
+  //   ejecutados o generados por un nivel del plan P1/PFF que no se había considerado).
+  const filasCentroEnFecha = useCallback((rows: UnifiedRow[], centroId: '1000' | '2000', fecha: string, modo: 'exacta' | 'hasta'): UnifiedRow[] => {
+    const allowed = allowedRespPorCentro(centroId);
+    return rows.filter(r =>
+      allowed.includes(r.responsable) &&
+      !/PRENSAD/i.test(r.descripcion) && !ES_FORRO(r.descripcion) && !/APROVECHAMIENTO/i.test(r.descripcion) &&
+      (modo === 'exacta' ? r.fechaFin === fecha : r.fechaFin <= fecha)
+    );
+  }, [allowedRespPorCentro]);
 
   // Fechas P2 (fecha_inicio_plan) por material y centro, con su ÁREA de origen — puede haber varias
   // si el material aparece en más de un P2 (distintos orígenes/fechas). Se usa para acotar qué
@@ -1336,10 +1436,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return porCentro;
   }, [inventarioSAP, kpiLooperData, extractMaterialInfo]);
 
-  // Responsable de Control de Producción por material — de "InventarioAnioActual" (mismo endpoint
-  // que alimenta inventarioSAP), campo CODRESPPROD. Se toma el primer valor no vacío encontrado para
-  // el par (centro, material): un material se repite en varios almacenes/meses del inventario, pero
-  // el responsable de CP es el mismo en todos, así que no hace falta desambiguar por almacén/mes.
   // Responsable de Control de Producción por material y centro, en CASCADA de fuentes. Antes solo
   // miraba el inventario del propio centro (CODRESPPROD) y eso dejaba materiales sin responsable, que
   // luego caían en "Sin clasificar" y no se podían medir contra ningún proceso.
@@ -1349,22 +1445,34 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   // pero su responsable sí es conocible: el inventario del centro 1000 dice 038 y sus propias órdenes
   // en el centro 2000 también dicen 038. Eran ~12h de carga sin clasificar por un dato que sí existía.
   //
+  // Fuente del paso 1, CAMBIADA de InventarioAnioActual (CODRESPPROD, en inventarioSAP) a
+  // CuboInventarios (RespCtrlProd) — bug real encontrado con el usuario: verificado con datos reales
+  // (material 30000203 "LAMINA D19 PLOMO AF 133X188X1.8") que CODRESPPROD de InventarioAnioActual NO
+  // varía por centro (da "013" sin importar si se consulta como Centro 1000 o Centro 2000 — es un
+  // dato único de maestro de material, no el responsable real de esa planta), mientras que
+  // CuboInventarios sí trae el RespCtrlProd correcto POR CENTRO (mismo material: 013 en Centro 1000,
+  // 002 en Centro 2000 — confirmado contra una captura real de SAP que compartió el usuario). Esto
+  // hacía que Centro 2000 recuperara CERO componentes en su Necesidad PFF/P1: las láminas reales de
+  // su BOM (LAMINA D19 PLOMO AF, LAMINA ESQUINA, etc.) tienen ahí RespCtrlProd 002/039 — que SÍ están
+  // en la restricción RESPCTRLPROD real de Centro 2000 (002&038, + verticales 039) — pero el código
+  // las etiquetaba con el 013/036 heredado de InventarioAnioActual, que no está en esa restricción.
+  //
   // Orden de preferencia (de más a menos específico para ese centro):
-  //   1. Inventario del propio centro (CODRESPPROD)
+  //   1. CuboInventarios del propio centro (RespCtrlProd)
   //   2. Órdenes reales del propio centro (Provisionales / FERT)
-  //   3. Inventario de cualquier otro centro — el responsable del material suele ser el mismo
+  //   3. CuboInventarios de cualquier otro centro — el responsable del material suele ser el mismo
   const materialRespCPPorCentro = useMemo(() => {
     const porCentro: Record<string, Map<string, string>> = { '1000': new Map(), '2000': new Map() };
     const inventarioCualquierCentro = new Map<string, string>();
 
-    // 1. Inventario del propio centro
-    inventarioSAP.forEach(inv => {
-      const respCP = getProp(inv, ['CODRESPPROD']);
+    // 1. CuboInventarios del propio centro
+    cuboInventarios.forEach(inv => {
+      const respCP = getProp(inv, ['RespCtrlProd', 'RESPCTRLPROD']);
       if (!respCP) return;
       const code = extractMaterialInfo(inv).code;
       if (!code) return;
       if (!inventarioCualquierCentro.has(code)) inventarioCualquierCentro.set(code, respCP);
-      const map = porCentro[String(getProp(inv, ['CENTRO', 'Centro', 'centro'])).trim() as '1000' | '2000'];
+      const map = porCentro[String(getProp(inv, ['Centro', 'CENTRO', 'centro'])).trim() as '1000' | '2000'];
       if (map && !map.has(code)) map.set(code, respCP);
     });
 
@@ -1390,7 +1498,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     });
 
     return porCentro;
-  }, [inventarioSAP, ordenesProvisionales, ordenesFert, extractMaterialInfo]);
+  }, [cuboInventarios, ordenesProvisionales, ordenesFert, extractMaterialInfo]);
 
   // Descripción por material para la Respuesta P3 — en cascada de fuentes, de más a menos específica.
   // Antes solo leía de Provisionales/FERT auditados (provAuditUIO/GYE, fertAuditUIO/GYE), que son los
@@ -1634,6 +1742,31 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const necesidadCapacidadUIO = useMemo(() => necesidadCapacidadMapper(necesidadesPlantaConsolidada, '1000'), [necesidadCapacidadMapper, necesidadesPlantaConsolidada]);
   const necesidadCapacidadGYE = useMemo(() => necesidadCapacidadMapper(necesidadesPlantaConsolidada, '2000'), [necesidadCapacidadMapper, necesidadesPlantaConsolidada]);
 
+  // Capacidad Operativa Nivel 2 (red de seguridad, ciclo atrasado un día — ver renderDashboard): SOLO
+  // P1/PFF (necesidadPFFNivel2Data, hoy+2 días hábiles). Venta Externa-Espumas NO tiene Nivel 2 propio
+  // — verificado que fetchNecesidadesPlanta ya toma "el único P2-Espumas activo del grupo, sea cual
+  // sea su fecha" (Venta Externa garantiza como máximo uno activo por centro): si ese plan está
+  // atrasado, YA es lo que Nivel 1 está usando, no hay un segundo plan "de ayer" que buscar aparte.
+  const necesidadPFFNivel2Consolidada = useMemo(
+    () => [...necesidadPFFNivel2Data['1000'], ...necesidadPFFNivel2Data['2000']].map(r => ({ ...r, area: 'Ensamblado' })),
+    [necesidadPFFNivel2Data]
+  );
+  const necesidadCapacidadNivel2UIO = useMemo(() => necesidadCapacidadMapper(necesidadPFFNivel2Consolidada, '1000'), [necesidadCapacidadMapper, necesidadPFFNivel2Consolidada]);
+  const necesidadCapacidadNivel2GYE = useMemo(() => necesidadCapacidadMapper(necesidadPFFNivel2Consolidada, '2000'), [necesidadCapacidadMapper, necesidadPFFNivel2Consolidada]);
+  // Pool de necesidad por material del Nivel 2 — mismo formato de clave que materialNecesidadesPlantaMapPorCentro
+  // (String(Number(codigo_material))), para que calcularFaltanteNecesidadPlanta pueda netear contra él.
+  const materialNecesidadPFFNivel2MapPorCentro = useMemo(() => {
+    const porCentro: Record<'1000' | '2000', Map<string, number>> = { '1000': new Map(), '2000': new Map() };
+    (['1000', '2000'] as const).forEach(centro => {
+      necesidadPFFNivel2Data[centro].forEach(row => {
+        const key = String(Number(row.codigo_material));
+        const map = porCentro[centro];
+        map.set(key, (map.get(key) || 0) + parseQty(row.cantidad_produccion_neta));
+      });
+    });
+    return porCentro;
+  }, [necesidadPFFNivel2Data]);
+
   // Kg equivalentes de la necesidad P2 completa por material — último fallback de la Respuesta P3
   // (ver respuestaSalidaRowsPorCentro) cuando FERT/Provisional/Stock no cubren nada todavía: en vez
   // de responder 0 (Sin dato) y dejar el material sin ninguna orden generada, se usa el Kg que
@@ -1671,12 +1804,19 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   // reconciliarProvisionalesConNecesidad, para no duplicar horas que una orden real ya cubre.
   // Devuelve UnifiedRow[] (no un número) para reusar el mismo sumByResp/reduce que ya usa
   // renderDashboard para Carrusel/Vertical — cada fila conserva su "responsable".
+  // `cobertura`: FERT + Provisional combinados (antes solo recibía Provisional) — un FERT ya firme
+  // cubre la necesidad exactamente igual que un Provisional, ambos son "ya hay algo generándose para
+  // esto". `necesidadPorMaterialOverride`: para Capacidad Operativa Nivel 2 (ver renderDashboard),
+  // que debe netear contra el pool de necesidad DE ESE nivel, no contra el de Nivel 1
+  // (materialNecesidadesPlantaMapPorCentro, que solo tiene el ciclo fresco de hoy). Sin override, el
+  // único call-site preexistente (Nivel 1, antes de esta reestructuración) sigue igual.
   const calcularFaltanteNecesidadPlanta = useCallback((
     centroId: '1000' | '2000',
     provRows: UnifiedRow[],
-    necesidadRows: UnifiedRow[]
+    necesidadRows: UnifiedRow[],
+    necesidadPorMaterialOverride?: Map<string, number>
   ): UnifiedRow[] => {
-    const necesidadPorMaterial = materialNecesidadesPlantaMapPorCentro[centroId];
+    const necesidadPorMaterial = necesidadPorMaterialOverride ?? materialNecesidadesPlantaMapPorCentro[centroId];
     if (!necesidadPorMaterial || necesidadPorMaterial.size === 0) return [];
 
     const stockPorMaterial = stockUnidadesPorMaterialPorCentro[centroId];
@@ -1719,6 +1859,21 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   // son provisionales ya transformadas que responden a un P2 anterior. El nivel de emergencia
   // "Necesidad P2" ya no hace falta: si nada cubre, el faltante ES la necesidad completa, que es
   // justamente lo que el PFD debe mandar a fabricar.
+  // Peso por unidad (Kg/UN) por material — mismo criterio que ya usan Provisionales/FERT (looperMatch
+  // si existe, si no ancho×largo×espesor×densidad/1e6, ver línea ~1049) — reusado aquí para poder
+  // convertir cantidadKg de vuelta a UN antes de grabar (ver cantidadUnidades en RespuestaP3Row).
+  const pesoUNPorMaterial = useMemo(() => {
+    const map = new Map<string, number>();
+    materialDescMap.forEach((descripcion, material) => {
+      const looperMatch = kpiLooperData.find(k => cleanCode(k.Material) === material);
+      if (looperMatch) { map.set(material, safeNum(looperMatch.PesoUN)); return; }
+      const info = extractMaterialInfo({ MATERIAL: material, NOMBRE: descripcion } as RawApiRow);
+      const densVal = safeNum(info.dens);
+      map.set(material, (info.ancho * info.largo * info.esp * densVal) / 1000000);
+    });
+    return map;
+  }, [materialDescMap, kpiLooperData, extractMaterialInfo]);
+
   const respuestaSalidaRowsPorCentro = useCallback((centro: '1000' | '2000', esPFD: boolean = false): RespuestaP3Row[] => {
     const necesidadMap = materialNecesidadesPlantaMapPorCentro[centro];
     const origenesMap = materialOrigenesPlantaMapPorCentro[centro];
@@ -1741,6 +1896,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const cubiertoKg = Math.min(necesidadKg, disponibleKg);
       const faltanteKg = Math.max(0, necesidadKg - disponibleKg);
       const cantidadKg = esPFD ? faltanteKg : cubiertoKg;
+      const pesoUN = pesoUNPorMaterial.get(material) || 0;
+      const cantidadUnidades = pesoUN > 0 ? cantidadKg / pesoUN : 0;
 
       let fuente: FuenteRespuestaP3;
       if (necesidadKg <= 0) fuente = 'Sin dato';
@@ -1764,6 +1921,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         descripcion: materialDescMap.get(material) || '—',
         tienePlan: cantidadKg > 0,
         cantidadKg,
+        cantidadUnidades,
         necesidadKg,
         stockKg,
         provisionalKg,
@@ -1778,7 +1936,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     // muestra solo los "Sin dato" y da la falsa impresión de que todo devuelve 0 — caso real: 148 de
     // 182 materiales sí tenían respuesta, pero quedaban ocultos tras hacer scroll).
     }).sort((a, b) => Number(b.tienePlan) - Number(a.tienePlan));
-  }, [materialNecesidadesPlantaMapPorCentro, materialOrigenesPlantaMapPorCentro, provisionalKgPorMaterialPorCentro, fertKgPorMaterialPorCentro, stockKgPorMaterialPorCentro, necesidadKgPorMaterialPorCentro, materialDescMap]);
+  }, [materialNecesidadesPlantaMapPorCentro, materialOrigenesPlantaMapPorCentro, provisionalKgPorMaterialPorCentro, fertKgPorMaterialPorCentro, stockKgPorMaterialPorCentro, necesidadKgPorMaterialPorCentro, materialDescMap, pesoUNPorMaterial]);
 
   // Reparte cantidadKg de un material entre sus planes P2 origen, proporcional a la necesidad que
   // cada uno aportó — mismo criterio que getOrigenesProrrateo de Corte y Laminado, pero SIN redondeo a
@@ -1843,6 +2001,22 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     });
   }, []);
 
+  // Tiempo unitario real por material (Tiempo_Min), filtrado por Centro+Grupo — reemplaza el catálogo
+  // genérico /tiemposEnsamblado, que tenía huecos placeholder (verificado: Tiempo[H] no cuadraba
+  // contra un pivote real de SAP). Confirmado con el usuario que esta es la misma fuente que usa
+  // Venta Externa (ver getTiemposEnsambladobyCentroyCodigoGrupo) y que reproduce el Tiempo[H] real
+  // mucho más de cerca (verificado: día 20 pasó de 0.1h a 30.7h vs 32.67h real, ~94%).
+  // auditMapper/necesidadCapacidadMapper ya esperaban exactamente esta forma (CodMaterial/Centro/
+  // Tiempo_Min como fallback de Tiempo), no requirieron cambios.
+  const fetchTiemposCorteYLaminado = useCallback(async (): Promise<BodyResponse<RawApiRow[]>> => {
+    const resArr = await Promise.all(
+      Object.entries(CODIGO_GRUPO_CORTE_POR_CENTRO).map(([centro, codigoGrupo]) =>
+        serviciosService.getTiemposEnsambladobyCentroyCodigoGrupo(centro, codigoGrupo).catch(() => ({ data: [] }))
+      )
+    );
+    return { data: resArr.flatMap(r => r.data?.data || r.data || []) };
+  }, []);
+
   const fetchDataAsync = useCallback(async () => {
     setIsLoading(true);
     try {
@@ -1863,24 +2037,31 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         })
         .catch(e => console.warn('[Corte Espuma] No se pudieron cargar las restricciones de responsables:', (e as Error).message));
 
-      const [provsRes, fertsRes, invRes, timesRes, skillsRes, maintRes, kpiRes, carruselesRes] = await Promise.all([
+      // fetchTiemposCorteYLaminado se dispara en paralelo pero se espera aparte del resto: metida
+      // dentro del mismo Promise.all (con un tipo de retorno distinto a las demás llamadas, que son
+      // todas BodyResponse<any> vía su propio .catch inline) rompía la inferencia de tipos del tuple
+      // completo — TS colapsaba TODAS las posiciones al tipo del array interno. Aparte, sin tocar.
+      const timesPromise = fetchTiemposCorteYLaminado();
+      const [provsRes, fertsRes, invRes, skillsRes, maintRes, kpiRes, carruselesRes, cuboRes] = await Promise.all([
         serviciosService.OrdenesProvisionalesPaginados(1, 20000).catch(() => ({ data: [] })),
         serviciosService.getOrdenesFert(1, 20000).catch(() => ({ data: [] })),
         serviciosService.getInventarioAñoActual().catch(() => ({ data: [] })),
-        serviciosService.getTiemposEnsamblado(1, 20000).catch(() => ({ data: [] })),
         serviciosService.getCuboHabilidadesOP().catch(() => ({ data: [] })),
         serviciosService.ListarMantenimientoPreventivosProgramados().catch(() => ({ data: [] })),
         serviciosService.getKPIMAestroLooper().catch(() => ({ data: [] })),
-        serviciosService.getKPIMaestroCarruseles().catch(() => ({ data: [] }))
+        serviciosService.getKPIMaestroCarruseles().catch(() => ({ data: [] })),
+        serviciosService.getCuboInventarios(1, 50000).catch(() => ({ data: [] }))
       ]);
+      const timesRes = await timesPromise;
 
       setOrdenesProvisionales(provsRes.data?.data || provsRes.data || []);
       setOrdenesFert(fertsRes.data?.data || fertsRes.data || []);
       setInventarioSAP(invRes.data || []);
-      setTiemposCatalogo(timesRes.data?.data || timesRes.data || []);
+      setTiemposCatalogo(timesRes.data || []);
       setMantenimientosSAP(Array.isArray(maintRes.data) ? maintRes.data : []);
       setKpiLooperData(kpiRes.data || []);
       setKpiCarruselesData(carruselesRes.data?.data || carruselesRes.data || []);
+      setCuboInventarios(Array.isArray(cuboRes.data) ? cuboRes.data : []);
       
       const skills: RawApiRow[] = Array.isArray(skillsRes.data) ? skillsRes.data : [];
       const operadores = skills.filter((s) => String(getProp(s, ['LineaProceso', 'LINEA_PROCESO'])).toUpperCase().includes('CORTE'));
@@ -1893,7 +2074,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         ordenesProvisionales: provsRes.data?.data || provsRes.data || [],
         ordenesFert: fertsRes.data?.data || fertsRes.data || [],
         inventarioSAP: invRes.data || [],
-        tiemposCatalogo: timesRes.data?.data || timesRes.data || [],
+        cuboInventarios: Array.isArray(cuboRes.data) ? cuboRes.data : [],
+        tiemposCatalogo: timesRes.data || [],
         mantenimientosSAP: Array.isArray(maintRes.data) ? maintRes.data : [],
         kpiLooperData: kpiRes.data || [],
         kpiCarruselesData: carruselesRes.data?.data || carruselesRes.data || [],
@@ -1910,7 +2092,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [fetchTiemposCorteYLaminado]);
 
   const fetchNecesidadesPlanta = useCallback(async (diasOverride?: DiasNoLaborables) => {
     setNecesidadesPlantaLoading(true);
@@ -1954,24 +2136,50 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       // directo, sin pasos intermedios). Sin esto, un P2 que quedó "A" por olvido del área origen
       // (nunca desactivado al generar el siguiente ciclo) seguía apareciendo como necesidad vigente
       // indefinidamente, sin importar qué tan vieja fuera su fecha.
+      //
+      // EXCEPCIÓN — Venta Externa "Espumas": ya NO se graba a hoy+1 fijo (generarPlanP2Core ahora usa
+      // la fecha que el planificador seleccionó en "Ventana de Producción", la "fecha del PT" —
+      // mismo criterio que ya usa P1/PFF, ver explotarPFFParaCentro). Exigir aquí el match exacto
+      // contra hoy+1 dejaría de encontrarlo. Para ESTA rama se toma el plan ACTIVO más reciente por
+      // grupo, sin filtrar por fecha — mismo patrón de desempate que masRecientePFF (ver
+      // explotarPFFParaCentro): seguro porque desactivarOtrosPlanes en Venta Externa ya garantiza
+      // como máximo un P2 Espumas activo por centro a la vez. Muebles/Prensado y cualquier otro grupo
+      // no-VentaExterna-Espumas siguen exigiendo el match exacto de siempre, sin cambios.
       // diasOverride: al sincronizar, el calendario de feriados se acaba de cargar y el estado
       // `diasNoLaborables` todavía no se refleja en este closure — se recibe el Set directo para no
       // calcular la fecha objetivo con feriados vacíos (ver handleSincronizar).
       const fechaObjetivoP2 = format(nextBusinessDayCal(new Date(), diasOverride ?? diasNoLaborables), 'yyyy-MM-dd');
 
       const planGruposRes = await planGrupoService.getAll();
-      const planesActivos = (planGruposRes.data || []).filter((pg) => {
+      const esEspumaVentaExterna = (pg: PlanGrupo) =>
+        /venta\s*externa/i.test(grupoPorCodigo.get(pg.codigo_grupo)?.nombre_grupo || '') && /espuma/i.test(String(pg.valor || ''));
+
+      const candidatosBase = (planGruposRes.data || []).filter((pg) => {
         const valor = String(pg.valor || '').trim();
         if (pg.estado !== 'A' || !gruposCodigos.includes(pg.codigo_grupo)) return false;
         if (!/plan\s*t[aá]ctico.*centro.*p2/i.test(valor)) return false;
         const esVentaExterna = /venta\s*externa/i.test(grupoPorCodigo.get(pg.codigo_grupo)?.nombre_grupo || '');
         if (esVentaExterna && !/espuma/i.test(valor)) return false;
-        // fechaLocalEcuador, NO split('T')[0]: fecha_inicio_plan es UTC — mismo bug de zona horaria
-        // que en explotarPFFParaCentro (ver su comentario). Un P2 grabado tarde en el día cruzaba a
-        // la fecha calendario siguiente en UTC y dejaba de coincidir con fechaObjetivoP2 (local).
-        if (fechaLocalEcuador(pg.fecha_inicio_plan) !== fechaObjetivoP2) return false;
         return true;
       });
+
+      // fechaLocalEcuador, NO split('T')[0]: fecha_inicio_plan es UTC — mismo bug de zona horaria
+      // que en explotarPFFParaCentro (ver su comentario). Un P2 grabado tarde en el día cruzaba a
+      // la fecha calendario siguiente en UTC y dejaba de coincidir con fechaObjetivoP2 (local).
+      const conFechaExacta = candidatosBase.filter((pg) => !esEspumaVentaExterna(pg) && fechaLocalEcuador(pg.fecha_inicio_plan) === fechaObjetivoP2);
+
+      const masRecienteEspumaVEPorGrupo = new Map<number, PlanGrupo>();
+      candidatosBase.filter(esEspumaVentaExterna).forEach((pg) => {
+        const actual = masRecienteEspumaVEPorGrupo.get(pg.codigo_grupo);
+        if (!actual) { masRecienteEspumaVEPorGrupo.set(pg.codigo_grupo, pg); return; }
+        const fechaNueva = fechaLocalEcuador(pg.fecha_inicio_plan);
+        const fechaActual = fechaLocalEcuador(actual.fecha_inicio_plan);
+        if (fechaNueva > fechaActual || (fechaNueva === fechaActual && pg.codigo_plan_grupo > actual.codigo_plan_grupo)) {
+          masRecienteEspumaVEPorGrupo.set(pg.codigo_grupo, pg);
+        }
+      });
+
+      const planesActivos = [...conFechaExacta, ...Array.from(masRecienteEspumaVEPorGrupo.values())];
 
       const planGrupoCodigos = planesActivos.map((pg) => pg.codigo_plan_grupo);
       const planPorCodigo = new Map(planesActivos.map((pg) => [pg.codigo_plan_grupo, pg]));
@@ -2035,26 +2243,33 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   // vez) — mismo patrón que explodeNecesidadesFert en Venta Externa: acumula cantidad por material
   // único antes de explotar (para no repetir llamadas al Maestro), conservando el desglose por
   // codigo_plan_grupo origen para no perder trazabilidad al prorratear la Respuesta P3.
-  const explotarPFFParaCentro = useCallback(async (
+  //
+  // Recibe `fechaObjetivo` como parámetro (antes era siempre hoy+3 días hábiles, calculado adentro) —
+  // extraído así para que Capacidad Operativa Nivel 2 (ver renderDashboard/calcularNecesidadPFFNivel2)
+  // pueda reutilizar EXACTAMENTE esta misma lógica apuntando a hoy+2, sin duplicar ~150 líneas de
+  // explosión de BOM. `explotarPFFParaCentro` (más abajo) es un wrapper de una línea que sigue
+  // calculando hoy+3 y delega aquí — mismo nombre, misma firma, mismo comportamiento para
+  // calcularNecesidadPFF, sin ningún cambio para el flujo P1/PFF existente.
+  const explotarPFFParaCentroConFecha = useCallback(async (
     codigoGrupoEnsamblado: number,
     centro: '1000' | '2000',
     planesTodos: PlanGrupo[],
     detallesTodos: DetalleTactico[],
+    fechaObjetivoPFF: string,
     onStep: () => void
   ): Promise<{ filas: NecesidadPlantaRow[]; sinMatch: string[]; conError: string[]; tipoPlan: 'P1' | 'PFF' | null }> => {
-    // Además del estado, se exige que fecha_inicio_plan coincida EXACTO con hoy + 3 días hábiles: esa
+    // Además del estado, se exige que fecha_inicio_plan coincida EXACTO con `fechaObjetivoPFF`: esa
     // es la fecha de producción del Producto Terminado (PT) real del PFF/P1 — confirmado por el
     // usuario, corrige un valor (hoy+2) que se había fijado en una sesión anterior sin ese respaldo
     // explícito y contradecía la ventana +3 acordada al principio de este trabajo. El P2 sigue fijo en
     // hoy+1 (ver Venta Externa) por su propia regla, independiente de este offset — ya NO son "un día
     // hábil antes" uno del otro, son dos reglas de negocio separadas. Si el origen ya dejó activo un ciclo MÁS LEJANO (ej.
     // hoy+4/hoy+5), como una corrida de "Generar PFF" adelantada, ese no se recupera todavía — solo se
-    // procesa el ciclo cuya producción es hoy+3, para no adelantar necesidad de lámina que aún no
-    // corresponde a este ciclo. Antes se recuperaba TODO plan "A" sin validar contra hoy, y solo se
+    // procesa el ciclo cuya producción es `fechaObjetivoPFF`, para no adelantar necesidad de lámina que
+    // aún no corresponde a este ciclo. Antes se recuperaba TODO plan "A" sin validar contra hoy, y solo se
     // desempataba por "el más reciente" — en datos reales (2026-08-03: planes #131/#132 del 01-ago con
     // fecha 06-ago, y #150/#151 del 03-ago con fecha 07-ago, los 4 "A" a la vez) eso podía quedarse con
     // un ciclo que no correspondía al de hoy.
-    const fechaObjetivoPFF = format(sumarDiasHabiles(new Date(), 3), 'yyyy-MM-dd');
     const planesPFFCrudo = planesTodos.filter(p => {
       if (p.codigo_grupo !== codigoGrupoEnsamblado || p.estado !== 'A' || !ES_PLAN_ENSAMBLADO_FIRME(p.valor)) return false;
       // fechaLocalEcuador, NO split('T')[0]: la API graba fecha_inicio_plan en UTC. Un plan guardado
@@ -2192,7 +2407,18 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     });
 
     return { filas, sinMatch, conError, tipoPlan };
-  }, [sumarDiasHabiles, allowedRespPorCentro, materialRespCPPorCentro]);
+  }, [allowedRespPorCentro, materialRespCPPorCentro]);
+
+  // Wrapper de siempre: hoy+3 días hábiles, delega en explotarPFFParaCentroConFecha. Mismo
+  // nombre/firma/comportamiento de antes — no cambia nada para calcularNecesidadPFF.
+  const explotarPFFParaCentro = useCallback((
+    codigoGrupoEnsamblado: number,
+    centro: '1000' | '2000',
+    planesTodos: PlanGrupo[],
+    detallesTodos: DetalleTactico[],
+    onStep: () => void
+  ) => explotarPFFParaCentroConFecha(codigoGrupoEnsamblado, centro, planesTodos, detallesTodos, format(sumarDiasHabiles(new Date(), 3), 'yyyy-MM-dd'), onStep),
+  [explotarPFFParaCentroConFecha, sumarDiasHabiles]);
 
   // Botón manual "Calcular Necesidad PFF": corre la explosión para Ensamblado - Quito (1000, grupo 1)
   // Y Ensamblado - Guayaquil (2000, grupo 6) en la misma acción. A diferencia de Corte y Laminado
@@ -2232,6 +2458,17 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       setTipoPlanEnsambladoPorCentro({ '1000': resultado1000.tipoPlan, '2000': resultado2000.tipoPlan });
       actualizarEnCache<SnapshotCorteEspuma>(CACHE_CORTE_ESPUMA, { necesidadPFFData: pff });
 
+      // Nivel 2 de Capacidad Operativa (red de seguridad, ciclo atrasado un día — ver renderDashboard):
+      // mismos planesTodos/detallesTodos ya obtenidos arriba, sin fetch extra, apuntando a hoy+2 en vez
+      // de hoy+3. Silencioso (onStep no-op, no se suma al contador de progreso visible ni se muestra en
+      // la notificación) para no confundir el flujo principal — solo alimenta Capacidad Planificada.
+      const fechaObjetivoNivel2 = format(sumarDiasHabiles(new Date(), 2), 'yyyy-MM-dd');
+      const [resultado1000Nivel2, resultado2000Nivel2] = [
+        await explotarPFFParaCentroConFecha(CODIGO_GRUPO_ENSAMBLADO_QUITO, '1000', planesTodos, detallesTodos, fechaObjetivoNivel2, () => {}),
+        await explotarPFFParaCentroConFecha(CODIGO_GRUPO_ENSAMBLADO_GUAYAQUIL, '2000', planesTodos, detallesTodos, fechaObjetivoNivel2, () => {}),
+      ];
+      setNecesidadPFFNivel2Data({ '1000': resultado1000Nivel2.filas, '2000': resultado2000Nivel2.filas });
+
       const sinMatch = [...resultado1000.sinMatch, ...resultado2000.sinMatch];
       const conError = [...resultado1000.conError, ...resultado2000.conError];
       setPffDiagnostico({ sinMatch, conError });
@@ -2255,7 +2492,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     } finally {
       setIsCalculandoPFF(false);
     }
-  }, [addNotification, explotarPFFParaCentro]);
+  }, [addNotification, explotarPFFParaCentro, explotarPFFParaCentroConFecha, sumarDiasHabiles]);
 
   // Paso 1 de la Respuesta P3: arma la vista previa de lo que se va a grabar para UN centro y abre el
   // diálogo de confirmación. No llama a ningún servicio todavía — mismo patrón de dos pasos que
@@ -2376,6 +2613,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             fecha_fin_plan: preview.fechaFin,
             estado: 'A',
             usuario_creacion: usuario,
+            // Faltaba en el payload — la columna quedaba NULL en BD (verificado con datos reales).
+            // Mismo patrón ya usado en grupo-operadores/components/form.tsx.
+            fecha_creacion: new Date(),
           };
 
           const planResponse = await planGrupoService.save(planPayload as unknown as PlanGrupo);
@@ -2385,7 +2625,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           let fallidos = 0;
 
           for (const row of preview.rows) {
-            const splits = getOrigenesProrrateoEspuma(row.material, row.cantidadKg, preview.centro, nuevoCodigoPlanGrupo);
+            // row.cantidadUnidades (no cantidadKg): el P2 que se responde pide y registra en UN, no
+            // en Kg — grabar Kg producía comparaciones falsas contra el P2 en Venta Externa/Muebles/
+            // Prensado (ver cantidadUnidades en RespuestaP3Row).
+            const splits = getOrigenesProrrateoEspuma(row.material, row.cantidadUnidades, preview.centro, nuevoCodigoPlanGrupo);
             for (const split of splits) {
               try {
                 const detallePayload = {
@@ -2500,6 +2743,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             fecha_fin_plan: preview.fechaFin,
             estado: 'A',
             usuario_creacion: usuario,
+            // Faltaba en el payload — la columna quedaba NULL en BD (verificado con datos reales).
+            // Mismo patrón ya usado en grupo-operadores/components/form.tsx.
+            fecha_creacion: new Date(),
           };
 
           const planResponse = await planGrupoService.save(planPayload as unknown as PlanGrupo);
@@ -2509,7 +2755,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           let fallidos = 0;
 
           for (const row of preview.rows) {
-            const splits = getOrigenesProrrateoEspuma(row.material, row.cantidadKg, preview.centro, nuevoCodigoPlanGrupo);
+            // row.cantidadUnidades (no cantidadKg): el P2 que se responde pide y registra en UN, no
+            // en Kg — grabar Kg producía comparaciones falsas contra el P2 en Venta Externa/Muebles/
+            // Prensado (ver cantidadUnidades en RespuestaP3Row).
+            const splits = getOrigenesProrrateoEspuma(row.material, row.cantidadUnidades, preview.centro, nuevoCodigoPlanGrupo);
             for (const split of splits) {
               try {
                 const detallePayload = {
@@ -2578,6 +2827,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       setOrdenesProvisionales(snap.ordenesProvisionales);
       setOrdenesFert(snap.ordenesFert);
       setInventarioSAP(snap.inventarioSAP);
+      setCuboInventarios(snap.cuboInventarios || []);
       setTiemposCatalogo(snap.tiemposCatalogo);
       setMantenimientosSAP(snap.mantenimientosSAP);
       setKpiLooperData(snap.kpiLooperData);
@@ -2656,18 +2906,31 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   // proceso/responsable que usa esa máquina (fan-out del join de origen). Se deduplica por
   // ID_MAQUINA + FECHA_OT_PRG_INI + FECHA_OT_PRG_FIN para quedarnos con una sola línea por
   // ventana de mantenimiento real.
+  //
+  // Filtro por AREA, bug real reportado por el usuario ("veo algo que no corresponde/no está
+  // ligado al Área Corte y Laminado"): el endpoint trae TODO el mantenimiento de la planta, sin
+  // filtrar por área — y los ID_MAQUINA de este módulo (CR01/CR03/CR04/CNC01/CR02) NO son
+  // exclusivos de Corte Espuma en SAP, se reutilizan en otras áreas. Verificado con datos reales:
+  // CR04 aparece en Almohadas/Corte y Laminado/Forros/Taller de Corte; CR02 (carrusel de
+  // Guayaquil) aparece en Forros/Prensado/Taller de Corte — CERO registros de "Corte y Laminado"
+  // real. Sin este filtro, `resolveMachineLink` (que solo cruza por ID_MAQUINA + Centro, sin mirar
+  // AREA) le atribuía a Corte Espuma mantenimiento de otras áreas por la sola coincidencia del
+  // código de máquina. El valor real en SAP trae doble espacio ("Corte y  Laminado"), de ahí el
+  // \s+ en vez de comparar literal.
   const uniqueMantenimientosSAP = useMemo(() => {
     const seen = new Set<string>();
-    return mantenimientosSAP.filter(m => {
-      const key = [
-        getProp(m, ['ID_MAQUINA']),
-        getProp(m, ['FECHA_OT_PRG_INI']),
-        getProp(m, ['FECHA_OT_PRG_FIN']),
-      ].join('|').trim().toUpperCase();
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
+    return mantenimientosSAP
+      .filter(m => /^corte\s+y\s+laminado$/i.test(getProp(m, ['AREA']).trim()))
+      .filter(m => {
+        const key = [
+          getProp(m, ['ID_MAQUINA']),
+          getProp(m, ['FECHA_OT_PRG_INI']),
+          getProp(m, ['FECHA_OT_PRG_FIN']),
+        ].join('|').trim().toUpperCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
   }, [mantenimientosSAP]);
 
   // Vincula un ID_MAQUINA de Mantenimiento SAP con la tarjeta de cabecera del resumen.
@@ -2868,34 +3131,66 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     // Paro común de la planta (todas las máquinas comparten el valor; ya no se edita por columna).
     const paroPlanta = machines[0] ? config.shifts[machines[0].id]?.paro1 ?? 0 : 0;
 
-    // Capacidad Operativa (este resumen) se concilia contra dos actividades — criterio dado por el
-    // usuario tras comparar en vivo "Órdenes FERT" y "Necesidades Planta" y no encontrar coherencia
-    // con lo que mostraba el Resumen, afinado en dos rondas de corrección:
-    //   1) Órdenes FERT, fecha HOY hacia atrás (ya aprobadas/ejecutadas, no ventana futura).
-    //   2) Necesidades Planta (VentaExterna + Muebles + Prensado + Ensamblado P1/PFF, con
-    //      fecha_inicio_plan = mañana y estado activo), NETEADA contra Provisionales por MATERIAL
-    //      — mismo cálculo para las 4 áreas (Prensado/Muebles/Ensamblado generan sus láminas por
-    //      LOTE, Venta Externa 1 a 1, pero la cuenta es la misma: faltante = necesidad − cobertura,
-    //      ver calcularFaltanteNecesidadPlanta). Provisionales YA NO se suma aparte como tercer
-    //      término (así se sumaban sus horas dos veces: una directo, otra dentro de la necesidad que
-    //      ese mismo lote de producción origina) — solo sirve para descontar de la necesidad lo que
-    //      ya tiene un lote/pedido generándose. Su tab propio queda intacto, sin cambios.
+    // Capacidad Operativa se organiza por FECHA (una tarjeta por día) — "Nivel 1/2/3" es la
+    // maquinaria interna que decide de dónde sale cada fecha y qué tan firme está, pero ya no es el
+    // eje que ve el usuario (antes lo era, y resultó ilegible para alguien que no construyó el
+    // código). Referencia de qué alimenta cada fecha:
+    //   Necesidad "a tiempo" (antes Nivel 1): 3 fuentes con su propia fecha real de origen — P1/PFF
+    //     hoy+3 días hábiles, P2-Espumas Venta la fecha que seleccionó el planificador, P2-Muebles/
+    //     Prensado hoy+1 día hábil exacto.
+    //   Necesidad "red de seguridad" (antes Nivel 2, ver necesidadPFFNivel2Data): solo P1/PFF, para
+    //     un plan que se quedó fechado hoy+2 en vez de hoy+3 (activo pero invisible para la necesidad
+    //     "a tiempo", que exige match exacto). Venta Externa-Espumas no la necesita: garantiza un
+    //     solo plan activo por centro, si está atrasado ya es el que usa la necesidad "a tiempo".
+    //   Tarjeta "Atrasado" (antes Nivel 3, WIP — SIN CAMBIOS): todo FERT con fecha ≤ hoy, sin ventana.
     const centroId = planta === 'UIO' ? '1000' : '2000';
-    // Capacidad Operativa exige FERT hasta HOY exacto, no hoy+1 día hábil: esas son órdenes ya
-    // aprobadas/ejecutadas del ciclo anterior, no "carga futura visible". fertAuditUIO/GYE usan
-    // nextBusinessDayStr porque ese es el criterio propio del tab "Órdenes FERT" (ventana de
-    // navegación hacia adelante, ver comentario junto a su declaración) — no tocar esa variable
-    // compartida, filtrar aquí solo para este cálculo.
-    const allAuditFert = (planta === 'UIO' ? fertAuditUIO : fertAuditGYE).filter(r => r.fecha <= todayStr);
     const necesidadCapacidad = planta === 'UIO' ? necesidadCapacidadUIO : necesidadCapacidadGYE;
-    // Provisionales sin las que ya se transformaron en FERT (ver clavesProvisionalesTransformadas):
-    // esas ya resolvieron una necesidad de un ciclo anterior, no deben descontar la de mañana.
-    const provSinTransformadas = sinProvisionalesTransformadas(planta === 'UIO' ? provAuditUIO : provAuditGYE, centroId);
-    const faltanteNecesidad = calcularFaltanteNecesidadPlanta(centroId, provSinTransformadas, necesidadCapacidad);
+    const necesidadCapacidadNivel2 = planta === 'UIO' ? necesidadCapacidadNivel2UIO : necesidadCapacidadNivel2GYE;
 
-    // REGLA: Capacidad planificada = FERT (hoy hacia atrás) + Faltante de Necesidad Planta (lo que
-    // Provisionales/stock no cubren todavía).
-    const totalPlannedH = allAuditFert.reduce((s, r) => s + r.tTotal, 0) + faltanteNecesidad.reduce((s, r) => s + r.tTotal, 0);
+    const nivel3Fert = (planta === 'UIO' ? fertAuditUIO : fertAuditGYE).filter(r => r.fecha <= todayStr);
+
+    // fertAuditAllUIO/GYE, provAuditAllUIO/GYE: mismas fuentes ya usadas por Respuesta P3, sin ventana
+    // de fecha — no dependen del selector de los tabs Provisionales/FERT (esos siguen intactos).
+    const fertSinVentana = planta === 'UIO' ? fertAuditAllUIO : fertAuditAllGYE;
+    // Provisionales sin las que ya se transformaron en FERT (ver clavesProvisionalesTransformadas):
+    // esas ya resolvieron una necesidad de un ciclo anterior, no deben descontar la de hoy.
+    const provSinVentana = sinProvisionalesTransformadas(planta === 'UIO' ? provAuditAllUIO : provAuditAllGYE, centroId);
+
+    // calcularNivel: agrupa las filas de necesidad por su fecha PROPIA (fecha objetivo real), y por
+    // cada una busca lo YA firme (FERT/Provisional fechado 1 día hábil antes — la lámina se corta el
+    // día previo a cuando se necesita) y calcula el Faltante neto. Alimenta únicamente el total de
+    // fondo (candidatosDiferir) — el resultado visible del panel ahora lo resuelve `resolverFecha`,
+    // más abajo, por selección manual del usuario.
+    const calcularNivel = (necesidadRows: UnifiedRow[], necesidadPorMaterialOverride?: Map<string, number>) => {
+      const fechasUnicas = Array.from(new Set(necesidadRows.map(r => r.fecha).filter(f => f && f !== '—')));
+      const fertRows: UnifiedRow[] = [];
+      const provRows: UnifiedRow[] = [];
+      fechasUnicas.forEach(fecha => {
+        const fechaPareo = format(restarDiasHabiles(parseFechaLocal(fecha), 1), 'yyyy-MM-dd');
+        // Anti doble-conteo: si la fecha de pareo cae en hoy o antes, esas horas de FERT ya las
+        // cuenta "Pendientes" (fecha <= hoy) — se omiten aquí como horas (el Faltante igual las sigue
+        // usando como cobertura, más abajo).
+        const fert = fechaPareo > todayStr ? filasCentroEnFechaPareo(fertSinVentana, centroId, fechaPareo) : [];
+        const prov = filasCentroEnFechaPareo(provSinVentana, centroId, fechaPareo);
+        fertRows.push(...fert); provRows.push(...prov);
+      });
+      const faltante = calcularFaltanteNecesidadPlanta(centroId, [...fertRows, ...provRows], necesidadRows, necesidadPorMaterialOverride);
+      return { fertRows, provRows, faltante };
+    };
+
+    const nivel1 = calcularNivel(necesidadCapacidad);
+    const nivel2 = calcularNivel(necesidadCapacidadNivel2, materialNecesidadPFFNivel2MapPorCentro[centroId]);
+
+    const faltanteNecesidad = [...nivel1.faltante, ...nivel2.faltante];
+    const firmeNivel1y2 = [...nivel1.fertRows, ...nivel1.provRows, ...nivel2.fertRows, ...nivel2.provRows];
+
+    const totalPlannedH = nivel3Fert.reduce((s, r) => s + r.tTotal, 0)
+      + firmeNivel1y2.reduce((s, r) => s + r.tTotal, 0)
+      + faltanteNecesidad.reduce((s, r) => s + r.tTotal, 0);
+    // globalOccupancy ya no se muestra como cifra única (mezclaba horas de VARIOS días — pasado sin
+    // límite + ~3 días futuros — contra la capacidad de UN SOLO día): cada tarjeta de fecha, más
+    // abajo, sí compara 1 día de demanda contra 1 día de capacidad. Se conserva solo como criterio
+    // interno para decidir cuándo mostrar el panel de rebalanceo "candidatos a diferir".
     const globalOccupancy = totalH > 0 ? (totalPlannedH / totalH) * 100 : 0;
 
     // REGLA: Desglose por proceso de corte — carruseles vs verticales, tomado de las RESTRICCIONES
@@ -2904,19 +3199,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     // lista incluía 044 y 034, cuando la restricción real de verticales dice 039&036&029.
     const CARRUSEL_RESP = responsablesPorCentro[centroId].carruseles;
     const VERTICAL_RESP = responsablesPorCentro[centroId].verticales;
-    const todasLasFilasCarga = [...allAuditFert, ...faltanteNecesidad];
-    const sumByResp = (resps: string[]) => todasLasFilasCarga.filter(r => resps.includes(r.responsable)).reduce((s, r) => s + r.tTotal, 0);
-    const plannedCarrusel = sumByResp(CARRUSEL_RESP);
-    const plannedVertical = sumByResp(VERTICAL_RESP);
+    const todasLasFilasCarga = [...nivel3Fert, ...firmeNivel1y2, ...faltanteNecesidad];
 
     // Horas que NO caen en ninguno de los dos procesos: su responsable no está en CARRUSEL_RESP ni en
-    // VERTICAL_RESP. Antes simplemente se perdían de la vista — el total de Capacidad Planificada las
-    // incluía pero el desglose no, así que "Carruseles + Verticales" no sumaba el total y el número
-    // grande parecía inventado (caso real reportado: total 27,2h contra 21,9 + 3,0 = 24,9h).
-    // Dos orígenes reales: (a) responsable 034, permitido en Corte Espuma pero sin proceso asignado;
-    // (b) filas de necesidad P2 cuyo material no tiene responsable mapeado en el inventario, que
-    // llegan con responsable vacío. Se muestran aparte para que el desglose cuadre y se puedan
-    // clasificar, en vez de disolverse en el total.
+    // VERTICAL_RESP. Dos orígenes reales: (a) responsable 034, permitido en Corte Espuma pero sin
+    // proceso asignado; (b) filas de necesidad P2 cuyo material no tiene responsable mapeado en el
+    // inventario, que llegan con responsable vacío. Se muestran aparte en el resumen compacto para
+    // que el desglose cuadre y se puedan clasificar, en vez de disolverse en el total.
     const filasSinClasificar = todasLasFilasCarga.filter(r =>
       !CARRUSEL_RESP.includes(r.responsable) && !VERTICAL_RESP.includes(r.responsable)
     );
@@ -2932,10 +3221,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       }, new Map<string, number>())
     ).sort((a, b) => b[1] - a[1]).slice(0, 6)
       .map(([k, h]) => `${k.split('|')[0]} (${k.split('|')[2]}, resp ${k.split('|')[1]}): ${h.toFixed(1)}h`);
-    // null = ese proceso no tiene ninguna máquina con horario configurado, así que no hay contra qué
-    // medir su carga. Se muestra como aviso, no como 0% (que se leería como "no hay trabajo").
-    const occCarrusel = capacidadPorProceso.carrusel > 0 ? (plannedCarrusel / capacidadPorProceso.carrusel) * 100 : null;
-    const occVertical = capacidadVerticalUsada > 0 ? (plannedVertical / capacidadVerticalUsada) * 100 : null;
 
     // Rebalanceo de capacidad (punto b): si el centro está sobre-ocupado, candidatos a diferir son
     // materiales de Venta Externa con holgura real todavía — su "Próx. Entrega" (ver
@@ -2952,33 +3237,33 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       : [];
     const horasDiferibles = candidatosDiferir.reduce((s, r) => s + r.tTotal, 0);
 
-    // Resumen de Capacidad Total/Planificada/Ocupación por PROCESO — se renderiza como franja
-    // HORIZONTAL debajo de las columnas de máquina de su propio grupo (mismo ancho, vía el mismo
-    // truco `flex: N 1 0%` que agrupa las columnas y sus cabeceras), no como panel vertical
-    // aparte. Antes vivía en una barra lateral angosta cuya altura se estiraba a la del bloque de
-    // columnas de máquina (que tiene mucho menos contenido), dejando un rectángulo vacío grande
-    // debajo de cada columna — el usuario lo marcó a mano en una captura y pidió reubicar esos
-    // datos ahí en vez de dejarlos en una barra lateral. "Rendimiento (%)" solo aparece en el
-    // grupo de Carruseles: el corte vertical trabaja fijo al 100% (ver rendimientoDe arriba).
-    const renderProcesoPanel = (proceso: ProcesoCorte) => {
+    // Config de planta por proceso (Rendimiento %, Capacidad Total en horas, aviso de turnos sin
+    // horario) — NO depende de qué fecha se esté mirando, es la misma sin importar la tarjeta
+    // expandida, así que vive UNA sola vez aquí en vez de repetirse dentro de cada tarjeta (antes
+    // vivía mezclada con Capacidad Planificada/Ocupación, que sí variaban por Nivel).
+    const renderProcesoConfig = (proceso: ProcesoCorte) => {
       const esCarrusel = proceso === 'carrusel';
       const nEnGrupo = esCarrusel ? machinesCarrusel.length : machinesVertical.length;
       if (nEnGrupo === 0) return null;
       const label = esCarrusel ? 'Carruseles' : 'Verticales';
       const colorClass = esCarrusel ? 'text-cyan-700' : 'text-fuchsia-700';
-      const barColor = esCarrusel ? 'bg-cyan-500' : 'bg-fuchsia-500';
       const cap = esCarrusel ? capacidadPorProceso.carrusel : capacidadVerticalUsada;
-      const planned = esCarrusel ? plannedCarrusel : plannedVertical;
-      const occ = esCarrusel ? occCarrusel : occVertical;
       const estimada = !esCarrusel && verticalEsEstimada;
-      const resp = esCarrusel ? CARRUSEL_RESP : VERTICAL_RESP;
-      const fertProceso = allAuditFert.filter(r => resp.includes(r.responsable));
-      const faltanteProceso = faltanteNecesidad.filter(r => resp.includes(r.responsable));
       const { lista: turnosFaltantesProceso, resumen: resumenTurnosProceso } = turnosSinConfigurarPorProceso(proceso);
       const nMaquinas = machines.filter(m => m.proceso === proceso && config.shifts[m.id]?.activa !== false).length;
+      // Ocupación de ESTE proceso para la fecha (o fechas) elegidas en "Evaluar Capacidad" — filasSeleccion
+      // se define más abajo en la función, pero como closure ya está lista para cuando esto se
+      // renderiza (JSX se evalúa al final). Escala la capacidad igual que el resultado principal
+      // (N fechas seleccionadas × capacidad de 1 día), para no comparar demanda de varios días
+      // contra la capacidad de uno solo.
+      const respProceso = esCarrusel ? CARRUSEL_RESP : VERTICAL_RESP;
+      const ocupadoProceso = filasSeleccion.filter(x => respProceso.includes(x.row.responsable)).reduce((s, x) => s + x.row.tTotal, 0);
+      const capSeleccionProceso = cap * fechasSel.length;
+      const ocupacionPctProceso = capSeleccionProceso > 0 ? (ocupadoProceso / capSeleccionProceso) * 100 : null;
 
       return (
         <div
+          key={proceso}
           className={cn("flex flex-wrap items-start gap-x-6 gap-y-3 p-4 border-t-2", esCarrusel ? "bg-cyan-50/30 border-cyan-200" : "bg-fuchsia-50/30 border-fuchsia-200")}
           style={{ flex: `${nEnGrupo} 1 0%` }}
         >
@@ -2996,7 +3281,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           </div>
 
           <div className="shrink-0 min-w-[7rem]">
-            <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest mb-1">Capacidad Total</p>
+            <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest mb-1">Capacidad Total (por día)</p>
             <div className="flex items-baseline gap-1"><span className="text-xl font-black text-blue-700 tracking-tighter">{cap.toFixed(1)}</span><span className="text-[10px] font-black text-slate-500 uppercase">h</span></div>
             <p className="text-[8px] font-bold text-slate-400 mt-0.5">{nMaquinas} máquina(s){estimada ? ' · estimado*' : ''}</p>
             {/* La capacidad solo suma los turnos elegidos. Con el Turno Noche en "VACÍO" (su valor
@@ -3010,44 +3295,78 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                 Sin turno: {resumenTurnosProceso}
               </p>
             )}
+            {estimada && (
+              <p className="text-[8px] font-bold text-amber-600 mt-1 cursor-help" title="No hay máquinas verticales configuradas: se usa como referencia la capacidad de un Turno Día de carrusel. Al cargar las máquinas verticales con su horario, pasa a medirse contra su capacidad real.">
+                * estimado
+              </p>
+            )}
           </div>
 
           <div className="shrink-0 min-w-[7rem]">
-            <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest mb-1 flex items-center gap-1">
-              Capacidad Planificada
-              <span
-                title={`FERT (hoy hacia atrás) de ${label}: ${fertProceso.reduce((s, r) => s + r.tTotal, 0).toFixed(1)}h · Faltante de Necesidad Planta de ${label} (VentaExterna+Muebles+Prensado+Ensamblado P1/PFF, ya descontadas las Provisionales que cubren parte del lote): ${faltanteProceso.reduce((s, r) => s + r.tTotal, 0).toFixed(1)}h.`}
-                className="cursor-help"
-              >
-                <Info className="w-3 h-3 text-slate-400" />
-              </span>
-            </p>
-            <div className="flex items-baseline gap-1"><span className="text-xl font-black text-emerald-700 tracking-tighter">{planned.toFixed(1)}</span><span className="text-[10px] font-black text-gray-400 uppercase">h</span></div>
-          </div>
-
-          <div className="flex-1 min-w-[10rem]">
-            <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest mb-1">Ocupación Global</p>
-            {occ === null ? (
-              // Sin máquinas de este proceso configuradas: mostrar 0% haría creer que no hay
-              // trabajo, cuando lo que falta es contra qué medirlo.
-              <span className="text-[10px] font-bold text-amber-700" title={`Hay ${planned.toFixed(1)}h de carga clasificada como ${label}, pero ninguna máquina de ese proceso tiene horario configurado — no hay capacidad contra la cual calcular su ocupación.`}>
-                Sin capacidad configurada{planned > 0 ? ` · ${planned.toFixed(1)}h sin medir` : ''}
-              </span>
+            <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest mb-1">Ocupación Total</p>
+            {fechasSel.length === 0 ? (
+              <p className="text-[10px] font-bold text-slate-400">Sin fecha seleccionada</p>
             ) : (
-              <div className="flex items-center gap-2">
-                <div className="flex-1 h-2.5 bg-gray-100 rounded-full overflow-hidden max-w-[12rem]"><div className={cn("h-full transition-all duration-500", occ > 100 ? "bg-red-500" : barColor)} style={{ width: `${Math.min(occ, 100)}%` }} /></div>
-                <span
-                  className={cn("text-sm font-black tabular-nums", estimada ? "text-amber-700 cursor-help" : "text-gray-800")}
-                  title={estimada ? `Estimado: no hay máquinas verticales configuradas, así que se mide contra ${cap.toFixed(1)}h — el equivalente a un Turno Día de carrusel. Al cargar las máquinas verticales con su horario, pasa a medirse contra su capacidad real.` : undefined}
-                >
-                  {occ.toFixed(1)}%{estimada ? '*' : ''}
-                </span>
-              </div>
+              <>
+                <div className="flex items-baseline gap-1">
+                  <span className={cn("text-xl font-black tracking-tighter", ocupacionPctProceso !== null && ocupacionPctProceso > 100 ? "text-red-600" : "text-emerald-700")}>{ocupadoProceso.toFixed(1)}</span>
+                  <span className="text-[10px] font-black text-slate-500 uppercase">h</span>
+                  {ocupacionPctProceso !== null && (
+                    <span className={cn("text-[11px] font-black tabular-nums", ocupacionPctProceso > 100 ? "text-red-600" : "text-slate-500")}>({ocupacionPctProceso.toFixed(0)}%)</span>
+                  )}
+                </div>
+                <p className="text-[8px] font-bold text-slate-400 mt-0.5">de {capSeleccionProceso.toFixed(1)}h · {label.toLowerCase()}</p>
+              </>
             )}
           </div>
         </div>
       );
     };
+
+    // Selector de fecha único — el eje visible de Capacidad Operativa. Para cada fecha X que el
+    // usuario seleccione (manual, sin regla automática): primero se busca FERT real ejecutado ESE
+    // día exacto; si no hay, se cae a la Necesidad activa de esa fecha (P1/PFF, P2 Venta Externa/
+    // Muebles/Prensado) menos la cobertura Provisional (mismo material, fechaFin <= X, lote
+    // completo). Confirmado con el usuario con ejemplos reales de SAP — no son categorías separadas,
+    // es la MISMA pregunta ("¿cuánto tengo ocupado en X?") resuelta con la fuente que exista.
+    const resolverFecha = (fecha: string): { row: UnifiedRow; estado: 'FERT' | 'Ya firme' | 'Faltante' }[] => {
+      const fertX = filasCentroEnFecha(fertSinVentana, centroId, fecha, 'exacta');
+      if (fertX.length > 0) return fertX.map(row => ({ row, estado: 'FERT' as const }));
+
+      const necesidadX = [...necesidadCapacidad, ...necesidadCapacidadNivel2].filter(r => r.fecha === fecha);
+      if (necesidadX.length === 0) return [];
+
+      const provX = filasCentroEnFecha(provSinVentana, centroId, fecha, 'hasta');
+      const materialesNecesidad = new Set(necesidadX.map(r => r.material));
+      const faltanteX = calcularFaltanteNecesidadPlanta(centroId, provX, necesidadX);
+      return [
+        ...provX.filter(r => materialesNecesidad.has(r.material)).map(row => ({ row, estado: 'Ya firme' as const })),
+        ...faltanteX.map(row => ({ row, estado: 'Faltante' as const })),
+      ];
+    };
+
+    const fechasSel = Array.from(selectedDatesCapacidad[planta]).sort();
+    const filasSeleccion = fechasSel.flatMap(f => resolverFecha(f).map(x => ({ ...x, fecha: f })));
+    const plannedSeleccion = filasSeleccion.reduce((s, x) => s + x.row.tTotal, 0);
+    // Capacidad escala por cantidad de fechas seleccionadas — comparar demanda de N días contra la
+    // capacidad de 1 solo día fue justo el problema que motivó el desglose por fecha originalmente.
+    const capacidadSeleccion = totalH * fechasSel.length;
+    const occSeleccion = capacidadSeleccion > 0 ? (plannedSeleccion / capacidadSeleccion) * 100 : 0;
+    const labelSeleccion = fechasSel.length === 1
+      ? `Fecha (${format(parseFechaLocal(fechasSel[0]), 'dd.MM.yyyy')})`
+      : `${fechasSel.length} fechas seleccionadas`;
+    // <80% verde, 80-100% ámbar, >100% rojo.
+    const colorTarjeta = (occ: number) => occ > 100
+      ? { borde: 'border-red-200', fondo: 'bg-red-50/60', texto: 'text-red-700', barra: 'bg-red-500' }
+      : occ >= 80
+        ? { borde: 'border-amber-200', fondo: 'bg-amber-50/60', texto: 'text-amber-700', barra: 'bg-amber-500' }
+        : { borde: 'border-emerald-200', fondo: 'bg-emerald-50/60', texto: 'text-emerald-700', barra: 'bg-emerald-500' };
+    const toggleFechaCapacidad = (fecha: string) => setSelectedDatesCapacidad(prev => {
+      const n = new Set(prev[planta]);
+      if (n.has(fecha)) n.delete(fecha); else n.add(fecha);
+      return { ...prev, [planta]: n };
+    });
+    const limpiarFechasCapacidad = () => setSelectedDatesCapacidad(prev => ({ ...prev, [planta]: new Set<string>() }));
 
     return (
       <div className="rounded-2xl border border-gray-100 shadow-sm bg-white overflow-hidden mb-10 text-left font-sans">
@@ -3061,9 +3380,27 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           {/* Ubicación Técnica se fusionó en esta misma cabecera (antes tenía su propia barra
               lateral angosta y separada) — el usuario pidió reubicarla junto con el resto de la
               info que quedaba en esa barra, para no dejar una columna angosta sola. */}
-          <div className="flex items-baseline gap-3 mb-3">
-            <h3 className="text-xl font-black tracking-tighter text-gray-800">{planta === 'UIO' ? 'QUITO' : 'GUAYAQUIL'}</h3>
-            <p className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Gestión de Tiempos</p>
+          {/* Título a la izquierda, selector de fecha a la derecha en la MISMA fila — antes el
+              selector quedaba apilado debajo del título, angosto y poco distinguible como control
+              propio. Separado a la derecha queda claro que es un control aparte, no parte del
+              título. */}
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <div className="flex items-baseline gap-3">
+              <h3 className="text-xl font-black tracking-tighter text-gray-800">{planta === 'UIO' ? 'QUITO' : 'GUAYAQUIL'}</h3>
+              <p className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Gestión de Tiempos</p>
+            </div>
+            <div title="Elige una o varias fechas para ver la ocupación de Capacidad Operativa: FERT real si ya existe, o el plan (Necesidad) todavía sin ejecutar si no.">
+              <DateFilterPopover
+                label="Evaluar Capacidad"
+                selectedDates={selectedDatesCapacidad[planta]}
+                onToggleDate={toggleFechaCapacidad}
+                onClear={limpiarFechasCapacidad}
+                viewDate={viewDateCapacidad}
+                setViewDate={setViewDateCapacidad}
+                datesWithOrders={selectedDatesCapacidad[planta]}
+                isDateDisabled={() => false}
+              />
+            </div>
           </div>
           <div className="flex items-start gap-8 flex-wrap">
             {([
@@ -3133,35 +3470,59 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             </div>
           )}
         </div>
-        {/* Resumen de Capacidad Total/Planificada/Ocupación, uno por proceso, alineado bajo su
-            propio grupo de columnas — usa el espacio que antes quedaba vacío debajo del detalle de
-            turno de cada máquina (ver renderProcesoPanel arriba). */}
+        {/* Config de planta por proceso (Rendimiento/Capacidad Total/turnos) — ver renderProcesoConfig
+            arriba. Ya NO incluye Capacidad Planificada/Ocupación: eso ahora vive por tarjeta de
+            fecha, más abajo, porque sí varía según qué día se esté mirando. */}
         <div className="flex">
-          {renderProcesoPanel('carrusel')}
-          {renderProcesoPanel('vertical')}
+          {renderProcesoConfig('carrusel')}
+          {renderProcesoConfig('vertical')}
         </div>
 
-        {/* Footer de ancho completo: el total combinado de la planta (una sola cifra de
-            referencia) y las horas "sin clasificar" (responsable permitido en Corte Espuma pero
-            sin proceso carrusel/vertical asignado — ver filasSinClasificar). No pertenece a un
-            proceso concreto, así que ya no cabía en ninguno de los dos resúmenes de arriba. */}
-        <div className="px-8 py-3 border-t border-gray-100 bg-gray-50/50 flex items-center justify-between flex-wrap gap-3">
-          <div className="flex items-baseline gap-2">
-            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Ocupación total planta</span>
-            <span className="text-sm font-black tabular-nums text-gray-800">{globalOccupancy.toFixed(1)}%</span>
-            <span className="text-[9px] font-bold text-slate-400">({totalPlannedH.toFixed(1)}h planificadas / {totalH.toFixed(1)}h capacidad total)</span>
-          </div>
-          {plannedSinClasificar > 0.05 && (
+        {/* Resumen compacto de ancho completo: total de horas de TODAS las tarjetas juntas (ya no
+            un solo % — mezclar días distintos contra la capacidad de uno solo dejó de mostrarse, ver
+            comentario en globalOccupancy más arriba) y las horas "sin clasificar" (responsable
+            permitido en Corte Espuma pero sin proceso carrusel/vertical asignado). */}
+        {plannedSinClasificar > 0.05 && (
+          <div className="px-8 py-3 border-t border-gray-100 bg-gray-50/50 flex items-center justify-end">
             <div
               className="flex items-center gap-2"
-              title={`Horas cuya carga no pertenece a Carruseles ni a Verticales porque su responsable no está asignado a ningún proceso: ${respSinClasificar.join(', ')}. Están incluidas en la Capacidad Planificada total pero no se pueden medir contra la capacidad de un proceso concreto.\n\nMayores aportes:\n${topSinClasificar.join('\n')}`}
+              title={`Horas cuya carga no pertenece a Carruseles ni a Verticales porque su responsable no está asignado a ningún proceso: ${respSinClasificar.join(', ')}. Se calcula sobre el total automático de fondo (usado también por "candidatos a diferir"), no sobre la fecha que tengas seleccionada arriba.\n\nMayores aportes:\n${topSinClasificar.join('\n')}`}
             >
-              <span className="text-[10px] font-black text-amber-700 uppercase tracking-wide cursor-help">Sin clasif.</span>
+              <span className="text-[10px] font-black text-amber-700 uppercase tracking-wide cursor-help">Sin clasif. (fondo)</span>
               <span className="text-[11px] font-black tabular-nums text-amber-700">{plannedSinClasificar.toFixed(1)}h</span>
               <span className="text-[8px] font-bold text-slate-400">resp. {respSinClasificar.join(', ')}</span>
             </div>
-          )}
+          </div>
+        )}
+
+        {/* Resultado de la fecha (o fechas) elegidas en el selector "Evaluar Capacidad" del header —
+            reemplaza las tarjetas fijas: la fuente (FERT real / Necesidad+Provisional) se decide sola
+            por fecha, ver resolverFecha arriba. Sin selección, invita a elegir en vez de calcular
+            algo por su cuenta. */}
+        <div className="px-8 py-5 border-t border-gray-100">
+          {fechasSel.length === 0 ? (
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest text-center py-4">
+              Selecciona una fecha arriba para ver la ocupación
+            </p>
+          ) : (() => {
+            const color = colorTarjeta(occSeleccion);
+            // Solo el dato final (%, horas planificadas / capacidad) — el usuario pidió quitar el
+            // desglose Carrusel/Vertical y la tabla de materiales de este panel: "en este tab solo es
+            // necesario el dato final, para su evaluación". El detalle por material sigue disponible
+            // en los tabs de auditoría (Provisionales/Órdenes FERT/Necesidades Planta).
+            return (
+              <div className={cn("rounded-2xl border overflow-hidden px-4 py-3", color.borde, color.fondo)}>
+                <p className={cn("text-[9px] font-black uppercase tracking-widest mb-1", color.texto)}>{labelSeleccion}</p>
+                <p className={cn("text-2xl font-black tracking-tighter", color.texto)}>{occSeleccion.toFixed(0)}%</p>
+                <div className="h-1.5 bg-white/70 rounded-full overflow-hidden mt-1.5 mb-1 max-w-xs">
+                  <div className={cn("h-full", color.barra)} style={{ width: `${Math.min(occSeleccion, 100)}%` }} />
+                </div>
+                <p className="text-[9px] font-bold text-slate-500">{plannedSeleccion.toFixed(1)}h / {capacidadSeleccion.toFixed(1)}h</p>
+              </div>
+            );
+          })()}
         </div>
+
         {candidatosDiferir.length > 0 && (
           <div className="border-t border-gray-100 bg-amber-50/40 p-6">
             <div className="flex items-center justify-between mb-3">
@@ -3181,7 +3542,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                     <th className="py-1.5 pr-4">Descripción</th>
                     <th className="py-1.5 pr-4 text-right">Horas</th>
                     <th className="py-1.5 pr-4 text-right">Próx. Entrega</th>
-                    <th className="py-1.5 text-right">Holgura</th>
+                    <th className="py-1.5 pr-4 text-right">Holgura</th>
+                    <th className="py-1.5 text-right"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-amber-100/60 font-mono">
@@ -3191,7 +3553,19 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                       <td className="py-1.5 pr-4 font-sans normal-case text-amber-800/80 truncate max-w-[240px]">{r.descripcion}</td>
                       <td className="py-1.5 pr-4 text-right font-black text-amber-900">{r.tTotal.toFixed(2)}h</td>
                       <td className="py-1.5 pr-4 text-right text-amber-700">{r.proximaFechaEntrega}</td>
-                      <td className="py-1.5 text-right font-black text-emerald-700">+{r.holguraDias}d</td>
+                      <td className="py-1.5 pr-4 text-right font-black text-emerald-700">+{r.holguraDias}d</td>
+                      <td className="py-1.5 text-right">
+                        <button
+                          className="font-sans normal-case text-[9px] font-black uppercase text-amber-700 hover:text-amber-900 underline decoration-dotted"
+                          title="Abre Plan P2 - Venta Externa con la fecha sugerida (mañana) ya preseleccionada en Ventana de Producción. No cambia nada aquí — la decisión final y la regeneración las haces en Venta Externa."
+                          onClick={() => {
+                            const fechaSugerida = format(siguienteDiaHabil(new Date()), 'yyyy-MM-dd');
+                            router.push(`/dashboard/opciones/tactica-venta-externa?tab=p2&fecha=${fechaSugerida}&material=${r.material}`);
+                          }}
+                        >
+                          Diferir →
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -3228,6 +3602,20 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     hideOrigenPlanGrupo: boolean = false,
     showEntregaVentaExterna: boolean = false
   ) => {
+    // Ensamblado (P1/PFF): `row.fecha`/`row.fechaFin` guardan la fecha REAL del PT (ej. 21/08) — ese
+    // valor sigue siendo el que usan el pareo Nivel 1 de Capacidad Operativa, el matching contra
+    // FERT/Provisional y la Respuesta P3, sin cambios. Lo único que cambia acá es lo que se VE en
+    // esta tabla: para esas filas se muestra la fecha en que la LÁMINA debe estar lista (1 día hábil
+    // antes del PT), que es el dato que el planificador realmente necesita mirar en "Necesidades
+    // Planta" — confirmado con el usuario, sin tocar el dato interno.
+    const fechaMostrada = (row: UnifiedRow, campo: 'fecha' | 'fechaFin') => {
+      const valor = row[campo];
+      // La clave real es 'Ensamblado (P1/PFF)' (ver necesidadesPlantaConPFF) para Nivel 1; Nivel 2
+      // (Capacidad Operativa, ver necesidadPFFNivel2Consolidada) usa 'Ensamblado' a secas — startsWith
+      // cubre ambas sin depender de que coincidan carácter por carácter.
+      if (!row.origenArea?.startsWith('Ensamblado') || !valor || valor === '—') return valor;
+      return format(restarDiasHabiles(parseFechaLocal(valor), 1), 'yyyy-MM-dd');
+    };
     const grouped = data.reduce((acc, row) => {
       const key = `${row.apertura}|${row.categoria}`;
       if (!acc[key]) acc[key] = [];
@@ -3392,8 +3780,23 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                           <td className="px-3 py-2 border-r border-slate-50 text-slate-600 font-black">{row.centro}/{row.almacen}</td>
                           <td className="px-3 py-2 border-r border-slate-50">{row.responsable}</td>
                           <td className="px-3 py-2 border-r border-slate-50 text-slate-600">{row.orden}</td>
-                          <td className={cn("px-3 py-2 text-slate-600 font-bold", (showOrigen || showEntregaVentaExterna) ? "border-r border-slate-50" : "")}>
-                            {row.fechaFin && row.fechaFin !== row.fecha ? `${row.fecha} → ${row.fechaFin}` : row.fecha}
+                          <td
+                            className={cn("px-3 py-2 text-slate-600 font-bold", (showOrigen || showEntregaVentaExterna) ? "border-r border-slate-50" : "")}
+                            title={
+                              row.origenArea?.startsWith('Ensamblado')
+                                ? `Fecha de lámina lista (1 día hábil antes del PT). Fecha real de producción del PT: ${row.fecha}.`
+                                : (row.fechaFin && row.fechaFin !== row.fecha
+                                    ? `Rango real de la orden: ${row.fecha} → ${row.fechaFin}. Se muestra FECHAFIN — es la fecha con la que se determina a qué necesidad corresponde (ver Grupo/Área Origen), no el rango completo.`
+                                    : undefined)
+                            }
+                          >
+                            {/* Un solo formato de visualización, siempre — antes mostraba rango (inicio →
+                                fin) cuando FECHAINICIO≠FECHAFIN y una sola fecha cuando coincidían,
+                                inconsistente entre filas. FECHAFIN ya es el dato autoritativo (con qué
+                                fecha SAP "traduce" la orden — ver origenEnRango más arriba), así que es
+                                también el único que se muestra acá; el rango completo queda en el tooltip
+                                para quien lo necesite. */}
+                            {fechaMostrada(row, 'fechaFin') || fechaMostrada(row, 'fecha')}
                           </td>
                           {showOrigen && (
                             <td className={cn("px-3 py-2 text-left", showEntregaVentaExterna ? "border-r border-slate-50" : "")}>
@@ -3404,8 +3807,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                                     Grupo #{row.origenCodigoGrupo}{!hideOrigenPlanGrupo && ` · Plan Grupo #${row.origenCodigoPlanGrupo}`}
                                   </span>
                                   {row.origenAmbiguo && (
-                                    <span className="text-[7px] text-amber-500 font-black uppercase mt-0.5" title="El material tiene varias necesidades candidatas y ninguna cubre la fecha de esta orden">
-                                      ⚠ {row.origenCandidatosCount} necesidades, fecha fuera de rango
+                                    <span className="text-[7px] text-amber-500 font-black uppercase mt-0.5" title="Ninguna necesidad candidata de este material tiene un rango de fecha que incluya el Fin Extr. (FECHAFIN) de esta orden — se muestra la más probable, sin confirmar.">
+                                      ⚠ {row.origenCandidatosCount} necesidad{row.origenCandidatosCount === 1 ? '' : 'es'}, fecha fuera de rango
                                     </span>
                                   )}
                                 </div>
@@ -3455,15 +3858,17 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <div><h2 className="text-xl font-black text-gray-800 uppercase tracking-tighter">Programación Táctica Corte Espuma</h2><p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Capacidad Carrusel 3.2m | Auditoría Técnica SAP</p></div>
         </div>
         <div className="flex items-center gap-3">
-           {/* Familia "Generar Necesidades": todo lo que trae/calcula datos (sync o explosión BOM) sin
-               escribir nada — outline, tono índigo. "Generar Respuestas" (escribe Plan Grupo/Detalle
-               Táctico real) es sólido/primario, para que el peso visual marque qué botón compromete
-               datos reales. Mismos 2 niveles en los 4 módulos tácticos. */}
+           {/* "Sincronizar": trae datos crudos de SAP sin calcular nada — mismo color/forma en los 4
+               módulos tácticos (azul). "Generar Necesidades" (dentro del tab Necesidades Planta,
+               índigo outline): con esos datos ya cargados, calcula la necesidad — no escribe nada.
+               "Generar Respuestas" (escribe Plan Grupo/Detalle Táctico real) es sólido/primario, para
+               que el peso visual marque qué botón compromete datos reales. Mismos 2 niveles en los 4
+               módulos tácticos. */}
            <Button onClick={handleSincronizar} disabled={isLoading} variant={datosCargados ? 'outline' : 'default'} className={cn(
              "rounded-xl h-10 px-6 text-[10px] font-black uppercase tracking-widest flex items-center gap-2",
              datosCargados
-               ? "border-indigo-200 text-indigo-700 hover:bg-indigo-50"
-               : "bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg"
+               ? "border-blue-200 text-blue-700 hover:bg-blue-50"
+               : "bg-blue-600 text-white hover:bg-blue-700 shadow-lg"
            )}>{isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Sincronizar</Button>
         </div>
       </div>
@@ -3474,12 +3879,12 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           "Sincronizar ahora" que llamaba a la misma función: dos botones para lo mismo). */}
       {!datosCargados && !isLoading && (
         <div
-          className="flex items-center gap-2.5 rounded-xl border border-dashed border-indigo-200 bg-indigo-50/40 px-4 py-2.5 text-left"
-          title="Este módulo no consulta SAP al abrirse. Sincronizar trae Provisionales, FERT, Inventario, Tiempos y Mantenimiento; Actualizar P2 (dentro de Necesidades Planta) recarga solo el P2."
+          className="flex items-center gap-2.5 rounded-xl border border-dashed border-blue-200 bg-blue-50/40 px-4 py-2.5 text-left"
+          title="Este módulo no consulta SAP al abrirse. Sincronizar trae Provisionales, FERT, Inventario, Tiempos y Mantenimiento; Actualizar P2 (Venta Externa), dentro de Necesidades Planta, recarga solo el P2."
         >
-          <RefreshCw className="w-4 h-4 text-indigo-500 shrink-0" />
+          <RefreshCw className="w-4 h-4 text-blue-500 shrink-0" />
           <p className="text-[11px] font-bold text-slate-600">
-            Sin datos cargados — pulsa <span className="font-black text-indigo-700">Sincronizar</span> para traerlos.
+            Sin datos cargados — pulsa <span className="font-black text-blue-700">Sincronizar</span> para traerlos.
           </p>
         </div>
       )}
@@ -3524,8 +3929,14 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                 {isCalculandoEntregas ? <Loader2 className="w-4 h-4 animate-spin" /> : <Truck className="w-4 h-4" />}
                 {isCalculandoEntregas ? `Explotando BOM ${entregasProgress.current}/${entregasProgress.total}` : 'Generar Necesidades · Entregas VE'}
               </Button>
-              <Button onClick={() => fetchNecesidadesPlanta()} disabled={necesidadesPlantaLoading} variant="outline" className="rounded-xl h-9 px-5 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 border-indigo-200 text-indigo-700 hover:bg-indigo-50">
-                {necesidadesPlantaLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Actualizar P2
+              <Button
+                onClick={() => fetchNecesidadesPlanta()}
+                disabled={necesidadesPlantaLoading}
+                variant="outline"
+                className="rounded-xl h-9 px-5 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+                title="Relee el P2 que Venta Externa ya generó (no crea uno nuevo aquí). Espumas: toma el plan activo más reciente. Muebles/Prensado: exige coincidencia exacta con hoy+1 día hábil."
+              >
+                {necesidadesPlantaLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Actualizar P2 (Venta Externa)
               </Button>
             </div>
             {isCalculandoPFF && (
@@ -3597,6 +4008,12 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               const rows = respuestaSalidaRowsPorCentro(centro);
               const nombrePlanta = centro === '1000' ? 'UIO' : 'GYE';
               const conDato = rows.filter(r => r.tienePlan).length;
+              // "Sin dato" (necesidadKg <= 0: el material no trae necesidad real este ciclo, no que
+              // le falte cobertura) se cuenta APARTE de "Sin Cobertura" — antes se sumaba junto y el
+              // badge rojo "X sin cobertura" incluía materiales sin necesidad alguna, sobreestimando
+              // el problema real. Ver comentario en FuenteRespuestaP3 ('Sin dato') y el Estado por fila.
+              const sinNecesidad = rows.filter(r => r.fuente === 'Sin dato').length;
+              const sinCoberturaReal = rows.length - conDato - sinNecesidad;
               const totalFaltanteKg = rows.reduce((s, r) => s + r.faltanteKg, 0);
               const materialesAProducir = rows.filter(r => r.faltanteKg > 0).length;
               return (
@@ -3605,7 +4022,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                     <h3 className="text-xs font-black uppercase text-slate-800 tracking-widest flex items-center gap-2">
                       <div className="w-2.5 h-2.5 rounded-full bg-red-600" /> Respuesta P3 — Centro {centro} ({nombrePlanta}) · {rows.length} materiales
                       <span className="text-[9px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 rounded-full px-3 py-1">{conDato} con cobertura</span>
-                      <span className="text-[9px] font-black uppercase tracking-wider bg-red-50 text-red-600 rounded-full px-3 py-1">{rows.length - conDato} sin cobertura</span>
+                      <span className="text-[9px] font-black uppercase tracking-wider bg-red-50 text-red-600 rounded-full px-3 py-1">{sinCoberturaReal} sin cobertura</span>
+                      {sinNecesidad > 0 && (
+                        <span className="text-[9px] font-black uppercase tracking-wider bg-slate-100 text-slate-500 rounded-full px-3 py-1" title="Materiales de Necesidades Planta cuya cantidad no se pudo convertir a Kg (sin geometría/peso calculable) — no es que falte cobertura, es que no hay necesidad real que evaluar este ciclo.">{sinNecesidad} sin necesidad</span>
+                      )}
                       <span className="text-[9px] font-black uppercase tracking-wider bg-orange-50 text-orange-700 rounded-full px-3 py-1" title="Necesidad P2 que ni el stock ni las órdenes provisionales cubren — es lo que el PFD manda a fabricar.">Faltante: {formatKg(totalFaltanteKg)} Kg · {materialesAProducir} mat.</span>
                     </h3>
                     <div className="flex items-center gap-2">
@@ -3621,7 +4041,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                       <Button
                         onClick={() => handleAbrirRespuestaP3(centro)}
                         disabled={rows.length === 0}
-                        className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl h-9 px-5 text-[10px] font-black uppercase tracking-widest shadow-lg flex items-center gap-2"
+                        className="bg-slate-900 hover:bg-slate-800 text-white rounded-xl h-9 px-5 text-[10px] font-black uppercase tracking-widest shadow-lg flex items-center gap-2"
                       >
                         <Save className="w-4 h-4" /> Generar Respuestas · P3 {nombrePlanta}
                       </Button>
@@ -3639,7 +4059,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                           <th className="px-4 py-3 border-r border-gray-100 bg-indigo-50/40 text-indigo-700" title="Órdenes FERT programadas hacia adelante (fecha posterior a hoy): son las provisionales ya convertidas que responden al P2 vigente. SÍ cuentan como cobertura.">FERT vigente</th>
                           <th className="px-4 py-3 border-r border-gray-100 font-black bg-yellow-50/50 text-yellow-700">Cubierto (Kg)</th>
                           <th className="px-4 py-3 border-r border-gray-100 bg-orange-50/40 text-orange-700">Faltante (Kg)</th>
-                          <th className="px-4 py-3 border-r border-gray-100 text-slate-300" title="Órdenes FERT programadas de hoy hacia atrás: pertenecen a un ciclo de P2 ya ejecutado. NO cubren este P2; se muestran como referencia y alimentan la carga en curso de Capacidad Operativa.">FERT ciclo anterior</th>
+                          <th className="px-4 py-3 border-r border-gray-100 bg-slate-50/40 text-slate-500" title="Órdenes FERT programadas de hoy hacia atrás: pertenecen a un ciclo de P2 ya ejecutado. NO cubren este P2; se muestran como referencia y alimentan la carga en curso de Capacidad Operativa.">FERT ciclo anterior</th>
                           <th className="px-4 py-3 border-r border-gray-100">Fuente</th>
                           <th className="px-4 py-3 border-r border-gray-100">Estado</th>
                           <th className="px-4 py-3">Plan(es) Grupo Origen (P2)</th>
@@ -3658,7 +4078,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                             <td className="px-4 py-3 border-r border-slate-50 text-indigo-700 bg-indigo-50/20">{formatKg(row.fertVigenteKg)}</td>
                             <td className="px-4 py-3 border-r border-slate-50 text-slate-900 font-black bg-yellow-50">{formatKg(row.cubiertoKg)}</td>
                             <td className={cn("px-4 py-3 border-r border-slate-50 font-black bg-orange-50/20", row.faltanteKg > 0 ? "text-orange-700" : "text-slate-300")}>{formatKg(row.faltanteKg)}</td>
-                            <td className="px-4 py-3 border-r border-slate-50 text-slate-300">{row.fertAnteriorKg > 0 ? formatKg(row.fertAnteriorKg) : '—'}</td>
+                            <td className="px-4 py-3 border-r border-slate-50 text-slate-500 bg-slate-50/20">{row.fertAnteriorKg > 0 ? formatKg(row.fertAnteriorKg) : '—'}</td>
                             <td className="px-4 py-3 border-r border-slate-50">
                               <Badge
                                 className={cn(
@@ -3675,9 +4095,15 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                               </Badge>
                             </td>
                             <td className="px-4 py-3 border-r border-slate-50">
-                              <Badge className={cn("text-[8px] font-black uppercase", row.tienePlan ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-red-50 text-red-700 border-red-200")}>
-                                {row.tienePlan ? 'Con Cobertura' : 'Sin Cobertura'}
-                              </Badge>
+                              {row.fuente === 'Sin dato' ? (
+                                <Badge className="text-[8px] font-black uppercase bg-slate-100 text-slate-500 border-slate-200" title="Sin necesidad real este ciclo (no hay Kg calculable) — no es una falta de cobertura.">
+                                  Sin Necesidad
+                                </Badge>
+                              ) : (
+                                <Badge className={cn("text-[8px] font-black uppercase", row.tienePlan ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-red-50 text-red-700 border-red-200")}>
+                                  {row.tienePlan ? 'Con Cobertura' : 'Sin Cobertura'}
+                                </Badge>
+                              )}
                             </td>
                             <td className="px-4 py-3 text-slate-400">{row.origenes}</td>
                           </tr>
@@ -3710,14 +4136,14 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <TabsContent value="ordenesFert" className="animate-in fade-in duration-300 space-y-6">
             <div className="flex items-center justify-end">
               <DateFilterPopover
-                label="Hoy y anteriores (+ sig. laborable)"
+                label="Cualquier fecha"
                 selectedDates={selectedDatesFert}
                 onToggleDate={toggleFertDate}
                 onClear={() => setSelectedDatesFert(new Set())}
                 viewDate={viewDateFert}
                 setViewDate={setViewDateFert}
                 datesWithOrders={datesWithFertOrders}
-                isDateDisabled={(d) => d > nextBusinessDayStr}
+                isDateDisabled={() => false}
               />
             </div>
             <div className="space-y-10">

@@ -23,7 +23,6 @@ import {
   Boxes,
   Pencil,
   Trash2,
-  GripHorizontal,
   CheckCircle2
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
@@ -61,7 +60,7 @@ import { es } from 'date-fns/locale';
 // GET /api/grupo. Es el único PlanGrupo/DetalleTactico que este módulo crea y edita.
 const CODIGO_GRUPO_LAMINADO = 8;
 const BLOCK_SIZE = 40;
-const SETUP_TIME_PER_RUN = 55; // 55 min por corrida física: ingreso de bloques + colocar adhesivo + limpieza (ajustado desde 45 min)
+const SETUP_TIME_PER_RUN = 95; // 95 min por corrida física: traslado/ingreso de bloques + pegado (adhesivo) + limpieza (ajustado desde 55 min, validado con el negocio incluyendo el tiempo de traslado)
 // Proceso "lámina convoluted": 1 lámina base pasada por el proceso alterno (otra máquina) devuelve
 // 2 láminas CONV de menor espesor del mismo recorrido. La necesidad/plan de la variante CONV se
 // deriva multiplicando por este factor la de su lámina base, en vez de calcularse por participación propia.
@@ -116,9 +115,8 @@ interface UnifiedNeedRow {
   unidades: number;
   bomParentMaterial?: string; // Solo en variantes CONV: código de la lámina base (BOM) de la que se producen; permite anidarlas y agruparlas en el mismo bloque de corridas
   runsRecomendado: number; // Corridas que calculó el algoritmo automático de déficit para este bloque, SIN aplicar corridasManualOverrides — referencia para la UI cuando el usuario decide un número distinto
-  necVentaExternaKg: number; // Porción de consumoKg cuyo origen (P2) es el grupo "Venta Externa" — piso obligatorio, no participa del reparto proporcional del bloque (ver groupMap.forEach en handleProcessResumen)
+  necVentaExternaKg: number; // Porción de consumoKg cuyo origen (P2) es el grupo "Venta Externa" — prioridad menor a Forros/Muebles, no participa del reparto proporcional del bloque (ver groupMap.forEach en handleProcessResumen)
   necVentaExternaUn: number; // necVentaExternaKg redondeado hacia arriba al rollo completo — igual criterio que deficitRealUN
-  hasDeficitVE: boolean; // El stock disponible NO alcanza a cubrir el piso de Venta Externa — semáforo "rojo duro": no admite "Aprobar" manual (ver toggleAprobarDeficit), solo baja cuando el stock real lo cubre
 }
 
 // Déficit real de un material (necesidad − stock ya cubierto), SIEMPRE redondeado hacia ARRIBA al
@@ -132,18 +130,20 @@ const deficitRealUN = (r: Pick<UnifiedNeedRow, 'totalNroRollos' | 'totalStockUN'
   return raw > 0.001 ? Math.ceil(raw - 0.001) : 0;
 };
 
-// Déficit real de la porción EXCLUSIVA de Venta Externa (su piso obligatorio menos el stock ya
-// disponible) — mismo criterio de redondeo que deficitRealUN. Se cubre primero y completo en el
-// reparto del bloque: es la mitad "dura" de la separación Venta Externa (exacto) vs Forros/Muebles
-// (participación) que pediste.
+// Déficit real de la porción EXCLUSIVA de Venta Externa (su necesidad menos el stock ya disponible)
+// — mismo criterio de redondeo que deficitRealUN. Consumo interno (Forros/Muebles) tiene prioridad:
+// Venta Externa recibe lo que queda de la bolsa del bloque DESPUÉS de cubrir el déficit de Forros/
+// Muebles (ver TIER 1/2/3 en handleProcessResumen) — puede quedar corta y aplazarse sin bloquear la
+// aprobación ni la corrida (decisión del usuario: prioridad al consumo interno).
 const deficitVentaExternaUN = (r: Pick<UnifiedNeedRow, 'necVentaExternaUn' | 'totalStockUN'>): number => {
   const raw = r.necVentaExternaUn - r.totalStockUN;
   return raw > 0.001 ? Math.ceil(raw - 0.001) : 0;
 };
 
 // Déficit real de Forros/Muebles: el déficit total del material (deficitRealUN, mezclado) menos lo
-// que ya se atribuye al piso de Venta Externa — así ambos tramos siguen sumando el mismo déficit
-// total de antes, sin doble conteo del mismo stock disponible.
+// que ya se atribuye a la necesidad de Venta Externa — así ambos tramos siguen sumando el mismo
+// déficit total de antes, sin doble conteo del mismo stock disponible. Es la porción con PRIORIDAD:
+// se sirve primero de la bolsa del bloque (ver TIER 1 en handleProcessResumen).
 const deficitForrosMueblesUN = (r: Pick<UnifiedNeedRow, 'totalNroRollos' | 'totalStockUN' | 'necVentaExternaUn'>): number => {
   return Math.max(0, deficitRealUN(r) - deficitVentaExternaUN(r));
 };
@@ -623,60 +623,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [resumenProgress, setResumenProgress] = useState({ current: 0, total: 0 });
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
-  // --- Panel flotante arrastrable (Guardar/Editar Plan) ---
-  const fabRef = useRef<HTMLDivElement>(null);
-  const fabDragOffset = useRef<{ x: number; y: number } | null>(null);
-  const [fabPos, setFabPos] = useState<{ x: number; y: number } | null>(null);
-
-  const handleFabDragStart = useCallback((e: React.MouseEvent) => {
-    const el = fabRef.current;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    fabDragOffset.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-    e.preventDefault();
-  }, []);
-
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      const offset = fabDragOffset.current;
-      const el = fabRef.current;
-      if (!offset || !el) return;
-      const rect = el.getBoundingClientRect();
-      const maxX = window.innerWidth - rect.width;
-      const maxY = window.innerHeight - rect.height;
-      setFabPos({
-        x: Math.min(Math.max(0, e.clientX - offset.x), Math.max(0, maxX)),
-        y: Math.min(Math.max(0, e.clientY - offset.y), Math.max(0, maxY)),
-      });
-    };
-    const handleMouseUp = () => { fabDragOffset.current = null; };
-    // Si el usuario ya arrastró el panel a una posición y luego redimensiona/hace zoom en la
-    // ventana, esa posición en px puede quedar fuera del viewport nuevo (offscreen o encimada
-    // en una esquina distinta a la que dejó). Se reclama dentro de los límites vigentes en vez
-    // de dejarlo fijo en coordenadas que ya no corresponden a la ventana actual.
-    const handleResize = () => {
-      const el = fabRef.current;
-      if (!el) return;
-      setFabPos(prev => {
-        if (!prev) return prev;
-        const rect = el.getBoundingClientRect();
-        const maxX = Math.max(0, window.innerWidth - rect.width);
-        const maxY = Math.max(0, window.innerHeight - rect.height);
-        const x = Math.min(Math.max(0, prev.x), maxX);
-        const y = Math.min(Math.max(0, prev.y), maxY);
-        return (x === prev.x && y === prev.y) ? prev : { x, y };
-      });
-    };
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
-    window.addEventListener('resize', handleResize);
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-      window.removeEventListener('resize', handleResize);
-    };
-  }, []);
-  
   const [planManualOverrides, setPlanOverrides] = useState<Record<string, number>>({});
   // Override manual del NÚMERO DE CORRIDAS de un bloque (apertura|densidad), independiente del
   // override por material (planManualOverrides). Cuando el usuario decide agregar o quitar una
@@ -1110,8 +1056,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   // Igual que materialNecesidadesPlantaMap, pero solo la porción cuya área de origen es "Venta
   // Externa" (mismo criterio /venta\s*externa/i que ya filtra el plan "Rollos" en fetchNecesidadesPlanta,
   // ver más arriba) — necesidadesPlantaData ya viene agrupado por área (nombre_grupo), así que no hace
-  // falta otra consulta. Alimenta el piso obligatorio (necVentaExternaKg/Un) en finalArray: Venta
-  // Externa debe cubrirse exacto, Forros/Muebles siguen en el reparto proporcional (porcentajeNecesidad).
+  // falta otra consulta. Alimenta necVentaExternaKg/Un en finalArray: Venta Externa se cubre exacto
+  // pero DESPUÉS de Forros/Muebles (prioridad al consumo interno, puede aplazarse), que sigue en el
+  // reparto proporcional (porcentajeNecesidad).
   const materialNecesidadVentaExternaMap = useMemo(() => {
     const map = new Map<string, number>();
     Object.entries(necesidadesPlantaData).forEach(([area, rows]) => {
@@ -1167,7 +1114,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     faltanteInternoRef.current = [];
     if (items.length === 0) return;
     const detalle = items.map(i => `${i.material} (faltan ${i.rollosFaltantes} rollo${i.rollosFaltantes === 1 ? '' : 's'})`).join(', ');
-    addNotification('warning', `Venta Externa se cubrió completo, pero no alcanzó para cubrir el consumo interno (Forros/Muebles) de ${items.length} material(es): ${detalle}. Verifique si hace falta una corrida adicional.`);
+    addNotification('warning', `El consumo interno (Forros/Muebles) no se cubrió completo pese a tener prioridad — falta capacidad real de corrida para ${items.length} material(es): ${detalle}. Verifique si hace falta una corrida adicional.`);
   }, [addNotification]);
 
   // El proceso de Corte y Laminado no puede cortar/despachar fracciones de rollo: cada cantidad se
@@ -1225,76 +1172,76 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     const entradasVE = entradas.filter(([codigoPadre]) => planGruposVentaExternaSet.has(codigoPadre));
     const entradasInternas = entradas.filter(([codigoPadre]) => !planGruposVentaExternaSet.has(codigoPadre));
 
-    // Venta Externa comparte material con un origen interno (Forros/Muebles): el reparto proporcional
-    // de abajo infla a VE por tener mayor % de participación aunque su necesidad real ya esté cubierta
-    // (ver conversación, caso 30004189: VE 70.2%/Forros 29.8% dejaba a Forros corto). Aquí VE se cubre
-    // EXACTO con su propia necesidad (nunca más) y el remanente completo va al/los origen(es)
-    // interno(s) — no un % fijo. El caso sin mezcla (solo VE, o solo orígenes internos entre sí) sigue
-    // el reparto proporcional de siempre más abajo, sin cambios: ahí no hay problema real, se resuelve
-    // con stock. El piso de corte de Venta Externa (aplicarPisoVentaExterna, en handleProcessResumen)
-    // sigue garantizando que cantidadKg alcance al menos para VE; si aun así no alcanza, VE se queda
-    // con lo que haya y no sale nada para el resto (mismo criterio "no negociable" de siempre, ahora
-    // solo aplicado a la atribución en vez de al corte).
+    // Venta Externa comparte material con un origen interno (Forros/Muebles): consumo interno tiene
+    // PRIORIDAD (decisión del usuario — Venta Externa se puede aplazar sin problema). El o los
+    // orígenes internos se cubren EXACTO con su propia necesidad (nunca más) y el remanente completo
+    // va a Venta Externa — no un % fijo. El caso sin mezcla (solo VE, o solo orígenes internos entre
+    // sí) sigue el reparto proporcional de siempre más abajo, sin cambios: ahí no hay problema real, se
+    // resuelve con stock. Ya no hay piso de corte no negociable para VE (ver TIER 1/2/3 en
+    // handleProcessResumen): si el material no alcanza ni para el consumo interno, ESO sí es una
+    // alerta real (ver faltanteInternoRef más abajo); si solo VE queda corta, es el aplazamiento
+    // esperado y no se alerta aparte (queda visible en el badge "VE: N UN" de la tabla).
     if (entradasVE.length > 0 && entradasInternas.length > 0) {
       const necesidadVEKg = entradasVE.reduce((s, [, v]) => s + v, 0);
       const necesidadInternaKg = entradasInternas.reduce((s, [, v]) => s + v, 0);
 
       if (pesoRollo <= 0) {
-        const veKgAsignado = Math.min(necesidadVEKg, cantidadKg);
-        const restoKg = Math.max(0, cantidadKg - veKgAsignado);
-        if (restoKg < necesidadInternaKg - 0.001) {
+        const internaKgAsignado = Math.min(necesidadInternaKg, cantidadKg);
+        const restoKg = Math.max(0, cantidadKg - internaKgAsignado);
+        if (internaKgAsignado < necesidadInternaKg - 0.001) {
           faltanteInternoRef.current.push({ material, rollosFaltantes: 0 });
         }
-        const filasVE = entradasVE.map(([codigoPadre, cantidad]) => ({
-          codigoPadre,
-          cantidadKg: veKgAsignado * (cantidad / (necesidadVEKg || 1))
-        }));
         const filasInternas = entradasInternas.map(([codigoPadre, cantidad]) => ({
           codigoPadre,
-          cantidadKg: restoKg * (cantidad / (necesidadInternaKg || 1))
+          cantidadKg: internaKgAsignado * (cantidad / (necesidadInternaKg || 1))
         }));
-        return [...filasVE, ...filasInternas];
+        const filasVE = entradasVE.map(([codigoPadre, cantidad]) => ({
+          codigoPadre,
+          cantidadKg: restoKg * (cantidad / (necesidadVEKg || 1))
+        }));
+        return [...filasInternas, ...filasVE];
       }
 
       const techoRollos = Math.round(cantidadKg / pesoRollo);
 
-      // TIER 1 — Venta Externa: se cubre exacto con su propia necesidad (redondeada hacia arriba al
-      // rollo), topada al techo real cortado. Si hay 2+ orígenes VE (caso raro), se reparten
-      // proporcional entre ellos con el mismo criterio "mayor primero, último se lleva el remanente"
-      // usado abajo, para no pasarse del cupo reservado.
-      const necesidadVERollos = entradasVE.reduce((s, [, v]) => s + (v > 0 ? Math.ceil(v / pesoRollo - 0.001) : 0), 0);
-      const veRollosAsignados = Math.min(necesidadVERollos, techoRollos);
-      let remanenteVE = veRollosAsignados;
-      const filasVE = entradasVE.map(([codigoPadre, cantidad], i) => {
-        const esUltimo = i === entradasVE.length - 1;
-        const rollos = esUltimo
-          ? Math.max(0, remanenteVE)
-          : Math.min(Math.ceil(veRollosAsignados * (cantidad / necesidadVEKg)), Math.max(0, remanenteVE));
-        remanenteVE -= rollos;
-        return { codigoPadre, cantidadKg: rollos * pesoRollo };
-      });
-
-      // TIER 2 — origen(es) interno(s): reciben TODO el remanente de rollos tras reservar VE (no un %
-      // fijo del total). Si son 2+ (Forros y Muebles a la vez), se reparten proporcional entre ellos.
-      const remanenteInternoRollos = Math.max(0, techoRollos - veRollosAsignados);
-      let remanenteInterno = remanenteInternoRollos;
+      // TIER 1 — origen(es) interno(s): se cubren exacto con su propia necesidad (redondeada hacia
+      // arriba al rollo), topados al techo real cortado. Si son 2+ (Forros y Muebles a la vez), se
+      // reparten proporcional entre ellos con el criterio "mayor primero, último se lleva el
+      // remanente" usado abajo, para no pasarse del cupo reservado.
+      const necesidadInternaRollos = entradasInternas.reduce((s, [, v]) => s + (v > 0 ? Math.ceil(v / pesoRollo - 0.001) : 0), 0);
+      const internaRollosAsignados = Math.min(necesidadInternaRollos, techoRollos);
+      let remanenteInterno = internaRollosAsignados;
       const filasInternas = entradasInternas.map(([codigoPadre, cantidad], i) => {
         const esUltimo = i === entradasInternas.length - 1;
         const rollos = esUltimo
           ? Math.max(0, remanenteInterno)
-          : Math.min(Math.ceil(remanenteInternoRollos * (cantidad / necesidadInternaKg)), Math.max(0, remanenteInterno));
+          : Math.min(Math.ceil(internaRollosAsignados * (cantidad / necesidadInternaKg)), Math.max(0, remanenteInterno));
         remanenteInterno -= rollos;
         return { codigoPadre, cantidadKg: rollos * pesoRollo };
       });
 
+      // TIER 2 — Venta Externa: recibe TODO el remanente de rollos tras cubrir el consumo interno (no
+      // un % fijo del total). Si hay 2+ orígenes VE (caso raro), se reparten proporcional entre ellos.
+      // Puede quedar corta — es el aplazamiento esperado, no un error.
+      const remanenteVERollos = Math.max(0, techoRollos - internaRollosAsignados);
+      let remanenteVE = remanenteVERollos;
+      const filasVE = entradasVE.map(([codigoPadre, cantidad], i) => {
+        const esUltimo = i === entradasVE.length - 1;
+        const rollos = esUltimo
+          ? Math.max(0, remanenteVE)
+          : Math.min(Math.ceil(remanenteVERollos * (cantidad / necesidadVEKg)), Math.max(0, remanenteVE));
+        remanenteVE -= rollos;
+        return { codigoPadre, cantidadKg: rollos * pesoRollo };
+      });
+
       // Alerta: el remanente para el/los origen(es) interno(s) no alcanza a cubrir su propia necesidad
-      // real — escasez real de material para la corrida, no se reparte "a la baja" en silencio.
-      const necesidadInternaRollos = entradasInternas.reduce((s, [, v]) => s + (v > 0 ? Math.ceil(v / pesoRollo - 0.001) : 0), 0);
-      if (remanenteInternoRollos < necesidadInternaRollos) {
-        faltanteInternoRef.current.push({ material, rollosFaltantes: necesidadInternaRollos - remanenteInternoRollos });
+      // real — escasez real de material para la corrida (incluso con prioridad, no se reparte "a la
+      // baja" en silencio).
+      if (internaRollosAsignados < necesidadInternaRollos) {
+        faltanteInternoRef.current.push({ material, rollosFaltantes: necesidadInternaRollos - internaRollosAsignados });
       }
 
-      return [...filasVE, ...filasInternas];
+      return [...filasInternas, ...filasVE];
     }
 
     if (pesoRollo <= 0 || entradas.length <= 1) {
@@ -1818,8 +1765,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           bomParentMaterial: baseLaminaRow ? dimsSourceCode : undefined,
           runsRecomendado: 0,
           necVentaExternaKg: 0,
-          necVentaExternaUn: 0,
-          hasDeficitVE: false
+          necVentaExternaUn: 0
         });
       }
     };
@@ -1925,11 +1871,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         totalStockKg,
         totalStockUN,
         necVentaExternaKg,
-        necVentaExternaUn,
-        // Semáforo "rojo duro" — igual criterio que hasDeficit (stock puro, sin considerar plan
-        // todavía) pero contra el piso de Venta Externa en vez del total mezclado. No admite
-        // "Aprobar" manual (ver toggleAprobarDeficit): solo baja cuando el stock real ya lo cubre.
-        hasDeficitVE: necVentaExternaUn > totalStockUN
+        necVentaExternaUn
       };
     });
     
@@ -1976,34 +1918,38 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
       const totalUnitsInPlan = runsEfectivo * BLOCK_SIZE;
 
-      // TIER 1 — Venta Externa: piso obligatorio, se reserva primero y completo de la bolsa del
-      // bloque — pero solo lo que el stock NO alcanza a cubrir (deficitVentaExternaUN, no el piso
-      // bruto necVentaExternaUn): si ya hay stock suficiente para el piso, no tiene sentido forzar una
-      // corrida completa de más. No pasa por el reparto proporcional. Si la bolsa no alcanza para
-      // cubrir todos los déficits VE del bloque (caso límite de escasez real), se reparte proporcional
-      // al tamaño de cada déficit en vez de repartir "a la baja" en silencio — mismo tipo de escasez
-      // que ya está pendiente de alerta para el prorrateo por origen (ver memoria
-      // "p3-origen-prioridad-pendiente"); aquí todavía no se alerta, solo se evita asignar más de lo
-      // que hay.
+      // TIER 1 — Forros/Muebles (consumo interno): prioridad — se reserva primero y completo de la
+      // bolsa del bloque, pero solo lo que el stock NO alcanza a cubrir (deficitForrosMueblesUN). Si
+      // la bolsa no alcanza para cubrir todo el déficit F/M del bloque (escasez real), se reparte
+      // proporcional al tamaño de cada déficit en vez de repartir "a la baja" en silencio.
+      const totalFMBlock = standardItems.reduce((s, r) => s + deficitForrosMueblesUN(r), 0);
+      const fmBagDisponible = Math.min(totalFMBlock, totalUnitsInPlan);
+      const fmDeficitAlloc = totalFMBlock > 0 && fmBagDisponible >= totalFMBlock
+        ? new Map(standardItems.map(r => [r.material, deficitForrosMueblesUN(r)]))
+        : redistribuirBolsaBloque(standardItems, fmBagDisponible, deficitForrosMueblesUN);
+
+      // TIER 2 — Venta Externa: ya NO es un piso obligatorio — recibe lo que queda de la bolsa tras
+      // cubrir el consumo interno, hasta su propio déficit (deficitVentaExternaUN). Puede quedar corta
+      // y aplazarse sin bloquear la corrida ni la aprobación (decisión: prioridad al consumo interno,
+      // ver deficitVentaExternaUN/deficitForrosMueblesUN). Mismo criterio de reparto proporcional que
+      // TIER 1 si el remanente no alcanza para todos los déficits VE del bloque.
       const totalVEBlock = standardItems.reduce((s, r) => s + deficitVentaExternaUN(r), 0);
-      const veBagDisponible = Math.min(totalVEBlock, totalUnitsInPlan);
+      const bolsaRestanteVE = Math.max(0, totalUnitsInPlan - totalFMBlock);
+      const veBagDisponible = Math.min(totalVEBlock, bolsaRestanteVE);
       const veAlloc = totalVEBlock > 0 && veBagDisponible >= totalVEBlock
         ? new Map(standardItems.map(r => [r.material, deficitVentaExternaUN(r)]))
         : redistribuirBolsaBloque(standardItems, veBagDisponible, r => deficitVentaExternaUN(r));
 
-      // TIER 2 — Forros/Muebles: la bolsa restante tras reservar el piso VE se reparte con el mismo
-      // criterio de siempre (déficit real F/M primero, remanente proporcional a porcentajeNecesidad,
-      // ya redefinido arriba como FM-only).
-      const bolsaRestanteFM = Math.max(0, totalUnitsInPlan - totalVEBlock);
-      const fmAlloc = distribuirPorDeficit(standardItems, bolsaRestanteFM, deficitForrosMueblesUN);
+      // TIER 3 — sobrante: si la bolsa alcanza para más que ambos déficits combinados (redondeo de
+      // BLOCK_SIZE, o un override manual de corridas al alza), el remanente se reparte por
+      // participación (porcentajeNecesidad, FM-only) — Venta Externa nunca recibe de más, solo su
+      // déficit exacto (no compite por el %, ver comentario de porcentajeNecesidad arriba).
+      const sobranteBloque = Math.max(0, bolsaRestanteVE - totalVEBlock);
+      const sobranteAlloc = sobranteBloque > 0 ? redistribuirBolsaBloque(standardItems, sobranteBloque) : new Map<string, number>();
 
-      const distribucionCombinada = new Map<string, number>(
-        standardItems.map(r => [r.material, (veAlloc.get(r.material) ?? 0) + (fmAlloc.get(r.material) ?? 0)])
+      const distribucion = new Map<string, number>(
+        standardItems.map(r => [r.material, (fmDeficitAlloc.get(r.material) ?? 0) + (veAlloc.get(r.material) ?? 0) + (sobranteAlloc.get(r.material) ?? 0)])
       );
-      // Última garantía: ningún material puede terminar con menos que su piso VE, incluso si vino de
-      // un override manual de corridas del bloque (corridasManualOverrides) — "Venta Externa exacto"
-      // no es negociable (ver aplicarPisoVentaExterna).
-      const distribucion = aplicarPisoVentaExterna(standardItems, distribucionCombinada);
       standardItems.forEach(row => {
         const key = `${row.material}|${row.apertura}|${row.densidad}`;
         const planUn = planManualOverrides[key] !== undefined ? planManualOverrides[key] : (distribucion.get(row.material) ?? 0);
@@ -2069,9 +2015,10 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   };
 
   // Reparte targetTotal entre items según su peso relativo entre sí (por defecto porcentajeNecesidad,
-  // pero puede pesarse por cualquier otra métrica vía weightOf — ver distribuirPorDeficit), cerrando
-  // exacto vía redondeo por mayor resto. Usada por la edición manual de corridas por bloque, por el
-  // reparto automático del déficit real, y por cualquier otro reparto proporcional de una bolsa de unidades.
+  // pero puede pesarse por cualquier otra métrica vía weightOf, ej. deficitForrosMueblesUN/
+  // deficitVentaExternaUN en TIER 1/2 de handleProcessResumen), cerrando exacto vía redondeo por mayor
+  // resto. Usada por la edición manual de corridas por bloque, el reparto automático por prioridad
+  // (TIER 1/2/3), y cualquier otro reparto proporcional de una bolsa de unidades.
   const redistribuirBolsaBloque = (
     items: UnifiedNeedRow[],
     targetTotal: number,
@@ -2105,74 +2052,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return final;
   };
 
-  // Reparte totalUnitsInPlan (la bolsa de un bloque) según el DÉFICIT de cada material, definido por
-  // deficitOf (por defecto deficitRealUN, el déficit mezclado — pásale deficitForrosMueblesUN para
-  // repartir solo el tramo Forros/Muebles, dejando el piso de Venta Externa fuera de esta bolsa, ver
-  // groupMap.forEach en handleProcessResumen).
-  //
-  // Sin déficit real en el bloque no hay "mínimo" que garantizar: se reparte directo por participación
-  // en Kg (porcentajeNecesidad, el peso por defecto de redistribuirBolsaBloque) — no tendría sentido
-  // pesar por un déficit que es 0 para todos.
-  //
-  // Con déficit real, reparto en DOS FASES:
-  //   Fase 1 — cada material recibe exacto su déficit (nadie se queda corto). Si la bolsa NO alcanza
-  //   para cubrir todos los déficits, se reparte completa proporcional al TAMAÑO del déficit de cada
-  //   uno (ver caso histórico más abajo) y no hay fase 2 — no queda excedente.
-  //   Fase 2 — el excedente (bolsa − déficit total), si lo hay, se reparte proporcional a la
-  //   participación en Kg (porcentajeNecesidad) entre TODOS los materiales del bloque, incluidos los
-  //   que ya cubrieron su déficit en la fase 1 (déficit = 0). Antes ese excedente no existía como
-  //   fase propia: la bolsa completa se pesaba solo por déficit, así que un material con déficit=0
-  //   (stock ya cubierto) quedaba en 0 UN aunque tuviera % de participación visible y sobrara bolsa
-  //   por asignar — visualmente inconsistente contra la columna "% Participación". Con la fase 2,
-  //   ese sobrante se reparte por participación como corresponde, en vez de perderse en un solo
-  //   material. (Distinto del bug histórico ya corregido: antes el sobrante SOLO se pesaba por Kg
-  //   entre los de déficit=0, dejando a un material con 99.5% Kg pero déficit chico acaparar casi
-  //   todo el sobrante mientras otro con 0.5% Kg y déficit grande — caso real: 206 - D19 AF PL — se
-  //   quedaba solo con su mínimo; aquí la fase 1 ya garantizó el déficit de cada uno primero, así que
-  //   la fase 2 solo reparte lo que sobra después de eso.)
-  const distribuirPorDeficit = (
-    items: UnifiedNeedRow[],
-    totalUnitsInPlan: number,
-    deficitOf: (r: UnifiedNeedRow) => number = deficitRealUN
-  ): Map<string, number> => {
-    const totalDeficit = items.reduce((s, r) => s + deficitOf(r), 0);
-
-    if (totalDeficit <= 0) {
-      return redistribuirBolsaBloque(items, totalUnitsInPlan);
-    }
-    if (totalUnitsInPlan <= totalDeficit) {
-      return redistribuirBolsaBloque(items, totalUnitsInPlan, deficitOf);
-    }
-
-    const fase1 = new Map<string, number>(items.map(r => [r.material, deficitOf(r)]));
-    const excedente = totalUnitsInPlan - totalDeficit;
-    const fase2 = redistribuirBolsaBloque(items, excedente);
-
-    return new Map<string, number>(
-      items.map(r => [r.material, (fase1.get(r.material) ?? 0) + (fase2.get(r.material) ?? 0)])
-    );
-  };
-
-  // Aplica el piso obligatorio de Venta Externa como último paso sobre CUALQUIER distribución ya
-  // calculada (automática o manual): ningún material puede terminar con un planUn por debajo de lo
-  // que el stock NO alcanza a cubrir de su piso (deficitVentaExternaUN — si el stock ya cubre el piso
-  // completo, no exige producción de más). Como ese remanente no es negociable ("Venta Externa exacto"
-  // — decisión: bloquear, no solo advertir), el total resultante puede terminar superando la
-  // bolsa/corridas solicitadas si esta no alcanzaba para cubrirlo; se prioriza cumplir el piso sobre
-  // cerrar el múltiplo exacto de BLOCK_SIZE. Se usa tanto en el cálculo automático
-  // (handleProcessResumen) como en los 3 caminos de edición manual (handleUpdatePlanUn,
-  // handleConfirmarCompletarTecho, handleUpdateCorridasBloque) para que la garantía sea uniforme sin
-  // importar quién decidió el valor.
-  const aplicarPisoVentaExterna = (items: UnifiedNeedRow[], distribution: Map<string, number>): Map<string, number> => {
-    const result = new Map(distribution);
-    items.forEach(r => {
-      const minimo = deficitVentaExternaUN(r); // neto de stock — si el stock ya cubre el piso, no exige producción
-      const current = result.get(r.material) ?? 0;
-      if (minimo > current) result.set(r.material, minimo);
-    });
-    return result;
-  };
-
   // Alterna la aprobación visual del semáforo en rojo con plan ya asignado (ver approvedDeficitRows).
   const toggleAprobarDeficit = (material: string, apertura: string, densidad: string) => {
     const key = `${material}|${apertura}|${densidad}`;
@@ -2194,16 +2073,14 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     const editedRowNow = unifiedNeeds.find(r => inGroup(r) && r.material === material);
     const isConvEdit = editedRowNow ? isConvDescripcion(editedRowNow.descripcion) : false;
 
-    let newValue = Math.max(0, Math.round(rawValue) || 0); // nunca negativo
-    // "Venta Externa exacto" (decisión: bloquear, no solo advertir — ver aplicarPisoVentaExterna): un
-    // material estándar no puede bajar, por edición manual, de lo que el stock NO alcanza a cubrir de
-    // su piso VE (deficitVentaExternaUN, no el piso bruto: si el stock ya cubre el piso, no hace falta
-    // forzar producción). Se sube al mínimo y se avisa por qué, en vez de aceptar en silencio un valor
-    // que dejaría a Venta Externa desabastecida.
+    const newValue = Math.max(0, Math.round(rawValue) || 0); // nunca negativo
+    // Venta Externa ya NO es un piso obligatorio (decisión: prioridad al consumo interno, Venta
+    // Externa se puede aplazar) — bajar el PLAN(UN) por debajo del déficit de Venta Externa ya no se
+    // corrige ni se bloquea, solo se avisa para que quede claro el trade-off (el déficit sigue visible
+    // en el badge "VE: N UN" de la tabla).
     const minimoVE = editedRowNow ? deficitVentaExternaUN(editedRowNow) : 0;
     if (!isConvEdit && editedRowNow && newValue < minimoVE) {
-      newValue = minimoVE;
-      addNotification('warning', `Material ${material}: no puede bajar de ${minimoVE} UN — es lo mínimo que el stock no alcanza a cubrir del piso obligatorio de Venta Externa (necesidad exacta, no participa del reparto proporcional).`);
+      addNotification('info', `Material ${material}: queda con ${minimoVE - newValue} UN de déficit en Venta Externa — se aplaza, no bloquea la corrida ni la aprobación.`);
     }
     const key = `${material}|${apertura}|${densidad}`;
     setPlanOverrides(prevOv => ({ ...prevOv, [key]: newValue }));
@@ -2281,10 +2158,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       if (others.length === 0) return prev;
 
       const targetOthersTotal = Math.max(0, techoNuevo - editedValue);
-      // "Venta Externa exacto" (bloquear, no advertir): ningún material de "others" puede terminar
-      // bajo su piso VE aunque eso empuje el total por encima de targetOthersTotal — ver
-      // aplicarPisoVentaExterna.
-      const distribution = aplicarPisoVentaExterna(others, redistribuirBolsaBloque(others, targetOthersTotal));
+      // Reparto proporcional simple entre "others" — Venta Externa ya no tiene un piso obligatorio que
+      // proteger aquí (puede quedar corta y aplazarse, ver deficitVentaExternaUN).
+      const distribution = redistribuirBolsaBloque(others, targetOthersTotal);
 
       setPlanOverrides(prevOv => {
         const next = { ...prevOv };
@@ -2294,9 +2170,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         return next;
       });
 
-      // Suma real lograda tras aplicarPisoVentaExterna (puede superar targetOthersTotal si algún piso
-      // VE no cabía en la bolsa original) — se usa la real, no la solicitada, para que el setup del
-      // bloque siga cerrando exacto contra lo que de verdad se va a producir.
       const actualOthersTotal = others.reduce((s, r) => s + (distribution.get(r.material) ?? 0), 0);
       const newGroupTotal = editedValue + actualOthersTotal;
       const corridasBloque = newGroupTotal > 0 ? Math.ceil(newGroupTotal / BLOCK_SIZE) : 0;
@@ -2355,11 +2228,10 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
       const isBackToAuto = newCorridas === standardGroup[0].runsRecomendado;
       const newTotal = newCorridas * BLOCK_SIZE;
-      // "Venta Externa exacto" (bloquear, no advertir): si el usuario baja las corridas del bloque por
-      // debajo de lo que hace falta para cubrir todos los pisos VE, igual se garantiza cada piso — ver
-      // aplicarPisoVentaExterna. El feedback inmediato aquí es proporcional (no pasa por
-      // distribuirPorDeficit); handleProcessResumen sigue siendo la fuente de verdad al reprocesar.
-      const distribution = aplicarPisoVentaExterna(standardGroup, redistribuirBolsaBloque(standardGroup, newTotal));
+      // Reparto proporcional simple — Venta Externa ya no tiene un piso obligatorio que proteger aquí
+      // (puede quedar corta y aplazarse). El feedback inmediato aquí es proporcional por participación;
+      // handleProcessResumen sigue siendo la fuente de verdad (TIER 1/2/3) al reprocesar.
+      const distribution = redistribuirBolsaBloque(standardGroup, newTotal);
 
       setPlanOverrides(prevOv => {
         const next = { ...prevOv };
@@ -2384,8 +2256,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         return next;
       });
 
-      // Suma real lograda tras aplicarPisoVentaExterna (puede superar newTotal si algún piso VE no
-      // cabía en la bolsa solicitada) — se usa la real para que el setup del bloque cierre exacto.
       const actualTotal = standardGroup.reduce((s, r) => s + (distribution.get(r.material) ?? 0), 0);
       const corridasBloque = actualTotal > 0 ? Math.ceil(actualTotal / BLOCK_SIZE) : 0;
       const setupFor = (planUn: number) => (corridasBloque > 0 && actualTotal > 0)
@@ -2501,6 +2371,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         fecha_fin_plan: planPreview.fechaFin,
         estado: 'A',
         usuario_creacion: usuario,
+        // Faltaba en el payload — la columna quedaba NULL en BD (verificado con datos reales).
+        fecha_creacion: new Date(),
       };
 
       const planResponse = await planGrupoService.save(planPayload as unknown as PlanGrupo);
@@ -2608,6 +2480,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         fecha_fin_plan: planPreviewPFD.fechaFin,
         estado: 'A',
         usuario_creacion: usuario,
+        // Faltaba en el payload — la columna quedaba NULL en BD (verificado con datos reales).
+        fecha_creacion: new Date(),
       };
 
       const planResponse = await planGrupoService.save(planPayload as unknown as PlanGrupo);
@@ -3513,9 +3387,11 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           </div>
         </div>
         <div className="flex items-center gap-3">
+           {/* "Sincronizar": trae datos crudos de SAP sin calcular nada — mismo color/forma en los 4
+               módulos tácticos (azul), distinto de "Generar Necesidades" (índigo, al lado). */}
            <Button onClick={handleSincronizar} disabled={isLoading} variant={datosCargados ? 'outline' : 'default'} className={cn(
              "rounded-xl h-10 px-6 text-[10px] font-black uppercase tracking-widest flex items-center gap-2",
-             datosCargados ? "border-red-200 text-red-700 hover:bg-red-50" : "bg-red-600 text-white hover:bg-red-700 shadow-lg"
+             datosCargados ? "border-blue-200 text-blue-700 hover:bg-blue-50" : "bg-blue-600 text-white hover:bg-blue-700 shadow-lg"
            )}>
               {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Sincronizar
            </Button>
@@ -3566,12 +3442,12 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           redacción compacta que Corte Espuma y Venta Externa (ver [[carga_manual_modulos_tacticos]]). */}
       {!datosCargados && !isLoading && (
         <div
-          className="flex items-center gap-2.5 rounded-xl border border-dashed border-red-200 bg-red-50/40 px-4 py-2.5 text-left"
+          className="flex items-center gap-2.5 rounded-xl border border-dashed border-blue-200 bg-blue-50/40 px-4 py-2.5 text-left"
           title="Este módulo no consulta SAP al abrirse. Sincronizar trae Grupos, Restricciones, Provisionales, FERT, KPI Looper, Inventario, Habilidades y Mantenimiento."
         >
-          <RefreshCw className="w-4 h-4 text-red-600 shrink-0" />
+          <RefreshCw className="w-4 h-4 text-blue-600 shrink-0" />
           <p className="text-[11px] font-bold text-slate-600">
-            Sin datos cargados — pulsa <span className="font-black text-red-700">Sincronizar</span> para traerlos.
+            Sin datos cargados — pulsa <span className="font-black text-blue-700">Sincronizar</span> para traerlos.
           </p>
         </div>
       )}
@@ -3597,6 +3473,46 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         </TabsList>
 
         <TabsContent value="resumen" className="space-y-6 animate-in fade-in duration-300">
+          {/* "Generar Respuestas": antes vivía en un panel flotante arrastrable sobre la tabla (para
+              seguir alcanzable en un plan con muchas filas, sin scroll). El usuario lo encontró poco
+              claro y pidió pasarlo a botón estático — pero NO en el header global junto a
+              Sincronizar (que es una acción de módulo completo), sino debajo de la fila de tabs,
+              contextual al tab "Resumen Necesidades" donde vive la tabla que se está aprobando —
+              mismo patrón que "Generar Necesidades · P1/PFF" en Corte Espuma (vive dentro del tab
+              "Necesidades Planta", no en el header). Se acepta el trade-off de tener que volver
+              arriba (al inicio de este tab, no de la página) para generar la respuesta tras
+              revisar/ajustar filas más abajo. Colores unificados con Corte Espuma (única fuente ya
+              consistente): P3 = negro sólido (es la respuesta real que se envía, el commit de más
+              peso); PFD = índigo outline, mismo peso que "Generar Necesidades"/"Editar Plan" (es un
+              reporte de faltante, no la respuesta final). */}
+          <div className="flex items-center gap-3 flex-wrap justify-end">
+            <Button
+              onClick={handleOpenGuardarPlan}
+              disabled={isSavingPlan || respuestaSalidaRows.every(r => r.cantidadKg <= 0)}
+              className="rounded-xl h-10 px-6 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white shadow-lg"
+            >
+              {isSavingPlan ? <Loader2 className="w-4 h-4 animate-spin" /> : <ClipboardList className="w-4 h-4" />}
+              {isSavingPlan ? 'Guardando...' : 'Generar Respuestas · P3 - Rollos'}
+            </Button>
+            <Button
+              onClick={handleOpenGuardarPlanPFD}
+              disabled={isSavingPlanPFD || respuestaSalidaRows.length === 0}
+              variant="outline"
+              className="rounded-xl h-10 px-6 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+            >
+              {isSavingPlanPFD ? <Loader2 className="w-4 h-4 animate-spin" /> : <ClipboardList className="w-4 h-4" />}
+              {isSavingPlanPFD ? 'Guardando...' : 'Generar Respuestas · PFD - Rollos'}
+            </Button>
+            <Button
+              onClick={handleOpenEditarPlan}
+              disabled={isLoadingEditPlan}
+              variant="outline"
+              className="rounded-xl h-10 px-6 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+            >
+              {isLoadingEditPlan ? <Loader2 className="w-4 h-4 animate-spin" /> : <Pencil className="w-4 h-4" />}
+              {isLoadingEditPlan ? 'Cargando...' : 'Editar Plan'}
+            </Button>
+          </div>
           {renderTopConsolidation()}
 
           <div className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white mt-8">
@@ -3625,7 +3541,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                     <th className="px-3 py-4 border-r border-black/5 text-teal-800 bg-teal-50/60 uppercase">NEC. PLANTA [Un]</th>
                     <th className="px-3 py-4 border-r border-black/5 text-slate-700 uppercase">HALB [Un]</th>
                     <th className="px-3 py-4 border-r border-black/10 bg-amber-50 text-amber-700 font-black uppercase">T. NECESIDADES [Un]</th>
-                    <th className="px-3 py-4 border-r border-black/5 text-center uppercase" title="Rojo duro = piso Venta Externa sin cubrir (no se puede aprobar). Rojo blando = déficit Forros/Muebles. % = participación Forros/Muebles dentro del bloque, sin Venta Externa.">semaforo % Nec.</th>
+                    <th className="px-3 py-4 border-r border-black/5 text-center uppercase" title="Rojo = déficit de stock (Forros/Muebles con prioridad, o Venta Externa aplazado); click Aprobar si ya tiene corrida asignada. % = participación Forros/Muebles dentro del bloque, sin Venta Externa.">semaforo % Nec.</th>
                     <th className="px-4 py-4 border-r border-black/5 text-right font-black bg-[#fee2e2] text-red-900 uppercase">PLAN (UN)</th>
                     <th className="px-4 py-4 border-r border-black/5 text-right font-black bg-[#fee2e2] text-red-900 uppercase">PLAN (KG)</th>
                     <th className="px-4 py-4 text-right font-black bg-indigo-50 text-indigo-700 uppercase">T. PROCESO (H)</th>
@@ -3781,34 +3697,27 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                                  <div className="flex flex-col items-center gap-1">
                                     {(() => {
                                       const deficitKey = `${item.material}|${item.apertura}|${item.densidad}`;
-                                      // Rojo "duro" (Venta Externa): a diferencia de Forros/Muebles, esto NO es un
-                                      // juicio del planificador — el sistema ya garantiza el piso vía planUn
-                                      // (aplicarPisoVentaExterna), así que basta con que stock + plan ya cubran el
-                                      // piso para pasar a verde automáticamente, sin botón "Aprobar". Solo se queda
-                                      // en rojo duro en el caso límite de escasez real (la bolsa del bloque no
-                                      // alcanzó ni para el piso — ver TIER 1 en handleProcessResumen).
-                                      const veCubierta = (item.totalStockUN + item.planUn) >= item.necVentaExternaUn;
-                                      const veDeficitDuro = item.necVentaExternaUn > 0 && !veCubierta;
-                                      // Rojo "blando" (Forros/Muebles): el resto del déficit mezclado, sigue admitiendo
-                                      // "Aprobar" cuando ya hay corrida asignada, igual que antes de la separación.
-                                      const fmDeficitBlando = item.hasDeficit && veCubierta;
-                                      const requiereAprobacion = fmDeficitBlando && item.planUn > 0;
+                                      // Ya no se distingue "rojo duro" (Venta Externa) de "rojo blando" (Forros/
+                                      // Muebles) — Venta Externa dejó de ser un piso obligatorio (puede aplazarse,
+                                      // ver TIER 1/2/3 en handleProcessResumen). Cualquier déficit de stock se
+                                      // trata igual y admite "Aprobar" cuando ya hay corrida asignada.
+                                      const requiereAprobacion = item.hasDeficit && item.planUn > 0;
                                       const aprobado = requiereAprobacion && approvedDeficitRows.has(deficitKey);
-                                      const enVerde = !item.hasDeficit || (fmDeficitBlando && aprobado);
+                                      const enVerde = !item.hasDeficit || aprobado;
                                       return (
                                         <>
                                           <div className={cn(
                                             "w-3 h-3 rounded-full",
-                                            enVerde ? "bg-green-500" : veDeficitDuro ? "bg-red-700 shadow-[0_0_10px_#b91c1c] animate-pulse" : "bg-red-500 shadow-[0_0_8px_#ef4444]"
+                                            enVerde ? "bg-green-500" : "bg-red-500 shadow-[0_0_8px_#ef4444]"
                                           )} />
                                           <span className={cn("text-[8px] font-black uppercase tracking-tighter", enVerde ? "text-green-700" : "text-red-700")}>
-                                            {!item.hasDeficit ? "STOCK OK" : veDeficitDuro ? "VE: STOCK BAJO" : aprobado ? "CORRIDA ASIGNADA" : "STOCK BAJO"}
+                                            {!item.hasDeficit ? "STOCK OK" : aprobado ? "CORRIDA ASIGNADA" : "STOCK BAJO"}
                                           </span>
                                           <span className="text-[9px] text-slate-900 font-black font-mono" title="Participación dentro del bloque — solo Forros/Muebles, Venta Externa no compite por este %">
                                             {(item.porcentajeNecesidad * 100).toFixed(1)}%
                                           </span>
                                           {item.necVentaExternaUn > 0 && (
-                                            <span className="text-[7px] text-indigo-700 font-black font-mono bg-indigo-50 border border-indigo-200 rounded px-1 py-0.5" title="Piso obligatorio Venta Externa — se cubre exacto, no participa del %">
+                                            <span className="text-[7px] text-indigo-700 font-black font-mono bg-indigo-50 border border-indigo-200 rounded px-1 py-0.5" title="Necesidad de Venta Externa — se cubre según prioridad y stock disponible; puede quedar corta y aplazarse sin bloquear nada">
                                               VE: {item.necVentaExternaUn.toLocaleString()} UN
                                             </span>
                                           )}
@@ -3834,22 +3743,10 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                               <td className="px-2 py-3 border-r border-black/10 bg-[#fee2e2]/20">
                                  {(() => {
                                    // Material 100% Venta Externa (sin participación Forros/Muebles, porcentajeNecesidad
-                                   // === 0): PLAN (UN) queda bloqueado — editar no tiene ningún uso legítimo, ya que
-                                   // el valor siempre se fuerza de vuelta al piso obligatorio (ver aplicarPisoVentaExterna).
-                                   // Las variantes CONV quedan excluidas: su planUn no pasa por ese piso, se deriva de
-                                   // la lámina base (bomParentMaterial).
-                                   const soloVentaExterna = !isConvDescripcion(item.descripcion) && item.necVentaExternaUn > 0 && item.porcentajeNecesidad === 0;
-                                   if (soloVentaExterna) {
-                                     return (
-                                       <input
-                                         type="number"
-                                         value={item.planUn}
-                                         disabled
-                                         title="Bloqueado: material 100% Venta Externa — el plan siempre es exacto a la necesidad, no se edita manualmente"
-                                         className="w-16 bg-indigo-50 border border-indigo-200 rounded px-1 text-center font-black text-indigo-900 cursor-not-allowed"
-                                       />
-                                     );
-                                   }
+                                   // === 0): PLAN (UN) es editable igual que cualquier otro material — Venta Externa
+                                   // ya no tiene un piso obligatorio que proteger (puede quedar corta y aplazarse, ver
+                                   // TIER 1/2/3 en handleProcessResumen); el override manual se respeta igual en el
+                                   // recálculo automático (planManualOverrides).
                                    const planUnKey = `${item.material}|${item.apertura}|${item.densidad}`;
                                    return (
                                      <input
@@ -3877,43 +3774,6 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             </div>
           </div>
 
-          <div
-            ref={fabRef}
-            style={fabPos ? { position: 'fixed', top: fabPos.y, left: fabPos.x, zIndex: 50 } : { position: 'fixed', bottom: '2rem', right: '2rem', zIndex: 50 }}
-            className="flex flex-col items-stretch gap-1.5 bg-white/95 backdrop-blur border border-slate-200 rounded-2xl shadow-2xl p-2 select-none"
-          >
-            <div
-              onMouseDown={handleFabDragStart}
-              className="flex items-center justify-center h-4 text-slate-400 hover:text-slate-600 cursor-grab active:cursor-grabbing"
-              title="Mover"
-            >
-              <GripHorizontal className="w-4 h-4" />
-            </div>
-            <button
-              onClick={handleOpenGuardarPlan}
-              disabled={isSavingPlan || respuestaSalidaRows.every(r => r.cantidadKg <= 0)}
-              className="h-10 px-4 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-black text-[10px] uppercase tracking-widest shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-1.5 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-            >
-              {isSavingPlan ? <Loader2 className="w-4 h-4 animate-spin" /> : <ClipboardList className="w-4 h-4" />}
-              {isSavingPlan ? 'Guardando...' : 'Generar Respuestas · Plan'}
-            </button>
-            <button
-              onClick={handleOpenGuardarPlanPFD}
-              disabled={isSavingPlanPFD || respuestaSalidaRows.length === 0}
-              className="h-10 px-4 rounded-full bg-amber-600 hover:bg-amber-700 text-white font-black text-[10px] uppercase tracking-widest shadow-lg shadow-amber-600/30 flex items-center justify-center gap-1.5 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-            >
-              {isSavingPlanPFD ? <Loader2 className="w-4 h-4 animate-spin" /> : <ClipboardList className="w-4 h-4" />}
-              {isSavingPlanPFD ? 'Guardando...' : 'Generar Respuestas · Plan PFD'}
-            </button>
-            <button
-              onClick={handleOpenEditarPlan}
-              disabled={isLoadingEditPlan}
-              className="h-10 px-4 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white font-black text-[10px] uppercase tracking-widest shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-1.5 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-            >
-              {isLoadingEditPlan ? <Loader2 className="w-4 h-4 animate-spin" /> : <Pencil className="w-4 h-4" />}
-              {isLoadingEditPlan ? 'Cargando...' : 'Generar Respuestas · Editar Plan'}
-            </button>
-          </div>
 
           <Dialog open={planActivoPendienteConfirmacion !== null} onOpenChange={(open) => { if (!open && !isEjecutandoModificacionAutomatica) setPlanActivoPendienteConfirmacion(null); }}>
             <DialogContent className="max-w-xl">
