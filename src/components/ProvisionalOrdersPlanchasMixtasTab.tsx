@@ -1104,6 +1104,42 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
         XLSX.writeFile(workbook, `Planificacion_Calculada_Planchas_Mixtas_${fechaArchivo}.xlsx`);
     };
 
+    // Exporta a Excel la producción por cada Mesa de Pegado ("Distribución Equitativa — Mesas de Pegado"):
+    // una fila por orden asignada, agrupadas por Turno y Mesa
+    const handleExportDistribucionMesasExcel = () => {
+        if (!pmDistribution || pmDistribution.size === 0) return;
+
+        const rows: Record<string, string | number>[] = [];
+        Array.from(pmDistribution.values())
+            .sort((a, b) => a.turno.localeCompare(b.turno) || a.stationId - b.stationId)
+            .forEach(station => {
+                const turnoLabel = TURNOS_PM.find(t => t.id === station.turno)?.label ?? station.turno;
+                const mesaNombre = WORK_STATIONS_PM.find(s => s.id === station.stationId)?.name ?? `MESA ${station.stationId}`;
+                station.items.forEach(item => {
+                    rows.push({
+                        'Turno': turnoLabel,
+                        'Mesa': mesaNombre,
+                        'Origen': item.source,
+                        'N° Orden': item.id,
+                        'Material': item.material,
+                        'Nombre': item.nombre,
+                        'Tipo': item.tipo,
+                        'Fecha': item.fecha,
+                        'Cantidad': item.cantidad,
+                        'Horas': Number(item.horas.toFixed(2)),
+                    });
+                });
+            });
+        if (rows.length === 0) return;
+
+        const worksheet = XLSX.utils.json_to_sheet(rows);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Distribución Mesas de Pegado');
+
+        const fechaArchivo = getDateKeyOffset(0);
+        XLSX.writeFile(workbook, `Distribucion_Mesas_Pegado_${fechaArchivo}.xlsx`);
+    };
+
     // Exporta a Excel una tabla de Explosión de Materiales (Láminas de Espuma/Prensadas) con el Kardex
     const exportComponentNeedsToExcelPM = (data: PMComponentNeed[], sheetName: string, fileLabel: string) => {
         if (data.length === 0) return;
@@ -1975,15 +2011,25 @@ export const ProvisionalOrdersPlanchasMixtasTab: React.FC<ProvisionalOrdersPlanc
                             <LayoutGrid className="w-5 h-5 text-purple-200" />
                             <h3 className="text-sm font-bold text-white uppercase tracking-wide">Distribución Equitativa — Mesas de Pegado</h3>
                         </div>
-                        <Button
-                            onClick={handleMaterialExplosionPM}
-                            disabled={isExplodingMaterials}
-                            size="sm"
-                            className="h-8 bg-orange-600 hover:bg-orange-700 text-white gap-1.5 text-xs"
-                        >
-                            {isExplodingMaterials ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <PackageSearch className="w-3.5 h-3.5" />}
-                            Explosión de Materiales
-                        </Button>
+                        <div className="flex items-center gap-2">
+                            <Button
+                                onClick={handleExportDistribucionMesasExcel}
+                                size="sm"
+                                className="h-8 bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 text-xs"
+                            >
+                                <FileSpreadsheet className="w-3.5 h-3.5" />
+                                Descargar Excel
+                            </Button>
+                            <Button
+                                onClick={handleMaterialExplosionPM}
+                                disabled={isExplodingMaterials}
+                                size="sm"
+                                className="h-8 bg-orange-600 hover:bg-orange-700 text-white gap-1.5 text-xs"
+                            >
+                                {isExplodingMaterials ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <PackageSearch className="w-3.5 h-3.5" />}
+                                Explosión de Materiales
+                            </Button>
+                        </div>
                     </div>
                     <div className="p-6 space-y-6">
                         {TURNOS_PM.filter(turno => turnoEnabled[turno.id]).map(turno => {
