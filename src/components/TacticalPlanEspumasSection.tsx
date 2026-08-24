@@ -22,7 +22,9 @@ import {
   Save,
   Wand2,
   Truck,
-  FileOutput
+  FileOutput,
+  Pencil,
+  Trash2
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from '@/components/ui/button';
@@ -359,6 +361,30 @@ interface PlanGrupoPreviewEspuma {
   fechaInicio: string;
   fechaFin: string;
   rows: RespuestaP3Row[];
+}
+
+// "Editar Plan" (mismo patrón que Corte y Laminado, ver TacticalPlanCorteLaminadoSection): permite
+// corregir un P3/PFD ya guardado sin esperar al ciclo del día siguiente. `cantidad` va en UN, no en
+// Kg — coherente con el fix de [[respuesta_p3_espuma_kg_vs_unidades]] (la respuesta se compara contra
+// el P2, que pide en UN).
+interface EditableDetalleRowEspuma {
+  codigo_detalle_tactico: number;
+  material: string;
+  descripcion: string;
+  cantidad: number;
+  marcadoEliminar: boolean;
+  esNuevo: boolean;
+  codigo_plan_grupo_padre: number;
+}
+
+interface EditPlanPreviewEspuma {
+  codigo_plan_grupo: number;
+  centro: '1000' | '2000';
+  valor: string;
+  fechaInicio: string;
+  fechaFin: string;
+  rows: EditableDetalleRowEspuma[];
+  planOriginal: PlanGrupo;
 }
 
 // Fila cruda proveniente de endpoints SAP/servicios internos: los nombres de columna varían de
@@ -829,6 +855,15 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   // insumo del futuro reporte de generación de órdenes, no reemplaza ni modifica el P3.
   const [planPreviewPFD, setPlanPreviewPFD] = useState<PlanGrupoPreviewEspuma[] | null>(null);
   const [isSavingPlanPFD, setIsSavingPlanPFD] = useState(false);
+
+  // "Editar Plan" (mismo patrón que Corte y Laminado): permite corregir un P3/PFD ya guardado sin
+  // esperar al ciclo del día siguiente. planesGrupoDisponibles ya viene acotado a un centro (el botón
+  // es por centro, igual que "Generar Respuestas P3 UIO/GYE").
+  const [editPlanPreview, setEditPlanPreview] = useState<EditPlanPreviewEspuma | null>(null);
+  const [isLoadingEditPlan, setIsLoadingEditPlan] = useState(false);
+  const [planesGrupoDisponibles, setPlanesGrupoDisponibles] = useState<{ centro: '1000' | '2000'; planes: PlanGrupo[] } | null>(null);
+  const [planGrupoSeleccionado, setPlanGrupoSeleccionado] = useState<number | null>(null);
+  const [isSavingEditPlan, setIsSavingEditPlan] = useState(false);
 
   // "Necesidades Planta" (Forros/Muebles/Prensado/VentaExterna, ya guardadas) + PFF (calculada bajo
   // demanda, ver calcularNecesidadPFF) combinadas en una sola vista — así la tabla consolidada, el
@@ -2584,6 +2619,254 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     }
   }, []);
 
+  // "Editar Plan" — mismo patrón que Corte y Laminado (reconciliarDetallesParaPlan): recalcula la
+  // salida de datos ACTUAL del centro (misma fuente que al crear el plan — respuestaSalidaRowsPorCentro,
+  // con el mismo esPFD que ya tenía el plan) y la usa como base editable, cruzando por material +
+  // codigo_plan_grupo_padre contra los DetalleTactico ya persistidos para reutilizar
+  // codigo_detalle_tactico en vez de duplicar. Lo que ya no aparece en el cálculo actual queda
+  // premarcado para eliminar. `cantidad` sale en UN (row.cantidadUnidades vía
+  // getOrigenesProrrateoEspuma), no en Kg — mismo criterio que handleConfirmarRespuestaP3/PFD.
+  const reconciliarDetallesParaPlanEspuma = useCallback(async (
+    plan: PlanGrupo,
+    centro: '1000' | '2000'
+  ): Promise<EditableDetalleRowEspuma[]> => {
+    const detallesRes = await detalleTacticoService.getAll();
+    const detallesPlan = (detallesRes.data || []).filter(d =>
+      d.codigo_plan_grupo === plan.codigo_plan_grupo && d.estado === 'A'
+    );
+    const claveMaterial = (m: string | number) => String(Number(m));
+    const existentesPorClave = new Map<string, DetalleTactico>();
+    detallesPlan.forEach(d => {
+      existentesPorClave.set(`${claveMaterial(d.codigo_material)}|${d.codigo_plan_grupo_padre}`, d);
+    });
+
+    const esPFD = /pfd/i.test(plan.valor);
+    const salidaFresca = respuestaSalidaRowsPorCentro(centro, esPFD);
+
+    const clavesUsadas = new Set<string>();
+    const rows: EditableDetalleRowEspuma[] = [];
+    salidaFresca.forEach(row => {
+      const splits = getOrigenesProrrateoEspuma(row.material, row.cantidadUnidades, centro, plan.codigo_plan_grupo);
+      splits.forEach(split => {
+        const key = `${claveMaterial(row.material)}|${split.codigoPadre}`;
+        clavesUsadas.add(key);
+        const existente = existentesPorClave.get(key);
+        rows.push({
+          codigo_detalle_tactico: existente?.codigo_detalle_tactico ?? 0,
+          material: row.material,
+          descripcion: row.descripcion,
+          cantidad: split.cantidadKg,
+          marcadoEliminar: false,
+          esNuevo: !existente,
+          codigo_plan_grupo_padre: split.codigoPadre,
+        });
+      });
+    });
+
+    detallesPlan.forEach(d => {
+      const key = `${claveMaterial(d.codigo_material)}|${d.codigo_plan_grupo_padre}`;
+      if (clavesUsadas.has(key)) return;
+      const materialCode = cleanCode(d.codigo_material);
+      rows.push({
+        codigo_detalle_tactico: d.codigo_detalle_tactico,
+        material: materialCode,
+        descripcion: materialDescMap.get(materialCode) || '—',
+        cantidad: parseQty(d.cantidad_produccion_neta),
+        marcadoEliminar: true,
+        esNuevo: false,
+        codigo_plan_grupo_padre: d.codigo_plan_grupo_padre,
+      });
+    });
+
+    return rows;
+  }, [respuestaSalidaRowsPorCentro, getOrigenesProrrateoEspuma, materialDescMap]);
+
+  // Persistencia reutilizable de filas reconciliadas (upsert de las vigentes, delete de las
+  // marcadas) — mismo criterio que Corte y Laminado (persistirFilasEditables).
+  const persistirFilasEditablesEspuma = useCallback(async (
+    codigoPlanGrupo: number,
+    rows: EditableDetalleRowEspuma[],
+    usuario: string
+  ) => {
+    let actualizados = 0;
+    let agregados = 0;
+    let eliminados = 0;
+    let fallidos = 0;
+
+    for (const row of rows) {
+      try {
+        if (row.marcadoEliminar) {
+          await detalleTacticoService.delete(row.codigo_detalle_tactico);
+          eliminados++;
+          continue;
+        }
+
+        const detallePayload = {
+          codigo_detalle_tactico: row.esNuevo ? 0 : row.codigo_detalle_tactico,
+          codigo_material: Number(row.material),
+          cantidad_produccion_neta: Math.round(row.cantidad).toFixed(0),
+          resp_ctrl_prod: '',
+          clase_aprovisionamiento: 'E',
+          cantidad_aprovisionamiento: 0,
+          estado: 'A',
+          codigo_plan_grupo: codigoPlanGrupo,
+          codigo_plan_grupo_padre: row.codigo_plan_grupo_padre,
+          usuario_modificacion: usuario,
+        };
+        await detalleTacticoService.save(detallePayload as unknown as DetalleTactico);
+        if (row.esNuevo) agregados++; else actualizados++;
+      } catch (e) {
+        console.warn(`[Editar Plan Espuma] Falló material ${row.material} (padre ${row.codigo_plan_grupo_padre}):`, (e as Error).message);
+        fallidos++;
+      }
+    }
+
+    return { actualizados, agregados, eliminados, fallidos };
+  }, []);
+
+  // Paso 1 de edición: lista los PlanGrupo activos (P3 o PFD, cualquiera de los dos) de ESE centro
+  // para que el usuario elija cuál corregir — mismo criterio de filtro (codigo_grupo + "Espuma" +
+  // centro) que desactivarPlanesEspumaSuperados, así solo aparecen planes reales de este módulo.
+  const handleOpenEditarPlan = useCallback(async (centro: '1000' | '2000') => {
+    setIsLoadingEditPlan(true);
+    try {
+      const planesRes = await planGrupoService.getAll();
+      const centroRegex = new RegExp(`centro\\s*${centro}`, 'i');
+      const planesGrupo = (planesRes.data || [])
+        .filter(p => p.codigo_grupo === CODIGO_GRUPO_LAMINADO && p.estado === 'A' && /espuma/i.test(String(p.valor || '')) && centroRegex.test(String(p.valor || '')))
+        .sort((a, b) => b.codigo_plan_grupo - a.codigo_plan_grupo);
+
+      if (planesGrupo.length === 0) {
+        addNotification('warning', `No hay ningún Plan Grupo activo guardado para Corte Espuma (Centro ${centro}).`);
+        return;
+      }
+
+      setPlanesGrupoDisponibles({ centro, planes: planesGrupo });
+      setPlanGrupoSeleccionado(planesGrupo[0].codigo_plan_grupo);
+    } catch (e) {
+      addNotification('error', `Error al cargar los planes: ${(e as Error).message}`);
+    } finally {
+      setIsLoadingEditPlan(false);
+    }
+  }, [addNotification]);
+
+  // Paso 2: ya elegido el PlanGrupo, reconcilia contra la salida actual y arma la vista editable. La
+  // fecha se RECALCULA (no se conserva la que traía el plan) — mismo criterio que al crear un P3
+  // nuevo (próximo día laborable desde hoy); PFD no tiene ventana propia en Espuma (a diferencia de
+  // Laminado), así que usa el mismo criterio.
+  const handleConfirmarSeleccionPlanEspuma = useCallback(async () => {
+    if (!planGrupoSeleccionado || !planesGrupoDisponibles) return;
+    const planVigente = planesGrupoDisponibles.planes.find(p => p.codigo_plan_grupo === planGrupoSeleccionado);
+    if (!planVigente) return;
+
+    setIsLoadingEditPlan(true);
+    try {
+      const rows = await reconciliarDetallesParaPlanEspuma(planVigente, planesGrupoDisponibles.centro);
+      const fechaInicio = format(siguienteDiaHabil(new Date()), 'yyyy-MM-dd');
+
+      setEditPlanPreview({
+        codigo_plan_grupo: planVigente.codigo_plan_grupo,
+        centro: planesGrupoDisponibles.centro,
+        valor: planVigente.valor,
+        fechaInicio,
+        fechaFin: fechaInicio,
+        rows,
+        planOriginal: planVigente,
+      });
+      setPlanesGrupoDisponibles(null);
+      setPlanGrupoSeleccionado(null);
+    } catch (e) {
+      addNotification('error', `Error al cargar el plan: ${(e as Error).message}`);
+    } finally {
+      setIsLoadingEditPlan(false);
+    }
+  }, [planGrupoSeleccionado, planesGrupoDisponibles, addNotification, reconciliarDetallesParaPlanEspuma, siguienteDiaHabil]);
+
+  // Materiales de Necesidades Planta (mismo centro, mismo esPFD del plan) que todavía no están en el
+  // plan cargado, disponibles para agregar a mano.
+  const materialesDisponiblesParaAgregarEspuma = useMemo(() => {
+    if (!editPlanPreview) return [];
+    const yaIncluidos = new Set(editPlanPreview.rows.filter(r => !r.marcadoEliminar).map(r => r.material));
+    const esPFD = /pfd/i.test(editPlanPreview.valor);
+    return respuestaSalidaRowsPorCentro(editPlanPreview.centro, esPFD).filter(r => r.cantidadUnidades > 0 && !yaIncluidos.has(r.material));
+  }, [editPlanPreview, respuestaSalidaRowsPorCentro]);
+
+  const handleAddMaterialToEditPlanEspuma = (material: string) => {
+    if (!editPlanPreview) return;
+    const needRow = respuestaSalidaRowsPorCentro(editPlanPreview.centro, /pfd/i.test(editPlanPreview.valor)).find(r => r.material === material);
+    if (!needRow) return;
+    const splits = getOrigenesProrrateoEspuma(needRow.material, needRow.cantidadUnidades, editPlanPreview.centro, editPlanPreview.codigo_plan_grupo);
+    const nuevasFilas: EditableDetalleRowEspuma[] = splits
+      .filter(split => split.cantidadKg > 0)
+      .map(split => ({
+        codigo_detalle_tactico: 0,
+        material: needRow.material,
+        descripcion: needRow.descripcion,
+        cantidad: split.cantidadKg,
+        marcadoEliminar: false,
+        esNuevo: true,
+        codigo_plan_grupo_padre: split.codigoPadre,
+      }));
+    setEditPlanPreview(prev => {
+      if (!prev) return prev;
+      return { ...prev, rows: [...prev.rows, ...nuevasFilas] };
+    });
+  };
+
+  // En filas nuevas (aún no guardadas) "quitar" simplemente las descarta; en filas existentes se
+  // marcan para eliminar (DELETE real al confirmar), permitiendo deshacer antes de guardar.
+  const handleRemoveEditRowEspuma = (index: number) => {
+    setEditPlanPreview(prev => {
+      if (!prev) return prev;
+      const row = prev.rows[index];
+      if (row.esNuevo) {
+        return { ...prev, rows: prev.rows.filter((_, i) => i !== index) };
+      }
+      return { ...prev, rows: prev.rows.map((r, i) => (i === index ? { ...r, marcadoEliminar: !r.marcadoEliminar } : r)) };
+    });
+  };
+
+  const handleUpdateEditRowCantidadEspuma = (index: number, value: number) => {
+    setEditPlanPreview(prev => {
+      if (!prev) return prev;
+      const rows = prev.rows.map((r, i) => (i === index ? { ...r, cantidad: value } : r));
+      return { ...prev, rows };
+    });
+  };
+
+  const handleConfirmEditarPlanEspuma = useCallback(async () => {
+    if (!editPlanPreview) return;
+    setIsSavingEditPlan(true);
+    try {
+      const user = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('user') || '{}') : {};
+      const usuario = user?.name || 'admin';
+
+      await planGrupoService.save({
+        ...editPlanPreview.planOriginal,
+        fecha_inicio_plan: editPlanPreview.fechaInicio,
+        fecha_fin_plan: editPlanPreview.fechaFin,
+      } as unknown as PlanGrupo);
+
+      const { actualizados, agregados, eliminados, fallidos } =
+        await persistirFilasEditablesEspuma(editPlanPreview.codigo_plan_grupo, editPlanPreview.rows, usuario);
+
+      const superados = await desactivarPlanesEspumaSuperados(editPlanPreview.centro, editPlanPreview.fechaInicio, editPlanPreview.codigo_plan_grupo, /pfd/i.test(editPlanPreview.valor));
+      const sufijoSuperados = superados > 0 ? ` ${superados} Plan Grupo previo(s) del mismo día o anterior fueron desactivados.` : '';
+
+      if (fallidos === 0) {
+        addNotification('success', `Plan Grupo #${editPlanPreview.codigo_plan_grupo} actualizado (vigencia ${editPlanPreview.fechaInicio} a ${editPlanPreview.fechaFin}): ${actualizados} modificados, ${agregados} agregados, ${eliminados} eliminados.${sufijoSuperados}`);
+      } else {
+        addNotification('warning', `Plan Grupo #${editPlanPreview.codigo_plan_grupo} actualizado con errores: ${actualizados} modificados, ${agregados} agregados, ${eliminados} eliminados, ${fallidos} fallidos.${sufijoSuperados}`);
+      }
+      fetchNecesidadesPlanta();
+      setEditPlanPreview(null);
+    } catch (e) {
+      addNotification('error', `Error al actualizar el plan: ${(e as Error).message}`);
+    } finally {
+      setIsSavingEditPlan(false);
+    }
+  }, [editPlanPreview, addNotification, fetchNecesidadesPlanta, persistirFilasEditablesEspuma, desactivarPlanesEspumaSuperados]);
+
   // Paso 2: el usuario confirmó en el diálogo. Por cada centro de la vista previa (uno solo si vino
   // del botón por centro, hasta dos si vino del botón general "Ambos Centros"), crea su propio
   // PlanGrupo (grupo 8, compartido con Corte y Laminado — ver CODIGO_GRUPO_LAMINADO) y, por cada
@@ -4030,6 +4313,15 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                     </h3>
                     <div className="flex items-center gap-2">
                       <Button
+                        onClick={() => handleOpenEditarPlan(centro)}
+                        disabled={isLoadingEditPlan}
+                        variant="outline"
+                        className="border-indigo-200 text-indigo-700 hover:bg-indigo-50 rounded-xl h-9 px-5 text-[10px] font-black uppercase tracking-widest flex items-center gap-2"
+                        title="Corrige un P3/PFD ya guardado (cantidades, agregar/quitar material) sin esperar al ciclo del día siguiente."
+                      >
+                        {isLoadingEditPlan ? <Loader2 className="w-4 h-4 animate-spin" /> : <Pencil className="w-4 h-4" />} Editar Plan
+                      </Button>
+                      <Button
                         onClick={() => handleAbrirRespuestaPFD(centro)}
                         disabled={rows.length === 0}
                         variant="outline"
@@ -4347,6 +4639,143 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             <Button onClick={handleConfirmarRespuestaPFD} disabled={isSavingPlanPFD} className="bg-indigo-600 hover:bg-indigo-700 text-white">
               {isSavingPlanPFD ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
               {isSavingPlanPFD ? 'Guardando...' : 'Confirmar y Guardar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={planesGrupoDisponibles !== null} onOpenChange={(open) => { if (!open && !isLoadingEditPlan) { setPlanesGrupoDisponibles(null); setPlanGrupoSeleccionado(null); } }}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>¿Qué Plan Grupo quieres editar?</DialogTitle>
+            <DialogDescription>
+              Hay {planesGrupoDisponibles?.planes.length ?? 0} Plan Grupo activo(s) para Corte Espuma (Centro {planesGrupoDisponibles?.centro}). El último guardado queda preseleccionado; elige otro si necesitas corregir uno anterior.
+            </DialogDescription>
+          </DialogHeader>
+          {planesGrupoDisponibles && (
+            <div className="border border-slate-100 rounded-xl overflow-hidden max-h-[320px] overflow-y-auto">
+              <table className="w-full text-[11px] border-collapse">
+                <thead className="bg-gray-50 text-gray-400 uppercase font-bold sticky top-0">
+                  <tr>
+                    <th className="px-3 py-2 text-left w-8"></th>
+                    <th className="px-3 py-2 text-left">Código</th>
+                    <th className="px-3 py-2 text-left">Valor Plan</th>
+                    <th className="px-3 py-2 text-left">Fecha Inicio</th>
+                    <th className="px-3 py-2 text-left">Fecha Fin</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {planesGrupoDisponibles.planes.map((p, idx) => (
+                    <tr
+                      key={p.codigo_plan_grupo}
+                      onClick={() => setPlanGrupoSeleccionado(p.codigo_plan_grupo)}
+                      className={cn("cursor-pointer transition-colors", planGrupoSeleccionado === p.codigo_plan_grupo ? "bg-indigo-50" : "hover:bg-slate-50")}
+                    >
+                      <td className="px-3 py-2 text-center">
+                        <input type="radio" readOnly checked={planGrupoSeleccionado === p.codigo_plan_grupo} className="accent-indigo-600" />
+                      </td>
+                      <td className="px-3 py-2 font-mono font-black">
+                        #{p.codigo_plan_grupo}{idx === 0 && <span className="ml-2 text-[8px] font-black uppercase text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-1.5 py-0.5">Último guardado</span>}
+                      </td>
+                      <td className="px-3 py-2">{p.valor}</td>
+                      <td className="px-3 py-2 font-mono">{fechaLocalEcuador(p.fecha_inicio_plan) || '—'}</td>
+                      <td className="px-3 py-2 font-mono">{fechaLocalEcuador(p.fecha_fin_plan) || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setPlanesGrupoDisponibles(null); setPlanGrupoSeleccionado(null); }} disabled={isLoadingEditPlan}>Cancelar</Button>
+            <Button onClick={handleConfirmarSeleccionPlanEspuma} disabled={isLoadingEditPlan || !planGrupoSeleccionado} className="bg-indigo-600 hover:bg-indigo-700 text-white">
+              {isLoadingEditPlan ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              {isLoadingEditPlan ? 'Cargando...' : 'Continuar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={editPlanPreview !== null} onOpenChange={(open) => { if (!open && !isSavingEditPlan) setEditPlanPreview(null); }}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Editar Plan Grupo guardado</DialogTitle>
+            <DialogDescription>
+              Se recalculó la salida de datos actual del Plan Grupo #{editPlanPreview?.codigo_plan_grupo} (Centro {editPlanPreview?.centro}): los materiales que ya no aplican quedaron premarcados para eliminar. Corrige cantidades (en UN), agrega o quita materiales si hace falta. Los cambios se graban solo al confirmar.
+            </DialogDescription>
+          </DialogHeader>
+          {editPlanPreview && (
+            <div className="space-y-4 text-left text-sm">
+              <div className="grid grid-cols-2 gap-3 bg-slate-50 rounded-xl p-4 border border-slate-100">
+                <div><span className="font-black text-slate-500 text-[10px] uppercase block">Plan Grupo</span>#{editPlanPreview.codigo_plan_grupo} — {editPlanPreview.valor}</div>
+                <div><span className="font-black text-slate-500 text-[10px] uppercase block">Vigencia</span>{editPlanPreview.fechaInicio} a {editPlanPreview.fechaFin}</div>
+              </div>
+
+              <div>
+                <span className="font-black text-slate-500 text-[10px] uppercase block mb-2">Materiales ({editPlanPreview.rows.filter(r => !r.marcadoEliminar).length})</span>
+                <div className="border border-slate-100 rounded-xl overflow-hidden max-h-[280px] overflow-y-auto">
+                  <table className="w-full text-[11px] border-collapse">
+                    <thead className="bg-gray-50 text-gray-400 uppercase font-bold sticky top-0">
+                      <tr>
+                        <th className="px-3 py-2 text-left">Material</th>
+                        <th className="px-3 py-2 text-left">Descripción</th>
+                        <th className="px-3 py-2 text-right">Cantidad (UN)</th>
+                        <th className="px-3 py-2 text-center">Acción</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {editPlanPreview.rows.map((row, idx) => (
+                        <tr key={`${row.material}-${row.codigo_plan_grupo_padre}-${idx}`} className={cn(row.marcadoEliminar && "opacity-40 line-through", row.esNuevo && !row.marcadoEliminar && "bg-emerald-50/50")}>
+                          <td className="px-3 py-2 font-mono">{row.material}</td>
+                          <td className="px-3 py-2 truncate max-w-[200px]">{row.descripcion}</td>
+                          <td className="px-3 py-2 text-right">
+                            <input
+                              type="number"
+                              value={row.cantidad}
+                              disabled={row.marcadoEliminar}
+                              onChange={(e) => handleUpdateEditRowCantidadEspuma(idx, parseFloat(e.target.value) || 0)}
+                              className="w-24 bg-white border border-slate-200 rounded px-2 py-1 text-right font-mono focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:bg-slate-100"
+                            />
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            <button type="button" onClick={() => handleRemoveEditRowEspuma(idx)} className={cn("p-1.5 rounded-lg", row.marcadoEliminar ? "text-emerald-600 hover:bg-emerald-50" : "text-red-500 hover:bg-red-50")} title={row.marcadoEliminar ? "Deshacer" : "Quitar"}>
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                      {editPlanPreview.rows.length === 0 && (
+                        <tr><td colSpan={4} className="py-8 text-center text-slate-300 uppercase font-black tracking-widest italic">Sin materiales</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {materialesDisponiblesParaAgregarEspuma.length > 0 && (
+                <div>
+                  <span className="font-black text-slate-500 text-[10px] uppercase block mb-2">Agregar material de Necesidades Planta</span>
+                  <div className="flex flex-wrap gap-2 max-h-[120px] overflow-y-auto p-1">
+                    {materialesDisponiblesParaAgregarEspuma.map(m => (
+                      <button
+                        key={m.material}
+                        type="button"
+                        onClick={() => handleAddMaterialToEditPlanEspuma(m.material)}
+                        className="text-[10px] font-black uppercase px-3 py-1.5 rounded-full border border-indigo-200 text-indigo-700 hover:bg-indigo-50 flex items-center gap-1"
+                      >
+                        <Plus className="w-3 h-3" /> {m.material} — {m.descripcion}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditPlanPreview(null)} disabled={isSavingEditPlan}>Cancelar</Button>
+            <Button onClick={handleConfirmEditarPlanEspuma} disabled={isSavingEditPlan} className="bg-indigo-600 hover:bg-indigo-700 text-white">
+              {isSavingEditPlan ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              {isSavingEditPlan ? 'Guardando...' : 'Guardar Cambios'}
             </Button>
           </DialogFooter>
         </DialogContent>
