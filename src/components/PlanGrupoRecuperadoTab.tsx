@@ -47,6 +47,16 @@ const parseERPDateOnly = (value: string): Date | null => {
     return new Date(y, m - 1, d);
 };
 
+// Formatea fecha_creacion de un PlanGrupo, mostrando "—" cuando viene vacía/nula en vez del 31/12/1969
+// que resulta de "new Date(null)" (equivale al epoch Unix, que en Ecuador cae un día antes por el UTC-5)
+// — el proceso externo "Corte y Laminado" no siempre guarda esta fecha en su PlanGrupo de respuesta.
+const formatFechaCreacion = (fechaCreacion: Date | string | null | undefined): string => {
+    if (!fechaCreacion) return '—';
+    const fecha = new Date(fechaCreacion);
+    if (Number.isNaN(fecha.getTime()) || fecha.getTime() === 0) return '—';
+    return fecha.toLocaleDateString('es-EC');
+};
+
 const toDateKey = (date: Date): string => {
     const y = date.getFullYear();
     const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -604,11 +614,11 @@ export const PlanGrupoRecuperadoTab: React.FC<PlanGrupoRecuperadoTabProps> = ({ 
                                             <TableCell className="text-[11px] text-center border-r border-gray-200">{d.cantidad_aprovisionamiento}</TableCell>
                                             <TableCell className="text-[11px] border-r border-gray-200">
                                                 <span className="font-semibold text-gray-800">{planRespuesta?.valor || `#${d.codigo_plan_grupo}`}</span>
-                                                <span className="block text-gray-500">{planRespuesta ? new Date(planRespuesta.fecha_creacion).toLocaleDateString('es-EC') : ''}</span>
+                                                <span className="block text-gray-500">{planRespuesta ? formatFechaCreacion(planRespuesta.fecha_creacion) : ''}</span>
                                             </TableCell>
                                             <TableCell className="text-[11px] border-r border-gray-200">
                                                 <span className="font-semibold text-gray-800">{planPropio?.valor || `#${d.codigo_plan_grupo_padre}`}</span>
-                                                <span className="block text-gray-500">{planPropio ? new Date(planPropio.fecha_creacion).toLocaleDateString('es-EC') : ''}</span>
+                                                <span className="block text-gray-500">{planPropio ? formatFechaCreacion(planPropio.fecha_creacion) : ''}</span>
                                             </TableCell>
                                             <TableCell className="text-[11px] text-center">
                                                 {hayDeficit && deficitInfo && planPropio ? (
