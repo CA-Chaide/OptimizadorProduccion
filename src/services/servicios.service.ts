@@ -4,6 +4,24 @@ import { environment } from "@/environments/environments.prod";
 
 const API_URL = `${environment.apiURL}/api/servicios`;
 
+// Reintenta ante fallos de red transitorios (ej. "Failed to fetch" por VPN/proxy inestable)
+// — NO reintenta respuestas HTTP con error (4xx/5xx), solo cuando fetch() mismo rechaza.
+const fetchWithRetry = async (
+  input: string,
+  init: RequestInit,
+  retries = 2,
+  delayMs = 1000,
+): Promise<Response> => {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fetch(input, init);
+    } catch (error) {
+      if (attempt >= retries) throw error;
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+};
+
 export const serviciosService = {
   async getCuboHabilidadesOP(): Promise<BodyResponse<any>> {
     const response = await fetch(API_URL + "/cuboHabilidadesOp", {
@@ -20,7 +38,7 @@ export const serviciosService = {
   },
 
   async getCuboInventarios(page: number, rows: number): Promise<BodyResponse<any>> {
-    const response = await fetch(API_URL + "/cuboInventarios", {
+    const response = await fetchWithRetry(API_URL + "/cuboInventarios", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ page: page, rowsPerPage: rows }),
@@ -53,7 +71,7 @@ export const serviciosService = {
     page: number,
     rows: number,
   ): Promise<BodyResponse<any>> {
-    const response = await fetch(API_URL + "/tiemposEnsamblado", {
+    const response = await fetchWithRetry(API_URL + "/tiemposEnsamblado", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ page: page, rowsPerPage: rows }),
@@ -316,7 +334,7 @@ export const serviciosService = {
   },
 
   async getOrdenesFert(page: number, rowsPerPage: number): Promise<BodyResponse<any>> {
-    const response = await fetch(API_URL + "/OrdenesFertPaginadas", {
+    const response = await fetchWithRetry(API_URL + "/OrdenesFertPaginadas", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ page: page, rowsPerPage: rowsPerPage }),
@@ -379,7 +397,7 @@ export const serviciosService = {
   },
 
   async getPendientesTotales(page: number, rowsPerPage: number): Promise<BodyResponse<any>> {
-    const response = await fetch(API_URL + "/CuboPendientesTotales", {
+    const response = await fetchWithRetry(API_URL + "/CuboPendientesTotales", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ 
@@ -395,7 +413,7 @@ export const serviciosService = {
   },
 
   async getOrdenesProvisionalesAlphaPaginados(page: number, rowsPerPage: number): Promise<BodyResponse<any>> {
-    const response = await fetch(API_URL + "/OrdenesProvisionalesAlphaPaginadas", {
+    const response = await fetchWithRetry(API_URL + "/OrdenesProvisionalesAlphaPaginadas", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ page: page, rowsPerPage: rowsPerPage }),
