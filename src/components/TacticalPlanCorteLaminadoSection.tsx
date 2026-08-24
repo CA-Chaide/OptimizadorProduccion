@@ -1138,7 +1138,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   // MENOR necesidad recibe lo que quede del techo, nunca su propio redondeo independiente — así el
   // total nunca excede lo planificado. Si el techo no alcanza para cubrir el mínimo real de algún
   // origen, esto NO alerta aquí — P3 solo reparte lo ya decidido; esa alerta debe vivir en la
-  // planificación de la corrida (deficitRealUN/distribuirPorDeficit), no en este prorrateo. Si no
+  // planificación de la corrida (deficitRealUN, TIER 1/2/3 de handleProcessResumen), no en este
+  // prorrateo. Si no
   // hay origen registrado en absoluto (la necesidad vino directo de OF_PROV/OF_HALB y no de otra
   // área), se referencia el propio plan de Laminado como fallback.
   const getOrigenesProrrateo = useCallback((material: string, cantidadKg: number, fallbackCodigoPlanGrupo: number) => {
