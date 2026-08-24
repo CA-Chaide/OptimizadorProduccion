@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import * as XLSX from 'xlsx';
 import { serviciosService } from '@/services/servicios.service';
 import { ecuadorHolidaysService } from '@/services/ecuador-holidays.service';
-import { Loader2, PlayCircle, LayoutGrid, Gauge, Clock, Sun, Moon, RefreshCw, TriangleAlert, Scissors } from 'lucide-react';
+import { Loader2, PlayCircle, LayoutGrid, Gauge, Clock, Sun, Moon, RefreshCw, TriangleAlert, Scissors, FileSpreadsheet, Download } from 'lucide-react';
 import { Table, TableHeader, TableBody, TableFooter, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -19,28 +20,34 @@ const CENTRO_TC = '1000';
 // SOLAMENTE '026' (no '033' Estructuras, que es otra área/tabla — ver Planificación Táctica Muebles).
 const RESP_CTRL_PROD_FORROS = '026';
 
-// Mismo criterio ya usado en "Explosión de Materiales - Semielaborados de Primer Nivel de Muebles"
-// (ProvisionalOrdersAlphaTab.tsx: esExcluidoPrimerNivel), duplicado aquí a propósito porque los módulos
-// tácticos de este repo mantienen su lógica de negocio deliberadamente aislada:
+// Originalmente copiado de "Explosión de Materiales - Semielaborados de Primer Nivel de Muebles"
+// (ProvisionalOrdersAlphaTab.tsx: esExcluidoPrimerNivel), pero ese filtro opera sobre nodos de un árbol
+// de explosión BOM, donde "BASE"/"ENSAMBLE" son materiales padre ficticios de agrupación. Aquí se
+// filtran directamente Órdenes Previsionales/Fert de RespCtrlProd 026 — verificado contra el maestro de
+// materiales real (Cubo de Inventarios) que, en ese universo, NINGÚN material está nombrado "BASE" o
+// contiene "ENSAMBLE" como material ficticio; en cambio "BASE" aparece en decenas de forros reales
+// ("FORRO BASE AJUST BARÚ...", "FORRO BASE GRAND...", "TAPA T. FALSO NEGRO BASE GRAND 174", etc.) que sí
+// deben coserse — por eso esas 2 condiciones se retiraron (2026-08-19, material 30021493 fue el caso
+// reportado que expuso el falso positivo). "COJIN CILINDRICO"/"MASCOTA"/"PET" sí tienen matches reales de
+// materiales ajenos a este taller (proveedor externo / línea de producto Mascotas) y se mantienen:
 // - Empieza con "COJIN CILINDRICO" o "FORRO COJIN CILINDRICO": material ficticio en SAP, se fabrica con
 //   un proveedor externo.
-// - Contiene "BASE" o "ENSAMBLE": materiales ficticios, se fabrican en otra área productiva.
 // - Contiene "MASCOTA" o "PET": líneas de producto ajenas a Muebles.
 const esExcluidoTallerCorte = (descripcionUpper: string): boolean =>
     descripcionUpper.startsWith('COJIN CILINDRICO') ||
     descripcionUpper.startsWith('FORRO COJIN CILINDRICO') ||
-    descripcionUpper.includes('BASE') ||
-    descripcionUpper.includes('ENSAMBLE') ||
     descripcionUpper.includes('MASCOTA') ||
     descripcionUpper.includes('PET');
 
-// "TAPA T. FALSO NEGRO ..." y los forros de proceso corto ya conocidos ("FORRO FALSO COSIDO"/"FORRO
-// COJIN INTER") se fabrican, según el histórico real de Órdenes Fert (PUESTOTRABAJO), en un puesto de
-// trabajo dedicado aparte ("TC-USN01") — no en ninguna de las 10 cosedoras TC-COS01..TC-COS10.
+// "TAPA T. FALSO ..." (cualquier variante/color, no solo NEGRO) y los forros de proceso corto ya
+// conocidos ("FORRO FALSO COSIDO"/"FORRO COJIN INTER"), además de "ANTIFAZ" (2026-08-24, pedido
+// explícito del usuario), se fabrican en un puesto de trabajo dedicado aparte ("TC-USN01") — no en
+// ninguna de las 10 cosedoras TC-COS01..TC-COS10.
 const esExcepcionUSN = (descripcionUpper: string): boolean =>
-    descripcionUpper.startsWith('TAPA T. FALSO NEGRO') ||
+    descripcionUpper.startsWith('TAPA T. FALSO') ||
     descripcionUpper.startsWith('FORRO FALSO COSIDO') ||
-    descripcionUpper.startsWith('FORRO COJIN INTER');
+    descripcionUpper.startsWith('FORRO COJIN INTER') ||
+    descripcionUpper.startsWith('ANTIFAZ');
 
 // TC-COS04 fabrica ÚNICAMENTE los forros de cama (descripción empieza con "FORRO CAMA")
 const esForroCama = (descripcionUpper: string): boolean => descripcionUpper.startsWith('FORRO CAMA');
@@ -116,6 +123,28 @@ const addHoursToTime = (startTime: string, hours: number): string => {
     return `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
 };
 
+// Igual que addHoursToTime, pero además devuelve la FECHA resultante (clave "YYYY-MM-DD") — necesario
+// porque el Turno Noche empieza 19:00/20:00/21:00 y termina 05:30, cruzando la medianoche: una tarea
+// puede iniciar un día calendario y terminar al siguiente, o incluso iniciar Y terminar ya en el día
+// siguiente si le tocó tarde en la cola de la máquina. `fechaKeyBase` es la fecha propia de la orden
+// (Turno Día, sin cruce) usada como punto de partida antes de sumar las horas transcurridas del turno.
+const addHoursWithDate = (fechaKeyBase: string, startTime: string, offsetHours: number): { hora: string; fechaKey: string } => {
+    const [h, m] = startTime.split(':').map(Number);
+    const totalMinutes = Math.round(h * 60 + m + offsetHours * 60);
+    const diasAdelante = Math.floor(totalMinutes / (24 * 60));
+    const minutosDelDia = totalMinutes % (24 * 60);
+    const hora = `${String(Math.floor(minutosDelDia / 60)).padStart(2, '0')}:${String(minutosDelDia % 60).padStart(2, '0')}`;
+
+    let fechaKey = fechaKeyBase;
+    if (diasAdelante > 0) {
+        const [y, mo, d] = fechaKeyBase.split('-').map(Number);
+        const fecha = new Date(y, mo - 1, d);
+        fecha.setDate(fecha.getDate() + diasAdelante);
+        fechaKey = toDateKey(fecha);
+    }
+    return { hora, fechaKey };
+};
+
 // Fecha "hoy + offsetDays" (días CALENDARIO) en formato "YYYY-MM-DD"
 const getDateKeyOffset = (offsetDays: number): string => {
     const d = new Date();
@@ -152,12 +181,19 @@ const addBusinessDays = (date: Date, days: number, holidaysSet: Set<string>): Da
 const getBusinessDateKeyOffset = (businessDays: number, holidaysSet: Set<string>): string =>
     toDateKey(addBusinessDays(new Date(), businessDays, holidaysSet));
 
+// Convierte una fecha clave "YYYY-MM-DD" (la propia de cada TCOrder) al formato "DD.MM.AAAA" pedido
+// para el archivo .txt de carga a SAP
+const formatFechaKeyToDDMMYYYY = (fechaKey: string): string => {
+    const [y, m, d] = fechaKey.split('-');
+    return `${d}.${m}.${y}`;
+};
+
 // Escala fija del eje X del Diagrama de Gantt (en horas) — igual patrón que Muebles/Planchas Mixtas
 const GANTT_HOURS_SCALE = 12;
 
 interface TCOrder {
     id: string;
-    source: 'Previsional' | 'Fert';
+    source: 'Previsional';
     material: string;
     nombre: string;
     cantidad: number;
@@ -201,7 +237,6 @@ export const ProvisionalOrdersTallerCorteTab: React.FC<ProvisionalOrdersTallerCo
     const [isLoading, setIsLoading] = useState(false);
     const [downloadProgress, setDownloadProgress] = useState({ current: 0, total: 0 });
     const [allPrevisionalRaw, setAllPrevisionalRaw] = useState<any[]>([]);
-    const [allFertRaw, setAllFertRaw] = useState<any[]>([]);
     const [holidaysSet, setHolidaysSet] = useState<Set<string>>(new Set());
 
     const [turnoEnabled, setTurnoEnabled] = useState<Record<TurnoId, boolean>>({ dia: true, noche: false });
@@ -255,22 +290,6 @@ export const ProvisionalOrdersTallerCorteTab: React.FC<ProvisionalOrdersTallerCo
                 }
             }
             setAllPrevisionalRaw(combinedProv);
-
-            const fertExplore = await serviciosService.getOrdenesFert(1, 1);
-            const totalFert = fertExplore.totalRegistros || 0;
-            let combinedFert: any[] = [];
-            if (totalFert > 0) {
-                const BATCH = 20000;
-                const pages = Math.ceil(totalFert / BATCH);
-                for (let i = 1; i <= pages; i++) {
-                    const res = await serviciosService.getOrdenesFert(i, BATCH);
-                    if (res.data) {
-                        combinedFert = combinedFert.concat(Array.isArray(res.data) ? res.data : [res.data]);
-                        setDownloadProgress({ current: totalProv + combinedFert.length, total: totalProv + totalFert });
-                    }
-                }
-            }
-            setAllFertRaw(combinedFert);
         } catch (error) {
             console.error('Error al descargar datos del Taller de Corte:', error);
         } finally {
@@ -282,10 +301,10 @@ export const ProvisionalOrdersTallerCorteTab: React.FC<ProvisionalOrdersTallerCo
         fetchAllData();
     }, [fetchAllData]);
 
-    // Tabla inicial: Órdenes Previsionales + Fert de forros (RespCtrlProd '026'), Centro 1000, excluyendo
+    // Tabla inicial: SOLO Órdenes Previsionales de forros (RespCtrlProd '026'), Centro 1000, excluyendo
     // materiales ficticios/ajenos — misma ventana de fechas que "Planificación Táctica Planchas Mixtas":
     // Previsional MTS (sin PEDIDOVENTAS): hoy o mañana. Previsional MTO (con PEDIDOVENTAS): mañana o
-    // pasado mañana. Fert: únicamente mañana, con CANTPENDIENTE > 0.
+    // pasado mañana. No incluye Fert: solo las Previsionales se distribuyen en el Diagrama de Gantt.
     const tcOrders = useMemo<TCOrder[]>(() => {
         const todayKey = getDateKeyOffset(0);
         const tomorrowKey = getBusinessDateKeyOffset(1, holidaysSet);
@@ -322,34 +341,8 @@ export const ProvisionalOrdersTallerCorteTab: React.FC<ProvisionalOrdersTallerCo
             });
         });
 
-        allFertRaw.forEach((row: any) => {
-            if (String(row.RESPCTRLPROD || '').trim() !== RESP_CTRL_PROD_FORROS) return;
-            if (String(row.CENTRO || '').trim() !== CENTRO_TC) return;
-            const nombre = String(row.NOMBRE || '').trim();
-            if (esExcluidoTallerCorte(nombre.toUpperCase())) return;
-
-            const fechaKey = String(row.FECHA || '').trim().slice(0, 10);
-            if (fechaKey !== tomorrowKey) return;
-
-            const cantidad = Number(row.CANTPENDIENTE) || 0;
-            if (cantidad <= 0) return;
-
-            const material = normalizeMaterialCode(row.MATERIAL || '');
-            const tiempoUnitMin = tiemposManualMap.get(material) ?? null;
-            result.push({
-                id: String(row.ORDEN || ''),
-                source: 'Fert',
-                material,
-                nombre,
-                cantidad,
-                tiempoUnitMin,
-                horas: tiempoUnitMin !== null ? (tiempoUnitMin * cantidad) / 60 : null,
-                fecha: fechaKey,
-            });
-        });
-
         return result.sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
-    }, [allPrevisionalRaw, allFertRaw, holidaysSet, tiemposManualMap]);
+    }, [allPrevisionalRaw, holidaysSet, tiemposManualMap]);
 
     // Reporta hacia arriba los materiales distintos detectados, para la pestaña "Tiempos"
     useEffect(() => {
@@ -365,6 +358,14 @@ export const ProvisionalOrdersTallerCorteTab: React.FC<ProvisionalOrdersTallerCo
 
     const totalHorasRequeridas = useMemo(
         () => tcOrders.reduce((s, o) => s + (o.horas ?? 0), 0),
+        [tcOrders]
+    );
+    const totalCantidad = useMemo(
+        () => tcOrders.reduce((s, o) => s + o.cantidad, 0),
+        [tcOrders]
+    );
+    const totalTiempoUnitMin = useMemo(
+        () => tcOrders.reduce((s, o) => s + (o.tiempoUnitMin ?? 0), 0),
         [tcOrders]
     );
     const materialesSinTiempoCount = useMemo(
@@ -461,7 +462,90 @@ export const ProvisionalOrdersTallerCorteTab: React.FC<ProvisionalOrdersTallerCo
         setUnassignedOrders([...unassigned, ...sinTiempo]);
     };
 
-    if (isLoading && allPrevisionalRaw.length === 0 && allFertRaw.length === 0) {
+    // Hora de inicio efectiva de un turno (según la duración de jornada elegida) — mismo cálculo que
+    // el usado para pintar la hora de inicio/fin en la sección "Turnos de Trabajo — Cosedoras"
+    const getEffectiveStartTimeParaTurno = (turnoId: TurnoId): string => {
+        const duracionesTurno = getShiftDurationsParaTC(turnoId);
+        const selectedDuration = duracionesTurno.find(d => d.id === turnoDuration[turnoId]);
+        return selectedDuration?.startTime ?? TURNOS_TC.find(t => t.id === turnoId)!.startTime;
+    };
+
+    // Exporta a Excel la Distribución de Máquinas de Coser (Diagrama de Gantt), mismo orden y contenido
+    // que el .txt (exportGanttToTxt): Material, Cantidad, Fecha Inicio, Fecha Fin (ambas DD.MM.AAAA),
+    // Hora Inicio, Hora Final y Puesto de Trabajo. Fecha Inicio/Fin pueden diferir en el Turno Noche
+    // (cruza medianoche, ver addHoursWithDate) — en Turno Día siempre coinciden.
+    const handleExportGanttExcel = () => {
+        if (!machineDistribution || machineDistribution.size === 0) return;
+
+        const rows: Record<string, string | number>[] = [];
+        Array.from(machineDistribution.values()).forEach(machine => {
+            const effectiveStartTime = getEffectiveStartTimeParaTurno(machine.turno);
+            machine.items.forEach(item => {
+                const inicio = addHoursWithDate(item.order.fecha, effectiveStartTime, item.startHour);
+                const fin = addHoursWithDate(item.order.fecha, effectiveStartTime, item.endHour);
+                rows.push({
+                    'Material': item.order.material,
+                    'Cantidad': item.order.cantidad,
+                    'Fecha Inicio': formatFechaKeyToDDMMYYYY(inicio.fechaKey),
+                    'Fecha Fin': formatFechaKeyToDDMMYYYY(fin.fechaKey),
+                    'Hora Inicio': inicio.hora,
+                    'Hora Fin': fin.hora,
+                    'Puesto de Trabajo': machine.machineId,
+                });
+            });
+        });
+        if (rows.length === 0) return;
+
+        const worksheet = XLSX.utils.json_to_sheet(rows);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Distribución Cosedoras');
+
+        const fechaArchivo = getDateKeyOffset(0);
+        XLSX.writeFile(workbook, `Distribucion_Taller_Corte_${fechaArchivo}.xlsx`);
+    };
+
+    // Genera el archivo .txt de la Distribución de Máquinas de Coser para carga en SAP. Formato por
+    // línea (separado por TAB): Material, Cantidad, Fecha de Inicio (DD.MM.AAAA), Fecha Fin (DD.MM.AAAA),
+    // Hora Inicio, Hora Final (ambas calculadas igual que en el Gantt: hora de inicio del turno + horas
+    // acumuladas de la máquina) y Puesto de Trabajo (TC-COS01, etc.). Fecha Inicio/Fin usan
+    // addHoursWithDate en vez de la fecha propia de la orden directamente porque el Turno Noche cruza
+    // medianoche (empieza 19:00/20:00/21:00, termina 05:30) — una tarea puede iniciar un día y terminar
+    // al siguiente, o iniciar y terminar ya en el día siguiente si le tocó tarde en la cola de la máquina.
+    const exportGanttToTxt = () => {
+        if (!machineDistribution || machineDistribution.size === 0) return;
+
+        const lines: string[] = [];
+        Array.from(machineDistribution.values()).forEach(machine => {
+            const effectiveStartTime = getEffectiveStartTimeParaTurno(machine.turno);
+            machine.items.forEach(item => {
+                const inicio = addHoursWithDate(item.order.fecha, effectiveStartTime, item.startHour);
+                const fin = addHoursWithDate(item.order.fecha, effectiveStartTime, item.endHour);
+                lines.push([
+                    item.order.material,
+                    item.order.cantidad,
+                    formatFechaKeyToDDMMYYYY(inicio.fechaKey),
+                    formatFechaKeyToDDMMYYYY(fin.fechaKey),
+                    inicio.hora,
+                    fin.hora,
+                    machine.machineId,
+                ].join('\t'));
+            });
+        });
+        if (lines.length === 0) return;
+
+        const blob = new Blob([lines.join('\r\n') + '\r\n'], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        const fechaArchivo = getDateKeyOffset(0);
+        link.href = url;
+        link.download = `Distribucion_Taller_Corte_${fechaArchivo}.txt`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    };
+
+    if (isLoading && allPrevisionalRaw.length === 0) {
         return (
             <div className="flex flex-col items-center justify-center py-20 bg-gray-50 rounded-xl border-2 border-dashed gap-4">
                 <Loader2 className="w-12 h-12 animate-spin text-indigo-600" />
@@ -477,83 +561,7 @@ export const ProvisionalOrdersTallerCorteTab: React.FC<ProvisionalOrdersTallerCo
 
     return (
         <div className="space-y-6">
-            {/* TABLA INICIAL: NECESIDADES DE FORRO (026) */}
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-                <div className="flex items-center justify-between px-6 py-4 bg-gradient-to-r from-slate-900 to-indigo-900">
-                    <div className="flex items-center gap-2">
-                        <Scissors className="w-5 h-5 text-indigo-200" />
-                        <h3 className="text-sm font-bold text-white uppercase tracking-wide">Necesidades de Forro (Taller de Corte)</h3>
-                    </div>
-                    <Button
-                        onClick={fetchAllData}
-                        disabled={isLoading}
-                        size="sm"
-                        className="h-8 bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 font-bold gap-2"
-                    >
-                        {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-                        Actualizar Datos
-                    </Button>
-                </div>
-                <div className="p-4">
-                    <p className="text-[11px] text-gray-500 mb-3">
-                        RespCtrlProd <span className="font-bold">{RESP_CTRL_PROD_FORROS}</span>, Centro <span className="font-bold">{CENTRO_TC}</span>:
-                        Previsionales MTS (hoy {getDateKeyOffset(0)} o mañana {getBusinessDateKeyOffset(1, holidaysSet)}), Previsionales MTO
-                        (mañana {getBusinessDateKeyOffset(1, holidaysSet)} o pasado mañana {getBusinessDateKeyOffset(2, holidaysSet)}) y Fert
-                        (únicamente mañana, {getBusinessDateKeyOffset(1, holidaysSet)}) — {tcOrders.length} línea(s) encontrada(s).
-                    </p>
-                    <div className="border rounded-lg overflow-auto max-h-[50vh]">
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead className="text-center border-r border-dashed border-gray-300">Origen</TableHead>
-                                    <TableHead className="text-center border-r border-dashed border-gray-300">Material</TableHead>
-                                    <TableHead className="text-left border-r border-dashed border-gray-300">Descripción</TableHead>
-                                    <TableHead className="text-center border-r border-dashed border-gray-300">Fecha</TableHead>
-                                    <TableHead className="text-center border-r border-dashed border-gray-300">Cantidad</TableHead>
-                                    <TableHead className="text-center border-r border-dashed border-gray-300">Tiempo Unit. (min)</TableHead>
-                                    <TableHead className="text-center">Horas</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {tcOrders.map((o, idx) => (
-                                    <TableRow key={`${o.source}-${o.id}-${o.material}-${idx}`}>
-                                        <TableCell className="text-center border-r border-dashed border-gray-300">{o.source}</TableCell>
-                                        <TableCell className="text-center border-r border-dashed border-gray-300 font-mono">{o.material}</TableCell>
-                                        <TableCell className="text-left border-r border-dashed border-gray-300">{o.nombre}</TableCell>
-                                        <TableCell className="text-center border-r border-dashed border-gray-300">{o.fecha}</TableCell>
-                                        <TableCell className="text-center border-r border-dashed border-gray-300">{o.cantidad.toLocaleString()}</TableCell>
-                                        <TableCell className="text-center border-r border-dashed border-gray-300">
-                                            {o.tiempoUnitMin !== null ? o.tiempoUnitMin.toFixed(2) : (
-                                                <span className="inline-flex items-center gap-1 text-amber-600 font-semibold text-[11px]">
-                                                    <TriangleAlert className="w-3.5 h-3.5" /> Falta tiempo unitario
-                                                </span>
-                                            )}
-                                        </TableCell>
-                                        <TableCell className="text-center">{o.horas !== null ? o.horas.toFixed(2) : '—'}</TableCell>
-                                    </TableRow>
-                                ))}
-                                {tcOrders.length === 0 && (
-                                    <TableRow>
-                                        <TableCell colSpan={7} className="text-center py-6 text-gray-400 text-xs">
-                                            No se encontraron necesidades de forro para la ventana de fechas vigente.
-                                        </TableCell>
-                                    </TableRow>
-                                )}
-                            </TableBody>
-                            {tcOrders.length > 0 && (
-                                <TableFooter>
-                                    <TableRow>
-                                        <TableCell colSpan={6} className="text-right font-bold">Total Horas Requeridas</TableCell>
-                                        <TableCell className="text-center font-bold">{totalHorasRequeridas.toFixed(2)}</TableCell>
-                                    </TableRow>
-                                </TableFooter>
-                            )}
-                        </Table>
-                    </div>
-                </div>
-            </div>
-
-            {/* CONFIGURACIÓN DE COSEDORAS DISPONIBLES (POR TURNO) */}
+            {/* CONFIGURACIÓN DE COSEDORAS DISPONIBLES (POR TURNO) — primero que se ve tras las pestañas */}
             <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm space-y-4">
                 <div className="flex items-center gap-2">
                     <Clock className="w-5 h-5 text-indigo-600" />
@@ -649,6 +657,84 @@ export const ProvisionalOrdersTallerCorteTab: React.FC<ProvisionalOrdersTallerCo
                 </div>
             </div>
 
+            {/* TABLA INICIAL: NECESIDADES DE FORRO (026) */}
+            <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+                <div className="flex items-center justify-between px-6 py-4 bg-gradient-to-r from-slate-900 to-indigo-900">
+                    <div className="flex items-center gap-2">
+                        <Scissors className="w-5 h-5 text-indigo-200" />
+                        <h3 className="text-sm font-bold text-white uppercase tracking-wide">Necesidades de Forro (Taller de Corte)</h3>
+                    </div>
+                    <Button
+                        onClick={fetchAllData}
+                        disabled={isLoading}
+                        size="sm"
+                        className="h-8 bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 font-bold gap-2"
+                    >
+                        {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                        Actualizar Datos
+                    </Button>
+                </div>
+                <div className="p-4">
+                    <p className="text-[11px] text-gray-500 mb-3">
+                        Solo Órdenes Previsionales — RespCtrlProd <span className="font-bold">{RESP_CTRL_PROD_FORROS}</span>, Centro <span className="font-bold">{CENTRO_TC}</span>:
+                        MTS (hoy {getDateKeyOffset(0)} o mañana {getBusinessDateKeyOffset(1, holidaysSet)}), MTO
+                        (mañana {getBusinessDateKeyOffset(1, holidaysSet)} o pasado mañana {getBusinessDateKeyOffset(2, holidaysSet)})
+                        — {tcOrders.length} línea(s) encontrada(s).
+                    </p>
+                    <div className="border rounded-lg overflow-auto max-h-[50vh]">
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead className="text-center border-r border-dashed border-gray-300">Origen</TableHead>
+                                    <TableHead className="text-center border-r border-dashed border-gray-300">Material</TableHead>
+                                    <TableHead className="text-left border-r border-dashed border-gray-300">Descripción</TableHead>
+                                    <TableHead className="text-center border-r border-dashed border-gray-300">Fecha</TableHead>
+                                    <TableHead className="text-center border-r border-dashed border-gray-300">Cantidad</TableHead>
+                                    <TableHead className="text-center border-r border-dashed border-gray-300">Tiempo Unit. (min)</TableHead>
+                                    <TableHead className="text-center">Horas</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {tcOrders.map((o, idx) => (
+                                    <TableRow key={`${o.source}-${o.id}-${o.material}-${idx}`}>
+                                        <TableCell className="text-center border-r border-dashed border-gray-300">{o.source}</TableCell>
+                                        <TableCell className="text-center border-r border-dashed border-gray-300 font-mono">{o.material}</TableCell>
+                                        <TableCell className="text-left border-r border-dashed border-gray-300">{o.nombre}</TableCell>
+                                        <TableCell className="text-center border-r border-dashed border-gray-300">{o.fecha}</TableCell>
+                                        <TableCell className="text-center border-r border-dashed border-gray-300">{o.cantidad.toLocaleString()}</TableCell>
+                                        <TableCell className="text-center border-r border-dashed border-gray-300">
+                                            {o.tiempoUnitMin !== null ? o.tiempoUnitMin.toFixed(2) : (
+                                                <span className="inline-flex items-center gap-1 text-amber-600 font-semibold text-[11px]">
+                                                    <TriangleAlert className="w-3.5 h-3.5" /> Falta tiempo unitario
+                                                </span>
+                                            )}
+                                        </TableCell>
+                                        <TableCell className="text-center">{o.horas !== null ? o.horas.toFixed(2) : '—'}</TableCell>
+                                    </TableRow>
+                                ))}
+                                {tcOrders.length === 0 && (
+                                    <TableRow>
+                                        <TableCell colSpan={7} className="text-center py-6 text-gray-400 text-xs">
+                                            No se encontraron necesidades de forro para la ventana de fechas vigente.
+                                        </TableCell>
+                                    </TableRow>
+                                )}
+                            </TableBody>
+                            {tcOrders.length > 0 && (
+                                <TableFooter>
+                                    <TableRow>
+                                        <TableCell colSpan={4} className="text-right font-bold border-r border-dashed border-gray-300">Totales</TableCell>
+                                        <TableCell className="text-center font-bold border-r border-dashed border-gray-300">{totalCantidad.toLocaleString()}</TableCell>
+                                        <TableCell className="text-center font-bold border-r border-dashed border-gray-300">{totalTiempoUnitMin.toFixed(2)}</TableCell>
+                                        <TableCell className="text-center font-bold">{totalHorasRequeridas.toFixed(2)}</TableCell>
+                                    </TableRow>
+                                </TableFooter>
+                            )}
+                        </Table>
+                    </div>
+                </div>
+            </div>
+
             {/* RESUMEN DE CAPACIDAD */}
             {capacitySummary && (
                 <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm space-y-3">
@@ -697,6 +783,24 @@ export const ProvisionalOrdersTallerCorteTab: React.FC<ProvisionalOrdersTallerCo
                         <div className="flex items-center gap-2">
                             <LayoutGrid className="w-5 h-5 text-purple-200" />
                             <h3 className="text-sm font-bold text-white uppercase tracking-wide">Diagrama de Gantt — Distribución de Máquinas de Coser</h3>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <Button
+                                onClick={exportGanttToTxt}
+                                size="sm"
+                                className="h-8 bg-white/10 hover:bg-white/20 text-white gap-1.5 text-xs"
+                            >
+                                <Download className="w-3.5 h-3.5" />
+                                Descargar .txt
+                            </Button>
+                            <Button
+                                onClick={handleExportGanttExcel}
+                                size="sm"
+                                className="h-8 bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 text-xs"
+                            >
+                                <FileSpreadsheet className="w-3.5 h-3.5" />
+                                Descargar Excel
+                            </Button>
                         </div>
                     </div>
                     <div className="p-6 space-y-6">
