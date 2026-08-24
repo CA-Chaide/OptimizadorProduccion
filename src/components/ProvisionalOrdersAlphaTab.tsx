@@ -6,6 +6,7 @@ import { serviciosService } from '@/services/servicios.service';
 import { ecuadorHolidaysService } from '@/services/ecuador-holidays.service';
 import { planGrupoService } from '@/services/plangrupo.service';
 import { detalleTacticoService } from '@/services/detalletactico.service';
+import { restriccionService } from '@/services/restriccion.service';
 import { useAppContext } from '@/context/AppProvider';
 import { Package, Loader2, Search, Clock, Calendar, CalendarDays, LayoutDashboard, History, PlayCircle, Settings2, CheckCircle2, Users, Percent, Wrench, Gauge, Boxes, TriangleAlert, ClipboardCheck, FileSpreadsheet, LayoutGrid, TimerOff, X, Plus, Layers, PackageSearch, Save, CalendarClock, Lightbulb, Building2, Copy, RefreshCw, RotateCcw, Circle, Download, BedDouble } from 'lucide-react';
 import { Table, TableHeader, TableBody, TableFooter, TableRow, TableHead, TableCell } from '@/components/ui/table';
@@ -221,11 +222,16 @@ const esExcluidoSegundoNivel = (descripcionUpper: string): boolean =>
 // - Descripción que CONTIENE "BASE" o "ENSAMBLE": materiales ficticios que se fabrican en otra área
 //   productiva (confirmado por el usuario: comparación de texto simple por fila, sin recorrer el
 //   árbol de componentes).
+//   Excepción: "BASE DUO" (ej. códigos 30009791/30009792/otros, "ESTRUCTURA PEGADA BASE DUO 105/135/
+//   160", RespCtrlProd '033', Categoria SAP "M-ES-DUO") NO es un material ficticio — es una línea de
+//   estructuras reales cuyo nombre de producto incluye "BASE DUO"; se excluía por error junto con los
+//   ficticios genuinos por la misma coincidencia de texto "BASE". Confirmado en vivo (2026-08-24) que
+//   sí tiene órdenes Fert propias pendientes con RespCtrlProd '033'.
 // - Descripción que CONTIENE "MASCOTA" o "PET": líneas de producto ajenas a Muebles.
 const esExcluidoPrimerNivel = (descripcionUpper: string): boolean =>
     descripcionUpper.startsWith('COJIN CILINDRICO') ||
     descripcionUpper.startsWith('FORRO COJIN CILINDRICO') ||
-    descripcionUpper.includes('BASE') ||
+    (descripcionUpper.includes('BASE') && !descripcionUpper.includes('BASE DUO')) ||
     descripcionUpper.includes('ENSAMBLE') ||
     descripcionUpper.includes('MASCOTA') ||
     descripcionUpper.includes('PET');
@@ -353,6 +359,29 @@ interface OrderMissingDeliveryDate {
     nombre: string;
 }
 
+// Insumo (Tela, Casco u otra materia prima) que el usuario marcó como "no disponible todavía" — ver
+// "Materiales en Espera de Insumo". Persistido como Restriccion.
+interface MaterialEnEspera {
+    codigoRestriccion: number;
+    insumoCodigo: string;
+    descripcion: string;
+    fechaDisponible: Date;
+}
+
+// Un insumo en espera concreto que bloquea a un material padre (ese insumo aparece en su explosión)
+interface InsumoBloqueante {
+    insumoCodigo: string;
+    insumoDescripcion: string;
+    fechaDisponible: Date;
+}
+
+// Orden excluida de la planificación porque su material padre necesita, en algún nivel de su explosión,
+// un insumo que todavía no llega (ver "Materiales en Espera de Insumo")
+interface OrderBlockedByInsumo {
+    order: UnifiedOrder;
+    insumos: InsumoBloqueante[];
+}
+
 // Recomendación de aumento de capacidad para una línea, cuando hay órdenes diferidas por falta de capacidad
 interface MesaCapacityRecommendation {
     linea: string;
@@ -370,6 +399,9 @@ interface PlanningResult {
     ptboAlerts: UnifiedOrder[];
     missingDeliveryDate: OrderMissingDeliveryDate[];
     excludedByFechaPropia: OrderMissingDeliveryDate[];
+    // Órdenes excluidas por completo porque su material padre necesita un insumo que todavía no llega
+    // (ver "Materiales en Espera de Insumo"), salvo las que el usuario forzó manualmente a incluir.
+    blockedByInsumo: OrderBlockedByInsumo[];
     // Órdenes dentro de la ventana de prioridad que no cupieron en la capacidad disponible
     // (se difieren empezando por las fechas de entrega más lejanas)
     deferredByCapacity: UnifiedOrder[];
@@ -577,6 +609,24 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
     // Stock Actual (bruto) por Material, sumado a través de todos los Centros — mismo campo que muestran
     // las pestañas "Telas" y "Cascos", usado para comparar contra la Explosión de Materiales
     const [materialStockActualMap, setMaterialStockActualMap] = useState<Map<string, number>>(new Map());
+    // Descripción por Material (maestro completo de Inventarios), usada solo para el buscador de
+    // "Materiales en Espera de Insumo" (ver más abajo)
+    const [materialDescripcionMap, setMaterialDescripcionMap] = useState<Map<string, string>>(new Map());
+    // Material padre (código normalizado) -> insumo(s) en espera que aparecen en su explosión de
+    // materiales, calculado automáticamente (ver useEffect más abajo) cada vez que cambian los
+    // Materiales en Espera guardados o se refrescan los datos de SAP.
+    const [materialesBloqueadosMap, setMaterialesBloqueadosMap] = useState<Map<string, InsumoBloqueante[]>>(new Map());
+    const [isCheckingMaterialesEnEspera, setIsCheckingMaterialesEnEspera] = useState(false);
+    // Órdenes bloqueadas que el usuario decidió forzar a incluir en la planificación de todos modos
+    // (checkbox "Forzar Inclusión" en la tabla "Bloqueadas por Insumo"), por clave `${source}-${id}-${material}`
+    const [forcedIncludedBlockedIds, setForcedIncludedBlockedIds] = useState<Set<string>>(new Set());
+    // Estado del diálogo "Materiales en Espera de Insumo"
+    const [isEsperaDialogOpen, setIsEsperaDialogOpen] = useState(false);
+    const [esperaSearchTerm, setEsperaSearchTerm] = useState('');
+    const [esperaSelectedMaterial, setEsperaSelectedMaterial] = useState<{ codigo: string; descripcion: string } | null>(null);
+    const [esperaFechaDisponible, setEsperaFechaDisponible] = useState('');
+    const [esperaNota, setEsperaNota] = useState('');
+    const [isSavingEspera, setIsSavingEspera] = useState(false);
     const [planningResult, setPlanningResult] = useState<PlanningResult | null>(null);
     // Se activa cuando se actualizan los datos de SAP después de una planificación previa (p. ej. tras
     // mover manualmente algunas órdenes de "Órdenes que se Pueden Mover"), para distinguir el recálculo
@@ -593,6 +643,18 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
 
     const toggleMovableOrderChecked = (key: string) => {
         setUncheckedMovableIds(prev => {
+            const next = new Set(prev);
+            if (next.has(key)) next.delete(key);
+            else next.add(key);
+            return next;
+        });
+    };
+
+    // "Bloqueadas por Insumo": marca/desmarca una orden para forzar su inclusión pese a que su material
+    // padre necesite un insumo que todavía no llega. No recalcula sola — el usuario debe presionar
+    // "Forzar Inclusión y Recalcular" para que handleRunPlanning vuelva a correr con el nuevo criterio.
+    const toggleForcedIncludedBlocked = (key: string) => {
+        setForcedIncludedBlockedIds(prev => {
             const next = new Set(prev);
             if (next.has(key)) next.delete(key);
             else next.add(key);
@@ -746,6 +808,52 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
             return true;
         });
     }, [fertRawData, validRespCodes, forbiddenMachinesMap]);
+
+    // Verificación de transición: mientras SAP siga liberando órdenes Fert para Muebles, se confía
+    // en su fecha propia (FECHA) como la fecha "firme" de fabricación, tal como hasta ahora. El día
+    // que ya no se generen más órdenes Fert (proceso de conversión Previsional -> Fert descontinuado),
+    // esta bandera pasa a false automáticamente y el motor de planificación trata la fecha propia de
+    // las Previsionales (FECHAINICIO) como firme en su lugar, para que nada deje de aparecer.
+    // Se evalúa contra el dataset ya filtrado por restricciones de Muebles, no fertRawData completo,
+    // para no dar falsos negativos por Fert de otras áreas (Camas, etc.) que sí sigan existiendo.
+    const hayOrdenesFertMuebles = mueblesFertOrders.length > 0;
+
+    // "Materiales en Espera de Insumo": el usuario indica un insumo (Tela, Casco u otra materia prima)
+    // que todavía no llega y la fecha en la que sí estará disponible. Se persiste como Restriccion (una
+    // fila por insumo, bajo el mismo Grupo de Muebles) para no requerir cambios de backend:
+    // nombre_restriccion = "EsperaInsumo:<código del insumo>", valor_restriccion = fecha disponible
+    // (YYYY-MM-DD), descripcion = texto libre (nombre del insumo + nota opcional del usuario).
+    // Se carga con una consulta propia (como ya hace TacticalPlanTallerCorteSection para sus overrides
+    // de tiempo) en vez de derivarse de la prop `restricciones` — esa prop es de solo lectura desde el
+    // padre y no se puede reescribir localmente tras agregar/eliminar un insumo.
+    const ESPERA_INSUMO_PREFIJO = 'EsperaInsumo:';
+    const parseMaterialEnEspera = (r: Restriccion): MaterialEnEspera | null => {
+        const fecha = parseERPDateOnly(r.valor_restriccion);
+        if (!fecha) return null;
+        return {
+            codigoRestriccion: r.codigo_restriccion,
+            insumoCodigo: normalizeMaterialCode(r.nombre_restriccion.slice(ESPERA_INSUMO_PREFIJO.length)),
+            descripcion: r.descripcion || '',
+            fechaDisponible: fecha,
+        };
+    };
+    const [materialesEnEspera, setMaterialesEnEspera] = useState<MaterialEnEspera[]>([]);
+    useEffect(() => {
+        if (!mueblesGrupo) return;
+        const cargarMaterialesEnEspera = async () => {
+            try {
+                const res = await restriccionService.getAll();
+                const parsed = (res.data || [])
+                    .filter(r => r.codigo_grupo === mueblesGrupo.codigo_grupo && r.nombre_restriccion?.startsWith(ESPERA_INSUMO_PREFIJO))
+                    .map(parseMaterialEnEspera)
+                    .filter((m): m is MaterialEnEspera => m !== null);
+                setMaterialesEnEspera(parsed);
+            } catch (error) {
+                addNotification('error', `Error al cargar Materiales en Espera de Insumo: ${(error as Error).message}`);
+            }
+        };
+        cargarMaterialesEnEspera();
+    }, [mueblesGrupo, addNotification]);
 
     // Resuelve la Fecha de Entrega cruzando PEDIDO + POSICION (Previsional: PEDIDOVENTAS + POSICIONPEDIDO;
     // Fert: PEDIDO + POSICION) contra getPendientesTotales, ya que un mismo pedido puede tener líneas
@@ -1033,6 +1141,67 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
     const planningTargetDate = useMemo(() => {
         return workingWindow.length > 0 ? workingWindow[workingWindow.length - 1].date : null;
     }, [workingWindow]);
+
+    // Verifica automáticamente, cada vez que cambian los Materiales en Espera guardados o se refrescan
+    // los datos de SAP, qué materiales padre (de Muebles) necesitan en algún nivel de su explosión un
+    // insumo que todavía no llega — para que la tabla "Bloqueadas por Insumo" y el motor de planificación
+    // ya tengan la respuesta lista ANTES de que el usuario presione "Ejecutar Planificación", sin que ese
+    // botón tenga que esperar la explosión de materiales. Solo cuenta un insumo cuya fecha disponible sea
+    // POSTERIOR a la fecha objetivo (si ya llegó o llega justo ese día, no bloquea nada). Si no hay
+    // ningún insumo en espera activo, no se hace ninguna llamada (caso común, costo cero).
+    useEffect(() => {
+        let cancelled = false;
+        const verificarBloqueos = async () => {
+            if (!planningTargetDate) {
+                setMaterialesBloqueadosMap(new Map());
+                return;
+            }
+            const insumosActivos = materialesEnEspera.filter(m => m.fechaDisponible.getTime() > planningTargetDate.getTime());
+            if (insumosActivos.length === 0) {
+                setMaterialesBloqueadosMap(new Map());
+                return;
+            }
+
+            const materialesPadre = Array.from(new Set([
+                ...mueblesProvisionalOrders.map((row: any) => normalizeMaterialCode(row.MATERIAL)),
+                ...mueblesFertOrders.map((row: any) => normalizeMaterialCode(row.MATERIAL)),
+            ])).filter(Boolean);
+
+            if (materialesPadre.length === 0) {
+                setMaterialesBloqueadosMap(new Map());
+                return;
+            }
+
+            setIsCheckingMaterialesEnEspera(true);
+            try {
+                const bloqueos = new Map<string, InsumoBloqueante[]>();
+                await Promise.all(materialesPadre.map(async (material) => {
+                    try {
+                        const res = await serviciosService.getMaestroMaterialesExplosion('1000', material, 1, 5000);
+                        const components = res && res.data ? (Array.isArray(res.data) ? res.data : [res.data]) : [];
+                        const codigosComponentes = new Set(
+                            components.map((c: any) => normalizeMaterialCode(c.COMPONENTE || ''))
+                        );
+                        const insumosQueBloquean = insumosActivos.filter(ins => codigosComponentes.has(ins.insumoCodigo));
+                        if (insumosQueBloquean.length > 0) {
+                            bloqueos.set(material, insumosQueBloquean.map(ins => ({
+                                insumoCodigo: ins.insumoCodigo,
+                                insumoDescripcion: ins.descripcion,
+                                fechaDisponible: ins.fechaDisponible,
+                            })));
+                        }
+                    } catch (error) {
+                        console.error(`Error al verificar Materiales en Espera para ${material}:`, error);
+                    }
+                }));
+                if (!cancelled) setMaterialesBloqueadosMap(bloqueos);
+            } finally {
+                if (!cancelled) setIsCheckingMaterialesEnEspera(false);
+            }
+        };
+        verificarBloqueos();
+        return () => { cancelled = true; };
+    }, [materialesEnEspera, mueblesProvisionalOrders, mueblesFertOrders, planningTargetDate]);
 
     // 6. Carga de Mantenimientos Preventivos Programados (verificación de disponibilidad de Mesas)
     useEffect(() => {
@@ -1403,6 +1572,9 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
               // Stock Actual (bruto, sin descontar seguridad) sumado por Material a través de todos los
               // Centros — mismo campo/criterio que muestran las pestañas "Telas" y "Cascos" (StockActual)
               const stockActualMap = new Map<string, number>();
+              // Descripción por Material (maestro completo), usada solo para el buscador de "Materiales
+              // en Espera de Insumo" — no se pedía antes, se captura de la misma descarga sin costo extra.
+              const descripcionMap = new Map<string, string>();
               let processedInv = 0;
               for (let i = 1; i <= pagesInv; i++) {
                 const res = await serviciosService.getCuboInventarios(i, BATCH_INV);
@@ -1425,6 +1597,11 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
                       respCtrlProdMap.set(material, respCtrlProd);
                     }
 
+                    const descripcion = String(item.Descripcion || '').trim();
+                    if (descripcion && !descripcionMap.has(material)) {
+                      descripcionMap.set(material, descripcion);
+                    }
+
                     stockActualMap.set(material, (stockActualMap.get(material) || 0) + actual);
                   });
                   processedInv += items.length;
@@ -1435,6 +1612,7 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
               setMaterialSectorMap(sectorMap);
               setMaterialRespCtrlProdMap(respCtrlProdMap);
               setMaterialStockActualMap(stockActualMap);
+              setMaterialDescripcionMap(descripcionMap);
             }
             updateLoadStage('inventario', { status: 'done', current: totalInv });
 
@@ -1843,6 +2021,86 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
         }
     };
 
+    // Resultados de búsqueda del diálogo "Materiales en Espera de Insumo" (busca por código o por
+    // descripción sobre el maestro completo de Inventarios ya descargado). Limitado a 30 resultados.
+    const esperaSearchResults = useMemo(() => {
+        const term = esperaSearchTerm.trim().toUpperCase();
+        if (term.length < 2) return [];
+        const results: { codigo: string; descripcion: string }[] = [];
+        for (const [codigo, descripcion] of materialDescripcionMap.entries()) {
+            if (codigo.includes(term) || descripcion.toUpperCase().includes(term)) {
+                results.push({ codigo, descripcion });
+                if (results.length >= 30) break;
+            }
+        }
+        return results;
+    }, [esperaSearchTerm, materialDescripcionMap]);
+
+    const handleAgregarMaterialEnEspera = async () => {
+        if (!esperaSelectedMaterial) {
+            addNotification('warning', 'Debe seleccionar un insumo de la lista de búsqueda.');
+            return;
+        }
+        if (!esperaFechaDisponible) {
+            addNotification('warning', 'Debe indicar la fecha en la que el insumo estará disponible.');
+            return;
+        }
+        if (!mueblesGrupo) {
+            addNotification('error', 'No se pudo determinar el Grupo de Muebles para guardar el insumo en espera.');
+            return;
+        }
+
+        setIsSavingEspera(true);
+        try {
+            const insumoCodigoNorm = normalizeMaterialCode(esperaSelectedMaterial.codigo);
+            const existente = materialesEnEspera.find(m => m.insumoCodigo === insumoCodigoNorm);
+            const descripcionGuardada = esperaNota.trim()
+                ? `${esperaSelectedMaterial.descripcion} — Nota: ${esperaNota.trim()}`
+                : esperaSelectedMaterial.descripcion;
+            const payload: any = {
+                codigo_grupo: mueblesGrupo.codigo_grupo,
+                nombre_restriccion: `${ESPERA_INSUMO_PREFIJO}${insumoCodigoNorm}`,
+                valor_restriccion: esperaFechaDisponible,
+                descripcion: descripcionGuardada,
+                estado: 'A',
+                usuario_modificacion: 'Admin',
+            };
+            if (existente) payload.codigo_restriccion = existente.codigoRestriccion;
+
+            const saved = await restriccionService.save(payload);
+            const codigoRestriccion = saved.data?.codigo_restriccion ?? existente?.codigoRestriccion;
+            if (!codigoRestriccion) throw new Error('El servidor no devolvió el código de la restricción guardada.');
+
+            const nuevoRegistro: MaterialEnEspera = {
+                codigoRestriccion,
+                insumoCodigo: insumoCodigoNorm,
+                descripcion: descripcionGuardada,
+                fechaDisponible: parseERPDateOnly(esperaFechaDisponible) as Date,
+            };
+            setMaterialesEnEspera(prev => [...prev.filter(m => m.insumoCodigo !== insumoCodigoNorm), nuevoRegistro]);
+
+            addNotification('success', `"${esperaSelectedMaterial.descripcion}" agregado a Materiales en Espera (disponible desde ${formatDDMMYYYY(nuevoRegistro.fechaDisponible)}).`);
+            setEsperaSearchTerm('');
+            setEsperaSelectedMaterial(null);
+            setEsperaFechaDisponible('');
+            setEsperaNota('');
+        } catch (error) {
+            addNotification('error', `Error al guardar el Material en Espera: ${(error as Error).message}`);
+        } finally {
+            setIsSavingEspera(false);
+        }
+    };
+
+    const handleEliminarMaterialEnEspera = async (codigoRestriccion: number) => {
+        try {
+            await restriccionService.delete(codigoRestriccion);
+            setMaterialesEnEspera(prev => prev.filter(m => m.codigoRestriccion !== codigoRestriccion));
+            addNotification('success', 'Material en Espera eliminado.');
+        } catch (error) {
+            addNotification('error', `Error al eliminar el Material en Espera: ${(error as Error).message}`);
+        }
+    };
+
     const handleRunPlanning = () => {
         if (activeTables.size === 0) {
             addNotification('warning', 'Debe seleccionar al menos una mesa de trabajo para ejecutar la planificación.');
@@ -1864,12 +2122,34 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
         const targetPlus14 = new Date(planningTargetDate);
         targetPlus14.setDate(targetPlus14.getDate() + 14);
 
-        // Las órdenes Fert cuya fecha propia (FECHA) esté fuera del rango [fecha objetivo, fecha
+        // Fuente que se toma como "fecha propia firme": mientras existan órdenes Fert de Muebles, solo
+        // Fert (comportamiento histórico). Si SAP ya no genera Fert para Muebles (hayOrdenesFertMuebles
+        // === false), las Previsionales toman su lugar y su FECHAINICIO se trata como fecha firme, para
+        // que las órdenes que se van a transformar sigan apareciendo desde la primera "Actualizar Datos".
+        const esFuenteFirme = (o: UnifiedOrder) => o.source === 'Fert' || (!hayOrdenesFertMuebles && o.source === 'Previsional');
+
+        // Materiales en Espera de Insumo (ver useEffect que llena materialesBloqueadosMap): cualquier
+        // orden cuyo material padre necesite, en algún nivel de su explosión, un insumo que todavía no
+        // llega, se excluye de la planificación — salvo que el usuario la haya forzado manualmente desde
+        // la tabla "Bloqueadas por Insumo". Se calcula ANTES del filtro por fecha propia para que quede
+        // completamente fuera (no compite por capacidad ni aparece como "movible"/"diferida").
+        const orderKey = (o: UnifiedOrder) => `${o.source}-${o.id}-${o.material}`;
+        const blockedByInsumo: OrderBlockedByInsumo[] = [];
+        const ordersDisponibles = unifiedOrders.filter(o => {
+            const insumosBloqueantes = materialesBloqueadosMap.get(normalizeMaterialCode(o.material));
+            if (insumosBloqueantes && insumosBloqueantes.length > 0 && !forcedIncludedBlockedIds.has(orderKey(o))) {
+                blockedByInsumo.push({ order: o, insumos: insumosBloqueantes });
+                return false;
+            }
+            return true;
+        });
+
+        // Las órdenes de fuente firme cuya fecha propia esté fuera del rango [fecha objetivo, fecha
         // objetivo + 2 semanas] se excluyen: las anteriores ya se planificaron en días previos, y
         // las posteriores no deben fabricarse con tanta anticipación (pueden cancelarse por temas comerciales).
         const excluidasPorFechaPropia: OrderMissingDeliveryDate[] = [];
-        const eligibleOrders = unifiedOrders.filter(o => {
-            if (o.source === 'Fert' && o.fechaPropia) {
+        const eligibleOrders = ordersDisponibles.filter(o => {
+            if (esFuenteFirme(o) && o.fechaPropia) {
                 const dentroDelRango = o.fechaPropia.getTime() >= planningTargetDate.getTime()
                     && o.fechaPropia.getTime() <= targetPlus14.getTime();
                 if (!dentroDelRango) {
@@ -1883,11 +2163,11 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
         const mtoOrders = eligibleOrders.filter(o => o.tipo === 'MTO');
         const mtsOrders = eligibleOrders.filter(o => o.tipo === 'MTS');
 
-        // Una orden Fert cuya fecha propia (FECHA) ya fue reprogramada por el ERP para un día
+        // Una orden de fuente firme cuya fecha propia ya fue reprogramada por el ERP para un día
         // posterior a la fecha objetivo NO debe tomarse como prioritaria hoy, aunque su fecha de
         // entrega caiga dentro de la ventana: el ERP ya decidió fabricarla en su propio día.
         const isFertRescheduledLater = (o: UnifiedOrder) =>
-            o.source === 'Fert' && !!o.fechaPropia && o.fechaPropia.getTime() > planningTargetDate.getTime();
+            esFuenteFirme(o) && !!o.fechaPropia && o.fechaPropia.getTime() > planningTargetDate.getTime();
 
         // Una orden cuya fecha de entrega ya cae fuera de la ventana de prioridad (Centro 1000: +1 día,
         // Centro 2000: +2 días) no es urgente todavía, sin importar qué tan comprometida esté en el ERP.
@@ -1910,12 +2190,12 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
             })
             .sort((a, b) => a.fechaEntregaDate.getTime() - b.fechaEntregaDate.getTime());
 
-        // Toda orden Fert (MTO o MTS) cuya fecha propia coincida EXACTAMENTE con la fecha objetivo
-        // se incluye sin excepción, sin importar la capacidad disponible (ya está comprometida en el ERP).
-        // Excepción: si su fecha de entrega ya está fuera de la ventana de prioridad, no es urgente y se
-        // deja como candidata "movible" en vez de forzarla a fabricarse hoy.
+        // Toda orden de fuente firme (MTO o MTS) cuya fecha propia coincida EXACTAMENTE con la fecha
+        // objetivo se incluye sin excepción, sin importar la capacidad disponible (ya está comprometida
+        // en el ERP). Excepción: si su fecha de entrega ya está fuera de la ventana de prioridad, no es
+        // urgente y se deja como candidata "movible" en vez de forzarla a fabricarse hoy.
         const mandatoryByFechaPropia = eligibleOrders.filter(o =>
-            o.source === 'Fert' && o.fechaPropia && toDateKey(o.fechaPropia) === toDateKey(planningTargetDate) && !isBeyondPriorityWindow(o)
+            esFuenteFirme(o) && o.fechaPropia && toDateKey(o.fechaPropia) === toDateKey(planningTargetDate) && !isBeyondPriorityWindow(o)
         );
         const mandatoryIds = new Set(mandatoryByFechaPropia.map(o => `${o.source}-${o.id}-${o.material}`));
 
@@ -2071,6 +2351,7 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
             ptboAlerts,
             missingDeliveryDate: ordersMissingDeliveryDate,
             excludedByFechaPropia: excluidasPorFechaPropia,
+            blockedByInsumo,
             deferredByCapacity: finalDeferredByCapacity,
             capacityRecommendations,
             largeOrders,
@@ -2093,6 +2374,10 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
 
         if (ordersMissingDeliveryDate.length > 0) {
             addNotification('warning', `${ordersMissingDeliveryDate.length} orden(es) con PEDIDO no se pudieron planificar: no existe fecha de entrega en Pendientes Totales para ese pedido. Revise el detalle debajo.`);
+        }
+
+        if (blockedByInsumo.length > 0) {
+            addNotification('warning', `${blockedByInsumo.length} orden(es) excluida(s) por falta de insumo (Tela, Casco u otro). Revise la tabla "Bloqueadas por Insumo".`);
         }
 
         if (movableOrders.length > 0) {
@@ -2678,17 +2963,32 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
         // órdenes Fert que fabrican ese mismo material (sin importar su RESPCTRLPROD, por eso se usa el
         // dataset completo fertRawData y no mueblesFertOrders), de días anteriores a la fecha objetivo y
         // todavía pendientes (CANTPENDIENTE > 0). Es producción ya en curso que sumará como disponible.
-        // Solo Fert (no Previsionales) para no duplicar el mismo lote convertido de Previsional a Fert.
+        // Solo Fert (no Previsionales) para no duplicar el mismo lote convertido de Previsional a Fert
+        // — mientras existan órdenes Fert de Muebles (hayOrdenesFertMuebles === true). Si SAP ya no
+        // genera Fert, no hay lote "convertido" que duplicar: se usa el dataset completo de Previsionales
+        // (allRawData, análogo a fertRawData) con FECHAINICIO/CANTIDAD en su lugar, para que la
+        // producción propia pendiente siga contando.
         const componentOwnFertPendingMap = new Map<string, number>();
         if (planningTargetDate) {
-            fertRawData.forEach((row: any) => {
-                const fecha = row.FECHA ? parseERPDateOnly(row.FECHA) : null;
-                const pendiente = Number(row.CANTPENDIENTE) || 0;
-                if (fecha && pendiente > 0 && fecha.getTime() < planningTargetDate.getTime()) {
-                    const material = normalizeMaterialCode(row.MATERIAL);
-                    componentOwnFertPendingMap.set(material, (componentOwnFertPendingMap.get(material) || 0) + pendiente);
-                }
-            });
+            if (hayOrdenesFertMuebles) {
+                fertRawData.forEach((row: any) => {
+                    const fecha = row.FECHA ? parseERPDateOnly(row.FECHA) : null;
+                    const pendiente = Number(row.CANTPENDIENTE) || 0;
+                    if (fecha && pendiente > 0 && fecha.getTime() < planningTargetDate.getTime()) {
+                        const material = normalizeMaterialCode(row.MATERIAL);
+                        componentOwnFertPendingMap.set(material, (componentOwnFertPendingMap.get(material) || 0) + pendiente);
+                    }
+                });
+            } else {
+                allRawData.forEach((row: any) => {
+                    const fecha = row.FECHAINICIO ? parseERPDateOnly(row.FECHAINICIO) : null;
+                    const cantidad = Number(row.CANTIDAD) || 0;
+                    if (fecha && cantidad > 0 && fecha.getTime() < planningTargetDate.getTime()) {
+                        const material = normalizeMaterialCode(row.MATERIAL);
+                        componentOwnFertPendingMap.set(material, (componentOwnFertPendingMap.get(material) || 0) + cantidad);
+                    }
+                });
+            }
         }
 
         // Se explosionan juntos los materiales de hoy y los de días pasados pendientes, en un solo lote
@@ -3307,6 +3607,14 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
                                 </Select>
                             </div>
                             <Button
+                                onClick={() => setIsEsperaDialogOpen(true)}
+                                variant="outline"
+                                className="w-full border-amber-200 text-amber-700 hover:bg-amber-50 font-bold gap-2"
+                            >
+                                {isCheckingMaterialesEnEspera ? <Loader2 className="w-4 h-4 animate-spin" /> : <TimerOff className="w-4 h-4" />}
+                                MATERIALES EN ESPERA{materialesEnEspera.length > 0 ? ` (${materialesEnEspera.length})` : ''}
+                            </Button>
+                            <Button
                                 onClick={handleChooseTables}
                                 variant="outline"
                                 className="w-full border-indigo-200 text-indigo-700 hover:bg-indigo-50 font-bold gap-2"
@@ -3808,6 +4116,84 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
                                                 </TableCell>
                                             </TableRow>
                                         ))}
+                                    </TableBody>
+                                </Table>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {planningResult && planningResult.blockedByInsumo.length > 0 && (
+                    <div className="bg-white border border-amber-300 rounded-xl shadow-md overflow-hidden">
+                        <div className="flex items-center justify-between gap-2 px-6 py-4 bg-gradient-to-r from-amber-600 to-yellow-600">
+                            <div className="flex items-center gap-2">
+                                <TimerOff className="w-5 h-5 text-amber-100" />
+                                <h3 className="text-sm font-bold text-white uppercase tracking-wide">Bloqueadas por Insumo</h3>
+                            </div>
+                            <Button
+                                onClick={handleRunPlanning}
+                                size="sm"
+                                className="h-8 bg-white/10 hover:bg-white/20 text-white gap-1.5 text-xs shrink-0"
+                            >
+                                <RefreshCw className="w-3.5 h-3.5" />
+                                Forzar Inclusión y Recalcular
+                            </Button>
+                        </div>
+                        <div className="p-6 space-y-3">
+                            <p className="text-xs text-gray-600">
+                                Estas órdenes se excluyeron de la planificación porque su material padre necesita, en algún nivel de
+                                su explosión de materiales, un insumo marcado como "en espera" (ver botón "MATERIALES EN ESPERA", arriba).
+                                Si necesita fabricar alguna de todos modos, marque su checkbox y presione "Forzar Inclusión y Recalcular".
+                            </p>
+                            <div className="border border-gray-300 rounded-lg overflow-auto max-h-[40vh]">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow className="bg-amber-50 hover:bg-amber-50 border-b-2 border-amber-200 sticky top-0">
+                                            <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase text-center border-r border-gray-200 w-16">Forzar</TableHead>
+                                            <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase text-center border-r border-gray-200">Origen</TableHead>
+                                            <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase border-r border-gray-200">N° Orden</TableHead>
+                                            <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase border-r border-gray-200">Pedido</TableHead>
+                                            <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase border-r border-gray-200">Material / Nombre</TableHead>
+                                            <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase border-r border-gray-200">Insumo Faltante</TableHead>
+                                            <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase text-center">Disponible Desde</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {planningResult.blockedByInsumo.map((b, idx) => {
+                                            const o = b.order;
+                                            const key = `${o.source}-${o.id}-${o.material}`;
+                                            const isForced = forcedIncludedBlockedIds.has(key);
+                                            return (
+                                                <TableRow key={`${key}-${idx}`} className={cn("border-b border-gray-200", idx % 2 === 1 && "bg-gray-50/70")}>
+                                                    <TableCell className="text-center border-r border-gray-200">
+                                                        <Checkbox
+                                                            checked={isForced}
+                                                            onCheckedChange={() => toggleForcedIncludedBlocked(key)}
+                                                            className="data-[state=checked]:bg-amber-600 border-gray-300"
+                                                        />
+                                                    </TableCell>
+                                                    <TableCell className="text-[11px] text-center border-r border-gray-200 font-semibold text-gray-600">{o.source}</TableCell>
+                                                    <TableCell className="text-[11px] border-r border-gray-200 font-mono text-gray-700">{o.id || '—'}</TableCell>
+                                                    <TableCell className="text-[11px] border-r border-gray-200 font-mono">{o.pedido || '—'}</TableCell>
+                                                    <TableCell className="text-[11px] border-r border-gray-200">
+                                                        <span className="font-semibold text-gray-800">{o.material}</span>
+                                                        <span className="block text-gray-500">{o.nombre}</span>
+                                                    </TableCell>
+                                                    <TableCell className="text-[11px] border-r border-gray-200">
+                                                        {b.insumos.map(ins => (
+                                                            <div key={ins.insumoCodigo}>
+                                                                <span className="font-mono font-semibold">{ins.insumoCodigo}</span> — {ins.insumoDescripcion}
+                                                            </div>
+                                                        ))}
+                                                    </TableCell>
+                                                    <TableCell className="text-[11px] text-center font-semibold text-amber-700">
+                                                        {b.insumos.map(ins => (
+                                                            <div key={ins.insumoCodigo}>{formatDDMMYYYY(ins.fechaDisponible)}</div>
+                                                        ))}
+                                                    </TableCell>
+                                                </TableRow>
+                                            );
+                                        })}
                                     </TableBody>
                                 </Table>
                             </div>
@@ -5085,6 +5471,120 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
                             </Table>
                         </div>
                     )}
+                </DialogContent>
+            </Dialog>
+
+            {/* Materiales en Espera de Insumo: el usuario indica un insumo (Tela, Casco u otra materia
+                prima) que todavía no llega y desde cuándo sí estará disponible; cualquier material padre
+                que lo necesite en su explosión queda excluido de la planificación hasta esa fecha. */}
+            <Dialog open={isEsperaDialogOpen} onOpenChange={setIsEsperaDialogOpen}>
+                <DialogContent className="max-w-2xl">
+                    <DialogHeader>
+                        <DialogTitle>Materiales en Espera de Insumo</DialogTitle>
+                        <DialogDescription>
+                            Indique el insumo (Tela, Casco u otra materia prima) que todavía no llega y la fecha en la que sí estará
+                            disponible. Mientras esa fecha no llegue, cualquier material padre que lo necesite (en cualquier nivel de
+                            su explosión de materiales) se excluirá automáticamente de la planificación.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-3 border border-dashed border-amber-300 bg-amber-50/50 rounded-lg p-4">
+                        <div className="relative">
+                            <label className="text-[10px] font-bold text-gray-500 uppercase">Buscar Insumo (código o nombre)</label>
+                            <Input
+                                value={esperaSelectedMaterial ? `${esperaSelectedMaterial.codigo} — ${esperaSelectedMaterial.descripcion}` : esperaSearchTerm}
+                                onChange={(e) => { setEsperaSearchTerm(e.target.value); setEsperaSelectedMaterial(null); }}
+                                placeholder="Ej. TELA MUEBLES OSLO, o el código SAP"
+                                className="text-xs mt-1"
+                            />
+                            {!esperaSelectedMaterial && esperaSearchResults.length > 0 && (
+                                <div className="absolute z-10 mt-1 w-full max-h-48 overflow-auto bg-white border border-gray-300 rounded-md shadow-lg">
+                                    {esperaSearchResults.map(r => (
+                                        <button
+                                            key={r.codigo}
+                                            type="button"
+                                            onClick={() => { setEsperaSelectedMaterial(r); setEsperaSearchTerm(''); }}
+                                            className="w-full text-left px-3 py-1.5 text-[11px] hover:bg-amber-100 border-b border-gray-100 last:border-0"
+                                        >
+                                            <span className="font-mono font-semibold">{r.codigo}</span> — {r.descripcion}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                            {!esperaSelectedMaterial && esperaSearchTerm.trim().length >= 2 && esperaSearchResults.length === 0 && (
+                                <p className="text-[10px] text-gray-400 mt-1">Sin coincidencias en el maestro de materiales.</p>
+                            )}
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className="text-[10px] font-bold text-gray-500 uppercase">Disponible Desde</label>
+                                <input
+                                    type="date"
+                                    value={esperaFechaDisponible}
+                                    onChange={(e) => setEsperaFechaDisponible(e.target.value)}
+                                    className="w-full mt-1 h-9 rounded-md border border-input bg-transparent px-3 text-xs"
+                                />
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-bold text-gray-500 uppercase">Nota (opcional)</label>
+                                <Input
+                                    value={esperaNota}
+                                    onChange={(e) => setEsperaNota(e.target.value)}
+                                    placeholder="Ej. Confirmado por proveedor X"
+                                    className="text-xs mt-1"
+                                />
+                            </div>
+                        </div>
+                        <Button
+                            onClick={handleAgregarMaterialEnEspera}
+                            disabled={isSavingEspera || !esperaSelectedMaterial || !esperaFechaDisponible}
+                            className="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold gap-2"
+                        >
+                            {isSavingEspera ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                            AGREGAR
+                        </Button>
+                    </div>
+
+                    <div className="border border-gray-200 rounded-lg overflow-auto max-h-[35vh]">
+                        <Table>
+                            <TableHeader>
+                                <TableRow className="bg-gray-100 hover:bg-gray-100 border-b-2 border-gray-300 sticky top-0">
+                                    <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase border-r border-gray-200">Insumo</TableHead>
+                                    <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase text-center border-r border-gray-200">Disponible Desde</TableHead>
+                                    <TableHead className="text-[10px] font-extrabold text-gray-600 uppercase text-center w-16">Quitar</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {materialesEnEspera.map(m => (
+                                    <TableRow key={m.codigoRestriccion} className="border-b border-gray-200">
+                                        <TableCell className="text-[11px]">
+                                            <span className="font-mono font-semibold">{m.insumoCodigo}</span> — {m.descripcion}
+                                        </TableCell>
+                                        <TableCell className="text-[11px] text-center font-semibold text-amber-700">
+                                            {formatDDMMYYYY(m.fechaDisponible)}
+                                        </TableCell>
+                                        <TableCell className="text-center">
+                                            <Button
+                                                size="icon"
+                                                variant="ghost"
+                                                onClick={() => handleEliminarMaterialEnEspera(m.codigoRestriccion)}
+                                                className="h-7 w-7 text-gray-400 hover:text-red-600"
+                                            >
+                                                <X className="w-4 h-4" />
+                                            </Button>
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                                {materialesEnEspera.length === 0 && (
+                                    <TableRow>
+                                        <TableCell colSpan={3} className="text-center py-6 text-gray-400 text-xs">
+                                            No hay insumos en espera registrados.
+                                        </TableCell>
+                                    </TableRow>
+                                )}
+                            </TableBody>
+                        </Table>
+                    </div>
                 </DialogContent>
             </Dialog>
 
