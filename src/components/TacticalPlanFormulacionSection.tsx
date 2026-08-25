@@ -37,6 +37,7 @@ import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion } from '@/types/interfaces';
 import type { CuboInventariosItem } from '@/types/types';
 import { cn } from '@/lib/utils';
+import { guardarEnCache, leerDeCache, actualizarEnCache } from '@/lib/cache-modulos';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
 
@@ -599,6 +600,23 @@ const compareAperturaDensidad = (a: { apertura: string; dens: string }, b: { ape
 };
 const aperturaGroupLabel = (apertura: string): string => apertura === '—' ? 'SIN APERTURA (COMBINACIÓN)' : `APERTURA ${apertura}`;
 
+// Persistencia entre módulos (ver @/lib/cache-modulos): antes este módulo no tenía NINGUNA — ni de
+// datos crudos ni del resumen ya procesado — a diferencia de Corte Espuma/Venta Externa/Laminado, que
+// ya la ganaron en sesiones previas (ver [[persistencia_datos_modulos]]). Se cachea tanto lo crudo
+// (ordenes/ordenesFert/cuboInventarios/curadoData) como el resultado de "Generar Necesidades"
+// (unifiedSummaryData/consumoBloqueFormulado) — sin esto último, el tab Resumen volvía a aparecer
+// vacío al navegar a otro módulo y volver, mismo bug real ya corregido en Corte y Laminado (ver
+// [[persistencia_resumen_procesado_gap]]).
+const CACHE_FORMULACION = 'tactica-formulacion';
+interface SnapshotFormulacion {
+  ordenes: RawApiRow[];
+  ordenesFert: RawApiRow[];
+  cuboInventarios: CuboInventariosItem[];
+  curadoData: RawApiRow[];
+  unifiedSummaryData: FormuladoSummaryRow[];
+  consumoBloqueFormulado: ConsumoBloqueRow[];
+}
+
 export const TacticalPlanFormulacionSection: React.FC = () => {
   const inspector = useRuntimeInspector('TacticalPlanFormulacion');
   useAppContext();
@@ -843,10 +861,18 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     // por el string de Corrida en sí: la Categoria real de SAP trae inconsistencias verificadas
     // (ej. un material de apertura 219 etiquetado "BQ_F_A_216.5"), así que Apertura es la fuente
     // más confiable para el orden. Corrida entra como desempate alfabético dentro de cada apertura.
-    setUnifiedSummaryData(Array.from(groupsMap.values()).sort((a, b) =>
+    const summaryOrdenado = Array.from(groupsMap.values()).sort((a, b) =>
       aperturaSortIndex(a.apertura) - aperturaSortIndex(b.apertura) || a.corrida.localeCompare(b.corrida)
-    ));
+    );
+    setUnifiedSummaryData(summaryOrdenado);
     setConsumoBloqueFormulado(consumoRows);
+    // Mantiene el snapshot en sync — si el usuario navega a otro módulo y vuelve, el tab Resumen ya
+    // no aparece vacío (ver SnapshotFormulacion). No-op si todavía no se sincronizó ningún dato base
+    // (actualizarEnCache no escribe sobre un snapshot inexistente).
+    actualizarEnCache<SnapshotFormulacion>(CACHE_FORMULACION, {
+      unifiedSummaryData: summaryOrdenado,
+      consumoBloqueFormulado: consumoRows,
+    });
     setIsProcessingResumen(false);
   }, [provFiltradas, prodFiltradas, cuboInventarios, getStockEnCurado]);
 
@@ -988,12 +1014,42 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       inspector.captureVariable('curado_matches_por_fecha', fechaSummary, { description: 'Por cada fecha de curadoData, filas que matchean alguno de los dos espacios (LEADER/COFAMA) vs el total de ese día — usar para verificar si falta un día específico por el filtro ESTADO/MAQUINA/CORRIDAPROCESO' });
 
       setDatosCargados(true);
+
+      // El resumen ya procesado se sincroniza aparte (ver handleProcessResumen) — acá se preserva lo
+      // que ya hubiera en caché (previo), en vez de resetearlo, para no perder trabajo si el usuario
+      // vuelve a pulsar "Sincronizar" sin haber navegado fuera del módulo.
+      const previo = leerDeCache<SnapshotFormulacion>(CACHE_FORMULACION);
+      guardarEnCache<SnapshotFormulacion>(CACHE_FORMULACION, {
+        ordenes: provsRes.data?.data || provsRes.data || [],
+        ordenesFert: fertsRes.data?.data || fertsRes.data || [],
+        cuboInventarios: Array.isArray(cuboRes.data) ? cuboRes.data : [],
+        curadoData: rawCurado,
+        unifiedSummaryData: previo?.unifiedSummaryData || [],
+        consumoBloqueFormulado: previo?.consumoBloqueFormulado || [],
+      });
     } catch {
       console.error('Error sincronizando datos formulacion');
     } finally {
       setIsLoading(false);
     }
   }, []);
+
+  // Rehidratación: si ya se había sincronizado en esta sesión, se recupera lo trabajado (datos crudos
+  // Y el resumen ya procesado) en vez de dejar el módulo vacío al volver de otro módulo — mismo
+  // criterio que Corte Espuma/Venta Externa/Laminado (ver [[persistencia_resumen_procesado_gap]]).
+  useEffect(() => {
+    if (!mounted) return;
+    const snap = leerDeCache<SnapshotFormulacion>(CACHE_FORMULACION);
+    if (snap) {
+      setOrders(snap.ordenes);
+      setOrdersFert(snap.ordenesFert);
+      setCuboInventarios(snap.cuboInventarios);
+      setCuradoData(snap.curadoData);
+      setUnifiedSummaryData(snap.unifiedSummaryData || []);
+      setConsumoBloqueFormulado(snap.consumoBloqueFormulado || []);
+      setDatosCargados(true);
+    }
+  }, [mounted]);
 
   const calendarDaysList = useMemo(() => {
     const start = startOfMonth(viewDate);
