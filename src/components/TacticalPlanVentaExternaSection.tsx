@@ -17,7 +17,7 @@ import type { Grupo, Restriccion, PlanGrupo, DetalleTactico } from '@/types/inte
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { nextBusinessDay as nextBusinessDayCal, cargarDiasNoLaborables, fechaLocalEcuador, type DiasNoLaborables } from '@/lib/dias-laborables';
-import { guardarEnCache, leerDeCache } from '@/lib/cache-modulos';
+import { guardarEnCache, leerDeCache, actualizarEnCache } from '@/lib/cache-modulos';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, parseISO, addMonths, subMonths, addDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 import {
@@ -133,6 +133,14 @@ interface SnapshotVentaExterna {
   ordenesFert: any[];
   tiemposEnsamblado: any[];
   diasNoLaborables: string[];
+  // Resultado YA CALCULADO del tab "Data Aprobada" (ver fetchDataAprobada) — a diferencia del resto
+  // de este snapshot (datos crudos), esto es el resultado de un cálculo disparado por el botón
+  // "Actualizar" de ese tab; sin cachearlo aparte, volvía a quedar vacío al navegar a otro módulo y
+  // volver, igual que pasaba con el resumen de Corte y Laminado (ver
+  // [[laminado_prioridad_consumo_interno_sobre_venta_externa]] y la verificación de persistencia de
+  // esta sesión). Se sincroniza con actualizarEnCache directo en fetchDataAprobada, sin overrides
+  // manuales de por medio (es un recálculo puro, no editable).
+  dataAprobada: Record<string, DataAprobadaRow[]>;
 }
 
 export const TacticalPlanVentaExternaSection: React.FC = () => {
@@ -309,14 +317,20 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
         ordenesFert: ordenesRes.ordenesFert,
         tiemposEnsamblado: tiempos,
         diasNoLaborables: [...dias],
+        // Data Aprobada se sincroniza aparte (ver fetchDataAprobada) — acá se preserva lo que ya
+        // hubiera, en vez de resetearlo, por si el usuario vuelve a sincronizar sin haber navegado
+        // fuera del módulo.
+        dataAprobada,
       });
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [dataAprobada]);
 
   // Rehidratación: si ya se había sincronizado en esta sesión, se recupera lo trabajado en vez de
-  // dejar el módulo vacío al volver de otro módulo (ver @/lib/cache-modulos).
+  // dejar el módulo vacío al volver de otro módulo (ver @/lib/cache-modulos). Incluye Data Aprobada
+  // (ver fetchDataAprobada) — antes solo se restauraban los datos crudos, así que ese tab volvía
+  // vacío tras navegar a otro módulo hasta pulsar "Actualizar" de nuevo.
   useEffect(() => {
     if (!mounted) return;
     const snap = leerDeCache<SnapshotVentaExterna>(CACHE_VENTA_EXTERNA);
@@ -327,6 +341,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       setOrdersFert(snap.ordenesFert);
       setTiemposEnsamblado(snap.tiemposEnsamblado);
       setDiasNoLaborables(new Set(snap.diasNoLaborables));
+      setDataAprobada(snap.dataAprobada || {});
       setDatosCargados(true);
     }
   }, [mounted]);
@@ -1166,6 +1181,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       }
 
       setDataAprobada(resultado);
+      // Mantiene el snapshot en sync — si el usuario navega a otro módulo y vuelve, este tab ya no
+      // aparece vacío (ver SnapshotVentaExterna.dataAprobada). No-op si todavía no se sincronizó
+      // ningún dato base (actualizarEnCache no escribe sobre un snapshot inexistente).
+      actualizarEnCache<SnapshotVentaExterna>(CACHE_VENTA_EXTERNA, { dataAprobada: resultado });
     } catch (error) {
       addNotification('error', `Error al recuperar Data Aprobada: ${(error as Error).message}`);
     } finally {

@@ -727,6 +727,11 @@ interface SnapshotCorteEspuma {
   diasNoLaborables: string[];
   necesidadesPlantaData: Record<string, NecesidadPlantaRow[]>;
   necesidadPFFData: Record<'1000' | '2000', NecesidadPlantaRow[]>;
+  // Nivel 2 de Capacidad Planificada (hoy+2 días hábiles, ver calcularNecesidadPFF) — se calcula junto
+  // con necesidadPFFData pero no se cacheaba: navegar a otro módulo y volver perdía el Nivel 2 aunque
+  // el Nivel 1 sí sobrevivía, dejando el panel "sobre-ocupado" inconsistente (verificación de
+  // persistencia entre módulos de esta sesión).
+  necesidadPFFNivel2Data: Record<'1000' | '2000', NecesidadPlantaRow[]>;
 }
 
 export const TacticalPlanEspumasSection: React.FC = () => {
@@ -2119,6 +2124,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         diasNoLaborables: previo?.diasNoLaborables || [],
         necesidadesPlantaData: previo?.necesidadesPlantaData || {},
         necesidadPFFData: previo?.necesidadPFFData || { '1000': [], '2000': [] },
+        necesidadPFFNivel2Data: previo?.necesidadPFFNivel2Data || { '1000': [], '2000': [] },
       });
 
       setDatosCargados(true);
@@ -2502,7 +2508,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         await explotarPFFParaCentroConFecha(CODIGO_GRUPO_ENSAMBLADO_QUITO, '1000', planesTodos, detallesTodos, fechaObjetivoNivel2, () => {}),
         await explotarPFFParaCentroConFecha(CODIGO_GRUPO_ENSAMBLADO_GUAYAQUIL, '2000', planesTodos, detallesTodos, fechaObjetivoNivel2, () => {}),
       ];
-      setNecesidadPFFNivel2Data({ '1000': resultado1000Nivel2.filas, '2000': resultado2000Nivel2.filas });
+      const pffNivel2 = { '1000': resultado1000Nivel2.filas, '2000': resultado2000Nivel2.filas };
+      setNecesidadPFFNivel2Data(pffNivel2);
+      actualizarEnCache<SnapshotCorteEspuma>(CACHE_CORTE_ESPUMA, { necesidadPFFNivel2Data: pffNivel2 });
 
       const sinMatch = [...resultado1000.sinMatch, ...resultado2000.sinMatch];
       const conError = [...resultado1000.conError, ...resultado2000.conError];
@@ -3120,6 +3128,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       setDiasNoLaborables(new Set(snap.diasNoLaborables));
       setNecesidadesPlantaData(snap.necesidadesPlantaData);
       setNecesidadPFFData(snap.necesidadPFFData);
+      setNecesidadPFFNivel2Data(snap.necesidadPFFNivel2Data || { '1000': [], '2000': [] });
       setDatosCargados(true);
     }
   }, []);

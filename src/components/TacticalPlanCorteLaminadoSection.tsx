@@ -51,7 +51,7 @@ import { useAppContext } from '@/context/AppProvider';
 import type { Grupo, Restriccion, PlanGrupo, DetalleTactico } from '@/types/interfaces';
 import { cn } from '@/lib/utils';
 import { nextBusinessDay as nextBusinessDayCal, cargarDiasNoLaborables, fechaLocalEcuador, type DiasNoLaborables } from '@/lib/dias-laborables';
-import { guardarEnCache, leerDeCache } from '@/lib/cache-modulos';
+import { guardarEnCache, leerDeCache, actualizarEnCache } from '@/lib/cache-modulos';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, isValid } from 'date-fns';
 import { es } from 'date-fns/locale';
 
@@ -582,6 +582,16 @@ interface SnapshotCorteLaminado {
   mantenimientosSAP: RawApiRow[];
   diasNoLaborables: string[];
   necesidadesPlantaData: Record<string, NecesidadPlantaRow[]>;
+  // Resumen YA PROCESADO (ver handleProcessResumen) — a diferencia del resto de este snapshot (datos
+  // crudos de SAP, se pueden volver a pedir), esto es trabajo del usuario (overrides manuales
+  // incluidos) que se perdía en silencio al navegar a otro módulo y volver: el tab "Resumen" quedaba
+  // vacío hasta hacer clic en "Generar Necesidades" de nuevo. Se sincroniza aparte (ver el useEffect
+  // de más abajo), no en cada guardarEnCache de handleSincronizar, porque cambia con cada edición
+  // manual, no solo al sincronizar.
+  unifiedNeeds: UnifiedNeedRow[];
+  planManualOverrides: Record<string, number>;
+  corridasManualOverrides: Record<string, number>;
+  approvedDeficitRows: string[];
 }
 
 export const TacticalPlanCorteLaminadoSection: React.FC = () => {
@@ -1014,15 +1024,25 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           ...snapshotInit,
           diasNoLaborables: [...dias],
           necesidadesPlantaData: necesidadesPlanta,
+          // El resumen procesado se sincroniza aparte (ver el useEffect de más abajo) — acá solo se
+          // preserva lo que ya hubiera, en vez de resetearlo, para no perder trabajo si el usuario
+          // vuelve a pulsar "Sincronizar" sin haber navegado fuera del módulo.
+          unifiedNeeds,
+          planManualOverrides,
+          corridasManualOverrides,
+          approvedDeficitRows: Array.from(approvedDeficitRows),
         });
       }
     } finally {
       setIsLoading(false);
     }
-  }, [initData, fetchNecesidadesPlanta]);
+  }, [initData, fetchNecesidadesPlanta, unifiedNeeds, planManualOverrides, corridasManualOverrides, approvedDeficitRows]);
 
   // Rehidratación: si ya se había sincronizado en esta sesión, se recupera lo trabajado en vez de
-  // dejar el módulo vacío al volver de otro módulo (ver @/lib/cache-modulos).
+  // dejar el módulo vacío al volver de otro módulo (ver @/lib/cache-modulos). Incluye el resumen ya
+  // PROCESADO (unifiedNeeds) y los overrides manuales — antes solo se restauraban los datos crudos,
+  // así que el tab "Resumen" volvía vacío tras navegar a otro módulo hasta pulsar "Generar
+  // Necesidades" de nuevo (reportado por el usuario con datos reales).
   useEffect(() => {
     if (!mounted) return;
     const snap = leerDeCache<SnapshotCorteLaminado>(CACHE_CORTE_LAMINADO);
@@ -1037,9 +1057,34 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       setMantenimientosSAP(snap.mantenimientosSAP);
       setDiasNoLaborables(new Set(snap.diasNoLaborables));
       setNecesidadesPlantaData(snap.necesidadesPlantaData);
+      setUnifiedNeeds(snap.unifiedNeeds || []);
+      setPlanOverrides(snap.planManualOverrides || {});
+      setCorridasOverrides(snap.corridasManualOverrides || {});
+      setApprovedDeficitRows(new Set(snap.approvedDeficitRows || []));
       setDatosCargados(true);
     }
   }, [mounted]);
+
+  // Mantiene el snapshot en sync con el resumen ya procesado y sus overrides manuales — a diferencia
+  // de los datos crudos (solo cambian al Sincronizar), esto cambia con cada edición del usuario
+  // (handleUpdatePlanUn, handleUpdateCorridasBloque, aprobar déficit, etc.), así que se sincroniza vía
+  // efecto en vez de tener que acordarse de llamar actualizarEnCache en cada handler por separado. Se
+  // salta la primera ejecución (montaje): en ese momento unifiedNeeds todavía trae el valor inicial
+  // ([]), anterior a que la rehidratación de arriba termine de aplicar lo restaurado — escribirlo
+  // ahí pisaría el snapshot bueno con un resumen vacío antes de que el usuario vea nada.
+  const primerRenderResumenRef = useRef(true);
+  useEffect(() => {
+    if (primerRenderResumenRef.current) {
+      primerRenderResumenRef.current = false;
+      return;
+    }
+    actualizarEnCache<SnapshotCorteLaminado>(CACHE_CORTE_LAMINADO, {
+      unifiedNeeds,
+      planManualOverrides,
+      corridasManualOverrides,
+      approvedDeficitRows: Array.from(approvedDeficitRows),
+    });
+  }, [unifiedNeeds, planManualOverrides, corridasManualOverrides, approvedDeficitRows]);
 
   // Kg totales por material desde el resumen consolidado del tab "Necesidades Planta"
   // (mismo cálculo que MaterialSummaryTable), usado sólo para las columnas informativas
