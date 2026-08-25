@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import * as XLSX from 'xlsx';
 import { serviciosService } from '@/services/servicios.service';
 import { ecuadorHolidaysService } from '@/services/ecuador-holidays.service';
+import { useAppContext } from '@/context/AppProvider';
 import { Loader2, PlayCircle, LayoutGrid, Gauge, Clock, Sun, Moon, RefreshCw, TriangleAlert, Scissors, FileSpreadsheet, Download } from 'lucide-react';
 import { Table, TableHeader, TableBody, TableFooter, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
@@ -52,10 +53,6 @@ const esExcepcionUSN = (descripcionUpper: string): boolean =>
 // TC-COS04 fabrica ÚNICAMENTE los forros de cama (descripción empieza con "FORRO CAMA")
 const esForroCama = (descripcionUpper: string): boolean => descripcionUpper.startsWith('FORRO CAMA');
 
-// Un forro se clasifica "grande" cuando su tiempo unitario manual (pestaña "Tiempos") supera 1h30 —
-// umbral que define qué puede fabricarse en TC-COS01/02/03.
-const GRANDE_MIN_MINUTOS = 90;
-
 const MACHINE_IDS = ['TC-COS01', 'TC-COS02', 'TC-COS03', 'TC-COS04', 'TC-COS05', 'TC-COS06', 'TC-COS07', 'TC-COS08', 'TC-COS09', 'TC-COS10', 'TC-USN01'] as const;
 type MachineId = typeof MACHINE_IDS[number];
 
@@ -63,18 +60,17 @@ type MachineId = typeof MACHINE_IDS[number];
 // 1. TC-USN01: ÚNICA que acepta "TAPA T. FALSO NEGRO"/forros de proceso corto (esExcepcionUSN) — no
 //    recibe nada más.
 // 2. TC-COS04: ÚNICA que acepta forros de cama (esForroCama) — no recibe nada más.
-// 3. TC-COS01/02/03: SOLO forros "grandes" (tiempo unitario > 90 min), dedicadas.
-// 4. TC-COS05..TC-COS10: todo lo demás (no cama, no USN) — pool general, incluye forros grandes como
-//    excedente cuando TC-COS01-03 no alcanzan (confirmado con el histórico real de PUESTOTRABAJO: un
-//    mismo material aparece repartido entre COS01-03 y COS05-07 en distintas órdenes).
-const machineAcceptsMaterial = (machineId: MachineId, descripcionUpper: string, tiempoUnitMin: number | null): boolean => {
+// 3. TC-COS01..TC-COS10: pool general, sin distinción entre ellas (pedido explícito del usuario,
+//    2026-08-25) — el algoritmo de distribución (best-fit-decreasing, ordena de mayor a menor horas)
+//    ya prioriza los forros "grandes" hacia las máquinas con más capacidad libre, que al iniciar todas
+//    en cero uso son TC-COS01/02/03 (primeras del pool por orden de MACHINE_IDS); cuando no hay
+//    suficientes forros grandes para llenarlas, el resto de forros (medianos/pequeños) también puede
+//    caer ahí, regularizando la carga entre las 10 mesas para que terminen en un horario similar.
+const machineAcceptsMaterial = (machineId: MachineId, descripcionUpper: string): boolean => {
     if (esExcepcionUSN(descripcionUpper)) return machineId === 'TC-USN01';
     if (machineId === 'TC-USN01') return false;
     if (esForroCama(descripcionUpper)) return machineId === 'TC-COS04';
     if (machineId === 'TC-COS04') return false;
-    if (machineId === 'TC-COS01' || machineId === 'TC-COS02' || machineId === 'TC-COS03') {
-        return tiempoUnitMin !== null && tiempoUnitMin > GRANDE_MIN_MINUTOS;
-    }
     return true;
 };
 
@@ -181,6 +177,14 @@ const addBusinessDays = (date: Date, days: number, holidaysSet: Set<string>): Da
 const getBusinessDateKeyOffset = (businessDays: number, holidaysSet: Set<string>): string =>
     toDateKey(addBusinessDays(new Date(), businessDays, holidaysSet));
 
+// Fecha fija de impresión (Excel/.txt LSMW) de la Distribución de Máquinas de Coser — pedido explícito
+// del usuario (2026-08-25): NO se usa la fecha propia de cada orden, sino un offset fijo en días
+// hábiles desde hoy según el puesto de trabajo. TC-USN01 (proceso corto, mismo criterio que "FORRO
+// FALSO COSIDO"/"FORRO COJIN INTER" en Muebles) imprime a hoy + 1 día hábil; el resto de cosedoras
+// (TC-COS01..TC-COS10, forros normales/grandes) imprime a hoy + 2 días hábiles.
+const getFixedExportDateKey = (machineId: MachineId, holidaysSet: Set<string>): string =>
+    machineId === 'TC-USN01' ? getBusinessDateKeyOffset(1, holidaysSet) : getBusinessDateKeyOffset(2, holidaysSet);
+
 // Convierte una fecha clave "YYYY-MM-DD" (la propia de cada TCOrder) al formato "DD.MM.AAAA" pedido
 // para el archivo .txt de carga a SAP
 const formatFechaKeyToDDMMYYYY = (fechaKey: string): string => {
@@ -190,6 +194,21 @@ const formatFechaKeyToDDMMYYYY = (fechaKey: string): string => {
 
 // Escala fija del eje X del Diagrama de Gantt (en horas) — igual patrón que Muebles/Planchas Mixtas
 const GANTT_HOURS_SCALE = 12;
+
+const parseHHMM = (time: string): number => {
+    const [h, m] = time.split(':').map(Number);
+    return h * 60 + m;
+};
+
+// Hora real de reloj (formato "HH:MM") correspondiente a un offset en horas desde el inicio del turno
+// (por eso "efectivo": Turno Noche cambia de hora de inicio según la duración de jornada elegida) —
+// usada para etiquetar el eje X del Diagrama de Gantt con horas reales en vez de un conteo genérico.
+const formatShiftClockLabel = (shiftStartTime: string, offsetHours: number): string => {
+    const totalMinutes = parseHHMM(shiftStartTime) + Math.round(offsetHours * 60);
+    const hh = Math.floor(totalMinutes / 60) % 24;
+    const mm = totalMinutes % 60;
+    return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+};
 
 interface TCOrder {
     id: string;
@@ -234,6 +253,7 @@ interface ProvisionalOrdersTallerCorteTabProps {
 }
 
 export const ProvisionalOrdersTallerCorteTab: React.FC<ProvisionalOrdersTallerCorteTabProps> = ({ tiemposManualMap, onMaterialesDetectados }) => {
+    const { addNotification } = useAppContext();
     const [isLoading, setIsLoading] = useState(false);
     const [downloadProgress, setDownloadProgress] = useState({ current: 0, total: 0 });
     const [allPrevisionalRaw, setAllPrevisionalRaw] = useState<any[]>([]);
@@ -426,7 +446,7 @@ export const ProvisionalOrdersTallerCorteTab: React.FC<ProvisionalOrdersTallerCo
 
         sortedOrders.forEach(order => {
             const descUpper = order.nombre.toUpperCase();
-            const candidates = activeSlots.filter(slot => machineAcceptsMaterial(slot.machineId, descUpper, order.tiempoUnitMin));
+            const candidates = activeSlots.filter(slot => machineAcceptsMaterial(slot.machineId, descUpper));
             if (candidates.length === 0) {
                 unassigned.push(order);
                 return;
@@ -462,6 +482,109 @@ export const ProvisionalOrdersTallerCorteTab: React.FC<ProvisionalOrdersTallerCo
         setUnassignedOrders([...unassigned, ...sinTiempo]);
     };
 
+    // "MODULAR DISTRIBUCIÓN DE MÁQUINAS DE COSER": mismo algoritmo que handleModularDistribution de
+    // "Planificación Táctica Muebles" — rebalancea la distribución ya ejecutada moviendo materiales de
+    // máquinas sobrecargadas (uso > capacidad) hacia máquinas compatibles (machineAcceptsMaterial) con
+    // capacidad libre, sin volver a ejecutar la distribución completa desde cero. Puede mover materiales
+    // entre Turno Día y Turno Noche (igual libertad que ya tiene handleDistribuirMaquinas al armar
+    // candidates desde TODOS los activeSlots, sin restringir por turno).
+    const handleModularDistribucionMaquinas = () => {
+        if (!machineDistribution || machineDistribution.size === 0) {
+            addNotification('warning', 'Debe ejecutar la Distribución de Máquinas de Coser antes de modularla.');
+            return;
+        }
+
+        const machineKeys = Array.from(machineDistribution.keys());
+        const capacityById = new Map(machineKeys.map(key => [key, machineDistribution.get(key)!.capacityHours]));
+        const machineIdById = new Map(machineKeys.map(key => [key, machineDistribution.get(key)!.machineId]));
+        const workingItems = new Map<string, MachineScheduleItem[]>(
+            machineKeys.map(key => [key, machineDistribution.get(key)!.items.map(it => ({ ...it }))])
+        );
+
+        const usedHoursOf = (key: string) => workingItems.get(key)!.reduce((s, it) => s + (it.endHour - it.startHour), 0);
+        const utilizationOf = (key: string) => {
+            const cap = capacityById.get(key) ?? 0;
+            return cap > 0 ? usedHoursOf(key) / cap : Infinity;
+        };
+
+        let materialesMovidos = 0;
+        const MAX_ITERATIONS = 200;
+
+        for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
+            const overloaded = machineKeys
+                .filter(key => usedHoursOf(key) > (capacityById.get(key) ?? 0))
+                .sort((a, b) => (usedHoursOf(b) - (capacityById.get(b) ?? 0)) - (usedHoursOf(a) - (capacityById.get(a) ?? 0)));
+            if (overloaded.length === 0) break;
+
+            let movedThisRound = false;
+
+            for (const sourceKey of overloaded) {
+                const sourceItems = workingItems.get(sourceKey)!;
+                // Primero los que provocan el excedente (overflow), luego el resto de mayor a menor duración
+                const candidateItems = [
+                    ...sourceItems.filter(it => it.overflow),
+                    ...sourceItems.filter(it => !it.overflow).sort((a, b) => (b.endHour - b.startHour) - (a.endHour - a.startHour)),
+                ];
+
+                for (const item of candidateItems) {
+                    const duracion = item.endHour - item.startHour;
+                    const descUpper = item.order.nombre.toUpperCase();
+                    const destinos = machineKeys
+                        .filter(key => key !== sourceKey)
+                        .filter(key => machineAcceptsMaterial(machineIdById.get(key)!, descUpper))
+                        .filter(key => usedHoursOf(key) + duracion <= (capacityById.get(key) ?? 0))
+                        .sort((a, b) => utilizationOf(a) - utilizationOf(b));
+
+                    if (destinos.length > 0) {
+                        const destKey = destinos[0];
+                        workingItems.set(sourceKey, workingItems.get(sourceKey)!.filter(it => it !== item));
+                        workingItems.get(destKey)!.push({ ...item });
+                        materialesMovidos++;
+                        movedThisRound = true;
+                        break;
+                    }
+                }
+
+                if (movedThisRound) break;
+            }
+
+            if (!movedThisRound) break;
+        }
+
+        if (materialesMovidos === 0) {
+            addNotification('info', 'No se encontró ninguna máquina compatible con capacidad libre para reubicar materiales. La distribución no cambió.');
+            return;
+        }
+
+        // Recalcula startHour/endHour de forma secuencial dentro de cada máquina (igual que en la
+        // asignación original) y el flag "overflow" según si el material, en su nueva posición, excede
+        // la capacidad.
+        const newDistribution = new Map<string, MachineDistributionEntry>();
+        machineKeys.forEach(key => {
+            const capacityHours = capacityById.get(key) ?? 0;
+            const turno = machineDistribution.get(key)!.turno;
+            const machineId = machineIdById.get(key)!;
+            let cursor = 0;
+            const recalculatedItems: MachineScheduleItem[] = workingItems.get(key)!.map(it => {
+                const duracion = it.endHour - it.startHour;
+                const startHour = cursor;
+                const endHour = cursor + duracion;
+                cursor = endHour;
+                return { order: it.order, startHour, endHour, overflow: endHour > capacityHours };
+            });
+            newDistribution.set(key, {
+                turno,
+                machineId,
+                capacityHours,
+                usedHours: recalculatedItems.reduce((s, it) => s + (it.endHour - it.startHour), 0),
+                items: recalculatedItems,
+            });
+        });
+
+        setMachineDistribution(newDistribution);
+        addNotification('success', `Distribución modulada: ${materialesMovidos} material(es) reubicado(s) para equilibrar la carga entre máquinas.`);
+    };
+
     // Hora de inicio efectiva de un turno (según la duración de jornada elegida) — mismo cálculo que
     // el usado para pintar la hora de inicio/fin en la sección "Turnos de Trabajo — Cosedoras"
     const getEffectiveStartTimeParaTurno = (turnoId: TurnoId): string => {
@@ -472,17 +595,19 @@ export const ProvisionalOrdersTallerCorteTab: React.FC<ProvisionalOrdersTallerCo
 
     // Exporta a Excel la Distribución de Máquinas de Coser (Diagrama de Gantt), mismo orden y contenido
     // que el .txt (exportGanttToTxt): Material, Cantidad, Fecha Inicio, Fecha Fin (ambas DD.MM.AAAA),
-    // Hora Inicio, Hora Final y Puesto de Trabajo. Fecha Inicio/Fin pueden diferir en el Turno Noche
-    // (cruza medianoche, ver addHoursWithDate) — en Turno Día siempre coinciden.
+    // Hora Inicio, Hora Final y Puesto de Trabajo. Fecha Inicio/Fin parten de una fecha FIJA por puesto
+    // de trabajo (getFixedExportDateKey, no la fecha propia de la orden — pedido explícito del usuario,
+    // 2026-08-25) y pueden diferir entre sí en el Turno Noche (cruza medianoche, ver addHoursWithDate).
     const handleExportGanttExcel = () => {
         if (!machineDistribution || machineDistribution.size === 0) return;
 
         const rows: Record<string, string | number>[] = [];
         Array.from(machineDistribution.values()).forEach(machine => {
             const effectiveStartTime = getEffectiveStartTimeParaTurno(machine.turno);
+            const fechaBase = getFixedExportDateKey(machine.machineId, holidaysSet);
             machine.items.forEach(item => {
-                const inicio = addHoursWithDate(item.order.fecha, effectiveStartTime, item.startHour);
-                const fin = addHoursWithDate(item.order.fecha, effectiveStartTime, item.endHour);
+                const inicio = addHoursWithDate(fechaBase, effectiveStartTime, item.startHour);
+                const fin = addHoursWithDate(fechaBase, effectiveStartTime, item.endHour);
                 rows.push({
                     'Material': item.order.material,
                     'Cantidad': item.order.cantidad,
@@ -507,19 +632,22 @@ export const ProvisionalOrdersTallerCorteTab: React.FC<ProvisionalOrdersTallerCo
     // Genera el archivo .txt de la Distribución de Máquinas de Coser para carga en SAP. Formato por
     // línea (separado por TAB): Material, Cantidad, Fecha de Inicio (DD.MM.AAAA), Fecha Fin (DD.MM.AAAA),
     // Hora Inicio, Hora Final (ambas calculadas igual que en el Gantt: hora de inicio del turno + horas
-    // acumuladas de la máquina) y Puesto de Trabajo (TC-COS01, etc.). Fecha Inicio/Fin usan
-    // addHoursWithDate en vez de la fecha propia de la orden directamente porque el Turno Noche cruza
-    // medianoche (empieza 19:00/20:00/21:00, termina 05:30) — una tarea puede iniciar un día y terminar
-    // al siguiente, o iniciar y terminar ya en el día siguiente si le tocó tarde en la cola de la máquina.
+    // acumuladas de la máquina) y Puesto de Trabajo (TC-COS01, etc.). Fecha Inicio/Fin parten de
+    // getFixedExportDateKey (hoy + 2 días hábiles para TC-COS01..10, hoy + 1 para TC-USN01 — pedido
+    // explícito del usuario, 2026-08-25, no la fecha propia de la orden) y usan addHoursWithDate porque
+    // el Turno Noche cruza medianoche (empieza 19:00/20:00/21:00, termina 05:30) — una tarea puede
+    // iniciar un día y terminar al siguiente, o iniciar y terminar ya en el día siguiente si le tocó
+    // tarde en la cola de la máquina.
     const exportGanttToTxt = () => {
         if (!machineDistribution || machineDistribution.size === 0) return;
 
         const lines: string[] = [];
         Array.from(machineDistribution.values()).forEach(machine => {
             const effectiveStartTime = getEffectiveStartTimeParaTurno(machine.turno);
+            const fechaBase = getFixedExportDateKey(machine.machineId, holidaysSet);
             machine.items.forEach(item => {
-                const inicio = addHoursWithDate(item.order.fecha, effectiveStartTime, item.startHour);
-                const fin = addHoursWithDate(item.order.fecha, effectiveStartTime, item.endHour);
+                const inicio = addHoursWithDate(fechaBase, effectiveStartTime, item.startHour);
+                const fin = addHoursWithDate(fechaBase, effectiveStartTime, item.endHour);
                 lines.push([
                     item.order.material,
                     item.order.cantidad,
@@ -786,6 +914,14 @@ export const ProvisionalOrdersTallerCorteTab: React.FC<ProvisionalOrdersTallerCo
                         </div>
                         <div className="flex items-center gap-2">
                             <Button
+                                onClick={handleModularDistribucionMaquinas}
+                                size="sm"
+                                className="h-8 bg-fuchsia-600 hover:bg-fuchsia-700 text-white gap-1.5 text-xs"
+                            >
+                                <RefreshCw className="w-3.5 h-3.5" />
+                                Modular Distribución de Máquinas
+                            </Button>
+                            <Button
                                 onClick={exportGanttToTxt}
                                 size="sm"
                                 className="h-8 bg-white/10 hover:bg-white/20 text-white gap-1.5 text-xs"
@@ -868,6 +1004,15 @@ export const ProvisionalOrdersTallerCorteTab: React.FC<ProvisionalOrdersTallerCo
                                             </div>
                                         );
                                     })}
+                                    <div className="flex items-stretch gap-3">
+                                        <div className="w-32 shrink-0" />
+                                        <div className="flex-1 flex justify-between text-[9px] text-gray-400 font-mono px-0.5">
+                                            {Array.from({ length: GANTT_HOURS_SCALE + 1 }, (_, h) => h).filter(h => h % 2 === 0).map(h => (
+                                                <span key={h}>{formatShiftClockLabel(getEffectiveStartTimeParaTurno(turno.id), h)}</span>
+                                            ))}
+                                        </div>
+                                        <div className="w-14 shrink-0" />
+                                    </div>
                                 </div>
                             );
                         })}
