@@ -466,6 +466,44 @@ interface MesaDistributionEntry {
     items: MesaScheduleItem[];
 }
 
+// Snapshot histórico de una Distribución de Mesas ya ejecutada (o modulada) para una fecha objetivo
+// concreta — persistido como Restriccion (ver PLAN_DIARIO_PREFIJO) para que la pestaña "PLAN" pueda
+// mostrar el horario/mesas/personal/Gantt REALES de días anteriores, en vez de recalcularlos con
+// supuestos genéricos. Un ítem por material asignado, ya con todo lo necesario para redibujar el Gantt
+// sin volver a consultar SAP ni el maestro de Habilidades.
+interface PlanDiarioSnapshotItem {
+    material: string;
+    nombre: string;
+    source: 'Previsional' | 'Fert';
+    id: string;
+    cantidad: number;
+    tamano: MaterialSize | null;
+    startHour: number;
+    endHour: number;
+    overflow: boolean;
+}
+
+interface PlanDiarioSnapshotMesa {
+    tableId: number;
+    tableName: string;
+    linea: MesaDistributionEntry['linea'];
+    capacityHours: number;
+    usedHours: number;
+    person: string;
+    percentage: string;
+    calificacion: number | null;
+    items: PlanDiarioSnapshotItem[];
+}
+
+interface PlanDiarioSnapshot {
+    fecha: string; // YYYY-MM-DD
+    shiftId: string;
+    shiftLabel: string;
+    shiftStartTime: string;
+    shiftDisplayEndTime: string;
+    mesas: PlanDiarioSnapshotMesa[];
+}
+
 // Material padre (de la Distribución de Mesas) del que proviene la necesidad de un componente, y las
 // órdenes de producción concretas que lo generan
 interface ComponentOrigen {
@@ -854,6 +892,99 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
         };
         cargarMaterialesEnEspera();
     }, [mueblesGrupo, addNotification]);
+
+    // "PLAN" (OrdenesFertTabSection, displayMode="plan") necesita un resumen histórico de lo realmente
+    // planificado en días anteriores — horario, mesas, personal asignado y el Gantt — pero nada de eso
+    // se guardaba antes en ningún lado (solo vivía en el estado de React mientras esta pestaña seguía
+    // montada, más una copia de "última asignación de personal" sin fecha en localStorage). Se persiste
+    // igual que "Materiales en Espera de Insumo": una fila Restriccion por fecha objetivo, bajo el mismo
+    // Grupo de Muebles — nombre_restriccion = "PlanDiarioConfig:<YYYY-MM-DD>", valor_restriccion = id del
+    // horario (solo para lectura rápida), descripcion = JSON con el detalle completo (PlanDiarioSnapshot).
+    const PLAN_DIARIO_PREFIJO = 'PlanDiarioConfig:';
+    const [planDiarioSnapshotIds, setPlanDiarioSnapshotIds] = useState<Map<string, number>>(new Map());
+    useEffect(() => {
+        if (!mueblesGrupo) return;
+        const cargarPlanDiarioSnapshotIds = async () => {
+            try {
+                const res = await restriccionService.getAll();
+                const map = new Map<string, number>();
+                (res.data || [])
+                    .filter(r => r.codigo_grupo === mueblesGrupo.codigo_grupo && r.nombre_restriccion?.startsWith(PLAN_DIARIO_PREFIJO))
+                    .forEach(r => map.set(r.nombre_restriccion.slice(PLAN_DIARIO_PREFIJO.length), r.codigo_restriccion));
+                setPlanDiarioSnapshotIds(map);
+            } catch (error) {
+                console.error('Error al cargar los snapshots de Plan Diario existentes:', error);
+            }
+        };
+        cargarPlanDiarioSnapshotIds();
+    }, [mueblesGrupo]);
+
+    // Guarda (o actualiza, si ya existía uno para la misma fecha objetivo) el snapshot de Plan Diario
+    // que consume "PLAN" — se llama al final de "EJECUTAR DISTRIBUCIÓN DE MESAS" y de "Modular
+    // Distribución de Mesas", con la distribución recién calculada, para que siempre quede la versión
+    // más reciente de esa fecha (no se acumulan snapshots viejos de la misma fecha, se sobrescriben).
+    const savePlanDiarioSnapshot = async (distribution: Map<number, MesaDistributionEntry>) => {
+        if (!mueblesGrupo || !planningTargetDate) return;
+        try {
+            const fecha = toDateKey(planningTargetDate);
+            const mesas: PlanDiarioSnapshotMesa[] = Array.from(distribution.values())
+                .sort((a, b) => a.tableId - b.tableId)
+                .map(entry => {
+                    const assignment = tableAssignments[entry.tableId];
+                    const calificacion = assignment?.person ? (personnelCalificacionMap.get(assignment.person) ?? null) : null;
+                    return {
+                        tableId: entry.tableId,
+                        tableName: WORK_TABLES.find(t => t.id === entry.tableId)?.name ?? `MESA ${entry.tableId}`,
+                        linea: entry.linea,
+                        capacityHours: entry.capacityHours,
+                        usedHours: entry.usedHours,
+                        person: assignment?.person ?? '',
+                        percentage: assignment?.percentage ?? '',
+                        calificacion,
+                        items: entry.items.map(it => ({
+                            material: it.order.material,
+                            nombre: it.order.nombre,
+                            source: it.order.source,
+                            id: it.order.id,
+                            cantidad: it.order.cantidadPlanificada,
+                            tamano: it.order.tamano,
+                            startHour: it.startHour,
+                            endHour: it.endHour,
+                            overflow: it.overflow,
+                        })),
+                    };
+                });
+
+            const snapshot: PlanDiarioSnapshot = {
+                fecha,
+                shiftId: selectedShiftConfig.id,
+                shiftLabel: selectedShiftConfig.label,
+                shiftStartTime: selectedShiftConfig.startTime,
+                shiftDisplayEndTime: selectedShiftConfig.displayEndTime,
+                mesas,
+            };
+
+            const existente = planDiarioSnapshotIds.get(fecha);
+            const payload: any = {
+                codigo_grupo: mueblesGrupo.codigo_grupo,
+                nombre_restriccion: `${PLAN_DIARIO_PREFIJO}${fecha}`,
+                valor_restriccion: selectedShiftConfig.id,
+                descripcion: JSON.stringify(snapshot),
+                estado: 'A',
+                usuario_modificacion: 'Admin',
+            };
+            if (existente) payload.codigo_restriccion = existente;
+
+            const saved = await restriccionService.save(payload);
+            const codigoRestriccion = saved.data?.codigo_restriccion ?? existente;
+            if (codigoRestriccion) {
+                setPlanDiarioSnapshotIds(prev => new Map(prev).set(fecha, codigoRestriccion));
+            }
+        } catch (error) {
+            console.error('Error al guardar el snapshot de Plan Diario para "PLAN":', error);
+            addNotification('error', `No se pudo guardar el resumen para la pestaña "PLAN": ${(error as Error).message}`);
+        }
+    };
 
     // Resuelve la Fecha de Entrega cruzando PEDIDO + POSICION (Previsional: PEDIDOVENTAS + POSICIONPEDIDO;
     // Fert: PEDIDO + POSICION) contra getPendientesTotales, ya que un mismo pedido puede tener líneas
@@ -2702,6 +2833,8 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
         setSegundoNivelExplosionResults([]);
         setTelaExplosionResults([]);
         setCascoExplosionResults([]);
+        // Guarda el snapshot para "PLAN" (horario/mesas/personal/Gantt de esta fecha objetivo)
+        savePlanDiarioSnapshot(distribution);
 
         if (unassigned.length > 0) {
             addNotification('warning', `${unassigned.length} material(es) no se pudieron asignar a ninguna mesa (Sector no clasificado o sin mesa disponible para ese Sector/Tamaño).`);
@@ -2824,6 +2957,8 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
         setSegundoNivelExplosionResults([]);
         setTelaExplosionResults([]);
         setCascoExplosionResults([]);
+        // Actualiza el snapshot de "PLAN" con la distribución ya modulada de esta fecha objetivo
+        savePlanDiarioSnapshot(newDistribution);
 
         addNotification('success', `Distribución modulada: ${materialesMovidos} material(es) reubicado(s) para equilibrar la carga entre mesas. Puede continuar con la Explosión de Materiales.`);
     };

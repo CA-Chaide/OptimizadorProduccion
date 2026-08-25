@@ -17,23 +17,203 @@ const normalizeMaterialCode = (code: string | number): string => {
   return codeStr.slice(-8);
 };
 
-// Mapeo oficial de Mesas de Trabajo proporcionado por el usuario
-const MESA_MAPPING = [
-  { name: "MESA DE ARMADO 1", code: "TAP-AR01" },
-  { name: "MESA DE ARMADO 2", code: "TAP-AR02" },
-  { name: "MESA DE ARMADO 3", code: "TAP-AR03" },
-  { name: "MESA DE ARMADO 4", code: "TAP-AR04" },
-  { name: "MESA DE ARMADO 5", code: "TAP-AR05" },
-  { name: "MESA DE ARMADO 6", code: "TAP-AR06" },
-  { name: "MESA DE ARMADO 7", code: "TAP-AR07" },
-  { name: "MESA DE ARMADO 8", code: "TAP-AR08" },
-  { name: "MESA DE ARMADO 9", code: "TAP-AR09" },
-  { name: "MESA DE ARMADO 10", code: "TAP-AR10" },
-  { name: "MESA DE ARMADO 11", code: "TAP-AR11" },
-  { name: "MESA DE ARMADO 12", code: "TAP-AR12" },
-  { name: "MESA DE ARMADO 13", code: "TAP-AR13" },
-  { name: "MESA DE ARMADO 14", code: "TAP-AR14" },
-];
+// Prefijo de las Restriccion que guarda "Plan Táctico (Alpha)" (ProvisionalOrdersAlphaTab.tsx) cada vez
+// que se ejecuta/modula la Distribución de Mesas: una fila por fecha objetivo
+// (nombre_restriccion = "PlanDiarioConfig:<YYYY-MM-DD>") con el horario, las mesas, el personal
+// asignado y el Gantt de esa fecha, serializado en JSON dentro de `descripcion`. Esta pestaña "PLAN"
+// consume esos snapshots (ya vienen en la prop `restricciones`, filtrada por el Grupo de Muebles) en
+// vez de recalcular una aproximación propia con un horario/N° de mesas genérico.
+const PLAN_DIARIO_PREFIJO = 'PlanDiarioConfig:';
+
+// Copia local de las formas de PlanDiarioSnapshot (definidas en ProvisionalOrdersAlphaTab.tsx) — es el
+// contrato JSON persistido en `descripcion`, así que ambas copias deben evolucionar juntas si cambia el
+// guardado en "Plan Táctico (Alpha)".
+interface PlanDiarioSnapshotItem {
+  material: string;
+  nombre: string;
+  source: 'Previsional' | 'Fert';
+  id: string;
+  cantidad: number;
+  tamano: 'Pequeño' | 'Mediano' | 'Grande' | null;
+  startHour: number;
+  endHour: number;
+  overflow: boolean;
+}
+
+interface PlanDiarioSnapshotMesa {
+  tableId: number;
+  tableName: string;
+  linea: 'Línea 1 – Línea de Camas' | 'Línea 2 – Línea de Muebles';
+  capacityHours: number;
+  usedHours: number;
+  person: string;
+  percentage: string;
+  calificacion: number | null;
+  items: PlanDiarioSnapshotItem[];
+}
+
+interface PlanDiarioSnapshot {
+  fecha: string;
+  shiftId: string;
+  shiftLabel: string;
+  shiftStartTime: string;
+  shiftDisplayEndTime: string;
+  mesas: PlanDiarioSnapshotMesa[];
+}
+
+interface PlanSummaryDay {
+  date: string;
+  snapshot: PlanDiarioSnapshot | null;
+  cantProgramada: number;
+  tiempoTotalH: number;
+  capacidadTotalH: number;
+  mesas: PlanDiarioSnapshotMesa[];
+}
+
+// Escala fija del eje X del Diagrama de Gantt (en horas) — igual patrón/valor que en "Plan Táctico (Alpha)"
+const GANTT_HOURS_SCALE = 12;
+
+const parseHHMM = (time: string): number => {
+  const [h, m] = time.split(':').map(Number);
+  return h * 60 + m;
+};
+
+// Hora real de reloj ("HH:MM") correspondiente a un offset en horas desde el inicio del turno guardado
+// en el snapshot — mismo cálculo que el eje X del Gantt en "Plan Táctico (Alpha)"
+const formatShiftClockLabel = (shiftStartTime: string, offsetHours: number): string => {
+  const totalMinutes = parseHHMM(shiftStartTime) + Math.round(offsetHours * 60);
+  const hh = Math.floor(totalMinutes / 60) % 24;
+  const mm = totalMinutes % 60;
+  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+};
+
+const tamanoColorClass = (tamano: PlanDiarioSnapshotItem['tamano']): string => {
+  if (tamano === 'Grande') return 'bg-red-200 border-red-300 text-red-800';
+  if (tamano === 'Mediano') return 'bg-emerald-200 border-emerald-300 text-emerald-800';
+  return 'bg-blue-200 border-blue-300 text-blue-800';
+};
+
+// Diagrama de Gantt "tal cual" el de "Plan Táctico (Alpha)" (mismo layout/colores/leyenda/eje de
+// horas), pero de SOLO LECTURA: redibuja el Gantt guardado en el snapshot de cada fecha seleccionada
+// que sí tenga un Plan Diario guardado (punto 4 del pedido del usuario, 2026-08-25) — no recalcula nada.
+const PlanDiarioGanttSection: React.FC<{ planSummaryByDate: PlanSummaryDay[] }> = ({ planSummaryByDate }) => {
+  const diasConSnapshot = planSummaryByDate.filter(d => d.snapshot && d.mesas.length > 0);
+  if (diasConSnapshot.length === 0) return null;
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl shadow-md overflow-hidden mt-4">
+      <div className="flex items-center gap-2 px-6 py-4 bg-gradient-to-r from-slate-900 to-purple-900">
+        <LayoutDashboard className="w-5 h-5 text-purple-200" />
+        <h3 className="text-sm font-bold text-white uppercase tracking-wide">Diagrama de Gantt — Plan Diario Guardado (Plan Táctico)</h3>
+      </div>
+      <div className="p-6 space-y-8">
+        {diasConSnapshot.map(day => {
+          const snapshot = day.snapshot!;
+          const endShiftHours = (parseHHMM(snapshot.shiftDisplayEndTime) - parseHHMM(snapshot.shiftStartTime)) / 60;
+          const endShiftLeftPct = endShiftHours > 0 && endShiftHours <= GANTT_HOURS_SCALE ? (endShiftHours / GANTT_HOURS_SCALE) * 100 : null;
+
+          return (
+            <div key={day.date} className="space-y-4">
+              <h4 className="text-xs font-extrabold text-gray-700 uppercase tracking-wide border-b border-dashed border-gray-300 pb-1">
+                {day.date} — {snapshot.shiftLabel}
+              </h4>
+
+              <div className="flex flex-wrap items-center gap-4 text-[11px] text-gray-600">
+                <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-red-200 border border-red-300 inline-block" /> Grande</span>
+                <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-emerald-200 border border-emerald-300 inline-block" /> Mediano</span>
+                <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-blue-200 border border-blue-300 inline-block" /> Pequeño</span>
+                <span className="inline-flex items-center gap-1.5 text-gray-600">
+                  <span className="w-3 border-t-[3px] border-dashed border-slate-600 inline-block" /> Límite de capacidad de la mesa
+                </span>
+                <span className="inline-flex items-center gap-1.5 text-gray-600">
+                  <span className="w-3 border-t-4 border-slate-900 inline-block" /> Fin de turno ({snapshot.shiftDisplayEndTime})
+                </span>
+              </div>
+
+              <div className="relative">
+                {endShiftLeftPct !== null && (
+                  <div
+                    className="pointer-events-none absolute top-0 bottom-0 z-30 border-r-4 border-slate-900"
+                    style={{ left: `calc(11.75rem + (100% - 16rem) * ${endShiftLeftPct / 100})` }}
+                    title={`Fin de turno: ${snapshot.shiftDisplayEndTime}`}
+                  />
+                )}
+
+                <div className="space-y-6">
+                  {(['Línea 1 – Línea de Camas', 'Línea 2 – Línea de Muebles'] as const).map(linea => {
+                    const mesasLinea = day.mesas.filter(m => m.linea === linea);
+                    if (mesasLinea.length === 0) return null;
+
+                    return (
+                      <div key={linea} className="space-y-3">
+                        <h5 className="text-[11px] font-extrabold text-gray-600 uppercase tracking-wide">{linea}</h5>
+                        {mesasLinea.map(mesa => {
+                          const utilizacionPct = mesa.capacityHours > 0 ? (mesa.usedHours / mesa.capacityHours) * 100 : 0;
+                          return (
+                            <div key={mesa.tableId} className="flex items-stretch gap-3">
+                              <div className="w-44 shrink-0 flex flex-col justify-center">
+                                <p className="text-xs font-bold text-gray-800">{mesa.tableName}</p>
+                                <p className="text-sm font-extrabold text-gray-900 font-mono">{mesa.usedHours.toFixed(2)} / {mesa.capacityHours.toFixed(2)} h</p>
+                              </div>
+                              <div className="flex-1">
+                                <div className="relative h-10 bg-gray-50 border border-gray-200 rounded-md overflow-hidden">
+                                  {mesa.capacityHours > 0 && mesa.capacityHours <= GANTT_HOURS_SCALE && (
+                                    <div
+                                      className="absolute top-0 bottom-0 border-l-[3px] border-dashed border-slate-600 z-20"
+                                      style={{ left: `${(mesa.capacityHours / GANTT_HOURS_SCALE) * 100}%` }}
+                                      title={`Límite de capacidad: ${mesa.capacityHours.toFixed(2)} h`}
+                                    />
+                                  )}
+                                  {mesa.items.map((item, idx) => {
+                                    const left = (item.startHour / GANTT_HOURS_SCALE) * 100;
+                                    const width = ((item.endHour - item.startHour) / GANTT_HOURS_SCALE) * 100;
+                                    return (
+                                      <div
+                                        key={`${item.source}-${item.id}-${item.material}-${idx}`}
+                                        className={cn(
+                                          "absolute top-0.5 bottom-0.5 border rounded-sm px-1 flex items-center overflow-hidden",
+                                          tamanoColorClass(item.tamano),
+                                          item.overflow && "ring-2 ring-red-600"
+                                        )}
+                                        style={{ left: `${left}%`, width: `${Math.max(width, 0.5)}%` }}
+                                        title={`${item.nombre} (${item.material}) — ${item.tamano ?? '—'} — ${(item.endHour - item.startHour).toFixed(2)} h${item.overflow ? ' — EXCEDE CAPACIDAD' : ''}`}
+                                      >
+                                        <span className="text-[9px] font-semibold truncate">{item.material}</span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                              <div className="w-14 shrink-0 flex items-center justify-end">
+                                <span className={cn("text-xs font-extrabold", utilizacionPct > 100 ? 'text-red-600' : utilizacionPct >= 90 ? 'text-emerald-700' : 'text-gray-600')}>
+                                  {utilizacionPct.toFixed(0)}%
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+
+                  <div className="flex items-stretch gap-3">
+                    <div className="w-44 shrink-0" />
+                    <div className="flex-1 flex justify-between text-[9px] text-gray-400 font-mono px-0.5">
+                      {Array.from({ length: GANTT_HOURS_SCALE + 1 }, (_, h) => h).filter(h => h % 2 === 0).map(h => (
+                        <span key={h}>{formatShiftClockLabel(snapshot.shiftStartTime, h)}</span>
+                      ))}
+                    </div>
+                    <div className="w-14 shrink-0" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
 
 interface OrdenesFertTabSectionProps {
   restricciones: Restriccion[];
@@ -167,7 +347,6 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
   const { addNotification } = useAppContext();
   const [isMounted, setIsMounted] = useState(false);
   const [orders, setOrders] = useState<any[]>([]);
-  const [tapiceros, setTapiceros] = useState<any[]>([]);
   const [deliveryDatesMap, setDeliveryDatesMap] = useState<Map<string, string>>(new Map());
   const [pagination, setPagination] = useState<PaginationState>({
     currentPage: 1,
@@ -178,11 +357,9 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
   });
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  
+
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
   const [hasSetDefaultDate, setHasSetDefaultDate] = useState(false);
-  const [workSchedule, setWorkSchedule] = useState<string>("9");
-  const [workTables, setWorkTables] = useState<string>("14");
 
   // Estado para Explosión de Materiales
   const [explosionResults, setExplosionResults] = useState<ComponentExplosion[]>([]);
@@ -222,18 +399,37 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
     }
   };
 
-  // TIEMPO DISPONIBLE DIARIO TOTAL
-  const TIEMPO_DISPONIBLE_DIARIO_TOTAL = useMemo(() => {
-    const hours = parseInt(workSchedule);
-    const tables = parseInt(workTables);
-    return hours * tables * 0.87;
-  }, [workSchedule, workTables]);
+  // Snapshots de Plan Diario ("PlanDiarioConfig:<fecha>") ya guardados desde "Plan Táctico (Alpha)" —
+  // vienen dentro de la prop `restricciones` (ya filtrada por el/los Grupo(s) de Muebles), solo hay que
+  // separarlos por prefijo y parsear el JSON de `descripcion`. Fuente única de horario/mesas/personal/
+  // Gantt para esta pestaña "PLAN" (ver punto 1 del pedido del usuario, 2026-08-25).
+  const planDiarioSnapshotsByDate = useMemo(() => {
+    const map = new Map<string, PlanDiarioSnapshot>();
+    if (displayMode !== 'plan') return map;
+    (restricciones || [])
+      .filter(r => r.nombre_restriccion?.startsWith(PLAN_DIARIO_PREFIJO))
+      .forEach(r => {
+        try {
+          const snapshot = JSON.parse(r.descripcion || '') as PlanDiarioSnapshot;
+          if (snapshot?.fecha) map.set(snapshot.fecha, snapshot);
+        } catch {
+          // Restriccion con el prefijo pero descripcion corrupta/no-JSON: se ignora silenciosamente
+        }
+      });
+    return map;
+  }, [restricciones, displayMode]);
 
-  // TIEMPO DISPONIBLE POR MESA INDIVIDUAL
-  const TIEMPO_DISPONIBLE_POR_MESA = useMemo(() => {
-    const hours = parseInt(workSchedule);
-    return hours * 0.87;
-  }, [workSchedule]);
+  // Capacidad diaria de referencia para "DÍAS CARGA" en CAPACIDAD CONSOLIDADA (TOTAL SISTEMA): promedio
+  // de la capacidad total (suma de horas disponibles de todas las mesas) de los Planes Diarios ya
+  // guardados. Antes de que exista ningún snapshot (primer uso de esta función), se usa un valor de
+  // referencia conservador (14 mesas x 9h x 87%) para no dividir por cero.
+  const avgDailyCapacityHours = useMemo(() => {
+    const totals = Array.from(planDiarioSnapshotsByDate.values())
+      .map(s => s.mesas.reduce((sum, m) => sum + m.capacityHours, 0))
+      .filter(t => t > 0);
+    if (totals.length === 0) return 14 * 9 * 0.87;
+    return totals.reduce((sum, t) => sum + t, 0) / totals.length;
+  }, [planDiarioSnapshotsByDate]);
 
   const tiemposMap = useMemo(() => {
     if (!tiemposData || tiemposData.length === 0) {
@@ -256,30 +452,6 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
     'FECHA', 'PEDIDO', 'POSICION', 'ORDEN', 'MATERIAL', 'NOMBRE', 'CANTPROGRAMADA', 'CANTPENDIENTE', 'CENTRO', 
     'MAQUINA', 'PUESTOTRABAJO', 'SECTORDESC', 'CATEGORIA', 'RESPCTRLPROD'
   ];
-
-  // Cargar Habilidades (Tapiceros)
-  useEffect(() => {
-    if (!isMounted) return;
-
-    const fetchTapiceros = async () => {
-      try {
-        const res = await serviciosService.getCuboHabilidadesOP();
-        if (res && res.data) {
-          const dataArray = Array.isArray(res.data) ? res.data : [res.data];
-          const filtered = dataArray.filter((s: any) => {
-            const role = String(s.ROL || '').trim().toUpperCase();
-            const location = String(s.LOCALIDAD || s.CENTRO || s.Centro || '').trim();
-            return role.includes("TAPICERO") && (location.includes("QUITO") || location.includes("1000"));
-          });
-          const sorted = filtered.sort((a: any, b: any) => (Number(b.CALIFICACION) || 0) - (Number(a.CALIFICACION) || 0));
-          setTapiceros(sorted);
-        }
-      } catch (e) {
-        console.error("Error cargando tapiceros para el PLAN", e);
-      }
-    };
-    fetchTapiceros();
-  }, [isMounted]);
 
   // Cargar fechas de entrega desde PEND TOTALES para el cruce de información
   useEffect(() => {
@@ -489,43 +661,27 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
     return { count: list.length, list };
   }, [filteredOrders, tiemposMap]);
 
-  const planSummaryByDate = useMemo(() => {
+  // Desglose por Fecha y Mesa: ya NO se recalcula con un horario/N° de mesas genérico ni con un
+  // ranking artificial de tapiceros — se lee tal cual el snapshot de Plan Diario guardado desde "Plan
+  // Táctico (Alpha)" para esa fecha objetivo (horario, mesas, personal/% y horas disponibles reales de
+  // ese día). Si una fecha seleccionada nunca tuvo una Distribución de Mesas ejecutada/guardada en esa
+  // pestaña, `snapshot` queda `null` y la UI lo indica en vez de mostrar datos inventados.
+  const planSummaryByDate = useMemo<PlanSummaryDay[]>(() => {
     if (displayMode !== 'plan' || selectedDates.length === 0) return [];
 
     return selectedDates.map(date => {
-      const ordersOnDate = filteredOrders.filter(o => o.FECHA === date);
-      
-      const rawMesas = MESA_MAPPING.map(mesa => {
-        const mesaOrders = ordersOnDate.filter(o => String(o.PUESTOTRABAJO || '').trim() === mesa.code);
-        const cantProgramada = mesaOrders.reduce((sum, o) => sum + (Number(o.CANTPROGRAMADA) || 0), 0);
-        const tiempoRequeridoMin = mesaOrders.reduce((sum, o) => {
-          const materialCode = normalizeMaterialCode(o.MATERIAL);
-          const t = tiemposMap.get(materialCode) || 0;
-          return sum + (Number(o.CANTPROGRAMADA) || 0) * t;
-        }, 0);
-
-        return { ...mesa, cantProgramada, tiempoRequeridoH: tiempoRequeridoMin / 60 };
-      });
-
-      const sortedMesasByLoad = [...rawMesas].sort((a, b) => b.tiempoRequeridoH - a.tiempoRequeridoH);
-      const mesaAssignments = new Map();
-      sortedMesasByLoad.forEach((mesa, idx) => {
-        if (tapiceros && tapiceros.length > idx) mesaAssignments.set(mesa.code, tapiceros[idx]);
-      });
-
-      const mesasBreakdown = rawMesas.map(m => ({
-        ...m,
-        assignedTapicero: mesaAssignments.get(m.code) ? `${mesaAssignments.get(m.code).NOMBRE} (${mesaAssignments.get(m.code).CALIFICACION})` : 'Sin Asignar'
-      }));
-
+      const snapshot = planDiarioSnapshotsByDate.get(date) ?? null;
+      const mesas = snapshot?.mesas ?? [];
       return {
         date,
-        cantProgramada: mesasBreakdown.reduce((sum, m) => sum + m.cantProgramada, 0),
-        tiempoTotalH: mesasBreakdown.reduce((sum, m) => sum + m.tiempoRequeridoH, 0),
-        mesas: mesasBreakdown
+        snapshot,
+        cantProgramada: mesas.reduce((sum, m) => sum + m.items.reduce((s, it) => s + it.cantidad, 0), 0),
+        tiempoTotalH: mesas.reduce((sum, m) => sum + m.usedHours, 0),
+        capacidadTotalH: mesas.reduce((sum, m) => sum + m.capacityHours, 0),
+        mesas,
       };
     }).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  }, [filteredOrders, selectedDates, displayMode, tiemposMap, tapiceros]);
+  }, [selectedDates, displayMode, planDiarioSnapshotsByDate]);
 
   const totalPagesLocal = Math.ceil(filteredOrders.length / pagination.rowsPerPage);
   const startIndex = (pagination.currentPage - 1) * pagination.rowsPerPage;
@@ -677,31 +833,6 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
 
               {displayMode === 'plan' && (
                 <>
-                  <div className="w-64">
-                    <label className="text-sm font-semibold text-gray-700">Horario de Trabajo:</label>
-                    <select
-                      value={workSchedule}
-                      onChange={(e) => setWorkSchedule(e.target.value)}
-                      className="w-full h-9 border border-gray-300 rounded-md px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-indigo-500"
-                    >
-                      <option value="8">8 horas / 07:00 - 15:45</option>
-                      <option value="9">9 horas / 07:00 - 17:00</option>
-                      <option value="10">10 horas / 07:00 - 18:00</option>
-                    </select>
-                  </div>
-                  <div className="w-56">
-                    <label className="text-sm font-semibold text-gray-700">Mesas de Trabajo:</label>
-                    <select
-                      value={workTables}
-                      onChange={(e) => setWorkTables(e.target.value)}
-                      className="w-full h-9 border border-gray-300 rounded-md px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-indigo-500"
-                    >
-                      {[6, 7, 8, 9, 10, 11, 12, 13, 14].map(num => (
-                        <option key={num} value={String(num)}>{num} Mesas de Trabajo</option>
-                      ))}
-                    </select>
-                  </div>
-                  
                   <div className="flex items-end h-16">
                     <Button 
                         onClick={handleExplodeMaterials} 
@@ -736,7 +867,7 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
                       <div className="text-center p-3 flex flex-col justify-center">
                           <p className="text-[10px] text-gray-500 font-semibold uppercase mb-1">DÍAS CARGA</p>
                           <p className="font-bold text-base text-blue-600">
-                            {(globalSummary.totalHours / TIEMPO_DISPONIBLE_DIARIO_TOTAL).toFixed(1)} Días
+                            {(globalSummary.totalHours / avgDailyCapacityHours).toFixed(1)} Días
                           </p>
                       </div>
                   </div>
@@ -776,14 +907,24 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
               <div className="space-y-4 max-h-[500px] overflow-y-auto">
                   {selectedDates.length > 0 ? (
                     planSummaryByDate.map((daySummary) => {
-                      const capacidadOcupadaTotal = (daySummary.tiempoTotalH / TIEMPO_DISPONIBLE_DIARIO_TOTAL) * 100;
+                      const capacidadOcupadaTotal = daySummary.capacidadTotalH > 0 ? (daySummary.tiempoTotalH / daySummary.capacidadTotalH) * 100 : 0;
+                      if (!daySummary.snapshot) {
+                        return (
+                          <div key={daySummary.date} className="border rounded-md bg-white overflow-hidden shadow-sm">
+                            <div className="p-2 bg-indigo-600 text-white text-xs font-bold uppercase text-center">FECHA: {daySummary.date}</div>
+                            <p className="p-4 text-center text-amber-700 text-xs italic bg-amber-50">
+                              No hay un Plan Diario guardado para esta fecha — ejecute "Distribución de Mesas" en "Plan Táctico (Alpha)" cuando esta sea la fecha objetivo de esa pestaña.
+                            </p>
+                          </div>
+                        );
+                      }
                       return (
                       <div key={daySummary.date} className="border rounded-md bg-white overflow-hidden shadow-sm">
                           <div className="grid grid-cols-5 gap-0 items-center text-xs p-2 bg-indigo-600 text-white font-bold uppercase">
                               <div className="text-center border-r border-indigo-400">FECHA: {daySummary.date}</div>
                               <div className="text-center border-r border-indigo-400">CANT: {daySummary.cantProgramada.toLocaleString()}</div>
                               <div className="text-center border-r border-indigo-400">REQ: {daySummary.tiempoTotalH.toFixed(1)}h</div>
-                              <div className="text-center border-r border-indigo-400">DISP: {TIEMPO_DISPONIBLE_DIARIO_TOTAL.toFixed(1)}h</div>
+                              <div className="text-center border-r border-indigo-400">DISP: {daySummary.capacidadTotalH.toFixed(1)}h ({daySummary.snapshot.shiftLabel})</div>
                               <div className="text-center">OCUPACIÓN: {capacidadOcupadaTotal.toFixed(1)}%</div>
                           </div>
                           <div className="overflow-x-auto">
@@ -800,15 +941,19 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
                               </thead>
                               <tbody>
                                 {daySummary.mesas.map((mesa) => {
-                                  const capMesa = (mesa.tiempoRequeridoH / TIEMPO_DISPONIBLE_POR_MESA) * 100;
-                                  const sinProductos = mesa.cantProgramada === 0;
+                                  const capMesa = mesa.capacityHours > 0 ? (mesa.usedHours / mesa.capacityHours) * 100 : 0;
+                                  const cantMesa = mesa.items.reduce((s, it) => s + it.cantidad, 0);
+                                  const sinProductos = cantMesa === 0;
+                                  const personalLabel = mesa.person
+                                    ? `${mesa.person}${mesa.percentage ? ` (${mesa.percentage}%)` : ''}${mesa.calificacion !== null ? ` — Capacitación ${mesa.calificacion}%` : ''}`
+                                    : 'Sin Asignar';
                                   return (
-                                    <tr key={mesa.code} className={cn("border-b last:border-0", sinProductos && "bg-red-100")}>
-                                      <td className="px-3 py-1 font-semibold border-r">{mesa.name}</td>
-                                      <td className="px-3 py-1 border-r text-blue-600 truncate max-w-[150px]">{mesa.assignedTapicero}</td>
-                                      <td className="px-2 py-1 text-center font-mono border-r">{mesa.cantProgramada}</td>
-                                      <td className="px-2 py-1 text-center font-mono border-r">{mesa.tiempoRequeridoH.toFixed(2)}</td>
-                                      <td className="px-2 py-1 text-center font-mono border-r text-gray-500">{TIEMPO_DISPONIBLE_POR_MESA.toFixed(2)}</td>
+                                    <tr key={mesa.tableId} className={cn("border-b last:border-0", sinProductos && "bg-red-100")}>
+                                      <td className="px-3 py-1 font-semibold border-r">{mesa.tableName}</td>
+                                      <td className="px-3 py-1 border-r text-blue-600 truncate max-w-[220px]" title={personalLabel}>{personalLabel}</td>
+                                      <td className="px-2 py-1 text-center font-mono border-r">{cantMesa}</td>
+                                      <td className="px-2 py-1 text-center font-mono border-r">{mesa.usedHours.toFixed(2)}</td>
+                                      <td className="px-2 py-1 text-center font-mono border-r text-gray-500">{mesa.capacityHours.toFixed(2)}</td>
                                       <td className={cn("px-2 py-1 text-center font-bold font-mono", capMesa > 100 ? "text-red-600 bg-red-50" : "text-blue-600")}>
                                         {capMesa.toFixed(1)}%
                                       </td>
@@ -827,6 +972,8 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
               </div>
             </div>
           )}
+
+          {displayMode === 'plan' && <PlanDiarioGanttSection planSummaryByDate={planSummaryByDate} />}
         </div>
       )}
 
