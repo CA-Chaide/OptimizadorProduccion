@@ -5,6 +5,7 @@ import { Scissors, Loader2 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ProvisionalOrdersTallerCorteTab } from './ProvisionalOrdersTallerCorteTab';
 import { TiemposTallerCorteTab } from './TiemposTallerCorteTab';
+import { PlanTallerCorteTab } from './PlanTallerCorteTab';
 import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
 import { useAppContext } from '@/context/AppProvider';
@@ -170,12 +171,15 @@ export const TacticalPlanTallerCorteSection: React.FC = () => {
             </div>
 
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                <TabsList className="grid w-full grid-cols-2 gap-1 h-auto p-1 bg-muted border border-dashed border-gray-300 rounded-lg">
+                <TabsList className="grid w-full grid-cols-3 gap-1 h-auto p-1 bg-muted border border-dashed border-gray-300 rounded-lg">
                     <TabsTrigger value="tiempos" className="font-bold text-blue-700 data-[state=active]:text-blue-700">
                         Tiempos
                     </TabsTrigger>
                     <TabsTrigger value="planTactico" className="font-bold text-blue-700 data-[state=active]:text-blue-700">
                         PLAN TÁCTICO
+                    </TabsTrigger>
+                    <TabsTrigger value="plan" className="font-bold text-blue-700 data-[state=active]:text-blue-700">
+                        PLAN
                     </TabsTrigger>
                 </TabsList>
 
@@ -197,6 +201,10 @@ export const TacticalPlanTallerCorteSection: React.FC = () => {
                         tiemposManualMap={tiemposEfectivoMap}
                         onMaterialesDetectados={handleMaterialesDetectados}
                     />
+                </TabsContent>
+
+                <TabsContent value="plan" className="mt-4">
+                    <PlanTallerCorteTab tiemposManualMap={tiemposEfectivoMap} />
                 </TabsContent>
             </Tabs>
         </div>

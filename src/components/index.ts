@@ -37,6 +37,7 @@ export * from './PlanGrupoRecuperadoTab';
 export * from './TacticalPlanTallerCorteSection';
 export * from './TiemposTallerCorteTab';
 export * from './ProvisionalOrdersTallerCorteTab';
+export * from './PlanTallerCorteTab';
 
 // Widgets y paneles
 export { default as FloatingChatWidget } from './FloatingChatWidget';
