@@ -586,8 +586,8 @@ interface SnapshotCorteLaminado {
   // crudos de SAP, se pueden volver a pedir), esto es trabajo del usuario (overrides manuales
   // incluidos) que se perdía en silencio al navegar a otro módulo y volver: el tab "Resumen" quedaba
   // vacío hasta hacer clic en "Generar Necesidades" de nuevo. Se sincroniza aparte (ver el useEffect
-  // de más abajo), no en cada guardarEnCache de handleSincronizar, porque cambia con cada edición
-  // manual, no solo al sincronizar.
+  // de más abajo), no en cada guardarEnCache de handleSincronizarYGenerar, porque cambia con cada
+  // edición manual, no solo al sincronizar.
   unifiedNeeds: UnifiedNeedRow[];
   planManualOverrides: Record<string, number>;
   corridasManualOverrides: Record<string, number>;
@@ -607,9 +607,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [inventarioSAP, setInventarioSAP] = useState<InventarioSapRow[]>([]);
   const [operadoresLaminado, setOperadoresLaminado] = useState<RawApiRow[]>([]);
   const [mantenimientosSAP, setMantenimientosSAP] = useState<RawApiRow[]>([]);
-  // El módulo YA NO sincroniza solo al abrirse — ver handleSincronizar. `isLoading` estaba declarado
-  // como `[, setIsLoading]` (getter descartado): nada lo leía, así que no había ningún indicador
-  // visual mientras cargaba. Ahora sí se usa, en el botón Sincronizar del encabezado.
+  // El módulo YA NO sincroniza solo al abrirse — ver handleSincronizarYGenerar. `isLoading` estaba
+  // declarado como `[, setIsLoading]` (getter descartado): nada lo leía, así que no había ningún
+  // indicador visual mientras cargaba. Ahora sí se usa, en el botón del encabezado.
   const [isLoading, setIsLoading] = useState(false);
   const [datosCargados, setDatosCargados] = useState(false);
   const [necesidadesPlantaData, setNecesidadesPlantaData] = useState<Record<string, NecesidadPlantaRow[]>>({});
@@ -1012,8 +1012,16 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   // realmente grabó. Al ser un callback disparado por click (no un useEffect con estas funciones en
   // sus dependencias), no reaparece el bucle infinito que obligó a leer por ref en la versión
   // anterior de este arranque — ver [[dias_no_laborables_p2]] para el porqué de ese bug.
-  const handleSincronizar = useCallback(async () => {
+  // Antes eran 2 clics separados (Sincronizar, después Generar Necesidades) — para un usuario que
+  // interactúa a diario, resultaba repetitivo (decisión del usuario, no un ajuste de UI porque sí).
+  // Se combinan en un solo botón: sincroniza y, en cuanto los datos crudos ya se reflejan en el
+  // render, dispara el cálculo automáticamente (ver autoGenerarPendiente/syncStep más abajo).
+  const [autoGenerarPendiente, setAutoGenerarPendiente] = useState(false);
+  const [syncStep, setSyncStep] = useState<'idle' | 'sincronizando' | 'generando'>('idle');
+
+  const handleSincronizarYGenerar = useCallback(async () => {
     setIsLoading(true);
+    setSyncStep('sincronizando');
     try {
       const dias = await cargarDiasNoLaborables();
       setDiasNoLaborables(dias);
@@ -1033,10 +1041,17 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           approvedDeficitRows: Array.from(approvedDeficitRows),
         });
       }
-    } finally {
+      // No se llama handleProcessResumen() directo acá: leería filteredOrders/filteredFertOrders/etc.
+      // (useMemo derivados del estado que se acaba de actualizar arriba) por closure vieja, antes de
+      // que el siguiente render los recalcule. Se dispara desde el efecto de abajo, que sí ve la
+      // versión fresca de handleProcessResumen una vez que ese render ya ocurrió.
+      setAutoGenerarPendiente(true);
+    } catch (e) {
+      addNotification('error', `Error al sincronizar: ${(e as Error).message}`);
       setIsLoading(false);
+      setSyncStep('idle');
     }
-  }, [initData, fetchNecesidadesPlanta, unifiedNeeds, planManualOverrides, corridasManualOverrides, approvedDeficitRows]);
+  }, [initData, fetchNecesidadesPlanta, unifiedNeeds, planManualOverrides, corridasManualOverrides, approvedDeficitRows, addNotification]);
 
   // Rehidratación: si ya se había sincronizado en esta sesión, se recupera lo trabajado en vez de
   // dejar el módulo vacío al volver de otro módulo (ver @/lib/cache-modulos). Incluye el resumen ya
@@ -2049,6 +2064,21 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     setUnifiedNeeds(finalArray);
     setIsProcessingResumen(false);
   }, [filteredOrders, filteredFertOrders, materialProd014FertMap, materialNecesidadesPlantaMap, materialNecesidadVentaExternaMap, kpiLooperData, inventarioSAP, extractMaterialInfo, planManualOverrides, corridasManualOverrides, selectedDates, evaluarModificacionAutomaticaPlanActivo, addNotification, selectedDiaShift, selectedNocheShift]);
+
+  // Segunda fase de "Sincronizar y Generar Necesidades" (ver handleSincronizarYGenerar): corre
+  // handleProcessResumen automáticamente en cuanto el render que refleja los datos recién
+  // sincronizados ya ocurrió — acá arriba, handleProcessResumen ya es la versión fresca (sus
+  // dependencias, filteredOrders/filteredFertOrders/etc., ya se recalcularon), a diferencia del punto
+  // donde se dispara autoGenerarPendiente, donde llamarlo directo habría leído datos viejos.
+  useEffect(() => {
+    if (!autoGenerarPendiente) return;
+    setAutoGenerarPendiente(false);
+    setSyncStep('generando');
+    handleProcessResumen().finally(() => {
+      setSyncStep('idle');
+      setIsLoading(false);
+    });
+  }, [autoGenerarPendiente, handleProcessResumen]);
 
   // Recalcula planKg/tProceso de una fila para un planUn dado (misma fórmula usada en handleProcessResumen).
   // setupContribution ya viene calculado por el caller (participación viva en unidades del bloque,
@@ -3433,19 +3463,15 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           </div>
         </div>
         <div className="flex items-center gap-3">
-           {/* "Sincronizar": trae datos crudos de SAP sin calcular nada — mismo color/forma en los 4
-               módulos tácticos (azul), distinto de "Generar Necesidades" (índigo, al lado). */}
-           <Button onClick={handleSincronizar} disabled={isLoading} variant={datosCargados ? 'outline' : 'default'} className={cn(
+           {/* "Sincronizar y Generar Necesidades": un solo botón, un solo clic — antes eran 2 pasos
+               separados (Sincronizar, luego Generar Necesidades); el usuario los pidió combinados por
+               ser repetitivos en el uso diario. Sincroniza y, en cuanto los datos ya se reflejan en el
+               render, dispara el cálculo automáticamente (ver handleSincronizarYGenerar/syncStep). */}
+           <Button onClick={handleSincronizarYGenerar} disabled={isLoading} variant={datosCargados ? 'outline' : 'default'} className={cn(
              "rounded-xl h-10 px-6 text-[10px] font-black uppercase tracking-widest flex items-center gap-2",
              datosCargados ? "border-blue-200 text-blue-700 hover:bg-blue-50" : "bg-blue-600 text-white hover:bg-blue-700 shadow-lg"
            )}>
-              {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Sincronizar
-           </Button>
-           {/* Familia "Generar Necesidades": trae/calcula datos (sync o explosión BOM) sin escribir
-               nada — outline, tono índigo. "Generar Respuestas" (escribe Plan Grupo/Detalle Táctico
-               real) es sólido/primario. Mismos 2 niveles en los 4 módulos tácticos. */}
-           <Button onClick={handleProcessResumen} disabled={isProcessingResumen} variant="outline" className="rounded-xl h-10 px-6 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 border-indigo-200 text-indigo-700 hover:bg-indigo-50">
-              {isProcessingResumen ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Generar Necesidades
+              {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Sincronizar y Generar Necesidades
            </Button>
            <Popover>
             <PopoverTrigger asChild>
@@ -3484,16 +3510,33 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         </div>
       </div>
 
+      {/* Barra de progreso del botón combinado — 2 fases visibles (sincronizando SAP, luego
+          calculando el resumen) para que el usuario sepa en cuál está sin adivinar por el spinner
+          del botón solo. Desaparece sola al terminar (syncStep vuelve a 'idle'). */}
+      {syncStep !== 'idle' && (
+        <div className="flex items-center gap-3 rounded-xl border border-blue-100 bg-blue-50/40 px-4 py-2.5">
+          <div className="flex-1 h-1.5 bg-blue-100 rounded-full overflow-hidden">
+            <div
+              className={cn("h-full bg-blue-600 transition-all duration-700 ease-out", syncStep === 'sincronizando' ? "w-1/2" : "w-full")}
+            />
+          </div>
+          <span className="text-[10px] font-black uppercase tracking-widest text-blue-700 shrink-0 flex items-center gap-1.5">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            {syncStep === 'sincronizando' ? 'Sincronizando SAP...' : 'Generando necesidades...'}
+          </span>
+        </div>
+      )}
+
       {/* Estado vacío inicial: el módulo no consulta SAP al abrirse. Mismo criterio y misma
           redacción compacta que Corte Espuma y Venta Externa (ver [[carga_manual_modulos_tacticos]]). */}
       {!datosCargados && !isLoading && (
         <div
           className="flex items-center gap-2.5 rounded-xl border border-dashed border-blue-200 bg-blue-50/40 px-4 py-2.5 text-left"
-          title="Este módulo no consulta SAP al abrirse. Sincronizar trae Grupos, Restricciones, Provisionales, FERT, KPI Looper, Inventario, Habilidades y Mantenimiento."
+          title="Este módulo no consulta SAP al abrirse. Sincronizar trae Grupos, Restricciones, Provisionales, FERT, KPI Looper, Inventario, Habilidades y Mantenimiento, y calcula el resumen automáticamente al terminar."
         >
           <RefreshCw className="w-4 h-4 text-blue-600 shrink-0" />
           <p className="text-[11px] font-bold text-slate-600">
-            Sin datos cargados — pulsa <span className="font-black text-blue-700">Sincronizar</span> para traerlos.
+            Sin datos cargados — pulsa <span className="font-black text-blue-700">Sincronizar y Generar Necesidades</span> para traerlos.
           </p>
         </div>
       )}
