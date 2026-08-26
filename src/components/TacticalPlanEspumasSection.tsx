@@ -3669,8 +3669,11 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const fechasSel = Array.from(selectedDatesCapacidad[planta]).sort();
     const filasSeleccion = fechasSel.flatMap(f => resolverFecha(f).map(x => ({ ...x, fecha: f })));
     const plannedSeleccion = filasSeleccion.reduce((s, x) => s + x.row.tTotal, 0);
-    // Capacidad escala por cantidad de fechas seleccionadas — comparar demanda de N días contra la
-    // capacidad de 1 solo día fue justo el problema que motivó el desglose por fecha originalmente.
+    // Con el selector limitado a UNA fecha (ver toggleFechaCapacidad), fechasSel.length siempre es
+    // 0 o 1 — capacidadSeleccion queda en la práctica igual a totalH (un solo día), sin necesidad
+    // de tocar esta fórmula. Antes (multi-select) escalaba × N fechas; se descartó: mezclar varios
+    // días en un solo % no se entendía y, si alguna fecha ya había pasado, sumar su capacidad no
+    // tenía sentido (ese tiempo ya se fue). El manejo de atrasados/backlog queda pendiente aparte.
     const capacidadSeleccion = totalH * fechasSel.length;
     const occSeleccion = capacidadSeleccion > 0 ? (plannedSeleccion / capacidadSeleccion) * 100 : 0;
     const labelSeleccion = fechasSel.length === 1
@@ -3682,9 +3685,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       : occ >= 80
         ? { borde: 'border-amber-200', fondo: 'bg-amber-50/60', texto: 'text-amber-700', barra: 'bg-amber-500' }
         : { borde: 'border-emerald-200', fondo: 'bg-emerald-50/60', texto: 'text-emerald-700', barra: 'bg-emerald-500' };
+    // Selector de UNA sola fecha a la vez (antes multi-select): elegir una fecha reemplaza la
+    // anterior, no se acumulan — el usuario pidió simplificar, comparar varios días combinados en
+    // un solo % confundía más de lo que ayudaba. Con esto, capacidadSeleccion (más abajo) queda
+    // en automático capacidad × 1 sin tener que tocar esa fórmula.
     const toggleFechaCapacidad = (fecha: string) => setSelectedDatesCapacidad(prev => {
-      const n = new Set(prev[planta]);
-      if (n.has(fecha)) n.delete(fecha); else n.add(fecha);
+      const yaEstaba = prev[planta].has(fecha);
+      const n = yaEstaba ? new Set<string>() : new Set([fecha]);
       return { ...prev, [planta]: n };
     });
     const limpiarFechasCapacidad = () => setSelectedDatesCapacidad(prev => ({ ...prev, [planta]: new Set<string>() }));
@@ -3710,7 +3717,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               <h3 className="text-xl font-black tracking-tighter text-gray-800">{planta === 'UIO' ? 'QUITO' : 'GUAYAQUIL'}</h3>
               <p className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Gestión de Tiempos</p>
             </div>
-            <div title="Elige una o varias fechas para ver la ocupación de Capacidad Operativa: FERT real si ya existe, o el plan (Necesidad) todavía sin ejecutar si no.">
+            <div title="Elige una fecha para ver la ocupación de Capacidad Operativa: FERT real si ya existe, o el plan (Necesidad) todavía sin ejecutar si no. Elegir otra fecha reemplaza la anterior.">
               <DateFilterPopover
                 label="Evaluar Capacidad"
                 selectedDates={selectedDatesCapacidad[planta]}
