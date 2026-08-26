@@ -141,6 +141,14 @@ interface SnapshotVentaExterna {
   // esta sesión). Se sincroniza con actualizarEnCache directo en fetchDataAprobada, sin overrides
   // manuales de por medio (es un recálculo puro, no editable).
   dataAprobada: Record<string, DataAprobadaRow[]>;
+  // Resultado YA CALCULADO de "Generar Necesidades - BOM FERT" (ver handleCalcularNecesidadRollos) -
+  // mismo problema que dataAprobada: sin cachearlo aparte, el usuario perdia la necesidad recien
+  // explotada del BOM al navegar a otro modulo y volver, aunque los datos crudos (ordenes/ordenesFert)
+  // si sobrevivieran. Se sincroniza con actualizarEnCache al final de handleCalcularNecesidadRollos.
+  necesidadEspumas1000: NecesidadMaterial[];
+  necesidadEspumas2000: NecesidadMaterial[];
+  necesidadRollos1000: NecesidadMaterial[];
+  necesidadRollos2000: NecesidadMaterial[];
 }
 
 export const TacticalPlanVentaExternaSection: React.FC = () => {
@@ -317,15 +325,19 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
         ordenesFert: ordenesRes.ordenesFert,
         tiemposEnsamblado: tiempos,
         diasNoLaborables: [...dias],
-        // Data Aprobada se sincroniza aparte (ver fetchDataAprobada) — acá se preserva lo que ya
-        // hubiera, en vez de resetearlo, por si el usuario vuelve a sincronizar sin haber navegado
-        // fuera del módulo.
+        // Data Aprobada y la Necesidad BOM se sincronizan aparte (ver fetchDataAprobada y
+        // handleCalcularNecesidadRollos) — acá se preserva lo que ya hubiera, en vez de resetearlo,
+        // por si el usuario vuelve a sincronizar sin haber navegado fuera del módulo.
         dataAprobada,
+        necesidadEspumas1000,
+        necesidadEspumas2000,
+        necesidadRollos1000,
+        necesidadRollos2000,
       });
     } finally {
       setIsLoading(false);
     }
-  }, [dataAprobada]);
+  }, [dataAprobada, necesidadEspumas1000, necesidadEspumas2000, necesidadRollos1000, necesidadRollos2000]);
 
   // Rehidratación: si ya se había sincronizado en esta sesión, se recupera lo trabajado en vez de
   // dejar el módulo vacío al volver de otro módulo (ver @/lib/cache-modulos). Incluye Data Aprobada
@@ -342,6 +354,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       setTiemposEnsamblado(snap.tiemposEnsamblado);
       setDiasNoLaborables(new Set(snap.diasNoLaborables));
       setDataAprobada(snap.dataAprobada || {});
+      setNecesidadEspumas1000(snap.necesidadEspumas1000 || []);
+      setNecesidadEspumas2000(snap.necesidadEspumas2000 || []);
+      setNecesidadRollos1000(snap.necesidadRollos1000 || []);
+      setNecesidadRollos2000(snap.necesidadRollos2000 || []);
       setDatosCargados(true);
     }
   }, [mounted]);
@@ -771,6 +787,14 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       setNecesidadEspumas2000(n2000.espumas);
       setNecesidadRollos1000(n1000.rollos);
       setNecesidadRollos2000(n2000.rollos);
+      // Mantiene el snapshot en sync — si el usuario navega a otro modulo y vuelve, esta tabla ya no
+      // aparece vacia (ver SnapshotVentaExterna). No-op si todavia no se sincronizo ningun dato base.
+      actualizarEnCache<SnapshotVentaExterna>(CACHE_VENTA_EXTERNA, {
+        necesidadEspumas1000: n1000.espumas,
+        necesidadEspumas2000: n2000.espumas,
+        necesidadRollos1000: n1000.rollos,
+        necesidadRollos2000: n2000.rollos,
+      });
 
       const sinMatch = [...n1000.sinMatch, ...n2000.sinMatch];
       const conError = [...n1000.conError, ...n2000.conError];
