@@ -511,6 +511,12 @@ interface ComponentOrigen {
     ordenes: string[];
 }
 
+// Mismo criterio de normalización ya usado en handleMaterialExplosion para distinguir "LAMINA
+// CILINDRICA" (con o sin tilde en la Í) del resto de semielaborados de espuma.
+function esDescripcionLaminaCilindrica(descripcion: string): boolean {
+    return descripcion.toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').startsWith('LAMINA CILINDRICA');
+}
+
 // Semielaborado de espuma (Lamina/Espuma) requerido, obtenido de la Explosión de Materiales
 interface FoamComponentNeed {
     componente: string;
@@ -731,6 +737,17 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
 
     // Estado para la Explosión de Materiales (semielaborados de espuma: Lamina/Espuma)
     const [foamExplosionResults, setFoamExplosionResults] = useState<FoamComponentNeed[]>([]);
+    // La tabla de Espuma se muestra dividida en dos secciones (misma tabla, mismo orden por cantidad
+    // dentro de cada una): "LAMINA CILINDRICA" aparte del resto de espumas. El guardado en P2 sigue
+    // usando foamExplosionResults completo, sin dividir.
+    const foamExplosionLaminaCilindrica = useMemo(
+        () => foamExplosionResults.filter(c => esDescripcionLaminaCilindrica(c.descripcion)),
+        [foamExplosionResults]
+    );
+    const foamExplosionOtrasEspumas = useMemo(
+        () => foamExplosionResults.filter(c => !esDescripcionLaminaCilindrica(c.descripcion)),
+        [foamExplosionResults]
+    );
     // Estado para la Explosión de Materiales (Semielaborados de Primer Nivel: RESPCTRLPROD '026' o '033')
     const [primerNivelExplosionResults, setPrimerNivelExplosionResults] = useState<FoamComponentNeed[]>([]);
     // Estado para la Explosión de Materiales (Semielaborados de Segundo Nivel: RESPCTRLPROD '042' o '037',
@@ -3212,6 +3229,48 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
                 return bajoForroBase;
             };
 
+            // Devuelve los códigos que cuelgan (a cualquier profundidad) de "TELA DE APROVECHAMIENTO"
+            // (código 30020937) dentro de la explosión de un material padre. Este material es un "cajón
+            // de sastre" que en SAP lista como sus propios "componentes" una muestra fija de ~10 telas de
+            // colores/productos completamente distintos (todas con cantidad placeholder 0.25/1, sin
+            // relación con lo que el pedido realmente usa) — NO es consumo real. Confirmado en vivo
+            // (2026-08-26): la explosión de "SOFÁ FOAM 105 ELEMENTA BRUMA" (20014132) incluye, colgando de
+            // 30020937, "TELA MUEBLES ASTRA BEIGE WESTVIEW STUCCO" (40003011) y "TELA MUEBLES EPIC BRUMA
+            // FLEMMINGS STORM" (40002771) — ninguna de las dos es la tela real del pedido (esa es
+            // "TELA MUEBLES ELEMENTA BRUMA WD24036A C21", 40003358, en otra rama del árbol) — causaba
+            // falsos positivos en la Alerta de Stock de Telas. Ya existía este mismo hallazgo en
+            // "Segundo Nivel" (esExcluidoSegundoNivel excluye "TELA DE APROVECHAMIENTO" en sí), pero no
+            // sus hijos aquí. Mismo patrón que getCodigosBajoForroBase.
+            const getCodigosBajoTelaAprovechamiento = (components: any[]): Set<string> => {
+                const hijosPorPadre = new Map<string, any[]>();
+                const raices: string[] = [];
+                components.forEach((comp: any) => {
+                    const padre = String(comp.MATERIAL_PADRE || '').trim();
+                    const codigo = String(comp.COMPONENTE || '').trim();
+                    if (padre) {
+                        if (!hijosPorPadre.has(padre)) hijosPorPadre.set(padre, []);
+                        hijosPorPadre.get(padre)!.push(comp);
+                    }
+                    const desc = String(comp.DESCRIPCION_COMPONENTE || '').trim().toUpperCase();
+                    if (codigo && (desc.startsWith('TELA DE APROVECHAMIENTO') || normalizeMaterialCode(codigo) === '30020937')) {
+                        raices.push(codigo);
+                    }
+                });
+                const bajoAprovechamiento = new Set<string>(raices);
+                const pendientes = [...raices];
+                while (pendientes.length > 0) {
+                    const actual = pendientes.pop()!;
+                    (hijosPorPadre.get(actual) || []).forEach((hijo: any) => {
+                        const codigoHijo = String(hijo.COMPONENTE || '').trim();
+                        if (codigoHijo && !bajoAprovechamiento.has(codigoHijo)) {
+                            bajoAprovechamiento.add(codigoHijo);
+                            pendientes.push(codigoHijo);
+                        }
+                    });
+                }
+                return bajoAprovechamiento;
+            };
+
             responses.forEach((components, idx) => {
                 const material = allUniqueMaterials[idx];
                 const parentDemand = materialDemandMap.get(material) || 0;
@@ -3219,6 +3278,7 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
                 if (parentDemand === 0 && parentPastDemand === 0) return;
 
                 const codigosBajoForroBase = getCodigosBajoForroBase(components);
+                const codigosBajoAprovechamiento = getCodigosBajoTelaAprovechamiento(components);
 
                 components.forEach((comp: any) => {
                     const descripcion = String(comp.DESCRIPCION_COMPONENTE || '').trim();
@@ -3234,7 +3294,12 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
                     const consumoPasado = cantBase * parentPastDemand;
                     const unidad = String(comp.UNIDAD || 'UN');
 
-                    if (consumoPasado > 0) {
+                    // Se excluye lo que cuelga de "TELA DE APROVECHAMIENTO" también aquí (no solo en el
+                    // bloque de Telas más abajo): este mapa alimenta "Consumo Órdenes Pasadas" del kardex
+                    // de CUALQUIER tabla (Espuma/PrimerNivel/SegundoNivel/Telas/Cascos) para ese código de
+                    // componente — dejar pasar el dato contaminado aquí inflaría el consumo pasado si ese
+                    // mismo código llega a tener una aparición legítima en otro pedido.
+                    if (consumoPasado > 0 && !codigosBajoAprovechamiento.has(componente)) {
                         pastConsumptionMap.set(componente, (pastConsumptionMap.get(componente) || 0) + consumoPasado);
                     }
                     if (necesario <= 0) return;
@@ -3283,14 +3348,17 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
                     // Telas para muebles: la descripción inicia con "TELA MUEBLES". La unidad se fuerza a
                     // "M" (metros): todas las telas se miden en metros y el Maestro de Materiales a veces
                     // no trae la UNIDAD, cayendo en el default genérico "UN" que no aplica aquí.
-                    if (descripcionUpper.startsWith('TELA MUEBLES')) {
+                    // Excluye las que cuelgan de "TELA DE APROVECHAMIENTO" (30020937) — no son consumo
+                    // real, son una muestra fija de colores ajenos al pedido (ver getCodigosBajoTelaAprovechamiento).
+                    if (descripcionUpper.startsWith('TELA MUEBLES') && !codigosBajoAprovechamiento.has(componente)) {
                         const accum = ensure(groupedTelas, componente, descripcion, 'M');
                         accum.totalNecesario += necesario;
                         recordOrigin(accum, material);
                     }
 
-                    // Cascos para muebles: la descripción inicia con "CASCO"
-                    if (descripcionUpper.startsWith('CASCO')) {
+                    // Cascos para muebles: la descripción inicia con "CASCO" — misma exclusión por
+                    // consistencia, aunque no se ha detectado un caso real de contaminación en Cascos.
+                    if (descripcionUpper.startsWith('CASCO') && !codigosBajoAprovechamiento.has(componente)) {
                         const accum = ensure(groupedCascos, componente, descripcion, unidad);
                         accum.totalNecesario += necesario;
                         recordOrigin(accum, material);
@@ -4632,30 +4700,42 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        {foamExplosionResults.map((comp, idx) => (
-                                            <TableRow key={comp.componente} className={cn("border-b border-gray-200", idx % 2 === 1 && "bg-gray-50/70")}>
-                                                <TableCell className="text-[11px] font-mono font-semibold text-gray-800 border-r border-gray-200">{comp.componente}</TableCell>
-                                                <TableCell className="text-[11px] text-gray-700 border-r border-gray-200">{comp.descripcion}</TableCell>
-                                                <TableCell className="text-[11px] text-center text-gray-600 border-r border-gray-200">{comp.unidad}</TableCell>
-                                                <TableCell className="text-[11px] text-center font-mono text-gray-700 border-r border-gray-200">
-                                                    {comp.totalNecesario.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                                </TableCell>
-                                                <TableCell className="text-[11px] text-center font-mono text-gray-600 border-r border-gray-200">
-                                                    {comp.stockActual !== null ? comp.stockActual.toLocaleString() : '—'}
-                                                </TableCell>
-                                                <TableCell className="text-[11px] text-center font-mono text-gray-600 border-r border-gray-200">
-                                                    {comp.consumoOrdenesPasadas.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                                </TableCell>
-                                                <TableCell className="text-[11px] text-center font-mono text-gray-600 border-r border-gray-200">
-                                                    {comp.produccionPropiaPendiente.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                                </TableCell>
-                                                <TableCell className="text-[11px] text-center font-mono text-gray-600 border-r border-gray-200">
-                                                    {comp.disponibleReal !== null ? comp.disponibleReal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
-                                                </TableCell>
-                                                <TableCell className="text-[11px] text-center font-mono font-bold text-orange-700">
-                                                    {comp.cantidadNetaAConseguir.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                                </TableCell>
-                                            </TableRow>
+                                        {([
+                                            { label: 'LAMINA CILINDRICA', items: foamExplosionLaminaCilindrica },
+                                            { label: 'OTRAS ESPUMAS', items: foamExplosionOtrasEspumas },
+                                        ] as const).map(section => section.items.length === 0 ? null : (
+                                            <React.Fragment key={section.label}>
+                                                <TableRow className="bg-orange-100 hover:bg-orange-100 border-b border-orange-200">
+                                                    <TableCell colSpan={9} className="text-[10px] font-extrabold text-orange-900 uppercase tracking-wide py-1.5">
+                                                        {section.label}
+                                                    </TableCell>
+                                                </TableRow>
+                                                {section.items.map((comp, idx) => (
+                                                    <TableRow key={comp.componente} className={cn("border-b border-gray-200", idx % 2 === 1 && "bg-gray-50/70")}>
+                                                        <TableCell className="text-[11px] font-mono font-semibold text-gray-800 border-r border-gray-200">{comp.componente}</TableCell>
+                                                        <TableCell className="text-[11px] text-gray-700 border-r border-gray-200">{comp.descripcion}</TableCell>
+                                                        <TableCell className="text-[11px] text-center text-gray-600 border-r border-gray-200">{comp.unidad}</TableCell>
+                                                        <TableCell className="text-[11px] text-center font-mono text-gray-700 border-r border-gray-200">
+                                                            {comp.totalNecesario.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                        </TableCell>
+                                                        <TableCell className="text-[11px] text-center font-mono text-gray-600 border-r border-gray-200">
+                                                            {comp.stockActual !== null ? comp.stockActual.toLocaleString() : '—'}
+                                                        </TableCell>
+                                                        <TableCell className="text-[11px] text-center font-mono text-gray-600 border-r border-gray-200">
+                                                            {comp.consumoOrdenesPasadas.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                        </TableCell>
+                                                        <TableCell className="text-[11px] text-center font-mono text-gray-600 border-r border-gray-200">
+                                                            {comp.produccionPropiaPendiente.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                        </TableCell>
+                                                        <TableCell className="text-[11px] text-center font-mono text-gray-600 border-r border-gray-200">
+                                                            {comp.disponibleReal !== null ? comp.disponibleReal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
+                                                        </TableCell>
+                                                        <TableCell className="text-[11px] text-center font-mono font-bold text-orange-700">
+                                                            {comp.cantidadNetaAConseguir.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                        </TableCell>
+                                                    </TableRow>
+                                                ))}
+                                            </React.Fragment>
                                         ))}
                                     </TableBody>
                                     <TableFooter className="sticky bottom-0">

@@ -40,6 +40,11 @@ const esExcluidoTallerCorte = (descripcionUpper: string): boolean =>
     descripcionUpper.includes('MASCOTA') ||
     descripcionUpper.includes('PET');
 
+// Materiales que sí se distribuyen y se ven en el Gantt en pantalla, pero que el usuario pidió excluir
+// de los archivos de exportación (Excel/.txt) del Diagrama de Gantt de Distribución de Máquinas de Coser
+// (2026-08-26): 30024667 "FORRO COJIN FOAM BOX" y 30024666 "FORRO COJIN MUNICH BOX".
+const MATERIALES_EXCLUIDOS_EXPORT_GANTT = new Set(['30024667', '30024666']);
+
 // "TAPA T. FALSO ..." (cualquier variante/color, no solo NEGRO) y los forros de proceso corto ya
 // conocidos ("FORRO FALSO COSIDO"/"FORRO COJIN INTER"), además de "ANTIFAZ" (2026-08-24, pedido
 // explícito del usuario), se fabrican en un puesto de trabajo dedicado aparte ("TC-USN01") — no en
@@ -606,6 +611,7 @@ export const ProvisionalOrdersTallerCorteTab: React.FC<ProvisionalOrdersTallerCo
             const effectiveStartTime = getEffectiveStartTimeParaTurno(machine.turno);
             const fechaBase = getFixedExportDateKey(machine.machineId, holidaysSet);
             machine.items.forEach(item => {
+                if (MATERIALES_EXCLUIDOS_EXPORT_GANTT.has(normalizeMaterialCode(item.order.material))) return;
                 const inicio = addHoursWithDate(fechaBase, effectiveStartTime, item.startHour);
                 const fin = addHoursWithDate(fechaBase, effectiveStartTime, item.endHour);
                 rows.push({
@@ -646,6 +652,7 @@ export const ProvisionalOrdersTallerCorteTab: React.FC<ProvisionalOrdersTallerCo
             const effectiveStartTime = getEffectiveStartTimeParaTurno(machine.turno);
             const fechaBase = getFixedExportDateKey(machine.machineId, holidaysSet);
             machine.items.forEach(item => {
+                if (MATERIALES_EXCLUIDOS_EXPORT_GANTT.has(normalizeMaterialCode(item.order.material))) return;
                 const inicio = addHoursWithDate(fechaBase, effectiveStartTime, item.startHour);
                 const fin = addHoursWithDate(fechaBase, effectiveStartTime, item.endHour);
                 lines.push([
@@ -785,6 +792,47 @@ export const ProvisionalOrdersTallerCorteTab: React.FC<ProvisionalOrdersTallerCo
                 </div>
             </div>
 
+            {/* RESUMEN DE CAPACIDAD */}
+            {capacitySummary && (
+                <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm space-y-3">
+                    <div className="flex items-center gap-2">
+                        <Gauge className="w-5 h-5 text-indigo-600" />
+                        <h3 className="text-sm font-bold text-gray-800 uppercase tracking-tight">Capacidad vs. Tiempo Requerido</h3>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                        <div className="border border-gray-200 rounded-lg p-3">
+                            <p className="text-[10px] font-bold text-gray-400 uppercase">Capacidad Disponible</p>
+                            <p className="text-xl font-extrabold text-gray-800">{capacitySummary.capacidadDisponible.toFixed(2)} h</p>
+                        </div>
+                        <div className="border border-gray-200 rounded-lg p-3">
+                            <p className="text-[10px] font-bold text-gray-400 uppercase">Tiempo Requerido</p>
+                            <p className="text-xl font-extrabold text-gray-800">{capacitySummary.tiempoRequerido.toFixed(2)} h</p>
+                        </div>
+                        <div className="border border-gray-200 rounded-lg p-3">
+                            <p className="text-[10px] font-bold text-gray-400 uppercase">Utilización</p>
+                            <p className={cn(
+                                "text-xl font-extrabold",
+                                capacitySummary.utilizacionPct > 100 ? 'text-red-600' : capacitySummary.utilizacionPct >= 85 ? 'text-emerald-700' : 'text-gray-800'
+                            )}>
+                                {capacitySummary.utilizacionPct.toFixed(0)}%
+                            </p>
+                        </div>
+                        <div className="border border-gray-200 rounded-lg p-3">
+                            <p className="text-[10px] font-bold text-gray-400 uppercase">Materiales sin Tiempo</p>
+                            <p className={cn("text-xl font-extrabold", capacitySummary.materialesSinTiempo > 0 ? 'text-amber-600' : 'text-gray-800')}>
+                                {capacitySummary.materialesSinTiempo}
+                            </p>
+                        </div>
+                    </div>
+                    {capacitySummary.materialesSinTiempo > 0 && (
+                        <p className="text-[11px] text-amber-700 flex items-center gap-1.5">
+                            <TriangleAlert className="w-3.5 h-3.5" />
+                            Hay {capacitySummary.materialesSinTiempo} material(es) sin tiempo unitario cargado en la pestaña "Tiempos" — no se incluyen en el tiempo requerido ni en la distribución.
+                        </p>
+                    )}
+                </div>
+            )}
+
             {/* TABLA INICIAL: NECESIDADES DE FORRO (026) */}
             <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
                 <div className="flex items-center justify-between px-6 py-4 bg-gradient-to-r from-slate-900 to-indigo-900">
@@ -862,47 +910,6 @@ export const ProvisionalOrdersTallerCorteTab: React.FC<ProvisionalOrdersTallerCo
                     </div>
                 </div>
             </div>
-
-            {/* RESUMEN DE CAPACIDAD */}
-            {capacitySummary && (
-                <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm space-y-3">
-                    <div className="flex items-center gap-2">
-                        <Gauge className="w-5 h-5 text-indigo-600" />
-                        <h3 className="text-sm font-bold text-gray-800 uppercase tracking-tight">Capacidad vs. Tiempo Requerido</h3>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-                        <div className="border border-gray-200 rounded-lg p-3">
-                            <p className="text-[10px] font-bold text-gray-400 uppercase">Capacidad Disponible</p>
-                            <p className="text-xl font-extrabold text-gray-800">{capacitySummary.capacidadDisponible.toFixed(2)} h</p>
-                        </div>
-                        <div className="border border-gray-200 rounded-lg p-3">
-                            <p className="text-[10px] font-bold text-gray-400 uppercase">Tiempo Requerido</p>
-                            <p className="text-xl font-extrabold text-gray-800">{capacitySummary.tiempoRequerido.toFixed(2)} h</p>
-                        </div>
-                        <div className="border border-gray-200 rounded-lg p-3">
-                            <p className="text-[10px] font-bold text-gray-400 uppercase">Utilización</p>
-                            <p className={cn(
-                                "text-xl font-extrabold",
-                                capacitySummary.utilizacionPct > 100 ? 'text-red-600' : capacitySummary.utilizacionPct >= 85 ? 'text-emerald-700' : 'text-gray-800'
-                            )}>
-                                {capacitySummary.utilizacionPct.toFixed(0)}%
-                            </p>
-                        </div>
-                        <div className="border border-gray-200 rounded-lg p-3">
-                            <p className="text-[10px] font-bold text-gray-400 uppercase">Materiales sin Tiempo</p>
-                            <p className={cn("text-xl font-extrabold", capacitySummary.materialesSinTiempo > 0 ? 'text-amber-600' : 'text-gray-800')}>
-                                {capacitySummary.materialesSinTiempo}
-                            </p>
-                        </div>
-                    </div>
-                    {capacitySummary.materialesSinTiempo > 0 && (
-                        <p className="text-[11px] text-amber-700 flex items-center gap-1.5">
-                            <TriangleAlert className="w-3.5 h-3.5" />
-                            Hay {capacitySummary.materialesSinTiempo} material(es) sin tiempo unitario cargado en la pestaña "Tiempos" — no se incluyen en el tiempo requerido ni en la distribución.
-                        </p>
-                    )}
-                </div>
-            )}
 
             {/* DIAGRAMA DE GANTT — DISTRIBUCIÓN DE MÁQUINAS DE COSER */}
             {machineDistribution && machineDistribution.size > 0 && (

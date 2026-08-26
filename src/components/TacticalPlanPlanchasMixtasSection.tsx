@@ -11,6 +11,7 @@ import { ProvisionalOrdersPlanchasMixtasTab } from './ProvisionalOrdersPlanchasM
 import { PlanGrupoEnsambladoTab } from './PlanGrupoEnsambladoTab';
 import { PlanGrupoEnsambladoPFFTab, type ComponentePlanchaAccum } from './PlanGrupoEnsambladoPFFTab';
 import { PlanTacticoPFFTab } from './PlanTacticoPFFTab';
+import { PlanPlanchasMixtasTab } from './PlanPlanchasMixtasTab';
 import { grupoService } from '@/services/grupo.service';
 import { restriccionService } from '@/services/restriccion.service';
 import { serviciosService } from '@/services/servicios.service';
@@ -250,6 +251,9 @@ export const TacticalPlanPlanchasMixtasSection: React.FC = () => {
           <TabsTrigger value="ordenes" className="font-bold text-blue-700 data-[state=active]:text-blue-700">
             Ord. Prev. ({validRespCodesPrensado.length > 0 ? validRespCodesPrensado.join('&') : '...'})
           </TabsTrigger>
+          <TabsTrigger value="plan" className="font-bold text-blue-700 data-[state=active]:text-blue-700">
+            PLAN
+          </TabsTrigger>
           <TabsTrigger value="tiempos" className="font-bold text-blue-700 data-[state=active]:text-blue-700">
             Tiempos de Fabricación
           </TabsTrigger>
@@ -297,6 +301,10 @@ export const TacticalPlanPlanchasMixtasSection: React.FC = () => {
               <ProvisionalOrdersTabSection respCodes={validRespCodesPrensado} centroFilter="1000" />
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="plan" className="mt-4">
+          <PlanPlanchasMixtasTab respCodes={validRespCodesPrensado} />
         </TabsContent>
 
         <TabsContent value="tiempos" className="mt-4">

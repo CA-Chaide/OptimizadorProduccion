@@ -3,12 +3,13 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { serviciosService } from '@/services/servicios.service';
 import { useAppContext } from '@/context/AppProvider';
-import { Package, Check, ChevronsUpDown, Loader2, BellRing, AlertTriangle, Clock, Calendar, LayoutDashboard, History, ListChecks, ChevronUp, ChevronDown, Calculator, FileJson } from 'lucide-react';
+import { Package, Check, ChevronsUpDown, Loader2, BellRing, AlertTriangle, Clock, Calendar, CalendarDays, LayoutDashboard, History, ListChecks, ChevronUp, ChevronDown, Calculator, FileJson, Sparkles, CheckCircle2, PieChart, PackageSearch } from 'lucide-react';
 import type { OrdenFert, ProvisionalOrder, Restriccion } from '@/types/interfaces';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from '@/components/ui/command';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { cn } from '@/lib/utils';
 
@@ -92,6 +93,109 @@ const tamanoColorClass = (tamano: PlanDiarioSnapshotItem['tamano']): string => {
   if (tamano === 'Mediano') return 'bg-emerald-200 border-emerald-300 text-emerald-800';
   return 'bg-blue-200 border-blue-300 text-blue-800';
 };
+
+// Hora de inicio del "turno de referencia" usado por la Alerta de Riesgo (IA) de esta pestaña — un
+// turno simple de un solo bloque, no ligado al horario/turno real elegido en "Plan Táctico (Alpha)"
+// (esta pestaña "PLAN" es un visor de lo ya lanzado, no comparte ese estado). Mismo patrón que la
+// pestaña "PLAN" del Taller de Corte (PlanTallerCorteTab.tsx).
+const TURNO_REFERENCIA_INICIO = '07:00';
+const TURNO_REFERENCIA_HORAS_OPTIONS = [8, 9, 10];
+
+const stripAccents = (s: string): string => s.normalize('NFD').replace(/[̀-ͯ]/g, '');
+
+// Umbral (minutos de tiempo unitario de fabricación) que separa "Sofás Pequeños" de "Sofás Grandes" en
+// el cuadro "Resumen por Tipo de Mueble" — acordado explícitamente con el usuario (2026-08-26): mismo
+// valor que ya usa "Plan Táctico (Alpha)" para el corte Mediano/Grande en Muebles (SIZE_THRESHOLDS,
+// ProvisionalOrdersAlphaTab.tsx), duplicado aquí a propósito (ambos archivos evolucionan por separado).
+const SOFA_MINUTOS_GRANDE = 147;
+
+type TipoMueble = 'CAMAS' | 'CABECEROS' | 'SOFAS_PEQUEÑOS' | 'SOFAS_GRANDES' | 'OTROS';
+
+const TIPO_MUEBLE_ORDEN: TipoMueble[] = ['CAMAS', 'CABECEROS', 'SOFAS_PEQUEÑOS', 'SOFAS_GRANDES', 'OTROS'];
+
+const TIPO_MUEBLE_LABEL: Record<TipoMueble, string> = {
+  CAMAS: 'Camas (Grandes y Pequeñas)',
+  CABECEROS: 'Cabeceros',
+  SOFAS_PEQUEÑOS: 'Sofás Pequeños',
+  SOFAS_GRANDES: 'Sofás Grandes',
+  OTROS: 'Otros (Bench, Veladores, etc.)',
+};
+
+// Clasificación por palabras clave en la descripción (NOMBRE) — "CAMA"/"CABECERO" priman sobre "SOFA"
+// porque no se solapan en la práctica; todo lo que no matchea ninguna palabra clave cae en "Otros".
+const clasificarTipoMueble = (nombreRaw: string, tiempoUnitMin: number): TipoMueble => {
+  const n = stripAccents(String(nombreRaw || '').toUpperCase());
+  if (n.includes('CABECERO')) return 'CABECEROS';
+  if (n.includes('CAMA')) return 'CAMAS';
+  if (n.includes('SOFA')) return tiempoUnitMin > SOFA_MINUTOS_GRANDE ? 'SOFAS_GRANDES' : 'SOFAS_PEQUEÑOS';
+  return 'OTROS';
+};
+
+// Ventana de fabricación para la Alerta de Riesgo de Stock de Insumos (Telas/Cascos): hoy + los 2 días
+// siguientes (3 días calendario en total), a pedido explícito del usuario. Independiente del filtro
+// Fecha(s) de arriba — igual que resumenPorFecha, es una vista fija sobre TODO el histórico cargado.
+const INSUMO_VENTANA_DIAS = 3;
+
+// Identifica el tipo de insumo por la descripción del COMPONENTE de la explosión de materiales (mismo
+// criterio ya usado en "Plan Táctico (Alpha)" para las tablas "Telas"/"Cascos", ver
+// ProvisionalOrdersAlphaTab.tsx: "TELA MUEBLES..." / "CASCO..."). Devuelve null si no es ninguno de los
+// dos — por ahora la alerta cubre solo Telas/Cascos, pedido explícito del usuario.
+const clasificarTipoInsumo = (descripcionUpper: string): 'Tela' | 'Casco' | null => {
+  if (descripcionUpper.startsWith('TELA MUEBLES')) return 'Tela';
+  if (descripcionUpper.startsWith('CASCO')) return 'Casco';
+  return null;
+};
+
+// Devuelve los códigos (normalizados) que cuelgan, a cualquier profundidad, de "TELA DE APROVECHAMIENTO"
+// (material 30020937) dentro de la explosión de un material padre. Este material es un "cajón de
+// sastre" que en SAP lista como sus propios "componentes" una muestra fija de ~10 telas de colores/
+// productos completamente distintos (todas con cantidad placeholder 0.25/1, sin relación con lo que el
+// pedido realmente usa) — NO es consumo real. Confirmado en vivo (2026-08-26): la explosión de
+// "SOFÁ FOAM 105 ELEMENTA BRUMA" (20014132) incluye, colgando de 30020937, "TELA MUEBLES ASTRA BEIGE
+// WESTVIEW STUCCO" (40003011) y "TELA MUEBLES EPIC BRUMA FLEMMINGS STORM" (40002771) — ninguna es la
+// tela real del pedido. Mismo hallazgo y mismo fix que getCodigosBajoTelaAprovechamiento en
+// ProvisionalOrdersAlphaTab.tsx (duplicado aquí a propósito).
+const getCodigosBajoTelaAprovechamiento = (components: any[]): Set<string> => {
+  const hijosPorPadre = new Map<string, any[]>();
+  const raices: string[] = [];
+  components.forEach((comp: any) => {
+    const padre = normalizeMaterialCode(comp.MATERIAL_PADRE || '');
+    const codigo = normalizeMaterialCode(comp.COMPONENTE || '');
+    if (padre) {
+      if (!hijosPorPadre.has(padre)) hijosPorPadre.set(padre, []);
+      hijosPorPadre.get(padre)!.push(comp);
+    }
+    const desc = String(comp.DESCRIPCION_COMPONENTE || '').trim().toUpperCase();
+    if (codigo && (desc.startsWith('TELA DE APROVECHAMIENTO') || codigo === '30020937')) {
+      raices.push(codigo);
+    }
+  });
+  const bajoAprovechamiento = new Set<string>(raices);
+  const pendientes = [...raices];
+  while (pendientes.length > 0) {
+    const actual = pendientes.pop()!;
+    (hijosPorPadre.get(actual) || []).forEach((hijo: any) => {
+      const codigoHijo = normalizeMaterialCode(hijo.COMPONENTE || '');
+      if (codigoHijo && !bajoAprovechamiento.has(codigoHijo)) {
+        bajoAprovechamiento.add(codigoHijo);
+        pendientes.push(codigoHijo);
+      }
+    });
+  }
+  return bajoAprovechamiento;
+};
+
+interface InsumoRiesgoItem {
+  tipo: 'Tela' | 'Casco';
+  componente: string;
+  descripcion: string;
+  unidad: string;
+  necesario: number;
+  stockActual: number | null;
+  consumoPasado: number;
+  disponibleReal: number | null;
+  cantidadNetaAConseguir: number;
+}
 
 // Diagrama de Gantt "tal cual" el de "Plan Táctico (Alpha)" (mismo layout/colores/leyenda/eje de
 // horas), pero de SOLO LECTURA: redibuja el Gantt guardado en el snapshot de cada fecha seleccionada
@@ -661,6 +765,234 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
     return { count: list.length, list };
   }, [filteredOrders, tiemposMap]);
 
+  // Resumen "todo lo lanzado": Órdenes/Unidades/Horas por fecha, SIN aplicar el filtro Fecha(s) de
+  // arriba a propósito (vista panorámica de todas las fechas con órdenes, no del recorte actual) —
+  // mismo patrón que "PLAN" del Taller de Corte (PlanTallerCorteTab.tsx). Ordenado cronológicamente
+  // ascendente para que se lea como un calendario.
+  const resumenPorFecha = useMemo(() => {
+    if (displayMode !== 'plan') return [];
+    const map = new Map<string, { ordenes: number; unidades: number; horasMin: number; sinTiempoCount: number }>();
+    structuralFilteredOrders.forEach(o => {
+      const fecha = String(o.FECHA || '').trim();
+      if (!fecha) return;
+      if (!map.has(fecha)) map.set(fecha, { ordenes: 0, unidades: 0, horasMin: 0, sinTiempoCount: 0 });
+      const entry = map.get(fecha)!;
+      entry.ordenes += 1;
+      const cantidad = Number(o.CANTPROGRAMADA) || 0;
+      entry.unidades += cantidad;
+      const materialCode = normalizeMaterialCode(o.MATERIAL);
+      const tiempoUnitMin = tiemposMap.get(materialCode);
+      if (tiempoUnitMin === undefined) entry.sinTiempoCount++;
+      else entry.horasMin += tiempoUnitMin * cantidad;
+    });
+    return Array.from(map.entries())
+      .map(([fecha, v]) => ({ fecha, ordenes: v.ordenes, unidades: v.unidades, horas: v.horasMin / 60, sinTiempoCount: v.sinTiempoCount }))
+      .sort((a, b) => a.fecha.localeCompare(b.fecha));
+  }, [structuralFilteredOrders, tiemposMap, displayMode]);
+
+  // Turno de referencia (horas, jornada única desde TURNO_REFERENCIA_INICIO) elegido por el usuario,
+  // usado por la Alerta de Riesgo (cuellos de botella) de abajo.
+  const [turnoReferenciaHoras, setTurnoReferenciaHoras] = useState<number>(9);
+
+  // Cuellos de botella: agrupa las órdenes visibles (filteredOrders, respeta Fecha(s)) por
+  // (Fecha, Puesto de Trabajo/Máquina), las ordena por su identificador de orden (_displayId — única
+  // pista de secuencia disponible en este visor) y acumula su tiempo — las que empujan el acumulado más
+  // allá de la jornada del turno de referencia se marcan "en riesgo de retraso". Órdenes sin tiempo
+  // unitario cargado no se pueden secuenciar y se excluyen del cálculo.
+  const bottleneckAnalysis = useMemo(() => {
+    if (displayMode !== 'plan') return { overloaded: [] as { fecha: string; puesto: string; horasRequeridas: number; ordenesEnRiesgo: number; ordenesTotal: number }[], totalOrdenesEnRiesgo: 0 };
+    const capacidadMin = turnoReferenciaHoras * 60;
+    const groups = new Map<string, { fecha: string; puesto: string; orders: { id: string; tiempoMin: number }[] }>();
+    filteredOrders.forEach(o => {
+      const fecha = String(o.FECHA || '').trim();
+      if (!fecha) return;
+      const materialCode = normalizeMaterialCode(o.MATERIAL);
+      const tiempoUnitMin = tiemposMap.get(materialCode);
+      if (tiempoUnitMin === undefined) return;
+      const tiempoMin = tiempoUnitMin * (Number(o.CANTPROGRAMADA) || 0);
+      if (tiempoMin <= 0) return;
+      const puesto = String(o.PUESTOTRABAJO || o.MAQUINA || '').trim() || '(Sin Puesto)';
+      const key = `${fecha}|${puesto}`;
+      if (!groups.has(key)) groups.set(key, { fecha, puesto, orders: [] });
+      groups.get(key)!.orders.push({ id: String(o._displayId ?? ''), tiempoMin });
+    });
+
+    const overloaded: { fecha: string; puesto: string; horasRequeridas: number; ordenesEnRiesgo: number; ordenesTotal: number }[] = [];
+    let totalOrdenesEnRiesgo = 0;
+    groups.forEach(group => {
+      const sorted = [...group.orders].sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
+      let acumuladoMin = 0;
+      let enRiesgo = 0;
+      sorted.forEach(o => {
+        acumuladoMin += o.tiempoMin;
+        if (acumuladoMin > capacidadMin) enRiesgo++;
+      });
+      if (enRiesgo > 0) {
+        overloaded.push({ fecha: group.fecha, puesto: group.puesto, horasRequeridas: acumuladoMin / 60, ordenesEnRiesgo: enRiesgo, ordenesTotal: sorted.length });
+        totalOrdenesEnRiesgo += enRiesgo;
+      }
+    });
+    overloaded.sort((a, b) => a.fecha.localeCompare(b.fecha) || a.puesto.localeCompare(b.puesto));
+    return { overloaded, totalOrdenesEnRiesgo };
+  }, [filteredOrders, tiemposMap, turnoReferenciaHoras, displayMode]);
+
+  // Resumen por Tipo de Mueble: unidades lanzadas por categoría (Camas/Cabeceros/Sofás/Otros), sobre el
+  // filtro Fecha(s) actual (a diferencia de resumenPorFecha, este SÍ reacciona a la fecha elegida, a
+  // pedido explícito del usuario). Porcentaje de participación sobre el total de unidades del filtro.
+  const resumenPorTipoMueble = useMemo(() => {
+    if (displayMode !== 'plan') return [];
+    const buckets: Record<TipoMueble, { unidades: number; ordenes: number }> = {
+      CAMAS: { unidades: 0, ordenes: 0 },
+      CABECEROS: { unidades: 0, ordenes: 0 },
+      SOFAS_PEQUEÑOS: { unidades: 0, ordenes: 0 },
+      SOFAS_GRANDES: { unidades: 0, ordenes: 0 },
+      OTROS: { unidades: 0, ordenes: 0 },
+    };
+    filteredOrders.forEach(o => {
+      const materialCode = normalizeMaterialCode(o.MATERIAL);
+      const tiempoUnitMin = tiemposMap.get(materialCode) || 0;
+      const tipo = clasificarTipoMueble(String(o.NOMBRE || ''), tiempoUnitMin);
+      buckets[tipo].unidades += Number(o.CANTPROGRAMADA) || 0;
+      buckets[tipo].ordenes += 1;
+    });
+    const totalUnidades = TIPO_MUEBLE_ORDEN.reduce((s, tipo) => s + buckets[tipo].unidades, 0);
+    return TIPO_MUEBLE_ORDEN.map(tipo => ({
+      tipo,
+      unidades: buckets[tipo].unidades,
+      ordenes: buckets[tipo].ordenes,
+      pct: totalUnidades > 0 ? (buckets[tipo].unidades / totalUnidades) * 100 : 0,
+    }));
+  }, [filteredOrders, tiemposMap, displayMode]);
+
+  // Alerta de Riesgo de Stock — Insumos (Telas/Cascos): cálculo bajo demanda (botón), no automático,
+  // porque requiere una Explosión de Materiales por cada material único con demanda (una llamada de red
+  // por material, mismo costo que "Calcular Explosión" de más abajo). Cachea el Stock Actual (Cubo de
+  // Inventarios) tras la primera vez que se calcula.
+  const [materialStockActualMap, setMaterialStockActualMap] = useState<Map<string, number> | null>(null);
+  const [insumoStockState, setInsumoStockState] = useState<{ items: InsumoRiesgoItem[]; loading: boolean; calculatedAt: string | null }>({ items: [], loading: false, calculatedAt: null });
+
+  const ensureStockMap = async (): Promise<Map<string, number>> => {
+    if (materialStockActualMap) return materialStockActualMap;
+    const invExplore = await serviciosService.getCuboInventarios(1, 1);
+    const totalInv = invExplore.totalRegistros || 0;
+    const stockActualMap = new Map<string, number>();
+    if (totalInv > 0) {
+      const BATCH_INV = 20000;
+      const pagesInv = Math.ceil(totalInv / BATCH_INV);
+      for (let i = 1; i <= pagesInv; i++) {
+        const res = await serviciosService.getCuboInventarios(i, BATCH_INV);
+        if (res.data) {
+          const items = Array.isArray(res.data) ? res.data : [res.data];
+          items.forEach((item: any) => {
+            const material = normalizeMaterialCode(item.Material || '');
+            const actual = Number(item.StockActual) || 0;
+            stockActualMap.set(material, (stockActualMap.get(material) || 0) + actual);
+          });
+        }
+      }
+    }
+    setMaterialStockActualMap(stockActualMap);
+    return stockActualMap;
+  };
+
+  // Kardex: Disponible Real = Stock Actual - Consumo de Órdenes Pasadas Pendientes (sin Producción
+  // Propia Pendiente — Telas/Cascos son insumos comprados, no se fabrican en Muebles, mismo criterio ya
+  // establecido en "Plan Táctico (Alpha)"). Riesgo cuando Cantidad Neta Requerida (Necesario de la
+  // ventana de 3 días - Disponible Real) > 0.
+  const handleCalcularRiesgoInsumos = async () => {
+    setInsumoStockState(prev => ({ ...prev, loading: true }));
+    try {
+      const stockMap = await ensureStockMap();
+
+      const todayKey = new Date().toISOString().split('T')[0];
+      const ventanaKeys = new Set<string>();
+      for (let i = 0; i < INSUMO_VENTANA_DIAS; i++) {
+        const d = new Date();
+        d.setDate(d.getDate() + i);
+        ventanaKeys.add(d.toISOString().split('T')[0]);
+      }
+
+      const demandMap = new Map<string, number>();
+      const pastDemandMap = new Map<string, number>();
+      structuralFilteredOrders.forEach(o => {
+        const fecha = String(o.FECHA || '').trim();
+        if (!fecha) return;
+        const pendiente = Number(o.CANTPENDIENTE) || 0;
+        if (pendiente <= 0) return;
+        const material = normalizeMaterialCode(o.MATERIAL);
+        if (ventanaKeys.has(fecha)) {
+          demandMap.set(material, (demandMap.get(material) || 0) + pendiente);
+        } else if (fecha < todayKey) {
+          pastDemandMap.set(material, (pastDemandMap.get(material) || 0) + pendiente);
+        }
+      });
+
+      const uniqueMaterials = Array.from(new Set([...demandMap.keys(), ...pastDemandMap.keys()]));
+      if (uniqueMaterials.length === 0) {
+        setInsumoStockState({ items: [], loading: false, calculatedAt: new Date().toLocaleString('es-EC') });
+        addNotification('info', 'No hay órdenes pendientes en la ventana de 3 días ni en el histórico pasado.');
+        return;
+      }
+
+      const grouped = new Map<string, InsumoRiesgoItem>();
+      for (const material of uniqueMaterials) {
+        const parentDemand = demandMap.get(material) || 0;
+        const parentPastDemand = pastDemandMap.get(material) || 0;
+        const res = await serviciosService.getMaestroMaterialesExplosion('1000', material, 1, 5000);
+        if (!res.data) continue;
+        const components = Array.isArray(res.data) ? res.data : [res.data];
+        const codigosBajoAprovechamiento = getCodigosBajoTelaAprovechamiento(components);
+        components.forEach((comp: any) => {
+          const descripcion = String(comp.DESCRIPCION_COMPONENTE || '').trim();
+          const tipo = clasificarTipoInsumo(descripcion.toUpperCase());
+          if (!tipo) return;
+
+          // Normalizado (últimos 8 dígitos) — DEBE coincidir con las claves de stockMap (construido
+          // desde el Cubo de Inventarios, que sí trae el Material con ceros a la izquierda). Antes se
+          // usaba el código crudo del componente aquí, lo que hacía que la búsqueda de Stock Actual
+          // fallara SIEMPRE (nunca coincidía con stockMap) y todo insumo con demanda apareciera como
+          // "en riesgo" sin importar el stock real — bug detectado 2026-08-26.
+          const componente = normalizeMaterialCode(comp.COMPONENTE || '');
+          if (!componente || codigosBajoAprovechamiento.has(componente)) return;
+          const cantBase = Number(comp.CANTIDAD_ACUMULADA ?? comp.CANTIDAD_UNITARIA ?? 0);
+          const necesario = cantBase * parentDemand;
+          const consumoPasado = cantBase * parentPastDemand;
+          if (necesario <= 0 && consumoPasado <= 0) return;
+
+          if (!grouped.has(componente)) {
+            grouped.set(componente, {
+              tipo, componente, descripcion, unidad: String(comp.UNIDAD || 'UN'),
+              necesario: 0, stockActual: null, consumoPasado: 0, disponibleReal: null, cantidadNetaAConseguir: 0,
+            });
+          }
+          const entry = grouped.get(componente)!;
+          entry.necesario += necesario;
+          entry.consumoPasado += consumoPasado;
+        });
+      }
+
+      const results = Array.from(grouped.values())
+        .map(item => {
+          const stockActual = stockMap.get(item.componente) ?? null;
+          const disponibleReal = stockActual !== null ? stockActual - item.consumoPasado : null;
+          const cantidadNetaAConseguir = disponibleReal !== null ? Math.max(0, item.necesario - disponibleReal) : item.necesario;
+          return { ...item, stockActual, disponibleReal, cantidadNetaAConseguir };
+        })
+        .filter(item => item.cantidadNetaAConseguir > 0)
+        .sort((a, b) => b.cantidadNetaAConseguir - a.cantidadNetaAConseguir);
+
+      setInsumoStockState({ items: results, loading: false, calculatedAt: new Date().toLocaleString('es-EC') });
+      if (results.length === 0) {
+        addNotification('success', 'Sin riesgo de faltante de Telas/Cascos detectado para hoy y los próximos 3 días.');
+      } else {
+        addNotification('warning', `${results.length} insumo(s) (Tela/Casco) con riesgo de faltante detectado(s).`);
+      }
+    } catch (e) {
+      addNotification('error', `Error al calcular riesgo de insumos: ${(e as Error).message}`);
+      setInsumoStockState(prev => ({ ...prev, loading: false }));
+    }
+  };
+
   // Desglose por Fecha y Mesa: ya NO se recalcula con un horario/N° de mesas genérico ni con un
   // ranking artificial de tapiceros — se lee tal cual el snapshot de Plan Diario guardado desde "Plan
   // Táctico (Alpha)" para esa fecha objetivo (horario, mesas, personal/% y horas disponibles reales de
@@ -847,6 +1179,193 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
               )}
             </div>
           </div>
+
+          {displayMode === 'plan' && (
+            <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+              <div className="flex items-center justify-between px-6 py-4 bg-gradient-to-r from-slate-900 to-emerald-900">
+                <div className="flex items-center gap-2">
+                  <CalendarDays className="w-5 h-5 text-emerald-200" />
+                  <h3 className="text-sm font-bold text-white uppercase tracking-wide">Resumen de Órdenes Lanzadas por Fecha</h3>
+                </div>
+                <span className="text-xs text-emerald-200 font-mono">{resumenPorFecha.length} fecha(s)</span>
+              </div>
+              {resumenPorFecha.length === 0 ? (
+                <p className="text-center py-8 text-gray-400 text-xs">No hay órdenes lanzadas.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="text-xs border-collapse">
+                    <thead className="bg-gray-100">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-bold text-gray-700 uppercase border-r border-b border-gray-300 sticky left-0 bg-gray-100 whitespace-nowrap">Fecha</th>
+                        {resumenPorFecha.map(r => (
+                          <th key={r.fecha} className="px-3 py-2 text-center font-bold text-gray-700 border-r border-b border-gray-300 whitespace-nowrap">{r.fecha}</th>
+                        ))}
+                        <th className="px-3 py-2 text-center font-extrabold text-gray-800 border-b border-gray-300 whitespace-nowrap bg-gray-200">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white">
+                      <tr>
+                        <td className="px-3 py-2 text-left font-bold text-gray-700 border-r border-b border-gray-200 sticky left-0 bg-white whitespace-nowrap">Órdenes Lanzadas</td>
+                        {resumenPorFecha.map(r => (
+                          <td key={r.fecha} className="px-3 py-2 text-center border-r border-b border-gray-200">{r.ordenes}</td>
+                        ))}
+                        <td className="px-3 py-2 text-center font-bold border-b border-gray-200 bg-gray-50">
+                          {resumenPorFecha.reduce((s, r) => s + r.ordenes, 0)}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="px-3 py-2 text-left font-bold text-gray-700 border-r border-b border-gray-200 sticky left-0 bg-white whitespace-nowrap">Unidades Lanzadas</td>
+                        {resumenPorFecha.map(r => (
+                          <td key={r.fecha} className="px-3 py-2 text-center border-r border-b border-gray-200">{r.unidades.toLocaleString()}</td>
+                        ))}
+                        <td className="px-3 py-2 text-center font-bold border-b border-gray-200 bg-gray-50">
+                          {resumenPorFecha.reduce((s, r) => s + r.unidades, 0).toLocaleString()}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="px-3 py-2 text-left font-bold text-gray-700 border-r border-gray-200 sticky left-0 bg-white whitespace-nowrap">Horas Requeridas</td>
+                        {resumenPorFecha.map(r => (
+                          <td key={r.fecha} className="px-3 py-2 text-center border-r border-gray-200 text-blue-700 font-semibold">
+                            {r.horas.toFixed(2)}
+                            {r.sinTiempoCount > 0 && (
+                              <span className="ml-0.5 text-amber-600" title={`${r.sinTiempoCount} orden(es) sin tiempo unitario cargado, no incluida(s) en esta suma`}>*</span>
+                            )}
+                          </td>
+                        ))}
+                        <td className="px-3 py-2 text-center font-bold text-blue-700 bg-gray-50">
+                          {resumenPorFecha.reduce((s, r) => s + r.horas, 0).toFixed(2)}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {displayMode === 'plan' && (
+            <div className="bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 rounded-xl p-5 shadow-sm space-y-3">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-indigo-600" />
+                  <h3 className="text-sm font-bold text-gray-800 uppercase tracking-tight">Alertas de Riesgo (IA)</h3>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-semibold text-gray-500 whitespace-nowrap">Turno de referencia:</span>
+                  <Select value={String(turnoReferenciaHoras)} onValueChange={(v) => setTurnoReferenciaHoras(Number(v))}>
+                    <SelectTrigger className="h-8 w-[230px] text-xs font-semibold bg-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TURNO_REFERENCIA_HORAS_OPTIONS.map(h => (
+                        <SelectItem key={h} value={String(h)} className="text-xs">
+                          {h} horas ({TURNO_REFERENCIA_INICIO} - {formatShiftClockLabel(TURNO_REFERENCIA_INICIO, h)})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {bottleneckAnalysis.overloaded.length === 0 ? (
+                <div className="flex items-center gap-2 text-emerald-700 bg-white/60 rounded-lg px-3 py-2">
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  <p className="text-xs font-semibold">
+                    No se detectan riesgos de retraso: ningún puesto de trabajo supera la jornada de {turnoReferenciaHoras}h en las fechas mostradas.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex items-start gap-2 bg-white/60 rounded-lg px-3 py-2">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <p className="text-xs font-semibold text-amber-800">
+                      Hay {bottleneckAnalysis.totalOrdenesEnRiesgo} orden(es) con riesgo de retraso por cuellos de botella en {bottleneckAnalysis.overloaded.length} puesto(s) de trabajo — la carga programada supera la jornada de {turnoReferenciaHoras}h seleccionada.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {bottleneckAnalysis.overloaded.map(g => (
+                      <div key={`${g.fecha}-${g.puesto}`} className="border border-amber-200 bg-white rounded-lg px-3 py-2">
+                        <p className="text-[11px] font-bold text-gray-800">{g.puesto} <span className="font-normal text-gray-400">— {g.fecha}</span></p>
+                        <p className="text-[11px] text-amber-700">
+                          {g.horasRequeridas.toFixed(2)}h requeridas vs {turnoReferenciaHoras}h de turno — excede en {(g.horasRequeridas - turnoReferenciaHoras).toFixed(2)}h ({g.ordenesEnRiesgo} de {g.ordenesTotal} orden(es) en riesgo)
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="border-t border-indigo-200 pt-3 space-y-2">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <p className="text-xs font-bold text-gray-700 uppercase tracking-tight">Riesgo de Stock — Insumos (Telas/Cascos)</p>
+                  <Button
+                    onClick={handleCalcularRiesgoInsumos}
+                    disabled={insumoStockState.loading}
+                    size="sm"
+                    className="h-7 text-xs gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white"
+                  >
+                    {insumoStockState.loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <PackageSearch className="w-3.5 h-3.5" />}
+                    {insumoStockState.calculatedAt ? 'Recalcular' : 'Calcular Riesgo de Insumos'}
+                  </Button>
+                </div>
+                {insumoStockState.calculatedAt === null ? (
+                  <p className="text-[11px] text-gray-500">
+                    Calcula el riesgo de faltante de Telas/Cascos para hoy y los próximos {INSUMO_VENTANA_DIAS} días, tomando el Stock Actual menos el consumo de todas las órdenes pasadas pendientes (explota materiales de las órdenes con demanda — puede tardar unos segundos).
+                  </p>
+                ) : insumoStockState.items.length === 0 ? (
+                  <div className="flex items-center gap-2 text-emerald-700 bg-white/60 rounded-lg px-3 py-2">
+                    <CheckCircle2 className="w-4 h-4 shrink-0" />
+                    <p className="text-xs font-semibold">
+                      Sin riesgo de faltante de Telas/Cascos para hoy y los próximos {INSUMO_VENTANA_DIAS} días. (calculado {insumoStockState.calculatedAt})
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="flex items-start gap-2 bg-white/60 rounded-lg px-3 py-2">
+                      <AlertTriangle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                      <p className="text-xs font-semibold text-red-800">
+                        Hay {insumoStockState.items.length} insumo(s) (Tela/Casco) con riesgo de faltante hoy o dentro de la ventana de {INSUMO_VENTANA_DIAS} días. (calculado {insumoStockState.calculatedAt})
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                      {insumoStockState.items.map(item => (
+                        <div key={item.componente} className="border border-red-200 bg-white rounded-lg px-3 py-2">
+                          <p className="text-[11px] font-bold text-gray-800">
+                            {item.tipo} <span className="font-mono">{item.componente}</span>
+                            <span className="font-normal text-gray-400"> — {item.descripcion}</span>
+                          </p>
+                          <p className="text-[11px] text-red-700">
+                            Necesario {item.necesario.toFixed(2)} {item.unidad} — Disponible {item.disponibleReal !== null ? item.disponibleReal.toFixed(2) : '—'} — Falta {item.cantidadNetaAConseguir.toFixed(2)}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {displayMode === 'plan' && (
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 shadow-sm">
+              <h4 className="text-[13px] font-bold text-gray-800 mb-4 text-center uppercase tracking-wide flex items-center justify-center gap-2">
+                <PieChart className="w-4 h-4 text-indigo-600" /> Resumen por Tipo de Mueble (Filtro Actual)
+              </h4>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                {resumenPorTipoMueble.map(r => (
+                  <div key={r.tipo} className="bg-white border border-gray-200 rounded-lg p-3 flex flex-col items-center text-center">
+                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1">{TIPO_MUEBLE_LABEL[r.tipo]}</p>
+                    <p className="text-lg font-extrabold text-gray-900">{r.unidades.toLocaleString()}</p>
+                    <p className="text-[10px] text-gray-400 mb-1.5">unidad(es) — {r.ordenes} orden(es)</p>
+                    <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                      <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${Math.min(r.pct, 100)}%` }} />
+                    </div>
+                    <p className="text-xs font-bold text-indigo-700 mt-1">{r.pct.toFixed(1)}%</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {displayMode === 'plan' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
