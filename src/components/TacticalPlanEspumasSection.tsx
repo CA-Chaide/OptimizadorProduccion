@@ -20,7 +20,6 @@ import {
   CheckCircle2,
   Database,
   Save,
-  Wand2,
   Truck,
   FileOutput,
   Pencil,
@@ -746,6 +745,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   // La carga es explícita — botón "Sincronizar" (o "Actualizar P2" para solo el P2) — y este flag
   // sirve para mostrar el estado vacío que le dice al usuario que todavía no hay datos.
   const [datosCargados, setDatosCargados] = useState(false);
+  // "Sincronizar" + "Generar Necesidades · P1/PFF" (antes 2 clics) se combinan en 1 — el usuario lo
+  // pidió por ser repetitivo en el uso diario, mismo patrón ya aplicado en Corte y Laminado (ver
+  // [[modulos_tacticos_sincronizar_y_generar_combinado]]). "Entregas VE" y "Actualizar P2" NO se
+  // tocan: son acciones independientes con su propio propósito (decidir qué pedidos aplazar; releer
+  // un P2 que otra rama/módulo actualizó), no un segundo paso del mismo cálculo.
+  const [autoGenerarPendiente, setAutoGenerarPendiente] = useState(false);
+  const [syncStep, setSyncStep] = useState<'idle' | 'sincronizando' | 'generando'>('idle');
   const [ordenesProvisionales, setOrdenesProvisionales] = useState<RawApiRow[]>([]);
   const [ordenesFert, setOrdenesFert] = useState<RawApiRow[]>([]);
   // "Pendientes Totales" (pedidos de venta pendientes de entrega, sector "09 ESPUMAS" — mismo dato
@@ -2188,7 +2194,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       // no-VentaExterna-Espumas siguen exigiendo el match exacto de siempre, sin cambios.
       // diasOverride: al sincronizar, el calendario de feriados se acaba de cargar y el estado
       // `diasNoLaborables` todavía no se refleja en este closure — se recibe el Set directo para no
-      // calcular la fecha objetivo con feriados vacíos (ver handleSincronizar).
+      // calcular la fecha objetivo con feriados vacíos (ver handleSincronizarYGenerar).
       const fechaObjetivoP2 = format(nextBusinessDayCal(new Date(), diasOverride ?? diasNoLaborables), 'yyyy-MM-dd');
 
       const planGruposRes = await planGrupoService.getAll();
@@ -2536,6 +2542,17 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       setIsCalculandoPFF(false);
     }
   }, [addNotification, explotarPFFParaCentro, explotarPFFParaCentroConFecha, sumarDiasHabiles]);
+
+  // Segunda fase de "Sincronizar y Generar Necesidades" (ver handleSincronizarYGenerar): corre
+  // calcularNecesidadPFF automáticamente en cuanto el render con los datos recién sincronizados ya
+  // ocurrió — acá arriba, calcularNecesidadPFF ya es la versión fresca (sus dependencias, como
+  // explotarPFFParaCentro, ya se recalcularon con el inventarioSAP/materialDescMap actualizados).
+  useEffect(() => {
+    if (!autoGenerarPendiente) return;
+    setAutoGenerarPendiente(false);
+    setSyncStep('generando');
+    calcularNecesidadPFF().finally(() => setSyncStep('idle'));
+  }, [autoGenerarPendiente, calcularNecesidadPFF]);
 
   // Paso 1 de la Respuesta P3: arma la vista previa de lo que se va a grabar para UN centro y abre el
   // diálogo de confirmación. No llama a ningún servicio todavía — mismo patrón de dos pasos que
@@ -3141,11 +3158,23 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   // (setState no actualiza el closure de forma síncrona) y buscaría el P2 en un día feriado — que es
   // exactamente el desfase que se quería eliminar: el origen graba el plan saltando el feriado y
   // aquí se lo buscaría un día antes, sin encontrarlo nunca.
-  const handleSincronizar = useCallback(async () => {
-    const dias = await cargarDiasNoLaborables();
-    setDiasNoLaborables(dias);
-    await Promise.all([fetchDataAsync(), fetchNecesidadesPlanta(dias)]);
-  }, [fetchDataAsync, fetchNecesidadesPlanta]);
+  const handleSincronizarYGenerar = useCallback(async () => {
+    setSyncStep('sincronizando');
+    try {
+      const dias = await cargarDiasNoLaborables();
+      setDiasNoLaborables(dias);
+      await Promise.all([fetchDataAsync(), fetchNecesidadesPlanta(dias)]);
+      // calcularNecesidadPFF hace su propia consulta fresca a planGrupoService/detalleTacticoService
+      // (no depende de closures de fetchDataAsync), pero SÍ depende de materialDescMap/inventarioSAP
+      // ya reflejados en el render — se dispara desde el efecto de más abajo (declarado después de
+      // calcularNecesidadPFF), no acá directo, para no leer esas dependencias por closure vieja antes
+      // de que el siguiente render las recalcule (mismo criterio que Corte y Laminado).
+      setAutoGenerarPendiente(true);
+    } catch (e) {
+      addNotification('error', `Error al sincronizar: ${(e as Error).message}`);
+      setSyncStep('idle');
+    }
+  }, [fetchDataAsync, fetchNecesidadesPlanta, addNotification]);
 
   // "Pendientes Totales" (+20K registros) sigue siendo perezoso, pero ahora solo se carga si el
   // usuario ya sincronizó: abrir el tab sin datos base no debe disparar una consulta pesada sola.
@@ -4150,33 +4179,59 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <div><h2 className="text-xl font-black text-gray-800 uppercase tracking-tighter">Programación Táctica Corte Espuma</h2><p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Capacidad Carrusel 3.2m | Auditoría Técnica SAP</p></div>
         </div>
         <div className="flex items-center gap-3">
-           {/* "Sincronizar": trae datos crudos de SAP sin calcular nada — mismo color/forma en los 4
-               módulos tácticos (azul). "Generar Necesidades" (dentro del tab Necesidades Planta,
-               índigo outline): con esos datos ya cargados, calcula la necesidad — no escribe nada.
-               "Generar Respuestas" (escribe Plan Grupo/Detalle Táctico real) es sólido/primario, para
-               que el peso visual marque qué botón compromete datos reales. Mismos 2 niveles en los 4
-               módulos tácticos. */}
-           <Button onClick={handleSincronizar} disabled={isLoading} variant={datosCargados ? 'outline' : 'default'} className={cn(
+           {/* "Sincronizar y Generar Necesidades": un solo botón — trae datos crudos de SAP y, al
+               terminar, calcula la Necesidad P1/PFF automáticamente (antes 2 clics separados, ver
+               [[modulos_tacticos_sincronizar_y_generar_combinado]]). "Entregas VE" y "Actualizar P2"
+               (dentro del tab Necesidades Planta) siguen aparte: son acciones independientes, no un
+               segundo paso del mismo cálculo. "Generar Respuestas" (escribe Plan Grupo/Detalle
+               Táctico real) sigue sólido/primario, para que el peso visual marque qué botón
+               compromete datos reales. */}
+           <Button onClick={handleSincronizarYGenerar} disabled={syncStep !== 'idle'} variant={datosCargados ? 'outline' : 'default'} className={cn(
              "rounded-xl h-10 px-6 text-[10px] font-black uppercase tracking-widest flex items-center gap-2",
              datosCargados
                ? "border-blue-200 text-blue-700 hover:bg-blue-50"
                : "bg-blue-600 text-white hover:bg-blue-700 shadow-lg"
-           )}>{isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Sincronizar</Button>
+           )}>{syncStep !== 'idle' ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Sincronizar y Generar Necesidades</Button>
         </div>
       </div>
 
+      {/* Barra de progreso del botón combinado — 2 fases visibles (sincronizando SAP, luego
+          calculando la Necesidad PFF) para que el usuario sepa en cuál está sin adivinar por el
+          spinner del botón solo. Desaparece sola al terminar (syncStep vuelve a 'idle'). */}
+      {syncStep !== 'idle' && (
+        <div className="flex items-center gap-3 rounded-xl border border-blue-100 bg-blue-50/40 px-4 py-2.5">
+          <div className="flex-1 h-1.5 bg-blue-100 rounded-full overflow-hidden">
+            <div
+              className={cn("h-full bg-blue-600 transition-all duration-700 ease-out", syncStep === 'sincronizando' ? "w-1/2" : "w-full")}
+            />
+          </div>
+          <span className="text-[10px] font-black uppercase tracking-widest text-blue-700 shrink-0 flex items-center gap-1.5">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            {syncStep === 'sincronizando' ? 'Sincronizando SAP...' : (() => {
+              // Mismo criterio que tenía el botón "Generar Necesidades" que este paso reemplazó:
+              // refleja el ÚLTIMO tipo de plan de Ensamblado leído por centro (P1 activo aún sin
+              // liberar, o PFF ya liberado — solo uno de los dos vive a la vez por centro).
+              const tipos = new Set([tipoPlanEnsambladoPorCentro['1000'], tipoPlanEnsambladoPorCentro['2000']].filter(Boolean));
+              const etiqueta = tipos.size === 1 ? [...tipos][0] : 'P1/PFF';
+              return `Generando Necesidad · ${etiqueta}...`;
+            })()}
+          </span>
+        </div>
+      )}
+
       {/* Estado vacío inicial: al abrir el módulo no se consulta nada (carga manual), así que sin
           este aviso las tablas se verían en blanco sin explicación. Es SOLO un aviso — el botón
-          "Sincronizar" del encabezado es la única acción de carga general (antes había aquí un
-          "Sincronizar ahora" que llamaba a la misma función: dos botones para lo mismo). */}
+          "Sincronizar y Generar Necesidades" del encabezado es la única acción de carga general
+          (antes había aquí un "Sincronizar ahora" que llamaba a la misma función: dos botones para
+          lo mismo). */}
       {!datosCargados && !isLoading && (
         <div
           className="flex items-center gap-2.5 rounded-xl border border-dashed border-blue-200 bg-blue-50/40 px-4 py-2.5 text-left"
-          title="Este módulo no consulta SAP al abrirse. Sincronizar trae Provisionales, FERT, Inventario, Tiempos y Mantenimiento; Actualizar P2 (Venta Externa), dentro de Necesidades Planta, recarga solo el P2."
+          title="Este módulo no consulta SAP al abrirse. Sincronizar y Generar Necesidades trae Provisionales, FERT, Inventario, Tiempos, Mantenimiento y el P2, y calcula la Necesidad P1/PFF automáticamente. Actualizar P2 (Venta Externa) y Entregas VE, dentro de Necesidades Planta, siguen aparte."
         >
           <RefreshCw className="w-4 h-4 text-blue-500 shrink-0" />
           <p className="text-[11px] font-bold text-slate-600">
-            Sin datos cargados — pulsa <span className="font-black text-blue-700">Sincronizar</span> para traerlos.
+            Sin datos cargados — pulsa <span className="font-black text-blue-700">Sincronizar y Generar Necesidades</span> para traerlos.
           </p>
         </div>
       )}
@@ -4191,26 +4246,11 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           <TabsContent value="resumen" className="animate-in fade-in duration-300">{renderDashboard('UIO')}{renderDashboard('GYE')}</TabsContent>
           <TabsContent value="necesidadesPlanta" className="animate-in fade-in duration-300 space-y-6 text-left">
             <div className="flex items-center justify-end gap-2 flex-wrap">
-              {/* La etiqueta refleja el ÚLTIMO tipo de plan de Ensamblado leído (P1 activo, aún sin
-                  liberar, o PFF ya liberado — el negocio inactiva el P1 solo al generar el PFF, así
-                  que solo uno de los dos está vivo a la vez). No cambia qué se procesa: eso ya lo
-                  decide ES_PLAN_ENSAMBLADO_FIRME solo, aceptando cualquiera de los dos. */}
-              <Button
-                onClick={calcularNecesidadPFF}
-                disabled={isCalculandoPFF}
-                variant="outline"
-                className="rounded-xl h-9 px-5 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 border-indigo-200 text-indigo-700 hover:bg-indigo-50"
-                title="Lee el Plan Grupo de Ensamblado activo (P1 o PFF, el que esté vigente en cada centro) y explota su BOM para calcular la necesidad de lámina."
-              >
-                {isCalculandoPFF ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
-                {isCalculandoPFF
-                  ? `Explotando BOM ${pffProgress.current}/${pffProgress.total}`
-                  : (() => {
-                      const tipos = new Set([tipoPlanEnsambladoPorCentro['1000'], tipoPlanEnsambladoPorCentro['2000']].filter(Boolean));
-                      const etiqueta = tipos.size === 1 ? [...tipos][0] : 'P1/PFF';
-                      return `Generar Necesidades · ${etiqueta}`;
-                    })()}
-              </Button>
+              {/* "Generar Necesidades · P1/PFF" ya no es un botón aparte — se combinó en "Sincronizar y
+                  Generar Necesidades" del encabezado (ver handleSincronizarYGenerar). La etiqueta del
+                  progreso (Explotando BOM N/M) sigue mostrándose más abajo mientras isCalculandoPFF
+                  esté activo, sin importar si lo disparó el botón combinado o (todavía posible)
+                  cualquier otro llamado a calcularNecesidadPFF. */}
               <Button
                 onClick={calcularEntregasVentaExterna}
                 disabled={isCalculandoEntregas || !pendientesCargados}
