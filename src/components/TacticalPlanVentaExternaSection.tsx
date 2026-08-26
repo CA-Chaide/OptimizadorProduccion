@@ -156,9 +156,16 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
 
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState('resumen');
-  // El módulo YA NO sincroniza solo al abrirse — ver handleSincronizar. Este flag distingue "todavía
-  // no se pidió nada" del estado vacío real, para mostrar el aviso correcto.
+  // El módulo YA NO sincroniza solo al abrirse — ver handleSincronizarYGenerar. Este flag distingue
+  // "todavía no se pidió nada" del estado vacío real, para mostrar el aviso correcto.
   const [datosCargados, setDatosCargados] = useState(false);
+  // "Sincronizar" dispara además "Generar Necesidades · BOM FERT" automáticamente (antes 2 clics) —
+  // SOLO si ya hay una "Ventana de Producción" (selectedDates) elegida, igual que la validación
+  // manual del botón; si no, se deja para que el usuario elija fecha y lo dispare a mano (el botón
+  // sigue disponible aparte, a diferencia de Laminado/Espuma — acá el paso intermedio de elegir fecha
+  // es obligatorio, no opcional). Mismo patrón general que [[modulos_tacticos_sincronizar_y_generar_combinado]].
+  const [autoGenerarPendiente, setAutoGenerarPendiente] = useState(false);
+  const [syncStep, setSyncStep] = useState<'idle' | 'sincronizando' | 'generando'>('idle');
   const [grupos, setGrupos] = useState<Grupo[]>([]);
   const [restricciones, setRestricciones] = useState<Restriccion[]>([]);
   const [ordenes, setOrders] = useState<any[]>([]);
@@ -303,8 +310,9 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   // Sincronización manual: se dispara con el botón "Sincronizar" del encabezado, no al abrir el
   // módulo — mismo criterio que Corte Espuma (ver [[carga_manual_modulos_tacticos]]). Entrar a mirar
   // no debe costar 4 llamadas pesadas a SAP (Provisionales/FERT ~20K filas cada una) cada vez.
-  const handleSincronizar = useCallback(async () => {
+  const handleSincronizarYGenerar = useCallback(async () => {
     setIsLoading(true);
+    setSyncStep('sincronizando');
     try {
       const [groups, dias] = await Promise.all([
         fetchGrupos(),
@@ -334,6 +342,11 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
         necesidadRollos1000,
         necesidadRollos2000,
       });
+      // No se llama handleCalcularNecesidadRollos() directo acá: leería fertC1000ParaP2/
+      // fertC2000ParaP2 (useMemo derivados del estado que se acaba de actualizar arriba) por closure
+      // vieja. Se dispara desde el efecto de más abajo, que ve la versión fresca una vez que el
+      // siguiente render ya ocurrió (mismo criterio que Corte y Laminado/Corte Espuma).
+      setAutoGenerarPendiente(true);
     } finally {
       setIsLoading(false);
     }
@@ -812,6 +825,24 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       setIsExplodingBom(false);
     }
   }, [fertC1000ParaP2, fertC2000ParaP2, ventanaP2, selectedDates, addNotification]);
+
+  // Segunda fase de "Sincronizar" (ver handleSincronizarYGenerar): dispara handleCalcularNecesidadRollos
+  // automáticamente SOLO si ya hay una Ventana de Producción elegida (selectedDates) — si no, se deja
+  // callado para que el usuario la elija y lo dispare a mano con el botón "Generar Necesidades · BOM
+  // FERT", que sigue disponible aparte (a diferencia de Laminado/Espuma, acá elegir fecha es un paso
+  // obligatorio intermedio, no opcional). Declarado después de handleCalcularNecesidadRollos para que
+  // la referencia ya sea la versión fresca (sus dependencias, fertC1000ParaP2/fertC2000ParaP2, ya se
+  // recalcularon con los datos recién sincronizados).
+  useEffect(() => {
+    if (!autoGenerarPendiente) return;
+    setAutoGenerarPendiente(false);
+    if (selectedDates.length === 0) {
+      setSyncStep('idle');
+      return;
+    }
+    setSyncStep('generando');
+    handleCalcularNecesidadRollos().finally(() => setSyncStep('idle'));
+  }, [autoGenerarPendiente, handleCalcularNecesidadRollos, selectedDates]);
 
   // Consulta inversa: antes de (re)generar un P2, revisa si ya existe uno activo para ese centro+tipo
   // y, de existir, si algún plan P3 (u otro consumidor) ya ejecutó contra él — un DetalleTactico
@@ -1420,16 +1451,34 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
             <p className="text-xs text-gray-500 font-medium">Control de Órdenes FERT y Programación Técnica</p>
           </div>
         </div>
-        {/* "Sincronizar": trae datos crudos de SAP sin calcular nada — mismo color/forma en los 4
-            módulos tácticos (azul), distinto de la familia "Generar Necesidades"/"Generar
-            Respuestas" (índigo/sólido, ver más abajo en el tab Plan P2). */}
-        <Button onClick={handleSincronizar} disabled={isLoading} variant={datosCargados ? 'outline' : 'default'} className={cn(
+        {/* "Sincronizar": trae datos crudos de SAP y, si ya hay una Ventana de Producción elegida,
+            calcula la Necesidad BOM automáticamente al terminar (ver handleSincronizarYGenerar) —
+            mismo color/forma en los 4 módulos tácticos (azul), distinto de la familia "Generar
+            Necesidades"/"Generar Respuestas" (índigo/sólido, ver más abajo en el tab Plan P2). El
+            botón "Generar Necesidades · BOM FERT" sigue disponible aparte para recalcular tras
+            cambiar la fecha, sin re-sincronizar todo. */}
+        <Button onClick={handleSincronizarYGenerar} disabled={syncStep !== 'idle'} variant={datosCargados ? 'outline' : 'default'} className={cn(
           "rounded-xl h-10 px-6 gap-2 font-bold text-xs uppercase",
           datosCargados ? "border-blue-200 text-blue-700 hover:bg-blue-50" : "bg-blue-600 text-white hover:bg-blue-700 shadow-lg"
         )}>
-          {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Sincronizar
+          {syncStep !== 'idle' ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Sincronizar
         </Button>
       </div>
+
+      {/* Barra de progreso — visible mientras dura la sincronización o, si ya había fecha elegida, el
+          cálculo automático de Necesidad BOM que corre justo después. Desaparece sola (syncStep vuelve
+          a 'idle'). */}
+      {syncStep !== 'idle' && (
+        <div className="flex items-center gap-3 rounded-xl border border-blue-100 bg-blue-50/40 px-4 py-2.5 mt-4">
+          <div className="flex-1 h-1.5 bg-blue-100 rounded-full overflow-hidden">
+            <div className={cn("h-full bg-blue-600 transition-all duration-700 ease-out", syncStep === 'sincronizando' ? "w-1/2" : "w-full")} />
+          </div>
+          <span className="text-[10px] font-black uppercase tracking-widest text-blue-700 shrink-0 flex items-center gap-1.5">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            {syncStep === 'sincronizando' ? 'Sincronizando SAP...' : 'Generando Necesidad BOM...'}
+          </span>
+        </div>
+      )}
 
       {/* Estado vacío inicial: el módulo no consulta SAP al abrirse. Mismo criterio y misma
           redacción compacta que Corte Espuma (ver [[carga_manual_modulos_tacticos]]). */}

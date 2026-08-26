@@ -17,8 +17,7 @@ import {
   Box,
   TrendingUp,
   Table as TableIcon,
-  Info,
-  Wand2
+  Info
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -633,6 +632,11 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
   // Laminado (ver [[carga_manual_modulos_tacticos]], antes marcado como pendiente para este módulo).
   const [isLoading, setIsLoading] = useState(false);
   const [datosCargados, setDatosCargados] = useState(false);
+  // "Sincronizar" y "Generar Necesidades" (2 clics separados) se combinan en 1 — el usuario lo pidió
+  // por ser repetitivo en el uso diario, mismo patrón ya aplicado en Corte Espuma/Venta Externa/
+  // Laminado (ver [[modulos_tacticos_sincronizar_y_generar_combinado]]).
+  const [autoGenerarPendiente, setAutoGenerarPendiente] = useState(false);
+  const [syncStep, setSyncStep] = useState<'idle' | 'sincronizando' | 'generando'>('idle');
 
   const [isProcessingResumen, setIsProcessingResumen] = useState(false);
   const [resumenProgress, setResumenProgress] = useState({ current: 0, total: 0 });
@@ -876,10 +880,17 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
     setIsProcessingResumen(false);
   }, [provFiltradas, prodFiltradas, cuboInventarios, getStockEnCurado]);
 
-  // handleProcessResumen ya NO se dispara solo (antes: automático al cambiar filtros/datos, sin
-  // pedir un click) — ahora es un paso manual y separado, el botón "Generar Necesidades" del
-  // encabezado, mismo patrón de 2 niveles que Corte Espuma/Venta Externa/Laminado (Sincronizar =
-  // trae datos crudos; Generar Necesidades = calcula con lo ya cargado).
+  // Segunda fase de "Sincronizar y Generar Necesidades" (ver handleSincronizarYGenerar): corre
+  // handleProcessResumen automáticamente en cuanto el render con los datos recién sincronizados ya
+  // ocurrió — acá arriba, handleProcessResumen ya es la versión fresca (provFiltradas/prodFiltradas
+  // ya se recalcularon). Antes era un botón manual separado ("Generar Necesidades"); el usuario pidió
+  // combinarlo con Sincronizar por ser repetitivo en el uso diario.
+  useEffect(() => {
+    if (!autoGenerarPendiente) return;
+    setAutoGenerarPendiente(false);
+    setSyncStep('generando');
+    handleProcessResumen().finally(() => setSyncStep('idle'));
+  }, [autoGenerarPendiente, handleProcessResumen]);
 
   // Resumen dividido en dos secciones según el tipo de Bloque Formulado, derivado directamente
   // de la apertura ya extraída del material (no depende de que exista match en Control Curado,
@@ -950,8 +961,9 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
       .sort(compareAperturaDensidad);
   }, [filteredInventario, getStockEnCurado]);
 
-  const fetchDataAsync = useCallback(async () => {
+  const handleSincronizarYGenerar = useCallback(async () => {
     setIsLoading(true);
+    setSyncStep('sincronizando');
     try {
       const groupsRes = await grupoService.getAll();
       const filteredGroups = (groupsRes.data || []).filter(g => {
@@ -1027,8 +1039,14 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         unifiedSummaryData: previo?.unifiedSummaryData || [],
         consumoBloqueFormulado: previo?.consumoBloqueFormulado || [],
       });
+      // No se llama handleProcessResumen() directo acá: leería provFiltradas/prodFiltradas (useMemo
+      // derivados del estado que se acaba de actualizar arriba) por closure vieja. Se dispara desde
+      // el efecto de más abajo, que ve la versión fresca una vez que el siguiente render ya ocurrió
+      // (mismo criterio que Corte Espuma/Venta Externa/Laminado).
+      setAutoGenerarPendiente(true);
     } catch {
       console.error('Error sincronizando datos formulacion');
+      setSyncStep('idle');
     } finally {
       setIsLoading(false);
     }
@@ -1449,18 +1467,15 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
           <h2 className="text-xl font-black text-gray-800 uppercase tracking-tighter">Programación Táctica Formulación</h2>
         </div>
         <div className="flex items-center gap-2">
-          {/* "Sincronizar": trae datos crudos de SAP sin calcular nada — mismo color/forma en los 4
-              módulos tácticos. "Generar Necesidades" (aparte, índigo outline): con esos datos ya
-              cargados, calcula el resumen (explosión BOM) — ya no se dispara solo, es un paso
-              manual, mismo patrón de 2 niveles que Corte Espuma/Venta Externa/Laminado. */}
-          <Button onClick={fetchDataAsync} disabled={isLoading} variant={datosCargados ? 'outline' : 'default'} className={cn(
+          {/* "Sincronizar y Generar Necesidades": un solo botón — trae datos crudos de SAP y, al
+              terminar, calcula el resumen (explosión BOM) automáticamente (antes 2 clics separados;
+              el usuario lo pidió combinado por ser repetitivo en el uso diario, ver
+              [[modulos_tacticos_sincronizar_y_generar_combinado]]). */}
+          <Button onClick={handleSincronizarYGenerar} disabled={syncStep !== 'idle'} variant={datosCargados ? 'outline' : 'default'} className={cn(
             "h-10 px-6 rounded-xl gap-2 font-black text-[10px] uppercase active:scale-95 transition-all",
             datosCargados ? "border-blue-200 text-blue-700 hover:bg-blue-50" : "bg-blue-600 text-white hover:bg-blue-700 shadow-lg"
           )}>
-            {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Sincronizar
-          </Button>
-          <Button onClick={handleProcessResumen} disabled={!datosCargados || isProcessingResumen} variant="outline" className="h-10 px-6 rounded-xl gap-2 font-black text-[10px] uppercase active:scale-95 transition-all border-indigo-200 text-indigo-700 hover:bg-indigo-50">
-            {isProcessingResumen ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />} Generar Necesidades
+            {syncStep !== 'idle' ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Sincronizar y Generar Necesidades
           </Button>
           <Popover>
             <PopoverTrigger asChild>
@@ -1497,17 +1512,32 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         </div>
       </div>
 
+      {/* Barra de progreso del botón combinado — 2 fases visibles (sincronizando SAP, luego
+          calculando el resumen) para que el usuario sepa en cuál está sin adivinar por el spinner
+          del botón solo. Desaparece sola al terminar (syncStep vuelve a 'idle'). */}
+      {syncStep !== 'idle' && (
+        <div className="flex items-center gap-3 rounded-xl border border-blue-100 bg-blue-50/40 px-4 py-2.5">
+          <div className="flex-1 h-1.5 bg-blue-100 rounded-full overflow-hidden">
+            <div className={cn("h-full bg-blue-600 transition-all duration-700 ease-out", syncStep === 'sincronizando' ? "w-1/2" : "w-full")} />
+          </div>
+          <span className="text-[10px] font-black uppercase tracking-widest text-blue-700 shrink-0 flex items-center gap-1.5">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            {syncStep === 'sincronizando' ? 'Sincronizando SAP...' : 'Generando necesidades...'}
+          </span>
+        </div>
+      )}
+
       {/* Estado vacío inicial: el módulo no consulta SAP al abrirse. Mismo criterio y misma
           redacción compacta que Corte Espuma/Venta Externa/Laminado (ver
           [[carga_manual_modulos_tacticos]]). */}
       {!datosCargados && !isLoading && (
         <div
           className="flex items-center gap-2.5 rounded-xl border border-dashed border-blue-200 bg-blue-50/40 px-4 py-2.5 text-left"
-          title="Este módulo no consulta SAP al abrirse. Sincronizar trae Provisionales, FERT, Curado e Inventarios; Generar Necesidades calcula el resumen con esos datos ya cargados."
+          title="Este módulo no consulta SAP al abrirse. Sincronizar y Generar Necesidades trae Provisionales, FERT, Curado e Inventarios, y calcula el resumen automáticamente al terminar."
         >
           <RefreshCw className="w-4 h-4 text-blue-500 shrink-0" />
           <p className="text-[11px] font-bold text-slate-600">
-            Sin datos cargados — pulsa <span className="font-black text-blue-700">Sincronizar</span> y luego <span className="font-black text-indigo-700">Generar Necesidades</span> para verlos.
+            Sin datos cargados — pulsa <span className="font-black text-blue-700">Sincronizar y Generar Necesidades</span> para verlos.
           </p>
         </div>
       )}
