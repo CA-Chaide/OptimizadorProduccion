@@ -1465,17 +1465,19 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
         </Button>
       </div>
 
-      {/* Barra de progreso — visible mientras dura la sincronización o, si ya había fecha elegida, el
-          cálculo automático de Necesidad BOM que corre justo después. Desaparece sola (syncStep vuelve
-          a 'idle'). */}
-      {syncStep !== 'idle' && (
+      {/* Barra de progreso SOLO de la fase "sincronizando" (sin indicador propio). La fase
+          "generando" (si ya había fecha elegida) ya tiene su propia barra junto al botón "Generar
+          Necesidades · BOM FERT" (isExplodingBom/bomProgress, "X/Y materiales explotados") —
+          mostrar esta también ahí duplicaba el aviso (mismo problema reportado por el usuario con
+          una captura real en Corte y Laminado). */}
+      {syncStep === 'sincronizando' && (
         <div className="flex items-center gap-3 rounded-xl border border-blue-100 bg-blue-50/40 px-4 py-2.5 mt-4">
           <div className="flex-1 h-1.5 bg-blue-100 rounded-full overflow-hidden">
-            <div className={cn("h-full bg-blue-600 transition-all duration-700 ease-out", syncStep === 'sincronizando' ? "w-1/2" : "w-full")} />
+            <div className="h-full bg-blue-600 w-1/2 transition-all duration-700 ease-out" />
           </div>
           <span className="text-[10px] font-black uppercase tracking-widest text-blue-700 shrink-0 flex items-center gap-1.5">
             <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            {syncStep === 'sincronizando' ? 'Sincronizando SAP...' : 'Generando Necesidad BOM...'}
+            Sincronizando SAP...
           </span>
         </div>
       )}

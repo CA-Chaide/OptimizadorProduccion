@@ -4195,26 +4195,18 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         </div>
       </div>
 
-      {/* Barra de progreso del botón combinado — 2 fases visibles (sincronizando SAP, luego
-          calculando la Necesidad PFF) para que el usuario sepa en cuál está sin adivinar por el
-          spinner del botón solo. Desaparece sola al terminar (syncStep vuelve a 'idle'). */}
-      {syncStep !== 'idle' && (
+      {/* Barra de progreso SOLO de la fase "sincronizando" (traer datos crudos de SAP, sin indicador
+          propio). La fase "generando" ya tiene su propia barra dentro del tab Necesidades Planta
+          (isCalculandoPFF/pffProgress, ver más abajo) — mostrar esta también ahí duplicaba el aviso
+          (mismo problema reportado por el usuario con una captura real en Corte y Laminado). */}
+      {syncStep === 'sincronizando' && (
         <div className="flex items-center gap-3 rounded-xl border border-blue-100 bg-blue-50/40 px-4 py-2.5">
           <div className="flex-1 h-1.5 bg-blue-100 rounded-full overflow-hidden">
-            <div
-              className={cn("h-full bg-blue-600 transition-all duration-700 ease-out", syncStep === 'sincronizando' ? "w-1/2" : "w-full")}
-            />
+            <div className="h-full bg-blue-600 w-1/2 transition-all duration-700 ease-out" />
           </div>
           <span className="text-[10px] font-black uppercase tracking-widest text-blue-700 shrink-0 flex items-center gap-1.5">
             <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            {syncStep === 'sincronizando' ? 'Sincronizando SAP...' : (() => {
-              // Mismo criterio que tenía el botón "Generar Necesidades" que este paso reemplazó:
-              // refleja el ÚLTIMO tipo de plan de Ensamblado leído por centro (P1 activo aún sin
-              // liberar, o PFF ya liberado — solo uno de los dos vive a la vez por centro).
-              const tipos = new Set([tipoPlanEnsambladoPorCentro['1000'], tipoPlanEnsambladoPorCentro['2000']].filter(Boolean));
-              const etiqueta = tipos.size === 1 ? [...tipos][0] : 'P1/PFF';
-              return `Generando Necesidad · ${etiqueta}...`;
-            })()}
+            Sincronizando SAP...
           </span>
         </div>
       )}
@@ -4272,7 +4264,19 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               </Button>
             </div>
             {isCalculandoPFF && (
-              <Progress value={pffProgress.total > 0 ? (pffProgress.current / pffProgress.total) * 100 : 0} className="h-2" />
+              <div className="space-y-1.5">
+                <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">
+                  {(() => {
+                    // Mismo criterio que tenía el botón "Generar Necesidades" que este paso reemplazó:
+                    // refleja el ÚLTIMO tipo de plan de Ensamblado leído por centro (P1 activo aún sin
+                    // liberar, o PFF ya liberado — solo uno de los dos vive a la vez por centro).
+                    const tipos = new Set([tipoPlanEnsambladoPorCentro['1000'], tipoPlanEnsambladoPorCentro['2000']].filter(Boolean));
+                    const etiqueta = tipos.size === 1 ? [...tipos][0] : 'P1/PFF';
+                    return `Generando Necesidad · ${etiqueta}: ${pffProgress.current} / ${pffProgress.total}`;
+                  })()}
+                </p>
+                <Progress value={pffProgress.total > 0 ? (pffProgress.current / pffProgress.total) * 100 : 0} className="h-2" />
+              </div>
             )}
             {!isCalculandoPFF && (pffDiagnostico.sinMatch.length > 0 || pffDiagnostico.conError.length > 0) && (
               <div className="space-y-1.5 bg-amber-50/60 border border-amber-200 rounded-xl px-3 py-2">

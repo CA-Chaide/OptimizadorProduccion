@@ -1512,17 +1512,18 @@ export const TacticalPlanFormulacionSection: React.FC = () => {
         </div>
       </div>
 
-      {/* Barra de progreso del botón combinado — 2 fases visibles (sincronizando SAP, luego
-          calculando el resumen) para que el usuario sepa en cuál está sin adivinar por el spinner
-          del botón solo. Desaparece sola al terminar (syncStep vuelve a 'idle'). */}
-      {syncStep !== 'idle' && (
+      {/* Barra de progreso SOLO de la fase "sincronizando" (sin indicador propio). La fase
+          "generando" ya tiene su propia barra, más detallada (Ejecutando Explosión Técnica BOM:
+          X/Y, ver resumenProgress más abajo) — mostrar esta también ahí duplicaba el aviso (mismo
+          problema reportado por el usuario con una captura real en Corte y Laminado). */}
+      {syncStep === 'sincronizando' && (
         <div className="flex items-center gap-3 rounded-xl border border-blue-100 bg-blue-50/40 px-4 py-2.5">
           <div className="flex-1 h-1.5 bg-blue-100 rounded-full overflow-hidden">
-            <div className={cn("h-full bg-blue-600 transition-all duration-700 ease-out", syncStep === 'sincronizando' ? "w-1/2" : "w-full")} />
+            <div className="h-full bg-blue-600 w-1/2 transition-all duration-700 ease-out" />
           </div>
           <span className="text-[10px] font-black uppercase tracking-widest text-blue-700 shrink-0 flex items-center gap-1.5">
             <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            {syncStep === 'sincronizando' ? 'Sincronizando SAP...' : 'Generando necesidades...'}
+            Sincronizando SAP...
           </span>
         </div>
       )}
