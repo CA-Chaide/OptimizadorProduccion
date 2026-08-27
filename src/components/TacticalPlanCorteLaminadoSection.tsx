@@ -72,6 +72,15 @@ const CONV_SPLIT_FACTOR = 2;
 // en otra área, sin afectar el cálculo de necesidades de esta sección.
 const EXCLUDED_LAMINA_MATERIALS = new Set(['30026039']);
 
+// Responsables de Control de Producción cuyas órdenes FERT ya cuentan como producción REALIZADA el
+// mismo día (no participan en la necesidad OF_HALB, que sigue pendiente de producir): "014" (HR-LAMIN,
+// la lámina base) y "031" (HR-CONVT, el proceso convoluted que parte esa base en 2 láminas de menor
+// espesor). Verificado con datos reales: material 30006694 (CONV) tiene su propia orden FERT bajo
+// responsable 031/ruta HR-CONVT, que antes quedaba excluida de "Producción Diaria" por filtrar solo
+// "014" — su columna mostraba "—" pese a tener producción real ese día, y esa producción tampoco se
+// sumaba al stock disponible (totalStockKg/UN en handleProcessResumen).
+const RESP_PRODUCCION_DIARIA = ['014', '031'];
+
 const isConvDescripcion = (desc: string): boolean => {
   const u = desc.toUpperCase();
   return u.includes('CONV') || u.includes('CV');
@@ -1058,6 +1067,19 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   // PROCESADO (unifiedNeeds) y los overrides manuales — antes solo se restauraban los datos crudos,
   // así que el tab "Resumen" volvía vacío tras navegar a otro módulo hasta pulsar "Generar
   // Necesidades" de nuevo (reportado por el usuario con datos reales).
+  // `rehidratado` (estado, no ref) marca que la restauración YA corrió al menos una vez con
+  // `mounted===true` — reemplaza a un `useRef` "primera ejecución" que en desarrollo (React
+  // StrictMode, activo por defecto en Next.js App Router) se rompía: StrictMode invoca los efectos
+  // de montaje DOS VECES seguidas: la 1ra invocación del efecto de sync-a-caché (más abajo) marcaba
+  // el ref en falso y se saltaba a sí misma (correcto); la 2da invocación YA veía el ref en falso y
+  // SÍ escribía — pero en ese instante unifiedNeeds todavía era el valor inicial ([]), porque la
+  // rehidratación (este efecto) recién estaba por aplicar lo restaurado. Resultado: el caché se
+  // pisaba con un resumen vacío apenas se montaba el módulo, y al volver más tarde aparecía en 0 —
+  // no pasaba en producción (sin StrictMode), por eso "ya se había resuelto" en sesiones anteriores
+  // probadas contra el deploy real, y recién se notó probando en localhost. Con un estado (no un
+  // ref), `setUnifiedNeeds(...)` y `setRehidratado(true)` quedan en el MISMO commit — el efecto de
+  // abajo nunca puede ver `rehidratado=true` con `unifiedNeeds` todavía en su valor inicial.
+  const [rehidratado, setRehidratado] = useState(false);
   useEffect(() => {
     if (!mounted) return;
     const snap = leerDeCache<SnapshotCorteLaminado>(CACHE_CORTE_LAMINADO);
@@ -1078,28 +1100,24 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       setApprovedDeficitRows(new Set(snap.approvedDeficitRows || []));
       setDatosCargados(true);
     }
+    setRehidratado(true);
   }, [mounted]);
 
   // Mantiene el snapshot en sync con el resumen ya procesado y sus overrides manuales — a diferencia
   // de los datos crudos (solo cambian al Sincronizar), esto cambia con cada edición del usuario
   // (handleUpdatePlanUn, handleUpdateCorridasBloque, aprobar déficit, etc.), así que se sincroniza vía
   // efecto en vez de tener que acordarse de llamar actualizarEnCache en cada handler por separado. Se
-  // salta la primera ejecución (montaje): en ese momento unifiedNeeds todavía trae el valor inicial
-  // ([]), anterior a que la rehidratación de arriba termine de aplicar lo restaurado — escribirlo
-  // ahí pisaría el snapshot bueno con un resumen vacío antes de que el usuario vea nada.
-  const primerRenderResumenRef = useRef(true);
+  // salta hasta que `rehidratado` sea true (ver comentario arriba) — antes de eso, escribir pisaría
+  // el snapshot bueno con un resumen vacío sin que el usuario haya hecho nada todavía.
   useEffect(() => {
-    if (primerRenderResumenRef.current) {
-      primerRenderResumenRef.current = false;
-      return;
-    }
+    if (!rehidratado) return;
     actualizarEnCache<SnapshotCorteLaminado>(CACHE_CORTE_LAMINADO, {
       unifiedNeeds,
       planManualOverrides,
       corridasManualOverrides,
       approvedDeficitRows: Array.from(approvedDeficitRows),
     });
-  }, [unifiedNeeds, planManualOverrides, corridasManualOverrides, approvedDeficitRows]);
+  }, [rehidratado, unifiedNeeds, planManualOverrides, corridasManualOverrides, approvedDeficitRows]);
 
   // Kg totales por material desde el resumen consolidado del tab "Necesidades Planta"
   // (mismo cálculo que MaterialSummaryTable), usado sólo para las columnas informativas
@@ -1368,18 +1386,16 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     });
   }, [ordenesFert, selectedDates, grupos, restriccionesArray]);
 
-  // Responsable de Control de Producción "014": no participa en las necesidades OF_HALB (se
-  // excluye en handleProcessResumen). El MATERIAL de sus órdenes ya viene al mismo nivel que las
-  // filas del resumen (la lámina/componente, no el FERT/HALB padre), por eso NO se explota por BOM:
-  // se hace match directo por código de material, igual que NEC. PLANTA (materialNecesidadesPlantaMap).
-  const RESP_PRODUCCION_DIARIA = '014';
-
+  // RESP_PRODUCCION_DIARIA (014/031): no participa en las necesidades OF_HALB (se excluye en
+  // handleProcessResumen). El MATERIAL de sus órdenes ya viene al mismo nivel que las filas del
+  // resumen (la lámina/componente, no el FERT/HALB padre), por eso NO se explota por BOM: se hace
+  // match directo por código de material, igual que NEC. PLANTA (materialNecesidadesPlantaMap).
   const filteredFertOrdersProd014 = useMemo(() => {
     return ordenesFert.filter(o => {
       const centro = getProp(o, ['CENTRO', 'Centro', 'centro']).trim();
       if (centro === '2000') return false;
       const responsable = getProp(o, ['RESPCTRLPROD', 'RESP_CONTROL_PROD', 'RESPCONTROLPROD', 'RespControlProd', 'RESPONSABLE']).trim();
-      if (responsable !== RESP_PRODUCCION_DIARIA) return false;
+      if (!RESP_PRODUCCION_DIARIA.includes(responsable)) return false;
 
       if (selectedDates.size > 0) {
         const dateRaw = getProp(o, ['FECHA', 'FECHAINICIO', 'FECHA_INICIO']).trim();
@@ -1677,10 +1693,11 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     // auditoría manual de la data cruda SAP, desconectado de este flujo.
     const materialGroupsHalb = new Map<string, number>();
     filteredFertOrders.forEach(order => {
-      // El responsable "014" no aporta a la necesidad OF_HALB: sus corridas ya se reflejan
-      // aparte en las columnas informativas "Producción Diaria" (ver materialGroupsProd014).
+      // Los responsables de RESP_PRODUCCION_DIARIA (014/031) no aportan a la necesidad OF_HALB: sus
+      // corridas ya se reflejan aparte en las columnas informativas "Producción Diaria" (ver
+      // materialGroupsProd014) — contarlas también acá las duplicaría.
       const responsable = getProp(order, ['RESPCTRLPROD', 'RESP_CONTROL_PROD', 'RESPCONTROLPROD', 'RespControlProd', 'RESPONSABLE']).trim();
-      if (responsable === RESP_PRODUCCION_DIARIA) return;
+      if (RESP_PRODUCCION_DIARIA.includes(responsable)) return;
       const matRaw = getProp(order, ['MATERIAL', 'CodMaterial']).trim();
       const match = matRaw.match(/^(\d+)/);
       const matCode = match ? match[1] : matRaw;
