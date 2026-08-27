@@ -28,7 +28,9 @@ import {
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
 import { Progress } from "@/components/ui/progress";
 
-// Constante técnica: Tiempo de empacado por unidad (segundos)
+// Respaldo SOLO para cuando el material no tiene tiempo estándar real en el catálogo SAP (ver
+// calculateSummary/matchTiempoEstandar) — antes era el único cálculo usado, sobreestimando el
+// tiempo real hasta ~22x en casos verificados (ver comentario en calculateSummary).
 const PACKING_TIME_PER_UNIT_SECONDS = 15;
 
 // Discriminador de tipo de componente en la explosión BOM (mismo criterio que usa
@@ -1248,6 +1250,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   }, [grupos, necesidadEspumas1000, necesidadEspumas2000, necesidadRollos1000, necesidadRollos2000, addNotification]);
 
   const calculateSummary = (data: Record<string, unknown>[], centroId: string) => {
+    const lookup = centroId === '1000' ? tiempoLookup1000 : tiempoLookup2000;
     const map = new Map<string, { centro: string; maquina: string; categoria: string; densidad: string; espesor: string; tipo: string; totalOrdenes: number; totalCantidad: number; totalTiempoEmpaque: number }>();
     data.forEach(o => {
       const categoria = String(o.CATEGORIA || o.Categoria || o.categoria || '').trim();
@@ -1261,8 +1264,14 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       const key = `${maquina}|${categoria}|${espesor}|${tipo}`;
 
       const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
-      // Cálculo: Unidades * Tiempo de Empaque (15s) convertido a horas
-      const empaqueHours = (qty * PACKING_TIME_PER_UNIT_SECONDS) / 3600;
+      // Tiempo real de SAP (mismo cruce material+máquina que ya usa "T. Estándar (Min)" en las
+      // tablas Provisionales/FERT — ver matchTiempoEstandar): verificado con dato real (material
+      // 20006172, PLANCHA ESPUMA D12, HojaRuta HR-LAMR1, Tiempo_Min=0.0113) que el placeholder fijo
+      // de 15seg/unidad sobreestimaba ~22x (7.00h mostradas vs ~0.32h reales). Si el material no
+      // tiene tiempo estándar en el catálogo (caso no verificado hoy), se usa el placeholder como
+      // respaldo en vez de mostrar 0h, que sería más engañoso todavía.
+      const tiempoEstandarMin = matchTiempoEstandar(info.code, maquina, lookup);
+      const empaqueHours = tiempoEstandarMin !== null ? (qty * tiempoEstandarMin) / 60 : (qty * PACKING_TIME_PER_UNIT_SECONDS) / 3600;
 
       if (!map.has(key)) {
         map.set(key, { centro: centroId, maquina, categoria, densidad, espesor, tipo, totalOrdenes: 0, totalCantidad: 0, totalTiempoEmpaque: 0 });
