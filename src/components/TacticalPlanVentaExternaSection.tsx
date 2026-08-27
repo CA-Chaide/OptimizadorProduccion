@@ -129,9 +129,9 @@ const CACHE_VENTA_EXTERNA = 'tactica-venta-externa';
 interface SnapshotVentaExterna {
   grupos: Grupo[];
   restricciones: Restriccion[];
-  ordenes: any[];
-  ordenesFert: any[];
-  tiemposEnsamblado: any[];
+  ordenes: Record<string, unknown>[];
+  ordenesFert: Record<string, unknown>[];
+  tiemposEnsamblado: Record<string, unknown>[];
   diasNoLaborables: string[];
   // Resultado YA CALCULADO del tab "Data Aprobada" (ver fetchDataAprobada) — a diferencia del resto
   // de este snapshot (datos crudos), esto es el resultado de un cálculo disparado por el botón
@@ -168,9 +168,9 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const [syncStep, setSyncStep] = useState<'idle' | 'sincronizando' | 'generando'>('idle');
   const [grupos, setGrupos] = useState<Grupo[]>([]);
   const [restricciones, setRestricciones] = useState<Restriccion[]>([]);
-  const [ordenes, setOrders] = useState<any[]>([]);
-  const [ordenesFert, setOrdersFert] = useState<any[]>([]);
-  const [tiemposEnsamblado, setTiemposEnsamblado] = useState<any[]>([]);
+  const [ordenes, setOrders] = useState<Record<string, unknown>[]>([]);
+  const [ordenesFert, setOrdersFert] = useState<Record<string, unknown>[]>([]);
+  const [tiemposEnsamblado, setTiemposEnsamblado] = useState<Record<string, unknown>[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   // Días NO laborables (feriados + días que la planta decide no trabajar) del calendario configurado.
   // Vacío = solo se saltan fines de semana. Se carga en el init de abajo.
@@ -203,7 +203,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   // Tab "Pendientes": pedidos aún no entregados (getPendientesTotales), con filtro por texto
   // (Pedido/Material) y por rango de Fecha de Entrega, agrupados por Material. Se carga de forma
   // perezosa (solo al abrir el tab por primera vez) por el volumen de registros (+20K).
-  const [pendientesTotales, setPendientesTotales] = useState<any[]>([]);
+  const [pendientesTotales, setPendientesTotales] = useState<Record<string, unknown>[]>([]);
   const [isLoadingPendientes, setIsLoadingPendientes] = useState(false);
   const [pendientesCargados, setPendientesCargados] = useState(false);
   const [pendientesSearch, setPendientesSearch] = useState('');
@@ -288,7 +288,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
 
   const fetchTiemposEnsamblado = async (filteredGroups: Grupo[]) => {
     try {
-      const allTiempos: any[] = [];
+      const allTiempos: Record<string, unknown>[] = [];
       for (const g of filteredGroups) {
         if (!g.centro) continue;
         try {
@@ -423,7 +423,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     return [...Array(padding).fill(null), ...days];
   }, [viewDate]);
 
-  const extractMaterialInfo = (item: any) => {
+  const extractMaterialInfo = (item: Record<string, unknown>) => {
     const matStr = String(item.MATERIAL || item.Material || item.CodMaterial || '').trim();
     const nameStr = String(item.NOMBRE || item.NombreMaterial || item.Descripcion || '').trim();
     const catStr = String(item.CATEGORIA || item.Categoria || '').trim();
@@ -432,7 +432,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     const code = match ? match[1].slice(-8) : matStr.slice(-8);
     const desc = nameStr || matStr.replace(/^\d+\s*/, '') || '—';
 
-    const dimensions: any = { dens: '—', ancho: '—', largo: '—', esp: '—', tipo: '—' };
+    const dimensions: { dens: string; ancho: string; largo: string; esp: string; tipo: string } = { dens: '—', ancho: '—', largo: '—', esp: '—', tipo: '—' };
     
     const techPatternMatch = catStr.match(/D(\d+)([a-zA-Z]+)/i);
     if (techPatternMatch) {
@@ -455,7 +455,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     return { code, desc, ...dimensions };
   };
 
-  const filterData = (data: any[], centro: string, applyDateFilter: boolean = true, dateOverride?: string[]) => {
+  const filterData = (data: Record<string, unknown>[], centro: string, applyDateFilter: boolean = true, dateOverride?: string[]) => {
     const relevantGroups = grupos.filter(g => String(g.centro).trim() === centro);
     if (relevantGroups.length === 0) return [];
     
@@ -598,8 +598,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const tiemposC2000 = useMemo(() => filterData(tiemposEnsamblado, '2000', false), [tiemposEnsamblado, grupos, restricciones]);
 
   // Lookup de tiempos estándar por material+centro para match en Provisionales/FERT
-  const buildTiempoLookup = (tiempos: any[]) => {
-    const map = new Map<string, any[]>();
+  const buildTiempoLookup = (tiempos: Record<string, unknown>[]) => {
+    const map = new Map<string, Record<string, unknown>[]>();
     tiempos.forEach(t => {
       const info = extractMaterialInfo(t);
       if (!map.has(info.code)) map.set(info.code, []);
@@ -610,7 +610,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const tiempoLookup1000 = useMemo(() => buildTiempoLookup(tiemposC1000), [tiemposC1000]);
   const tiempoLookup2000 = useMemo(() => buildTiempoLookup(tiemposC2000), [tiemposC2000]);
 
-  const matchTiempoEstandar = (materialCode: string, maquina: string, lookup: Map<string, any[]>) => {
+  const matchTiempoEstandar = (materialCode: string, maquina: string, lookup: Map<string, Record<string, unknown>[]>) => {
     const candidates = lookup.get(materialCode);
     if (!candidates || candidates.length === 0) return null;
     const byMaquina = candidates.find(t => {
@@ -704,7 +704,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   // reales (material 20013403 "BASE RESIFLEX...": su BOM son químicos crudos — TDI, POLYOL, aminas —
   // y partes no-espuma, sin ningún componente ESPUMA/LAMINA CILINDRICA; queda correctamente en
   // sinMatch, no en la Necesidad, aunque la orden en sí sea legítima).
-  const explodeNecesidadesFert = async (centro: string, fertOrders: any[], onStep: () => void): Promise<{ espumas: NecesidadMaterial[]; rollos: NecesidadMaterial[]; sinMatch: string[]; conError: string[] }> => {
+  const explodeNecesidadesFert = async (centro: string, fertOrders: Record<string, unknown>[], onStep: () => void): Promise<{ espumas: NecesidadMaterial[]; rollos: NecesidadMaterial[]; sinMatch: string[]; conError: string[] }> => {
     const materialQty = new Map<string, number>();
     fertOrders.forEach(o => {
       const info = extractMaterialInfo(o);
@@ -729,7 +729,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
         const response = await serviciosService.getMaestroMaterialesExplosion(centro, fullCode, 1, 500);
         const rawData = response?.data?.data || response?.data || [];
         if (Array.isArray(rawData)) {
-          rawData.forEach((row: any) => {
+          rawData.forEach((row: Record<string, unknown>) => {
             const desc = String(row.DESCRIPCION_COMPONENTE || '').toUpperCase();
             // Candidato: la descripción tiene que mencionar espuma o rollo en algún punto. Esto NO
             // decide la relevancia todavía, solo acota qué filas vale la pena evaluar — igual que
@@ -786,7 +786,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     setIsExplodingBom(true);
     setBomDiagnostico({ sinMatch: [], conError: [] });
     try {
-      const uniqueMaterialCount = (orders: any[]) => new Set(orders.map(o => extractMaterialInfo(o).code).filter(Boolean)).size;
+      const uniqueMaterialCount = (orders: Record<string, unknown>[]) => new Set(orders.map(o => extractMaterialInfo(o).code).filter(Boolean)).size;
       const total = uniqueMaterialCount(fertC1000ParaP2) + uniqueMaterialCount(fertC2000ParaP2);
       let current = 0;
       setBomProgress({ current: 0, total });
@@ -1247,7 +1247,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     }
   }, [grupos, necesidadEspumas1000, necesidadEspumas2000, necesidadRollos1000, necesidadRollos2000, addNotification]);
 
-  const calculateSummary = (data: any[], centroId: string) => {
+  const calculateSummary = (data: Record<string, unknown>[], centroId: string) => {
     const map = new Map<string, { centro: string; maquina: string; categoria: string; densidad: string; espesor: string; tipo: string; totalOrdenes: number; totalCantidad: number; totalTiempoEmpaque: number }>();
     data.forEach(o => {
       const categoria = String(o.CATEGORIA || o.Categoria || o.categoria || '').trim();
@@ -1717,7 +1717,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         const info = extractMaterialInfo(o);
                         const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
                         const empaqueHours = (qty * PACKING_TIME_PER_UNIT_SECONDS) / 3600;
-                        const maquina = o.MAQUINA || o.Maquina || o.RECURSO || '—';
+                        const maquina = String(o.MAQUINA || o.Maquina || o.RECURSO || '—');
                         const tiempoEstandar = matchTiempoEstandar(info.code, maquina, center.lookup);
                         // Confirmado con datos reales (export de OrdenesProvisionalesPaginados): el campo NO
                         // se llama PEDIDO/POSICION como en FERT — se llama PEDIDOVENTAS/POSICIONPEDIDO. Por
@@ -1733,15 +1733,15 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         // El filtro "Fecha" ahora compara contra FECHAFIN cuando existe (ver filterData) —
                         // se muestra esa como fecha principal, con FECHAINICIO como referencia secundaria,
                         // para que la tabla coincida con lo que realmente se está filtrando.
-                        const fechaInicioDisplay = o.FECHA || o.FECHAINICIO || '—';
-                        const fechaFinDisplay = o.FECHAFIN;
+                        const fechaInicioDisplay = String(o.FECHA || o.FECHAINICIO || '—');
+                        const fechaFinDisplay = o.FECHAFIN ? String(o.FECHAFIN) : '';
                         const claseOrden = clasificarClaseOrden(o.ClaseOrden);
 
                         return (
                           <tr key={i} className="hover:bg-gray-50/50 transition-colors">
-                            <td className="px-3 py-2 font-medium text-gray-900 border-r border-gray-100">{o.ORDENPREVISIONAL || o.ORDEN || '—'}</td>
-                            <td className="px-3 py-2 font-mono text-gray-700 border-r border-gray-100">{o.PEDIDOVENTAS || '—'}</td>
-                            <td className="px-3 py-2 font-mono text-gray-700 border-r border-gray-100">{o.POSICIONPEDIDO || '—'}</td>
+                            <td className="px-3 py-2 font-medium text-gray-900 border-r border-gray-100">{String(o.ORDENPREVISIONAL || o.ORDEN || '—')}</td>
+                            <td className="px-3 py-2 font-mono text-gray-700 border-r border-gray-100">{String(o.PEDIDOVENTAS || '—')}</td>
+                            <td className="px-3 py-2 font-mono text-gray-700 border-r border-gray-100">{String(o.POSICIONPEDIDO || '—')}</td>
                             <td className="px-3 py-2 border-r border-gray-100 font-mono text-[9px]">
                               {fechaFinDisplay
                                 ? <span className="text-gray-700 font-bold">{fechaFinDisplay}</span>
@@ -1759,8 +1759,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                             <td className="px-3 py-2 font-mono font-bold text-teal-600 border-r border-gray-100 bg-teal-50/10">{tiempoEstandar !== null ? tiempoEstandar.toFixed(4) : '—'}</td>
                             <td className="px-3 py-2 font-mono font-bold text-amber-600 border-r border-gray-100 bg-amber-50/10">{empaqueHours.toFixed(2)}</td>
                             <td className="px-3 py-2 font-bold text-gray-700 border-r border-gray-100 uppercase">{maquina}</td>
-                            <td className="px-3 py-2 font-medium text-gray-400 border-r border-gray-100">{o.Almacen || o.ALMACEN || '—'}</td>
-                            <td className="px-3 py-2 font-mono font-bold text-slate-700 bg-slate-50/50 border-r border-gray-100">{o.RESPCTRLPROD || o.RESPCONTROLPROD || o.RespCtrlProd || o.RespControlProd || '—'}</td>
+                            <td className="px-3 py-2 font-medium text-gray-400 border-r border-gray-100">{String(o.Almacen || o.ALMACEN || '—')}</td>
+                            <td className="px-3 py-2 font-mono font-bold text-slate-700 bg-slate-50/50 border-r border-gray-100">{String(o.RESPCTRLPROD || o.RESPCONTROLPROD || o.RespCtrlProd || o.RespControlProd || '—')}</td>
                             <td className="px-3 py-2 font-mono font-bold text-purple-700 bg-purple-50/10 border-r border-gray-100">{claseOrden}</td>
                             <td className="px-3 py-2 font-mono text-gray-500">{codBuscar}</td>
                           </tr>
@@ -1815,16 +1815,16 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                         const info = extractMaterialInfo(o);
                         const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
                         const empaqueHours = (qty * PACKING_TIME_PER_UNIT_SECONDS) / 3600;
-                        const maquina = o.MAQUINA || o.RECURSO || '—';
+                        const maquina = String(o.MAQUINA || o.RECURSO || '—');
                         const tiempoEstandar = matchTiempoEstandar(info.code, maquina, center.lookup);
                         const codBuscar = buildCodBuscar(o.POSICION, o.PEDIDO, o.MATERIAL);
 
                         return (
                           <tr key={i} className="hover:bg-gray-50/50 transition-colors">
-                            <td className="px-3 py-2 font-medium text-gray-900 border-r border-gray-100">{o.ORDEN || '—'}</td>
-                            <td className="px-3 py-2 font-mono text-gray-700 border-r border-gray-100">{o.PEDIDO || '—'}</td>
-                            <td className="px-3 py-2 font-mono text-gray-700 border-r border-gray-100">{o.POSICION || '—'}</td>
-                            <td className="px-3 py-2 border-r border-gray-100 font-mono text-[9px] text-gray-400">{o.FECHA || '—'}</td>
+                            <td className="px-3 py-2 font-medium text-gray-900 border-r border-gray-100">{String(o.ORDEN || '—')}</td>
+                            <td className="px-3 py-2 font-mono text-gray-700 border-r border-gray-100">{String(o.PEDIDO || '—')}</td>
+                            <td className="px-3 py-2 font-mono text-gray-700 border-r border-gray-100">{String(o.POSICION || '—')}</td>
+                            <td className="px-3 py-2 border-r border-gray-100 font-mono text-[9px] text-gray-400">{String(o.FECHA || '—')}</td>
                             <td className="px-3 py-2 font-mono font-bold text-primary border-r border-gray-100 tracking-tighter">{info.code}</td>
                             <td className="px-3 py-2 text-left border-r border-gray-50 truncate max-w-[180px] text-gray-500 uppercase">{info.desc}</td>
                             <td className="px-3 py-2 text-blue-800 border-r border-gray-100 bg-blue-50/5 uppercase font-black">{String(o.CATEGORIA || '—')}</td>
@@ -1836,7 +1836,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                             <td className="px-3 py-2 font-mono font-bold text-teal-600 border-r border-gray-100 bg-teal-50/10">{tiempoEstandar !== null ? tiempoEstandar.toFixed(4) : '—'}</td>
                             <td className="px-3 py-2 font-mono font-bold text-amber-600 border-r border-gray-100 bg-amber-50/10">{empaqueHours.toFixed(2)}</td>
                             <td className="px-3 py-2 font-bold text-gray-700 border-r border-gray-50 uppercase">{maquina}</td>
-                            <td className="px-3 py-2 font-medium text-gray-400 border-r border-gray-100">{o.ALMACEN || '—'}</td>
+                            <td className="px-3 py-2 font-medium text-gray-400 border-r border-gray-100">{String(o.ALMACEN || '—')}</td>
                             <td className="px-3 py-2 font-mono text-gray-500">{codBuscar}</td>
                           </tr>
                         );
@@ -1983,7 +1983,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
             <div className="text-left">
               <p className="text-[10px] font-bold uppercase text-gray-400 tracking-wider">Recepción de Datos (P3)</p>
               <h3 className="text-sm font-black text-gray-700 uppercase">Respuesta del Plan Consumidor</h3>
-              <p className="text-[10px] text-gray-400 mt-1">Por cada material que enviamos en nuestro P2, busca si algún Plan P3 (consumidor real, no PFD) ya respondió — un DetalleTactico cuyo <span className="font-mono">codigo_plan_grupo_padre</span> apunta a nuestro plan. La columna "Fechas" avisa si esa respuesta NO se guardó exactamente un día después de nuestra línea (regla "revisión hoy, devolución mañana").</p>
+              <p className="text-[10px] text-gray-400 mt-1">Por cada material que enviamos en nuestro P2, busca si algún Plan P3 (consumidor real, no PFD) ya respondió — un DetalleTactico cuyo <span className="font-mono">codigo_plan_grupo_padre</span> apunta a nuestro plan. La columna &quot;Fechas&quot; avisa si esa respuesta NO se guardó exactamente un día después de nuestra línea (regla &quot;revisión hoy, devolución mañana&quot;).</p>
             </div>
             <Button onClick={fetchDataAprobada} disabled={isLoadingDataAprobada} variant="outline" className="h-10 px-6 rounded-2xl gap-2 font-bold text-xs uppercase shrink-0 border-indigo-200 text-indigo-700 hover:bg-indigo-50">
               {isLoadingDataAprobada ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
