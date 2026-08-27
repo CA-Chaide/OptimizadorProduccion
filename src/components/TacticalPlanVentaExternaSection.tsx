@@ -54,6 +54,29 @@ interface DataAprobadaRow {
   fechasOk: boolean | null;
 }
 
+// Misma regla que ya usaba el JSX de "Data Aprobada" inline, subida a función compartida para que
+// "PFD - VENTA" (calcularPfdVenta) no la duplique.
+const estadoDataAprobada = (row: DataAprobadaRow): 'pendiente' | 'parcial' | 'completo' =>
+  row.respuestaCant <= 0 ? 'pendiente' : row.respuestaCant >= row.cantidad ? 'completo' : 'parcial';
+
+// Mismo shape que calculateSummary/groupByCategoria (tipos anónimos, ver más abajo) — nombrado acá
+// para poder tipar el estado `pfdVentaPreview` sin depender de un ReturnType<typeof ...> hacia una
+// función declarada más abajo en el cuerpo del componente.
+interface PfdVentaResumenRow {
+  centro: string; maquina: string; categoria: string; densidad: string; espesor: string; tipo: string;
+  totalOrdenes: number; totalCantidad: number; totalTiempoEmpaque: number;
+}
+interface PfdVentaGrupo {
+  categoria: string; densidad: string; tipo: string; rows: PfdVentaResumenRow[];
+  totalOrdenes: number; totalCantidad: number; totalTiempoEmpaque: number;
+}
+interface PfdVentaPreview {
+  resumen: PfdVentaGrupo[];
+  sinTrazabilidad: DataAprobadaRow[];
+  ptCubiertos: Set<string>;
+  lineas: NecesidadMaterial[];
+}
+
 // Cantidad viene como texto desde DetalleTactico (p.ej. "120.5000"); mismo criterio de limpieza
 // que usan Corte Espuma / Corte y Laminado en sus resúmenes.
 const parseQty = (val: unknown): number => {
@@ -151,6 +174,10 @@ interface SnapshotVentaExterna {
   necesidadEspumas2000: NecesidadMaterial[];
   necesidadRollos1000: NecesidadMaterial[];
   necesidadRollos2000: NecesidadMaterial[];
+  // Trazabilidad inversa componente -> FERT/PT, side-output de la misma explosión de arriba — ver
+  // "PFD - VENTA"/calcularPfdVenta.
+  trazabilidadPT1000: Record<string, string[]>;
+  trazabilidadPT2000: Record<string, string[]>;
 }
 
 export const TacticalPlanVentaExternaSection: React.FC = () => {
@@ -219,6 +246,10 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const [necesidadEspumas2000, setNecesidadEspumas2000] = useState<NecesidadMaterial[]>([]);
   const [necesidadRollos1000, setNecesidadRollos1000] = useState<NecesidadMaterial[]>([]);
   const [necesidadRollos2000, setNecesidadRollos2000] = useState<NecesidadMaterial[]>([]);
+  // Trazabilidad inversa componente -> FERT/PT (solo Espumas, ver "PFD - VENTA"/calcularPfdVenta) —
+  // side-output de explodeNecesidadesFert, se recalcula junto con la Necesidad P2.
+  const [trazabilidadPT1000, setTrazabilidadPT1000] = useState<Record<string, string[]>>({});
+  const [trazabilidadPT2000, setTrazabilidadPT2000] = useState<Record<string, string[]>>({});
   const [isExplodingBom, setIsExplodingBom] = useState(false);
   const [bomProgress, setBomProgress] = useState({ current: 0, total: 0 });
   // Diagnóstico de la última corrida de "Calcular Necesidad": qué FERT llegaron a explotarse
@@ -228,6 +259,13 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const [savingPlanP2, setSavingPlanP2] = useState<Record<string, boolean>>({});
   const [planP2Generado, setPlanP2Generado] = useState<Record<string, number>>({});
   const [isSavingAllPlanP2, setIsSavingAllPlanP2] = useState(false);
+  // "PFD - VENTA": vista previa (calcularPfdVenta, en memoria, no se cachea entre navegaciones porque
+  // se recalcula al instante desde dataAprobada/trazabilidadPT — ver sección al final del tab "Data
+  // Aprobada") y estado de guardado por centro.
+  const [pfdVentaPreview, setPfdVentaPreview] = useState<Record<string, PfdVentaPreview>>({});
+  const [savingPfdVenta, setSavingPfdVenta] = useState<Record<string, boolean>>({});
+  const [pfdVentaGenerado, setPfdVentaGenerado] = useState<Record<string, number>>({});
+  const [expandedPfdVenta, setExpandedPfdVenta] = useState<Record<string, string[]>>({});
 
   // Data Aprobada (P3): recupera, por cada P2 propio activo, la respuesta del plan consumidor
   // (P3) — sus DetalleTactico cuyo codigo_plan_grupo_padre apunta a nuestro P2.
@@ -343,6 +381,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
         necesidadEspumas2000,
         necesidadRollos1000,
         necesidadRollos2000,
+        trazabilidadPT1000,
+        trazabilidadPT2000,
       });
       // No se llama handleCalcularNecesidadRollos() directo acá: leería fertC1000ParaP2/
       // fertC2000ParaP2 (useMemo derivados del estado que se acaba de actualizar arriba) por closure
@@ -352,7 +392,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [dataAprobada, necesidadEspumas1000, necesidadEspumas2000, necesidadRollos1000, necesidadRollos2000]);
+  }, [dataAprobada, necesidadEspumas1000, necesidadEspumas2000, necesidadRollos1000, necesidadRollos2000, trazabilidadPT1000, trazabilidadPT2000]);
 
   // Rehidratación: si ya se había sincronizado en esta sesión, se recupera lo trabajado en vez de
   // dejar el módulo vacío al volver de otro módulo (ver @/lib/cache-modulos). Incluye Data Aprobada
@@ -373,6 +413,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       setNecesidadEspumas2000(snap.necesidadEspumas2000 || []);
       setNecesidadRollos1000(snap.necesidadRollos1000 || []);
       setNecesidadRollos2000(snap.necesidadRollos2000 || []);
+      setTrazabilidadPT1000(snap.trazabilidadPT1000 || {});
+      setTrazabilidadPT2000(snap.trazabilidadPT2000 || {});
       setDatosCargados(true);
     }
   }, [mounted]);
@@ -706,7 +748,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   // reales (material 20013403 "BASE RESIFLEX...": su BOM son químicos crudos — TDI, POLYOL, aminas —
   // y partes no-espuma, sin ningún componente ESPUMA/LAMINA CILINDRICA; queda correctamente en
   // sinMatch, no en la Necesidad, aunque la orden en sí sea legítima).
-  const explodeNecesidadesFert = async (centro: string, fertOrders: Record<string, unknown>[], onStep: () => void): Promise<{ espumas: NecesidadMaterial[]; rollos: NecesidadMaterial[]; sinMatch: string[]; conError: string[] }> => {
+  const explodeNecesidadesFert = async (centro: string, fertOrders: Record<string, unknown>[], onStep: () => void): Promise<{ espumas: NecesidadMaterial[]; rollos: NecesidadMaterial[]; sinMatch: string[]; conError: string[]; trazabilidad: Record<string, string[]> }> => {
     const materialQty = new Map<string, number>();
     fertOrders.forEach(o => {
       const info = extractMaterialInfo(o);
@@ -717,6 +759,12 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
 
     const espumasMap = new Map<string, NecesidadMaterial>();
     const rollosMap = new Map<string, NecesidadMaterial>();
+    // Trazabilidad inversa (componente -> FERT/PT que lo necesitan), para "PFD - VENTA": side-output
+    // del MISMO BOM walk forward de acá abajo, sin llamadas SAP nuevas. Se usa para, desde un
+    // componente YA RESPONDIDO por Corte Espuma/Laminado (Data Aprobada), subir de nivel hacia el
+    // FERT/PT que depende de él — dirección opuesta a la de esta función (que baja de FERT a
+    // componente) — ver calcularPfdVenta.
+    const trazabilidadMap = new Map<string, Set<string>>();
     // Diagnóstico: distingue, para cada Provisional que SÍ llegó hasta acá (ya pasó centro +
     // restricciones + fecha), entre "la consulta BOM falló" (conError) y "la consulta respondió pero
     // ninguna fila coincidió con ESPUMA/LAMINA CILINDRICA" (sinMatch) — antes ambos casos
@@ -763,6 +811,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
               target.set(compCode, { material: compCode, descripcion: desc, cantidad: 0 });
             }
             target.get(compCode)!.cantidad += qty * cantAcum;
+            if (!trazabilidadMap.has(compCode)) trazabilidadMap.set(compCode, new Set());
+            trazabilidadMap.get(compCode)!.add(matCode);
           });
         }
         if (!encontroMatch) sinMatch.push(matCode);
@@ -772,11 +822,14 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       }
       onStep();
     }
+    const trazabilidad: Record<string, string[]> = {};
+    trazabilidadMap.forEach((fertCodes, compCode) => { trazabilidad[compCode] = Array.from(fertCodes); });
     return {
       espumas: Array.from(espumasMap.values()).sort((a, b) => a.material.localeCompare(b.material)),
       rollos: Array.from(rollosMap.values()).sort((a, b) => a.material.localeCompare(b.material)),
       sinMatch,
       conError,
+      trazabilidad,
     };
   };
 
@@ -802,6 +855,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       setNecesidadEspumas2000(n2000.espumas);
       setNecesidadRollos1000(n1000.rollos);
       setNecesidadRollos2000(n2000.rollos);
+      setTrazabilidadPT1000(n1000.trazabilidad);
+      setTrazabilidadPT2000(n2000.trazabilidad);
       // Mantiene el snapshot en sync — si el usuario navega a otro modulo y vuelve, esta tabla ya no
       // aparece vacia (ver SnapshotVentaExterna). No-op si todavia no se sincronizo ningun dato base.
       actualizarEnCache<SnapshotVentaExterna>(CACHE_VENTA_EXTERNA, {
@@ -809,6 +864,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
         necesidadEspumas2000: n2000.espumas,
         necesidadRollos1000: n1000.rollos,
         necesidadRollos2000: n2000.rollos,
+        trazabilidadPT1000: n1000.trazabilidad,
+        trazabilidadPT2000: n2000.trazabilidad,
       });
 
       const sinMatch = [...n1000.sinMatch, ...n2000.sinMatch];
@@ -1092,6 +1149,99 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     }
   }, [grupos, necesidadEspumas1000, necesidadEspumas2000, necesidadRollos1000, necesidadRollos2000, ventanaP2, siguienteDiaHabil]);
 
+  // "PFD - VENTA": mismo grupo (18/19) y patrón de guardado que el P2 (generarPlanP2Core arriba), pero
+  // el valor lleva el token compuesto "PFD-VENTA" (no "PFD" suelto, para no chocar con el /pfd/i que ya
+  // usa Corte y Laminado bajo SU propio codigo_grupo=8 — acá vive en el codigo_grupo de Venta Externa,
+  // así que el riesgo real es bajo, pero se evita igual) y cada línea de DetalleTactico graba
+  // codigo_plan_grupo_padre = el P2 activo del que se deriva (a diferencia del P2, que no se
+  // auto-referencia — ver el comentario en generarPlanP2Core). Requiere haber generado la vista previa
+  // primero (pfdVentaPreview, ver calcularPfdVenta) — solo Espumas, un plan por centro.
+  const guardarPfdVentaCore = useCallback(async (centro: '1000' | '2000'): Promise<ResultadoGeneracionP2> => {
+    const tipo = 'ESPUMAS' as const;
+    const key = `PFD-${centro}`;
+    const lineas = pfdVentaPreview[centro]?.lineas || [];
+    if (lineas.length === 0) {
+      return { centro, tipo, status: 'sin-datos', mensaje: `No hay materiales PFD-VENTA generados para el Centro ${centro} — pulsa "Generar PFD-VENTA" primero.` };
+    }
+
+    setSavingPfdVenta(prev => ({ ...prev, [key]: true }));
+    try {
+      const { grupoCentro: grupoP2, planActivo: p2Activo } = await verificarPlanP2Activo(centro, tipo);
+      if (!grupoP2 || !p2Activo) {
+        return { centro, tipo, status: 'error', mensaje: `No hay un P2 activo de Espumas para el Centro ${centro} — PFD-VENTA necesita un P2 vigente del que derivar.` };
+      }
+
+      const user = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('user') || '{}') : {};
+      const usuario = user?.name || 'admin';
+
+      // Búsqueda propia del PFD-VENTA activo (mismo patrón que verificarPlanP2Activo, con su propia
+      // regex — no se reutiliza esa función porque busca por "...p2...", no por "...pfd-venta...").
+      const valorRegexPfd = new RegExp(`plan\\s*t[aá]ctico.*centro.*${centro}.*pfd-venta.*${tipo}`, 'i');
+      const planesRes = await planGrupoService.getAll();
+      const todosLosPlanes = planesRes.data || [];
+      const planesActivosPfd = todosLosPlanes.filter(pg =>
+        pg.estado === 'A' && pg.codigo_grupo === grupoP2.codigo_grupo && valorRegexPfd.test(String(pg.valor || ''))
+      );
+      for (const pg of planesActivosPfd) {
+        await planGrupoService.save({ ...pg, estado: 'I' } as unknown as PlanGrupo);
+      }
+
+      const planPayload = {
+        codigo_plan_grupo: 0,
+        codigo_grupo: grupoP2.codigo_grupo,
+        codigo_familia_grupo: null,
+        codigo_plan: null,
+        valor: `Plan Táctico - Centro ${centro} - PFD-VENTA - ${TIPO_TAG[tipo]}`,
+        // Misma ventana que el P2 del que deriva — PFD-VENTA no tiene fecha propia, hereda la del
+        // ciclo que lo originó.
+        fecha_inicio_plan: soloFecha(p2Activo.fecha_inicio_plan) || format(siguienteDiaHabil(new Date()), 'yyyy-MM-dd'),
+        fecha_fin_plan: soloFecha(p2Activo.fecha_fin_plan) || format(siguienteDiaHabil(new Date()), 'yyyy-MM-dd'),
+        estado: 'A',
+        usuario_creacion: usuario,
+        fecha_creacion: new Date(),
+      };
+      const planResponse = await planGrupoService.save(planPayload as unknown as PlanGrupo);
+      const codigoPlanGrupo = planResponse.data.codigo_plan_grupo;
+
+      let agregados = 0;
+      let fallidos = 0;
+      for (const linea of lineas) {
+        try {
+          const detallePayload = {
+            codigo_detalle_tactico: 0,
+            codigo_material: Number(linea.material),
+            cantidad_produccion_neta: Math.round(linea.cantidad).toFixed(0),
+            resp_ctrl_prod: '',
+            clase_aprovisionamiento: 'E',
+            cantidad_aprovisionamiento: 0,
+            estado: 'A',
+            codigo_plan_grupo: codigoPlanGrupo,
+            codigo_plan_grupo_padre: p2Activo.codigo_plan_grupo,
+            usuario_modificacion: usuario,
+          };
+          await detalleTacticoService.save(detallePayload as unknown as DetalleTactico);
+          agregados++;
+        } catch (error) {
+          console.warn(`[PFD-VENTA] Falló material ${linea.material}:`, (error as Error).message);
+          fallidos++;
+        }
+      }
+
+      setPfdVentaGenerado(prev => ({ ...prev, [key]: codigoPlanGrupo }));
+      const sufijo = planesActivosPfd.length > 0
+        ? ` Plan(es) anterior(es) #${planesActivosPfd.map(p => p.codigo_plan_grupo).join(', #')} desactivado(s).`
+        : '';
+      if (fallidos === 0) {
+        return { centro, tipo, status: 'ok', codigoPlan: codigoPlanGrupo, mensaje: `PFD-VENTA Centro ${centro}: Plan #${codigoPlanGrupo} creado (${agregados} materiales), derivado del P2 #${p2Activo.codigo_plan_grupo}.${sufijo}` };
+      }
+      return { centro, tipo, status: 'ok', codigoPlan: codigoPlanGrupo, mensaje: `PFD-VENTA Centro ${centro}: Plan #${codigoPlanGrupo} creado (${agregados} materiales), ${fallidos} fallidos.${sufijo}` };
+    } catch (error) {
+      return { centro, tipo, status: 'error', mensaje: `PFD-VENTA Centro ${centro}: error al guardar — ${(error as Error).message}` };
+    } finally {
+      setSavingPfdVenta(prev => ({ ...prev, [key]: false }));
+    }
+  }, [pfdVentaPreview, siguienteDiaHabil]);
+
   // Botón individual por bloque: genera un solo subgrupo y notifica su resultado puntual.
   // 'confirmar-reemplazo' (solo ESPUMAS, ver generarPlanP2Core): se cortó ANTES de escribir porque la
   // fecha seleccionada reemplazaría un plan activo fechado distinto — se confirma acá y, si se
@@ -1307,6 +1457,49 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
 
   const groupedSummary1000 = useMemo(() => groupByCategoria(summaryData1000), [summaryData1000]);
   const groupedSummary2000 = useMemo(() => groupByCategoria(summaryData2000), [summaryData2000]);
+
+  // "PFD - VENTA": dirección OPUESTA a explodeNecesidadesFert — en vez de bajar de FERT/PT a
+  // componente, sube desde el componente YA RESPONDIDO (Data Aprobada, estado 'completo') hacia su(s)
+  // FERT/PT padre (trazabilidadPT1000/2000, side-output de la misma explosión BOM de la Necesidad P2 —
+  // sin llamadas SAP nuevas). Solo Espumas: Rollos no tiene Data Aprobada con datos reales hoy (las
+  // corridas se aplazan a propósito hasta resolver stock, ver captura real de esta sesión).
+  const calcularPfdVenta = (centro: '1000' | '2000') => {
+    const rows = dataAprobada[`${centro}-ESPUMAS`] || [];
+    const trazabilidad = centro === '1000' ? trazabilidadPT1000 : trazabilidadPT2000;
+    const fertOrigen = centro === '1000' ? fertC1000ParaP2 : fertC2000ParaP2;
+
+    const ptCubiertos = new Set<string>();
+    const sinTrazabilidad: DataAprobadaRow[] = [];
+
+    rows.filter(r => estadoDataAprobada(r) === 'completo').forEach(r => {
+      const padres = trazabilidad[r.material];
+      if (!padres || padres.length === 0) { sinTrazabilidad.push(r); return; }
+      padres.forEach(pt => ptCubiertos.add(pt));
+    });
+
+    // "si existe varios FERT con el mismo HALB, es simple la suma" -> calculateSummary ya agrupa por
+    // material/categoría sumando CANTPROGRAMADA de todas las órdenes que compartan código.
+    const fertCubierto = fertOrigen.filter(o => ptCubiertos.has(cleanCode(o.MATERIAL)));
+
+    // Lista plana por material (para el guardado — el `resumen` de arriba agrupa por
+    // máquina|categoría|espesor|tipo, no por código de material, así que no sirve directo para armar
+    // las líneas de DetalleTactico).
+    const porMaterial = new Map<string, NecesidadMaterial>();
+    fertCubierto.forEach(o => {
+      const info = extractMaterialInfo(o);
+      if (!info.code) return;
+      const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
+      if (!porMaterial.has(info.code)) porMaterial.set(info.code, { material: info.code, descripcion: info.desc, cantidad: 0 });
+      porMaterial.get(info.code)!.cantidad += qty;
+    });
+
+    return {
+      resumen: groupByCategoria(calculateSummary(fertCubierto, centro)),
+      sinTrazabilidad,
+      ptCubiertos,
+      lineas: Array.from(porMaterial.values()).sort((a, b) => a.material.localeCompare(b.material)),
+    };
+  };
 
   // Totales globales para el dashboard superior
   const globalStats = useMemo(() => {
@@ -2030,7 +2223,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                           <tr><td colSpan={7} className="py-10 text-center text-gray-300 font-bold uppercase tracking-widest">Sin plan P2 activo o sin materiales</td></tr>
                         ) : (
                           rows.map((row, i) => {
-                            const estado = row.respuestaCant <= 0 ? 'pendiente' : row.respuestaCant >= row.cantidad ? 'completo' : 'parcial';
+                            const estado = estadoDataAprobada(row);
                             return (
                               <tr key={i} className="hover:bg-gray-50/50">
                                 <td className="px-3 py-2 font-mono font-bold text-primary border-r border-gray-50">{row.material}</td>
@@ -2071,6 +2264,145 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
               </div>
             );
           })}
+
+          {/* "PFD - VENTA": sube desde el componente YA RESPONDIDO (estado "completo" arriba) hacia su
+              FERT/PT padre — dirección opuesta a como se explota el BOM para generar la Necesidad P2
+              (ver calcularPfdVenta). Solo Espumas: Rollos no tiene Data Aprobada con datos reales hoy. */}
+          <div className="pt-6 mt-6 border-t-2 border-dashed border-gray-100 space-y-6">
+            <div className="bg-indigo-50/40 p-4 rounded-2xl border border-indigo-100 text-left">
+              <p className="text-[10px] font-bold uppercase text-indigo-400 tracking-wider">Siguiente paso</p>
+              <h3 className="text-sm font-black text-gray-700 uppercase">PFD - Venta (FERT/PT listos)</h3>
+              <p className="text-[10px] text-gray-400 mt-1">Por cada componente en estado &quot;completo&quot; arriba, sube al FERT/PT que depende de él (mismo BOM de la Necesidad P2, en sentido inverso) y agrupa por categoría — igual que &quot;Resumen Necesidades&quot;, con el tiempo real de plastificado.</p>
+            </div>
+
+            {(['1000', '2000'] as const).map(centro => {
+              const preview = pfdVentaPreview[centro];
+              const keySave = `PFD-${centro}`;
+              return (
+                <div key={centro} className="space-y-3">
+                  <div className="flex items-center justify-between px-1">
+                    <h3 className="text-[11px] font-black uppercase flex items-center gap-2 tracking-widest text-indigo-700">
+                      <div className="w-2.5 h-2.5 rounded-full bg-indigo-600" /> PFD-VENTA · Centro {centro}
+                      {pfdVentaGenerado[keySave] && (
+                        <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[8px] font-bold uppercase">Plan #{pfdVentaGenerado[keySave]}</Badge>
+                      )}
+                    </h3>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        onClick={() => setPfdVentaPreview(prev => ({ ...prev, [centro]: calcularPfdVenta(centro) }))}
+                        variant="outline" size="sm"
+                        className="h-9 px-4 rounded-2xl gap-2 font-bold text-[10px] uppercase border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" /> Generar PFD-VENTA
+                      </Button>
+                      {preview && preview.lineas.length > 0 && (
+                        <Button
+                          onClick={async () => {
+                            const resultado = await guardarPfdVentaCore(centro);
+                            addNotification(resultado.status === 'ok' ? 'success' : resultado.status === 'sin-datos' ? 'warning' : 'error', resultado.mensaje);
+                          }}
+                          disabled={savingPfdVenta[keySave]}
+                          size="sm"
+                          className="h-9 px-4 rounded-2xl gap-2 font-bold text-[10px] uppercase bg-indigo-600 text-white hover:bg-indigo-700"
+                        >
+                          {savingPfdVenta[keySave] ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ClipboardCheck className="w-3.5 h-3.5" />} Guardar PFD-VENTA
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+
+                  {!preview ? (
+                    <Card className="rounded-2xl border border-dashed border-gray-200 py-10 text-center text-gray-300 font-bold uppercase tracking-widest text-xs">
+                      Pulsa &quot;Generar PFD-VENTA&quot; para ver los materiales FERT/PT listos.
+                    </Card>
+                  ) : (
+                    <>
+                      <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
+                        {preview.resumen.length === 0 ? (
+                          <div className="py-16 text-center text-gray-400 font-bold uppercase tracking-widest opacity-30">Ningún FERT/PT cubierto todavía</div>
+                        ) : (
+                          <div className="max-h-[500px] overflow-y-auto px-4">
+                            <Accordion type="multiple" value={expandedPfdVenta[centro] || []} onValueChange={(v) => setExpandedPfdVenta(prev => ({ ...prev, [centro]: v }))} className="divide-y divide-gray-50">
+                              {preview.resumen.map(group => (
+                                <AccordionItem key={group.categoria} value={group.categoria} className="border-b-0">
+                                  <AccordionTrigger className="hover:no-underline py-3 px-2">
+                                    <div className="flex items-center justify-between w-full pr-4 text-left">
+                                      <div className="flex items-center gap-3">
+                                        <Badge className="bg-indigo-50 text-indigo-800 font-bold text-[9px] uppercase border-indigo-200">D{group.densidad}</Badge>
+                                        <div>
+                                          <p className="text-xs font-black text-gray-700 uppercase">{group.categoria}</p>
+                                          <p className="text-[9px] font-bold text-gray-400 uppercase">{group.tipo} · {group.rows.length} variante(s)</p>
+                                        </div>
+                                      </div>
+                                      <div className="flex items-center gap-6 text-right">
+                                        <div>
+                                          <p className="text-[8px] font-black uppercase text-gray-400 tracking-wider">Órdenes</p>
+                                          <p className="text-xs font-mono font-bold text-gray-600">{group.totalOrdenes}</p>
+                                        </div>
+                                        <div>
+                                          <p className="text-[8px] font-black uppercase text-gray-400 tracking-wider">Unidades</p>
+                                          <p className="text-xs font-mono font-black text-gray-900">{group.totalCantidad.toLocaleString()}</p>
+                                        </div>
+                                        <div>
+                                          <p className="text-[8px] font-black uppercase text-amber-500 tracking-wider">Tiempo Planchas (H)</p>
+                                          <p className="text-xs font-mono font-black text-amber-600">{group.totalTiempoEmpaque.toFixed(2)}</p>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </AccordionTrigger>
+                                  <AccordionContent>
+                                    <table className="w-full border-collapse text-center font-sans bg-gray-50/40 rounded-xl overflow-hidden">
+                                      <thead className="bg-gray-50 text-[9px] font-black uppercase text-gray-400 border-b border-gray-100">
+                                        <tr>
+                                          <th className="px-4 py-2 border-r border-gray-100 text-left">Máquina / Recurso</th>
+                                          <th className="px-3 py-2 border-r border-gray-100 text-primary">Tipo</th>
+                                          <th className="px-3 py-2 border-r border-gray-100 bg-blue-50/50 text-blue-800">Espesor</th>
+                                          <th className="px-3 py-2 border-r border-gray-100">Órdenes</th>
+                                          <th className="px-3 py-2 border-r border-gray-100 font-black">Unidades</th>
+                                          <th className="px-4 py-2 text-center text-amber-700 bg-amber-50/30">Tiempo Planchas (H)</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-gray-50 text-[11px]">
+                                        {group.rows.map((row, i) => (
+                                          <tr key={i} className="hover:bg-gray-50/50 transition-colors">
+                                            <td className="px-4 py-2 font-black text-gray-700 border-r border-gray-100 uppercase text-left">{row.maquina}</td>
+                                            <td className="px-3 py-2 font-black text-primary border-r border-gray-100 uppercase">{row.tipo}</td>
+                                            <td className="px-3 py-2 font-black text-blue-700 border-r border-gray-100 bg-blue-50/5">{row.espesor}</td>
+                                            <td className="px-3 py-2 font-mono border-r border-gray-100 text-gray-400">{row.totalOrdenes}</td>
+                                            <td className="px-3 py-2 font-mono font-black text-gray-900 border-r border-gray-100">{row.totalCantidad.toLocaleString()}</td>
+                                            <td className="px-4 py-2 font-mono font-black text-amber-600 text-center bg-amber-50/5">{row.totalTiempoEmpaque.toFixed(2)}</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </AccordionContent>
+                                </AccordionItem>
+                              ))}
+                            </Accordion>
+                          </div>
+                        )}
+                      </Card>
+
+                      {preview.sinTrazabilidad.length > 0 && (
+                        <Card className="rounded-2xl border border-dashed border-amber-200 bg-amber-50/30 p-4">
+                          <p className="text-[10px] font-black uppercase text-amber-700 tracking-widest mb-2">Sin trazabilidad ({preview.sinTrazabilidad.length})</p>
+                          <p className="text-[10px] text-amber-600/80 mb-3">Estos componentes ya están &quot;completo&quot; pero no se encontró su FERT/PT padre en la Necesidad P2 (BOM sin match, o el componente ya no pertenece al P2 activo) — no cuentan como cubiertos, revísalos aparte.</p>
+                          <div className="space-y-1">
+                            {preview.sinTrazabilidad.map(r => (
+                              <div key={r.material} className="flex items-center justify-between text-[10px] font-mono text-amber-700 bg-white/60 rounded-lg px-3 py-1.5">
+                                <span>{r.material} — {r.descripcion}</span>
+                                <span>{r.cantidad.toLocaleString()}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </Card>
+                      )}
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </TabsContent>
 
         <TabsContent value="pendientes" className="space-y-6 animate-in fade-in duration-300">
