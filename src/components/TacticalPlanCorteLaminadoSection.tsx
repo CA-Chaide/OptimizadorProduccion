@@ -616,9 +616,10 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [inventarioSAP, setInventarioSAP] = useState<InventarioSapRow[]>([]);
   const [operadoresLaminado, setOperadoresLaminado] = useState<RawApiRow[]>([]);
   const [mantenimientosSAP, setMantenimientosSAP] = useState<RawApiRow[]>([]);
-  // El módulo YA NO sincroniza solo al abrirse — ver handleSincronizarYGenerar. `isLoading` estaba
-  // declarado como `[, setIsLoading]` (getter descartado): nada lo leía, así que no había ningún
-  // indicador visual mientras cargaba. Ahora sí se usa, en el botón del encabezado.
+  // El módulo YA NO sincroniza solo al abrirse — ver handleSincronizarYGenerar. `isLoading` cubre
+  // toda la duración de "Sincronizar y Generar Necesidades" (ambas fases); el botón del encabezado
+  // usa `syncStep` para el disabled/spinner (mismo patrón que los otros 3 módulos tácticos), pero
+  // el estado vacío inicial (más abajo, `!datosCargados && !isLoading`) sigue leyendo este flag.
   const [isLoading, setIsLoading] = useState(false);
   const [datosCargados, setDatosCargados] = useState(false);
   const [necesidadesPlantaData, setNecesidadesPlantaData] = useState<Record<string, NecesidadPlantaRow[]>>({});
@@ -3484,11 +3485,11 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                separados (Sincronizar, luego Generar Necesidades); el usuario los pidió combinados por
                ser repetitivos en el uso diario. Sincroniza y, en cuanto los datos ya se reflejan en el
                render, dispara el cálculo automáticamente (ver handleSincronizarYGenerar/syncStep). */}
-           <Button onClick={handleSincronizarYGenerar} disabled={isLoading} variant={datosCargados ? 'outline' : 'default'} className={cn(
+           <Button onClick={handleSincronizarYGenerar} disabled={syncStep !== 'idle'} variant={datosCargados ? 'outline' : 'default'} className={cn(
              "rounded-xl h-10 px-6 text-[10px] font-black uppercase tracking-widest flex items-center gap-2",
              datosCargados ? "border-blue-200 text-blue-700 hover:bg-blue-50" : "bg-blue-600 text-white hover:bg-blue-700 shadow-lg"
            )}>
-              {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Sincronizar y Generar Necesidades
+              {syncStep !== 'idle' ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Sincronizar y Generar Necesidades
            </Button>
            <Popover>
             <PopoverTrigger asChild>
