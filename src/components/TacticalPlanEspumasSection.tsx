@@ -3382,6 +3382,12 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     // visualmente con los paneles Carruseles/Verticales de la izquierda.
     const machinesCarrusel = machines.filter(m => m.proceso === 'carrusel');
     const machinesVertical = machines.filter(m => m.proceso === 'vertical');
+    // Ajuste visual pedido por el usuario: en Guayaquil (3 carruseles vs 1 vertical) el panel de
+    // Verticales quedaba demasiado angosto para su contenido (flex proporcional al conteo real de
+    // máquinas, 3:1). Se le da un peso mínimo de 2 SOLO en GYE — ensancha Verticales y achica un
+    // poco Carruseles (queda 3:2 en vez de 3:1) sin tocar el layout de Quito (2 verticales, ya
+    // balanceado), que sigue usando el conteo real.
+    const flexVertical = planta === 'GYE' ? Math.max(machinesVertical.length, 2) : machinesVertical.length;
 
     // El % de rendimiento de la planta aplica al CARRUSEL. El corte vertical trabaja al 100%
     // (confirmado por el usuario): solo se le descuentan los paros del turno.
@@ -3564,7 +3570,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     // vivía mezclada con Capacidad Planificada/Ocupación, que sí variaban por Nivel).
     const renderProcesoConfig = (proceso: ProcesoCorte) => {
       const esCarrusel = proceso === 'carrusel';
-      const nEnGrupo = esCarrusel ? machinesCarrusel.length : machinesVertical.length;
+      const nEnGrupo = esCarrusel ? machinesCarrusel.length : flexVertical;
       if (nEnGrupo === 0) return null;
       const label = esCarrusel ? 'Carruseles' : 'Verticales';
       const colorClass = esCarrusel ? 'text-cyan-700' : 'text-fuchsia-700';
@@ -3666,14 +3672,27 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       ];
     };
 
+    // Backlog: todo lo pendiente (Ya firme/Faltante, es decir, SIN FERT que lo confirme ejecutado) de
+    // cualquier fecha ANTERIOR a la seleccionada — decisión del usuario: lo que no se procesó un día
+    // no desaparece ni se sigue midiendo contra la capacidad de ese día ya vencido, se suma a la carga
+    // operativa del día que se está revisando ahora. Reutiliza resolverFecha (ya prioriza FERT-exacto
+    // por fecha — si esa fecha pasada SÍ tiene FERT, no aporta nada al backlog, ya se ejecutó).
+    const calcularBacklogAntesDe = (fechaLimite: string) => {
+      const fechasConNecesidad = Array.from(new Set(
+        [...necesidadCapacidad, ...necesidadCapacidadNivel2].map(r => r.fecha)
+      )).filter(f => f < fechaLimite);
+      return fechasConNecesidad.flatMap(f => resolverFecha(f).map(x => ({ ...x, fecha: f })));
+    };
+
     const fechasSel = Array.from(selectedDatesCapacidad[planta]).sort();
-    const filasSeleccion = fechasSel.flatMap(f => resolverFecha(f).map(x => ({ ...x, fecha: f })));
+    const backlogSeleccion = fechasSel.length > 0 ? calcularBacklogAntesDe(fechasSel[0]) : [];
+    const filasSeleccion = [...backlogSeleccion, ...fechasSel.flatMap(f => resolverFecha(f).map(x => ({ ...x, fecha: f })))];
     const plannedSeleccion = filasSeleccion.reduce((s, x) => s + x.row.tTotal, 0);
+    const backlogH = backlogSeleccion.reduce((s, x) => s + x.row.tTotal, 0);
     // Con el selector limitado a UNA fecha (ver toggleFechaCapacidad), fechasSel.length siempre es
     // 0 o 1 — capacidadSeleccion queda en la práctica igual a totalH (un solo día), sin necesidad
-    // de tocar esta fórmula. Antes (multi-select) escalaba × N fechas; se descartó: mezclar varios
-    // días en un solo % no se entendía y, si alguna fecha ya había pasado, sumar su capacidad no
-    // tenía sentido (ese tiempo ya se fue). El manejo de atrasados/backlog queda pendiente aparte.
+    // de tocar esta fórmula. El backlog (arriba) SOLO sube el numerador (Ocupación), nunca la
+    // capacidad — es carga adicional sobre el mismo día, no un día extra de máquina.
     const capacidadSeleccion = totalH * fechasSel.length;
     const occSeleccion = capacidadSeleccion > 0 ? (plannedSeleccion / capacidadSeleccion) * 100 : 0;
     const labelSeleccion = fechasSel.length === 1
@@ -3781,7 +3800,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             </div>
           )}
           {machinesVertical.length > 0 && (
-            <div className="flex items-center justify-center py-1.5 border-b-2 border-fuchsia-300 bg-fuchsia-50/50" style={{ flex: `${machinesVertical.length} 1 0%` }}>
+            <div className="flex items-center justify-center py-1.5 border-b-2 border-fuchsia-300 bg-fuchsia-50/50" style={{ flex: `${flexVertical} 1 0%` }}>
               <span className="text-[9px] font-black uppercase tracking-widest text-fuchsia-700">Verticales ({machinesVertical.length})</span>
             </div>
           )}
@@ -3793,7 +3812,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             </div>
           )}
           {machinesVertical.length > 0 && (
-            <div className="grid border-l-2 border-fuchsia-200" style={{ flex: `${machinesVertical.length} 1 0%`, gridTemplateColumns: `repeat(${machinesVertical.length}, minmax(0, 1fr))` }}>
+            <div className="grid border-l-2 border-fuchsia-200" style={{ flex: `${flexVertical} 1 0%`, gridTemplateColumns: `repeat(${machinesVertical.length}, minmax(0, 1fr))` }}>
               {machinesVertical.map(m => renderMachineCol(m.id, m.n, planta))}
             </div>
           )}
@@ -3846,6 +3865,11 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                   <div className={cn("h-full", color.barra)} style={{ width: `${Math.min(occSeleccion, 100)}%` }} />
                 </div>
                 <p className="text-[9px] font-bold text-slate-500">{plannedSeleccion.toFixed(1)}h / {capacidadSeleccion.toFixed(1)}h</p>
+                {/* Nota mínima, no un desglose aparte — el usuario pidió lo más simple posible. Solo
+                    avisa que el número YA incluye lo pendiente de fechas anteriores sin FERT. */}
+                {backlogH > 0.05 && (
+                  <p className={cn("text-[8px] font-bold mt-0.5", color.texto)}>incluye {backlogH.toFixed(1)}h de pendiente acumulado</p>
+                )}
               </div>
             );
           })()}
