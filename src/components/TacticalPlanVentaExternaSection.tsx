@@ -1460,19 +1460,36 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   // "PFD - VENTA": dirección OPUESTA a explodeNecesidadesFert — en vez de bajar de FERT/PT a
   // componente, sube desde el componente YA RESPONDIDO (Data Aprobada, estado 'completo') hacia su(s)
   // FERT/PT padre. La trazabilidad (componente -> FERT/PT) se calcula FRESCA acá mismo, en cada clic
-  // de "Generar PFD-VENTA" (explota fertC1000ParaP2/fertC2000ParaP2, los mismos candidatos que ya
-  // generaron el P2 — sin datos nuevos, solo se vuelve a recorrer su BOM) — antes se guardaba en un
-  // estado aparte (trazabilidadPT1000/2000) que solo se llenaba al pulsar "Generar Necesidades · BOM
-  // FERT" en otro punto del módulo: si Data Aprobada ya estaba actualizada sin haber vuelto a pasar
-  // por ese botón en la misma sesión del navegador, PFD-VENTA no encontraba trazabilidad para NADA
-  // (reportado por el usuario con datos reales) — recalcularla acá elimina esa dependencia oculta.
+  // de "Generar PFD-VENTA" (mismo BOM que ya generó el P2 — sin datos nuevos, solo se vuelve a
+  // recorrer) — antes se guardaba en un estado aparte (trazabilidadPT1000/2000) que solo se llenaba al
+  // pulsar "Generar Necesidades · BOM FERT" en otro punto del módulo: si Data Aprobada ya estaba
+  // actualizada sin haber vuelto a pasar por ese botón en la misma sesión, PFD-VENTA no encontraba
+  // trazabilidad para NADA (reportado por el usuario con datos reales) — recalcularla acá elimina esa
+  // dependencia oculta.
+  //
+  // El universo de FERT NO sale de fertC1000ParaP2/fertC2000ParaP2 directo — esos dependen de
+  // `selectedDates` (la "Ventana de Producción" que se ve ahora mismo en el calendario), que puede
+  // haber quedado en una selección más ancha (varias fechas) que la fecha REAL con la que se guardó el
+  // P2 activo. Caso real que lo destapó: material 20003094 mostraba 1.708 unidades en PFD-VENTA — la
+  // suma de 5 órdenes reales con Liberación 31-ago/01-sep(x2)/02-sep/07-sep — cuando el P2 activo
+  // (#524) está fechado exacto 01-sep; solo las 2 órdenes de esa fecha (300 unidades) responden a ESE
+  // ciclo. Se relee el P2 activo (verificarPlanP2Activo) y se filtra FERT por SU fecha real
+  // (`filterData(..., [fechaP2])`, con dateOverride) — misma fecha con la que se explotó el BOM que
+  // originó este P2, no lo que el calendario muestre en este instante.
   // Solo Espumas: Rollos no tiene Data Aprobada con datos reales hoy (las corridas se aplazan a
   // propósito hasta resolver stock, ver captura real de esta sesión).
   const generarPfdVentaPreview = async (centro: '1000' | '2000') => {
     const rows = dataAprobada[`${centro}-ESPUMAS`] || [];
-    const fertOrigen = centro === '1000' ? fertC1000ParaP2 : fertC2000ParaP2;
+
+    const { planActivo: p2Activo } = await verificarPlanP2Activo(centro, 'ESPUMAS');
+    if (!p2Activo) {
+      addNotification('warning', `No hay un P2 activo de Espumas para el Centro ${centro} — genera el P2 primero.`);
+      return;
+    }
+    const fechaP2 = soloFecha(p2Activo.fecha_inicio_plan);
+    const fertOrigen = filterData(ordenesFert, centro, true, [fechaP2]);
     if (fertOrigen.length === 0) {
-      addNotification('warning', `No hay Órdenes FERT cargadas para el Centro ${centro} — sincroniza y elige una "Ventana de Producción" primero.`);
+      addNotification('warning', `No hay Órdenes FERT fechadas exacto ${fechaP2} (fecha del P2 #${p2Activo.codigo_plan_grupo}) para el Centro ${centro}.`);
       return;
     }
 
