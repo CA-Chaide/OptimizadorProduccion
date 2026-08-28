@@ -59,22 +59,20 @@ interface DataAprobadaRow {
 const estadoDataAprobada = (row: DataAprobadaRow): 'pendiente' | 'parcial' | 'completo' =>
   row.respuestaCant <= 0 ? 'pendiente' : row.respuestaCant >= row.cantidad ? 'completo' : 'parcial';
 
-// Mismo shape que calculateSummary/groupByCategoria (tipos anónimos, ver más abajo) — nombrado acá
-// para poder tipar el estado `pfdVentaPreview` sin depender de un ReturnType<typeof ...> hacia una
-// función declarada más abajo en el cuerpo del componente.
-interface PfdVentaResumenRow {
-  centro: string; maquina: string; categoria: string; densidad: string; espesor: string; tipo: string;
-  totalOrdenes: number; totalCantidad: number; totalTiempoEmpaque: number;
-}
-interface PfdVentaGrupo {
-  categoria: string; densidad: string; tipo: string; rows: PfdVentaResumenRow[];
-  totalOrdenes: number; totalCantidad: number; totalTiempoEmpaque: number;
+// Una fila por material FERT/PT — exactamente lo que "Guardar PFD-VENTA" va a grabar en
+// DetalleTactico (cantidad), más 2 columnas informativas (categoria/tiempoHoras) para dar contexto
+// sin necesitar una vista agrupada aparte (ver generarPfdVentaPreview).
+interface PfdVentaLinea {
+  material: string;
+  descripcion: string;
+  categoria: string;
+  cantidad: number;
+  tiempoHoras: number;
 }
 interface PfdVentaPreview {
-  resumen: PfdVentaGrupo[];
+  lineas: PfdVentaLinea[];
   sinTrazabilidad: DataAprobadaRow[];
   ptCubiertos: Set<string>;
-  lineas: NecesidadMaterial[];
 }
 
 // Cantidad viene como texto desde DetalleTactico (p.ej. "120.5000"); mismo criterio de limpieza
@@ -264,7 +262,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const [pfdVentaBomProgress, setPfdVentaBomProgress] = useState<Record<string, { current: number; total: number }>>({});
   const [savingPfdVenta, setSavingPfdVenta] = useState<Record<string, boolean>>({});
   const [pfdVentaGenerado, setPfdVentaGenerado] = useState<Record<string, number>>({});
-  const [expandedPfdVenta, setExpandedPfdVenta] = useState<Record<string, string[]>>({});
 
   // Data Aprobada (P3): recupera, por cada P2 propio activo, la respuesta del plan consumidor
   // (P3) — sus DetalleTactico cuyo codigo_plan_grupo_padre apunta a nuestro P2.
@@ -1497,26 +1494,34 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
         padres.forEach(pt => ptCubiertos.add(pt));
       });
 
-      // "si existe varios FERT con el mismo HALB, es simple la suma" -> calculateSummary ya agrupa por
-      // material/categoría sumando CANTPROGRAMADA de todas las órdenes que compartan código.
+      // "si existe varios FERT con el mismo HALB, es simple la suma" -> se suma por material más
+      // abajo, igual que ya hace calculateSummary para la agrupación de "Resumen Necesidades".
       const fertCubierto = fertOrigen.filter(o => ptCubiertos.has(cleanCode(o.MATERIAL)));
 
-      // Lista plana por material (para el guardado — el `resumen` de arriba agrupa por
-      // máquina|categoría|espesor|tipo, no por código de material, así que no sirve directo para
-      // armar las líneas de DetalleTactico).
-      const porMaterial = new Map<string, NecesidadMaterial>();
+      // Una fila por material — lo que de verdad se va a grabar (cantidad), más categoría/tiempo
+      // como columnas informativas (mismo cruce matchTiempoEstandar que ya usa "Resumen Necesidades",
+      // con el mismo respaldo de placeholder cuando el material no tiene tiempo estándar real).
+      const lookup = centro === '1000' ? tiempoLookup1000 : tiempoLookup2000;
+      const porMaterial = new Map<string, PfdVentaLinea>();
       fertCubierto.forEach(o => {
         const info = extractMaterialInfo(o);
         if (!info.code) return;
         const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
-        if (!porMaterial.has(info.code)) porMaterial.set(info.code, { material: info.code, descripcion: info.desc, cantidad: 0 });
-        porMaterial.get(info.code)!.cantidad += qty;
+        const categoria = String(o.CATEGORIA || o.Categoria || o.categoria || '—').trim() || '—';
+        const maquina = String(o.MAQUINA || o.Maquina || o.RECURSO || '').trim();
+        const tiempoEstandarMin = matchTiempoEstandar(info.code, maquina, lookup);
+        const tiempoHoras = tiempoEstandarMin !== null ? (qty * tiempoEstandarMin) / 60 : (qty * PACKING_TIME_PER_UNIT_SECONDS) / 3600;
+        if (!porMaterial.has(info.code)) {
+          porMaterial.set(info.code, { material: info.code, descripcion: info.desc, categoria, cantidad: 0, tiempoHoras: 0 });
+        }
+        const entry = porMaterial.get(info.code)!;
+        entry.cantidad += qty;
+        entry.tiempoHoras += tiempoHoras;
       });
 
       setPfdVentaPreview(prev => ({
         ...prev,
         [centro]: {
-          resumen: groupByCategoria(calculateSummary(fertCubierto, centro)),
           sinTrazabilidad,
           ptCubiertos,
           lineas: Array.from(porMaterial.values()).sort((a, b) => a.material.localeCompare(b.material)),
@@ -2361,67 +2366,32 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                   ) : (
                     <>
                       <Card className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
-                        {preview.resumen.length === 0 ? (
+                        {preview.lineas.length === 0 ? (
                           <div className="py-16 text-center text-gray-400 font-bold uppercase tracking-widest opacity-30">Ningún FERT/PT cubierto todavía</div>
                         ) : (
-                          <div className="max-h-[500px] overflow-y-auto px-4">
-                            <Accordion type="multiple" value={expandedPfdVenta[centro] || []} onValueChange={(v) => setExpandedPfdVenta(prev => ({ ...prev, [centro]: v }))} className="divide-y divide-gray-50">
-                              {preview.resumen.map(group => (
-                                <AccordionItem key={group.categoria} value={group.categoria} className="border-b-0">
-                                  <AccordionTrigger className="hover:no-underline py-3 px-2">
-                                    <div className="flex items-center justify-between w-full pr-4 text-left">
-                                      <div className="flex items-center gap-3">
-                                        <Badge className="bg-indigo-50 text-indigo-800 font-bold text-[9px] uppercase border-indigo-200">D{group.densidad}</Badge>
-                                        <div>
-                                          <p className="text-xs font-black text-gray-700 uppercase">{group.categoria}</p>
-                                          <p className="text-[9px] font-bold text-gray-400 uppercase">{group.tipo} · {group.rows.length} variante(s)</p>
-                                        </div>
-                                      </div>
-                                      <div className="flex items-center gap-6 text-right">
-                                        <div>
-                                          <p className="text-[8px] font-black uppercase text-gray-400 tracking-wider">Órdenes</p>
-                                          <p className="text-xs font-mono font-bold text-gray-600">{group.totalOrdenes}</p>
-                                        </div>
-                                        <div>
-                                          <p className="text-[8px] font-black uppercase text-gray-400 tracking-wider">Unidades</p>
-                                          <p className="text-xs font-mono font-black text-gray-900">{group.totalCantidad.toLocaleString()}</p>
-                                        </div>
-                                        <div>
-                                          <p className="text-[8px] font-black uppercase text-amber-500 tracking-wider">Tiempo Planchas (H)</p>
-                                          <p className="text-xs font-mono font-black text-amber-600">{group.totalTiempoEmpaque.toFixed(2)}</p>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </AccordionTrigger>
-                                  <AccordionContent>
-                                    <table className="w-full border-collapse text-center font-sans bg-gray-50/40 rounded-xl overflow-hidden">
-                                      <thead className="bg-gray-50 text-[9px] font-black uppercase text-gray-400 border-b border-gray-100">
-                                        <tr>
-                                          <th className="px-4 py-2 border-r border-gray-100 text-left">Máquina / Recurso</th>
-                                          <th className="px-3 py-2 border-r border-gray-100 text-primary">Tipo</th>
-                                          <th className="px-3 py-2 border-r border-gray-100 bg-blue-50/50 text-blue-800">Espesor</th>
-                                          <th className="px-3 py-2 border-r border-gray-100">Órdenes</th>
-                                          <th className="px-3 py-2 border-r border-gray-100 font-black">Unidades</th>
-                                          <th className="px-4 py-2 text-center text-amber-700 bg-amber-50/30">Tiempo Planchas (H)</th>
-                                        </tr>
-                                      </thead>
-                                      <tbody className="divide-y divide-gray-50 text-[11px]">
-                                        {group.rows.map((row, i) => (
-                                          <tr key={i} className="hover:bg-gray-50/50 transition-colors">
-                                            <td className="px-4 py-2 font-black text-gray-700 border-r border-gray-100 uppercase text-left">{row.maquina}</td>
-                                            <td className="px-3 py-2 font-black text-primary border-r border-gray-100 uppercase">{row.tipo}</td>
-                                            <td className="px-3 py-2 font-black text-blue-700 border-r border-gray-100 bg-blue-50/5">{row.espesor}</td>
-                                            <td className="px-3 py-2 font-mono border-r border-gray-100 text-gray-400">{row.totalOrdenes}</td>
-                                            <td className="px-3 py-2 font-mono font-black text-gray-900 border-r border-gray-100">{row.totalCantidad.toLocaleString()}</td>
-                                            <td className="px-4 py-2 font-mono font-black text-amber-600 text-center bg-amber-50/5">{row.totalTiempoEmpaque.toFixed(2)}</td>
-                                          </tr>
-                                        ))}
-                                      </tbody>
-                                    </table>
-                                  </AccordionContent>
-                                </AccordionItem>
-                              ))}
-                            </Accordion>
+                          <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
+                            <table className="w-full border-collapse text-center font-sans">
+                              <thead className="bg-gray-50 sticky top-0 text-[9px] font-black uppercase text-gray-400 border-b border-gray-100">
+                                <tr>
+                                  <th className="px-4 py-3 border-r border-gray-100 text-left">Material</th>
+                                  <th className="px-4 py-3 border-r border-gray-100 text-left">Descripción</th>
+                                  <th className="px-4 py-3 border-r border-gray-100 text-left">Categoría</th>
+                                  <th className="px-4 py-3 border-r border-gray-100 font-black bg-indigo-50/30 text-indigo-700">Unidades (se graba)</th>
+                                  <th className="px-4 py-3 text-amber-700 bg-amber-50/30">Tiempo Planchas (H)</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-50 text-[11px]">
+                                {preview.lineas.map((linea, i) => (
+                                  <tr key={i} className="hover:bg-gray-50/50 transition-colors">
+                                    <td className="px-4 py-2 font-mono font-bold text-indigo-600 border-r border-gray-50 text-left">{linea.material}</td>
+                                    <td className="px-4 py-2 text-left font-sans normal-case text-gray-600 border-r border-gray-50 truncate max-w-[220px]">{linea.descripcion}</td>
+                                    <td className="px-4 py-2 text-left font-mono text-gray-500 border-r border-gray-50">{linea.categoria}</td>
+                                    <td className="px-4 py-2 font-mono font-black text-indigo-700 bg-indigo-50/10 border-r border-gray-50">{linea.cantidad.toLocaleString()}</td>
+                                    <td className="px-4 py-2 font-mono font-black text-amber-600 bg-amber-50/5">{linea.tiempoHoras.toFixed(2)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
                           </div>
                         )}
                       </Card>
