@@ -811,8 +811,19 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
               target.set(compCode, { material: compCode, descripcion: desc, cantidad: 0 });
             }
             target.get(compCode)!.cantidad += qty * cantAcum;
-            if (!trazabilidadMap.has(compCode)) trazabilidadMap.set(compCode, new Set());
-            trazabilidadMap.get(compCode)!.add(matCode);
+            // Trazabilidad (para "PFD - VENTA", ver arriba): a diferencia de la Necesidad P2 (que
+            // acepta un match a CUALQUIER nivel del árbol), acá SÍ importa el nivel — el componente
+            // que realmente responde Corte Espuma/Laminado (y que Data Aprobada rastrea) es el hijo
+            // DIRECTO del FERT/PT (NIVEL 1 en el árbol de SAP). Un match más profundo (nivel 2, 3...)
+            // no es el mismo componente que se está respondiendo — verificado observando el flujo:
+            // aceptar cualquier nivel devolvía relaciones incorrectas. Un componente sin match en
+            // nivel 1 simplemente no obtiene entrada en `trazabilidadMap` y cae en "Sin trazabilidad"
+            // en calcularPfdVenta, en vez de generar una relación falsa.
+            const nivel = Number(row.NIVEL ?? row.Nivel);
+            if (nivel === 1) {
+              if (!trazabilidadMap.has(compCode)) trazabilidadMap.set(compCode, new Set());
+              trazabilidadMap.get(compCode)!.add(matCode);
+            }
           });
         }
         if (!encontroMatch) sinMatch.push(matCode);
