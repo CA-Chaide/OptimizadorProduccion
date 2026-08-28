@@ -152,11 +152,14 @@ const NOMBRE_RESTRICCION_RESP_VERTICALES = 'RESPCTRLPROD_VERTICALES';
 // - Venta Externa: su P2 sí tiene fecha_inicio_plan confiable. Sus Provisionales se generan a hoy+1,
 //   pero al liberarse/convertirse en FERT se traslapan con la fecha del P2 (hoy+2) — tolerancia ±2
 //   alrededor de esa fecha real.
-// - Muebles/Colchones: su fecha_inicio_plan NO es confiable para esto (documentado en la propia
+// - Muebles/Colchones: su fecha_inicio_plan NO siempre es confiable (documentado en la propia
 //   restricción ALMACEN_CONSUMO: "no distingue si el material ya se fabricó o sigue pendiente") —
 //   comprobado con datos reales: P2 de Muebles #73 fechado 2026-08-04, pero sus órdenes FERT reales
-//   caen 2026-07-30/31 (a 4-5 días de esa fecha, ninguna tolerancia razonable las alcanza). Se
-//   IGNORA la fecha del P2 y se usa una ventana FIJA [hoy, hoy+1].
+//   caen 2026-07-30/31 (a 4-5 días de esa fecha, ninguna tolerancia razonable las alcanza). Se prueba
+//   primero una ventana FIJA [hoy, hoy+1]; si no alcanza, cae al mismo criterio que cualquier otra
+//   área (ver más abajo) — un P2 de Muebles agendado varios días adelante SÍ puede tener una fecha
+//   real y confiable (caso real: P2 #533 fechado 31-ago con una orden Provisional real exacta a esa
+//   fecha, 3 días después de hoy — la ventana fija sola nunca la hubiera alcanzado).
 // - Cualquier otra área (ej. Prensado): tolerancia ±1 alrededor de la fecha real del P2 (en la
 //   práctica su P2 sí quedó cerca de "hoy").
 //
@@ -172,8 +175,14 @@ const fechaOrdenCoincideConP2 = (fechaOrdenStr: string, fechaOrdenFinStr: string
   if (isNaN(tOrden)) return false;
   if (/muebles|colchones/i.test(area)) {
     const tHoy = new Date(hoyStr).getTime();
-    if (isNaN(tHoy)) return false;
-    return tOrden >= tHoy && tOrden <= tHoy + 86400000; // [hoy, hoy+1]
+    if (!isNaN(tHoy) && tOrden >= tHoy && tOrden <= tHoy + 86400000) return true; // [hoy, hoy+1]
+    // La ventana fija [hoy,hoy+1] no alcanzó: cae al mismo criterio que el resto de áreas (rango
+    // completo de la orden + tolerancia ±1 día alrededor de la fecha real del P2), en vez de
+    // descartar directo. Caso real que lo destapó: material 30023211, P2 Muebles #533 fechado 3 días
+    // adelante (31-ago, hoy 28-ago) con una orden Provisional real EXACTA a esa fecha — la ventana
+    // fija nunca puede alcanzar un P2 agendado más allá de mañana. No se quita la ventana [hoy,hoy+1]
+    // (sigue resolviendo el caso histórico que la motivó, P2 #73 con FERT reales 4-5 días ANTES de su
+    // propia fecha) — se agrega como respaldo adicional, no se reemplaza.
   }
   const tP2 = new Date(fechaP2Str).getTime();
   if (isNaN(tP2)) return false;
