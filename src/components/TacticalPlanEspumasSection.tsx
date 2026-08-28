@@ -244,6 +244,10 @@ interface UnifiedRow {
   dens: string;
   cant: number;
   peso: number;
+  // Cantidad real en unidades (a diferencia de `cant`, que en auditMapper es la cantidad cruda de SAP
+  // sin corregir por UNIDAD='KG') — usado por Respuesta P3 (Corte Espuma) para comparar en UN en vez
+  // de Kg. Ver respuestaSalidaRowsPorCentro.
+  cantUnidadReal: number;
   alturaTotal: number;
   tIndiv: number;
   tTotal: number;
@@ -330,24 +334,28 @@ interface RespuestaP3Row {
   tienePlan: boolean;
   // Lo que se graba en DetalleTactico: en el P3 es la COBERTURA (cuánto de la necesidad ya está
   // resuelto); en el PFD es el FALTANTE (cuánto hay que fabricar). Ver respuestaSalidaRowsPorCentro.
-  cantidadKg: number;
-  // cantidadKg convertido a UNIDADES (÷ pesoUN) — es lo que realmente se graba en
-  // cantidad_produccion_neta. El P2 que se está respondiendo (Venta Externa/Muebles/Prensado) pide y
-  // registra en UN, no en Kg; grabar cantidadKg tal cual producía comparaciones falsas ("parcial" con
-  // el flujo real ya completo) — verificado con datos reales: material 30008499 (100X200X4) respondía
-  // 211 "Kg" contra una necesidad P2 de 120 UN, mientras 30007130/30008498 quedaban cortos — los 3
-  // ratios Kg/UN observados (0.44 / 0.88 / 1.76) escalaban exactamente 1:2:4 con el espesor (X1/X2/X4),
-  // confirmando que el número grabado era peso, no unidades.
+  // Ya está en UNIDADES directo (= esPFD ? faltante : cubierto, sin conversión) — el P2 que se está
+  // respondiendo (Venta Externa/Muebles/Prensado) pide y registra en UN, no en Kg; comparar/grabar en
+  // Kg estimado producía comparaciones falsas — verificado con datos reales: material 30008499
+  // (100X200X4) respondía 211 "Kg" contra una necesidad P2 de 120 UN, mientras 30007130/30008498
+  // quedaban cortos — los 3 ratios Kg/UN observados (0.44 / 0.88 / 1.76) escalaban exactamente 1:2:4
+  // con el espesor (X1/X2/X4), confirmando que el número grabado era peso, no unidades. Segundo caso
+  // real (mismo problema, un nivel arriba): material 30005606, P2=300 UN mostraba "Necesidad P2 (Kg)"
+  // = 102 — un estimado, no el número real que el negocio compara.
   cantidadUnidades: number;
-  necesidadKg: number;
-  stockKg: number;
-  provisionalKg: number;
+  necesidad: number;
+  stock: number;
+  provisional: number;
   // FERT hacia adelante: responde al P2 vigente, SÍ entra en la cobertura.
-  fertVigenteKg: number;
+  fertVigente: number;
   // FERT de hoy hacia atrás: ciclo ya ejecutado. Solo referencia, no cubre el P2 vigente.
-  fertAnteriorKg: number;
-  cubiertoKg: number;
-  faltanteKg: number;
+  fertAnterior: number;
+  cubierto: number;
+  faltante: number;
+  // Kg SOLO informativo (badge de capacidad/peso) — no participa en ninguna decisión de cobertura o
+  // estado. = faltante × pesoUNPorMaterial (estimado geométrico), puede dar 0 para materiales sin
+  // geometría parseable aunque su faltante real (en UN) sea mayor que cero.
+  faltanteKgEstimado: number;
   origenes: string;
   fuente: FuenteRespuestaP3;
 }
@@ -1111,6 +1119,12 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       // día que aparezca un material real de espuma en KG con un responsable permitido.
       const unidadOrden = String(getProp(o, ['UNIDAD', 'Unidad', 'UNIDAD_MEDIDA'])).trim().toUpperCase();
       const pesoTotal = unidadOrden === 'KG' ? qty : pesoUN * qty;
+      // Espejo de pesoTotal, para poder comparar Respuesta P3 en UNIDADES en vez de Kg (ver
+      // respuestaSalidaRowsPorCentro): si la orden viene nativa en KG, "qty" no es un conteo de
+      // unidades real — se estima dividiendo por pesoUN. Mismo caso latente documentado arriba (hoy
+      // sin impacto real, ningún material cae en esta rama), necesario para no reintroducir el mismo
+      // bug del lado de unidades.
+      const cantUnidadReal = unidadOrden === 'KG' ? (pesoUN > 0 ? qty / pesoUN : 0) : qty;
 
       const fechaOrden = String(getProp(o, ['FECHAINICIO', 'FECHA', 'FECHA_INICIO'])).split('T')[0];
       // La orden Provisional trae un RANGO propio (FECHAINICIO..FECHAFIN), no una fecha puntual —
@@ -1147,6 +1161,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         ancho: info.ancho, largo: info.largo, esp: info.esp, dens: info.dens,
         cant: qty,
         peso: pesoTotal,
+        cantUnidadReal,
         alturaTotal: hTotal,
         subBloques: subB,
         nroCargas: nLoads,
@@ -1294,13 +1309,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
   // Fechas P2 (fecha_inicio_plan) por material y centro, con su ÁREA de origen — puede haber varias
   // si el material aparece en más de un P2 (distintos orígenes/fechas). Se usa para acotar qué
-  // órdenes FERT/Provisionales "responden" a cuál necesidad (ver fertKgPorMaterialPorCentro,
-  // provisionalKgPorMaterialPorCentro): una orden solo cuenta si su fecha cae dentro de la tolerancia
+  // órdenes FERT/Provisionales "responden" a cuál necesidad (ver fertUnPorMaterialPorCentro,
+  // provisionalUnPorMaterialPorCentro): una orden solo cuenta si su fecha cae dentro de la tolerancia
   // de ESA área (fechaOrdenCoincideConP2) respecto a AL MENOS una de estas fechas.
   // Se arma desde necesidadesPlantaConPFF, NO desde necesidadesPlantaData: antes dejaba fuera las
   // filas de la Necesidad PFF (Ensamblado), que viven en necesidadPFFData y solo se unen en
   // necesidadesPlantaConPFF. Consecuencia real: un material pedido ÚNICAMENTE por el PFF no tenía
-  // ninguna fecha aquí, y como provisionalKgPorMaterialPorCentro descarta la orden cuando el material
+  // ninguna fecha aquí, y como provisionalUnPorMaterialPorCentro descarta la orden cuando el material
   // no aparece en este mapa (`if (!candidatosP2) return`), sus Provisionales se ignoraban SIEMPRE —
   // el material salía "Sin cobertura" aunque tuviera la provisional que lo cubría entera.
   // Caso verificado: 30020116 (LAMINA D25 BLANCO SOFT 104X188X3.5), necesidad 9 Kg del PFF #216, con
@@ -1335,15 +1350,17 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     [auditMapper, ordenesProvisionales]
   );
 
-  // Respuesta P3: cantidad "ya planificada" por material vía Órdenes Provisionales, en Kg — mismo
-  // criterio que fertKgPorMaterialPorCentro (responsable permitido + fechaOrdenCoincideConP2 contra
-  // la ventana real del P2). Antes solo exigía "fecha ≥ hoy" sin techo ni relación con la fecha del
-  // P2: verificado con datos reales, de 75 provisionales que calzaban por material+responsable, solo
-  // 7 caían dentro de la ventana del P2 que decían responder — las otras 68 contaban igual aunque
-  // estuvieran a semanas/meses de distancia (ej. material 30000160: P2 pide 04-ago, se le acreditaba
-  // una provisional del 08-sep). Al exigir la misma ventana que FERT, un material sin provisional
-  // real que lo cubra cae a Stock o queda en 0 (ver respuestaSalidaRowsPorCentro).
-  const provisionalKgPorMaterialPorCentro = useMemo(() => {
+  // Respuesta P3: cantidad "ya planificada" por material vía Órdenes Provisionales, en UNIDADES (no
+  // Kg — comparar contra la Necesidad P2, que también está en UN, evita el redondeo/estimado de
+  // pesoUN) — mismo criterio que fertUnPorMaterialPorCentro (responsable permitido +
+  // fechaOrdenCoincideConP2 contra la ventana real del P2). Antes solo exigía "fecha ≥ hoy" sin techo
+  // ni relación con la fecha del P2: verificado con datos reales, de 75 provisionales que calzaban
+  // por material+responsable, solo 7 caían dentro de la ventana del P2 que decían responder — las
+  // otras 68 contaban igual aunque estuvieran a semanas/meses de distancia (ej. material 30000160: P2
+  // pide 04-ago, se le acreditaba una provisional del 08-sep). Al exigir la misma ventana que FERT, un
+  // material sin provisional real que lo cubra cae a Stock o queda en 0 (ver
+  // respuestaSalidaRowsPorCentro).
+  const provisionalUnPorMaterialPorCentro = useMemo(() => {
     const porCentro: Record<string, Map<string, number>> = { '1000': new Map(), '2000': new Map() };
 
     const procesar = (centro: '1000' | '2000', rows: UnifiedRow[]) => {
@@ -1361,7 +1378,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         if (!candidatosP2 || candidatosP2.length === 0) return;
         const coincide = candidatosP2.some(c => fechaOrdenCoincideConP2(r.fecha, r.fechaFin, c.area, c.fecha, todayStr));
         if (!coincide) return;
-        map.set(r.material, (map.get(r.material) || 0) + r.peso);
+        map.set(r.material, (map.get(r.material) || 0) + r.cantUnidadReal);
       });
     };
 
@@ -1375,14 +1392,12 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   // (fechaOrdenCoincideConP2) — caso real que motivó esto: Venta Externa #78 (material 30005466,
   // 2026-08-03, 12 unidades) tiene su orden FERT #000062753914 exactamente en esa fecha con la misma
   // cantidad, pero no se cruzaba contra el P2 (decisión previa: FERT solo alimentaba horas de
-  // Capacidad Operativa). provisionalKgPorMaterialPorCentro (más arriba) aplica el mismo criterio.
+  // Capacidad Operativa). provisionalUnPorMaterialPorCentro (más arriba) aplica el mismo criterio.
   //
-  // El peso (Kg) sale de auditMapper (mismo cálculo que ya usan Provisionales/FERT en sus tabs de
-  // auditoría): match directo contra kpiLooperData si existe, o fórmula volumétrica (ancho×largo×
-  // espesor×densidad) si no — NO de kpiLooperData a secas, que casi no tiene materiales de Espuma
-  // (verificado: 30005466 no aparece ahí, habría dado 0 Kg). Se recorre TODO ordenesFert por centro
-  // (sin el filtro de fecha "hoy+3" ni el selectedDatesFert de la UI, que son ajenos a esta necesidad
-  // puntual del P2) para no perder órdenes fuera de esa ventana de visualización.
+  // La cantidad en UN sale de auditMapper (cantUnidadReal — cantidad cruda de SAP, o Kg/pesoUN en el
+  // caso latente de una orden nativa en KG). Se recorre TODO ordenesFert por centro (sin el filtro de
+  // fecha "hoy+3" ni el selectedDatesFert de la UI, que son ajenos a esta necesidad puntual del P2)
+  // para no perder órdenes fuera de esa ventana de visualización.
   const fertAuditAllUIO = useMemo(
     () => auditMapper(ordenesFert.filter(o => String(getProp(o, ['Centro', 'CENTRO', 'centro'])).trim() === '1000'), '1000'),
     [auditMapper, ordenesFert]
@@ -1410,7 +1425,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   // existe como provisional y la cobertura daba 0. Caso real verificado: material 30005472 no tiene
   // NINGUNA provisional, pero sí una FERT creada hoy (FECHAORDEN 07-ago) programada para el 12-ago
   // por 35 unidades = los 196 Kg que la tabla mostraba como "FERT" mientras marcaba "Sin cobertura".
-  const fertKgPorMaterialPorCentro = useMemo(() => {
+  const fertUnPorMaterialPorCentro = useMemo(() => {
     const vacio = () => ({ '1000': new Map<string, number>(), '2000': new Map<string, number>() });
     const vigente: Record<string, Map<string, number>> = vacio();
     const anterior: Record<string, Map<string, number>> = vacio();
@@ -1420,7 +1435,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       rows.forEach(r => {
         if (!allowed.includes(r.responsable)) return;
         const destino = r.fecha >= todayStr ? vigente[centro] : anterior[centro];
-        destino.set(r.material, (destino.get(r.material) || 0) + r.peso);
+        destino.set(r.material, (destino.get(r.material) || 0) + r.cantUnidadReal);
       });
     };
 
@@ -1429,17 +1444,16 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return { vigente, anterior };
   }, [fertAuditAllUIO, fertAuditAllGYE, todayStr, allowedRespPorCentro]);
 
-  // Respuesta P3: stock disponible (Kg) por material y centro — último fallback de la cascada
-  // (FERT emparejado → Provisional → Stock), solo para materiales del universo P2 de ese centro que
-  // no calzaron con ninguna de las dos fuentes anteriores. Suma TODOS los almacenes de
-  // ALMACENES_STOCK_POR_CENTRO, no solo uno. Verificado contra datos reales: en los almacenes de
-  // espuma LIBREUTILIZACION viene en UNIDADES/piezas (valores enteros pequeños: 6, 40, 60, 313...),
-  // NO en Kg como en Corte y Laminado — se convierte igual que el peso de FERT: match en
-  // kpiLooperData si existe, o fórmula volumétrica (ancho×largo×espesor×densidad) si no (la mayoría
-  // de espuma no está en kpiLooperData).
-  // Mismo stock que stockKgPorMaterialPorCentro pero en UNIDADES (tal cual viene LIBREUTILIZACION,
-  // sin convertir a Kg) — lo necesita calcularFaltanteNecesidadPlanta, que trabaja en unidades
-  // porque la necesidad P2 (cantidad_produccion_neta) y el .cant de las órdenes están en unidades.
+  // Respuesta P3: stock disponible por material y centro, en UNIDADES (tal cual viene
+  // LIBREUTILIZACION) — último fallback de la cascada (FERT emparejado → Provisional → Stock), solo
+  // para materiales del universo P2 de ese centro que no calzaron con ninguna de las dos fuentes
+  // anteriores. Suma TODOS los almacenes de ALMACENES_STOCK_POR_CENTRO, no solo uno. Verificado
+  // contra datos reales: en los almacenes de espuma LIBREUTILIZACION viene en UNIDADES/piezas
+  // (valores enteros pequeños: 6, 40, 60, 313...), NO en Kg como en Corte y Laminado. También la usa
+  // calcularFaltanteNecesidadPlanta (Capacidad Operativa), que ya trabajaba en unidades. A diferencia
+  // de una versión Kg que existió acá (eliminada al mover Respuesta P3 a UN — ver
+  // respuestaSalidaRowsPorCentro), este mapa NO descarta materiales sin geometría/pesoUN calculable —
+  // un material con stock físico real pero descripción no parseable ahora sí cuenta como cobertura.
   const stockUnidadesPorMaterialPorCentro = useMemo(() => {
     const porCentro: Record<string, Map<string, number>> = { '1000': new Map(), '2000': new Map() };
     inventarioSAP.forEach(inv => {
@@ -1456,31 +1470,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     });
     return porCentro;
   }, [inventarioSAP, extractMaterialInfo]);
-
-  const stockKgPorMaterialPorCentro = useMemo(() => {
-    const porCentro: Record<string, Map<string, number>> = { '1000': new Map(), '2000': new Map() };
-    inventarioSAP.forEach(inv => {
-      const centro = String(getProp(inv, ['CENTRO', 'Centro', 'centro'])).trim();
-      const almacenesEsperados = ALMACENES_STOCK_POR_CENTRO[centro as '1000' | '2000'];
-      if (!almacenesEsperados) return;
-      const almacen = String(getProp(inv, ['ALMACEN', 'Almacen'])).trim();
-      if (!almacenesEsperados.includes(almacen)) return;
-
-      const unidades = safeNum(getProp(inv, ['LIBREUTILIZACION']));
-      if (unidades <= 0) return;
-
-      const info = extractMaterialInfo(inv);
-      if (!info.code) return;
-      const looperMatch = kpiLooperData.find(k => cleanCode(k.Material) === info.code);
-      const densVal = safeNum(info.dens);
-      const pesoUN = looperMatch ? safeNum(looperMatch.PesoUN) : (info.ancho * info.largo * info.esp * densVal) / 1000000;
-      if (pesoUN <= 0) return;
-
-      const map = porCentro[centro];
-      map.set(info.code, (map.get(info.code) || 0) + unidades * pesoUN);
-    });
-    return porCentro;
-  }, [inventarioSAP, kpiLooperData, extractMaterialInfo]);
 
   // Responsable de Control de Producción por material y centro, en CASCADA de fuentes. Antes solo
   // miraba el inventario del propio centro (CODRESPPROD) y eso dejaba materiales sin responsable, que
@@ -1549,7 +1538,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   // Descripción por material para la Respuesta P3 — en cascada de fuentes, de más a menos específica.
   // Antes solo leía de Provisionales/FERT auditados (provAuditUIO/GYE, fertAuditUIO/GYE), que son los
   // conjuntos YA filtrados por responsable+fecha — dejaba sin descripción a cualquier material que
-  // solo calzara vía fertAuditAllUIO/GYE (fuente real de fertKgPorMaterialPorCentro, sin ese filtro) o
+  // solo calzara vía fertAuditAllUIO/GYE (fuente real de fertUnPorMaterialPorCentro, sin ese filtro) o
   // vía Stock (inventarioSAP, sin ninguna orden). Verificado con datos reales: Muebles pasó de 0/80 a
   // 80/80 con descripción al sumar esas dos fuentes. Un material sin ninguna orden NI stock en ningún
   // centro queda sin descripción (limitación real, no hay maestro de materiales consultado aquí).
@@ -1756,6 +1745,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         ancho: info.ancho, largo: info.largo, esp: info.esp, dens: info.dens,
         cant: qty,
         peso: pesoUN * qty,
+        // El P2 siempre está en UN (convención ya establecida — Venta Externa/Muebles/Forros graban
+        // cantidad_produccion_neta en unidades, nunca Kg), así que no hace falta la corrección de
+        // unidadOrden que sí aplica en auditMapper (datos crudos de SAP).
+        cantUnidadReal: qty,
         alturaTotal: hTotal,
         subBloques,
         nroCargas,
@@ -1812,20 +1805,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     });
     return porCentro;
   }, [necesidadPFFNivel2Data]);
-
-  // Kg equivalentes de la necesidad P2 completa por material — último fallback de la Respuesta P3
-  // (ver respuestaSalidaRowsPorCentro) cuando FERT/Provisional/Stock no cubren nada todavía: en vez
-  // de responder 0 (Sin dato) y dejar el material sin ninguna orden generada, se usa el Kg que
-  // necesidadCapacidadUIO/GYE ya calculó (peso = pesoUN × cantidad, mismo criterio que Provisionales/
-  // FERT). Se suma por material porque un material puede repetirse en varias áreas/Plan Grupo P2.
-  const necesidadKgPorMaterialPorCentro = useMemo(() => {
-    const sumar = (rows: UnifiedRow[]) => {
-      const map = new Map<string, number>();
-      rows.forEach(r => map.set(r.material, (map.get(r.material) || 0) + r.peso));
-      return map;
-    };
-    return { '1000': sumar(necesidadCapacidadUIO), '2000': sumar(necesidadCapacidadGYE) } as Record<'1000' | '2000', Map<string, number>>;
-  }, [necesidadCapacidadUIO, necesidadCapacidadGYE]);
 
   // "Necesidades Planta" (P2) que todavía NO cubre ni el stock ni una orden provisional — la parte de
   // la demanda que aún no tiene con qué producirse y que, por lo tanto, sigue pesando en la capacidad.
@@ -1906,8 +1885,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   // "Necesidad P2" ya no hace falta: si nada cubre, el faltante ES la necesidad completa, que es
   // justamente lo que el PFD debe mandar a fabricar.
   // Peso por unidad (Kg/UN) por material — mismo criterio que ya usan Provisionales/FERT (looperMatch
-  // si existe, si no ancho×largo×espesor×densidad/1e6, ver línea ~1049) — reusado aquí para poder
-  // convertir cantidadKg de vuelta a UN antes de grabar (ver cantidadUnidades en RespuestaP3Row).
+  // si existe, si no ancho×largo×espesor×densidad/1e6, ver línea ~1049) — Respuesta P3 ya no lo usa
+  // para decidir cobertura (eso es en UN, ver respuestaSalidaRowsPorCentro), solo para el estimado de
+  // Kg informativo del badge de capacidad (faltanteKgEstimado en RespuestaP3Row).
   const pesoUNPorMaterial = useMemo(() => {
     const map = new Map<string, number>();
     materialDescMap.forEach((descripcion, material) => {
@@ -1923,37 +1903,38 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const respuestaSalidaRowsPorCentro = useCallback((centro: '1000' | '2000', esPFD: boolean = false): RespuestaP3Row[] => {
     const necesidadMap = materialNecesidadesPlantaMapPorCentro[centro];
     const origenesMap = materialOrigenesPlantaMapPorCentro[centro];
-    const provisionalMap = provisionalKgPorMaterialPorCentro[centro];
-    const fertMapVigente = fertKgPorMaterialPorCentro.vigente[centro];
-    const fertMapAnterior = fertKgPorMaterialPorCentro.anterior[centro];
-    const stockMap = stockKgPorMaterialPorCentro[centro];
-    const necesidadKgMap = necesidadKgPorMaterialPorCentro[centro];
+    const provisionalMap = provisionalUnPorMaterialPorCentro[centro];
+    const fertMapVigente = fertUnPorMaterialPorCentro.vigente[centro];
+    const fertMapAnterior = fertUnPorMaterialPorCentro.anterior[centro];
+    const stockMap = stockUnidadesPorMaterialPorCentro[centro];
 
     return Array.from(necesidadMap.keys())
       .filter(material => !esLaminadoCilindrico(materialDescMap.get(material) || ''))
       .map((material): RespuestaP3Row => {
-      const fertVigenteKg = fertMapVigente.get(material) || 0;   // FERT hacia adelante: cubre el P2 vigente
-      const fertAnteriorKg = fertMapAnterior.get(material) || 0; // FERT de hoy hacia atrás: ciclo ya ejecutado
-      const provisionalKg = provisionalMap.get(material) || 0;
-      const stockKg = stockMap.get(material) || 0;
-      const necesidadKg = necesidadKgMap?.get(material) || 0;
+      const fertVigente = fertMapVigente.get(material) || 0;   // FERT hacia adelante: cubre el P2 vigente
+      const fertAnterior = fertMapAnterior.get(material) || 0; // FERT de hoy hacia atrás: ciclo ya ejecutado
+      const provisional = provisionalMap.get(material) || 0;
+      const stock = stockMap.get(material) || 0;
+      const necesidad = necesidadMap.get(material) || 0;
 
-      const disponibleKg = stockKg + provisionalKg + fertVigenteKg;
-      const cubiertoKg = Math.min(necesidadKg, disponibleKg);
-      const faltanteKg = Math.max(0, necesidadKg - disponibleKg);
-      const cantidadKg = esPFD ? faltanteKg : cubiertoKg;
+      const disponible = stock + provisional + fertVigente;
+      const cubierto = Math.min(necesidad, disponible);
+      const faltante = Math.max(0, necesidad - disponible);
+      const cantidadUnidades = esPFD ? faltante : cubierto;
+      // Kg SOLO informativo (badge de capacidad/peso) — no decide cobertura ni estado. Puede dar 0
+      // para materiales sin geometría parseable aunque su faltante real (en UN) sea mayor que cero.
       const pesoUN = pesoUNPorMaterial.get(material) || 0;
-      const cantidadUnidades = pesoUN > 0 ? cantidadKg / pesoUN : 0;
+      const faltanteKgEstimado = faltante * pesoUN;
 
       let fuente: FuenteRespuestaP3;
-      if (necesidadKg <= 0) fuente = 'Sin dato';
-      else if (esPFD) fuente = faltanteKg > 0 ? 'Producir' : 'Cubierto';
-      else if (cubiertoKg <= 0) fuente = 'Sin cobertura';
+      if (necesidad <= 0) fuente = 'Sin dato';
+      else if (esPFD) fuente = faltante > 0 ? 'Producir' : 'Cubierto';
+      else if (cubierto <= 0) fuente = 'Sin cobertura';
       else {
         const partes = [
-          stockKg > 0 ? 'Stock' : null,
-          provisionalKg > 0 ? 'Provisional' : null,
-          fertVigenteKg > 0 ? 'FERT' : null,
+          stock > 0 ? 'Stock' : null,
+          provisional > 0 ? 'Provisional' : null,
+          fertVigente > 0 ? 'FERT' : null,
         ].filter(Boolean);
         fuente = (partes.length > 1 ? partes.join(' + ') : partes[0]) as FuenteRespuestaP3;
       }
@@ -1965,16 +1946,16 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       return {
         material,
         descripcion: materialDescMap.get(material) || '—',
-        tienePlan: cantidadKg > 0,
-        cantidadKg,
+        tienePlan: cantidadUnidades > 0,
         cantidadUnidades,
-        necesidadKg,
-        stockKg,
-        provisionalKg,
-        fertVigenteKg,
-        fertAnteriorKg,
-        cubiertoKg,
-        faltanteKg,
+        necesidad,
+        stock,
+        provisional,
+        fertVigente,
+        fertAnterior,
+        cubierto,
+        faltante,
+        faltanteKgEstimado,
         origenes,
         fuente
       };
@@ -1982,32 +1963,34 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     // muestra solo los "Sin dato" y da la falsa impresión de que todo devuelve 0 — caso real: 148 de
     // 182 materiales sí tenían respuesta, pero quedaban ocultos tras hacer scroll).
     }).sort((a, b) => Number(b.tienePlan) - Number(a.tienePlan));
-  }, [materialNecesidadesPlantaMapPorCentro, materialOrigenesPlantaMapPorCentro, provisionalKgPorMaterialPorCentro, fertKgPorMaterialPorCentro, stockKgPorMaterialPorCentro, necesidadKgPorMaterialPorCentro, materialDescMap, pesoUNPorMaterial]);
+  }, [materialNecesidadesPlantaMapPorCentro, materialOrigenesPlantaMapPorCentro, provisionalUnPorMaterialPorCentro, fertUnPorMaterialPorCentro, stockUnidadesPorMaterialPorCentro, materialDescMap, pesoUNPorMaterial]);
 
-  // Reparte cantidadKg de un material entre sus planes P2 origen, proporcional a la necesidad que
-  // cada uno aportó — mismo criterio que getOrigenesProrrateo de Corte y Laminado, pero SIN redondeo a
-  // "rollo" (Espuma no tiene esa unidad física; se redondea a Kg entero). Si no hay origen registrado
-  // EN ABSOLUTO, referencia el propio plan P3 recién creado como fallback — un origen SÍ registrado
-  // pero con necesidad 0 es un origen real y no debe caer en este fallback (mismo bug corregido en
-  // getOrigenesProrrateo de Corte y Laminado: auto-referenciar el P3 en vez del P2 real).
-  const getOrigenesProrrateoEspuma = useCallback((material: string, cantidadKg: number, centro: '1000' | '2000', fallbackCodigoPlanGrupo: number) => {
+  // Reparte `cantidad` (en UNIDADES) de un material entre sus planes P2 origen, proporcional a la
+  // necesidad que cada uno aportó — mismo criterio que getOrigenesProrrateo de Corte y Laminado, pero
+  // SIN redondeo a "rollo" (Espuma no tiene esa unidad física; se redondea a unidad entera). Si no hay
+  // origen registrado EN ABSOLUTO, referencia el propio plan P3 recién creado como fallback — un
+  // origen SÍ registrado pero con necesidad 0 es un origen real y no debe caer en este fallback (mismo
+  // bug corregido en getOrigenesProrrateo de Corte y Laminado: auto-referenciar el P3 en vez del P2
+  // real). El nombre del campo/parámetro ya no dice "Kg" — desde el fix de Respuesta P3 en UN, esta
+  // función siempre recibe y devuelve unidades, nunca kilogramos.
+  const getOrigenesProrrateoEspuma = useCallback((material: string, cantidad: number, centro: '1000' | '2000', fallbackCodigoPlanGrupo: number) => {
     const origenes = materialOrigenesPlantaMapPorCentro[centro].get(material);
     if (!origenes || origenes.size === 0) {
-      return [{ codigoPadre: fallbackCodigoPlanGrupo, cantidadKg: Math.round(cantidadKg) }];
+      return [{ codigoPadre: fallbackCodigoPlanGrupo, cantidad: Math.round(cantidad) }];
     }
-    if (cantidadKg <= 0) {
-      return Array.from(origenes.keys()).map(codigoPadre => ({ codigoPadre, cantidadKg: 0 }));
+    if (cantidad <= 0) {
+      return Array.from(origenes.keys()).map(codigoPadre => ({ codigoPadre, cantidad: 0 }));
     }
     const entradas = Array.from(origenes.entries());
     const totalOrigen = entradas.reduce((s, [, v]) => s + v, 0);
     // Todos los orígenes registrados pidieron 0: se asigna completo al primero en vez de
     // auto-referenciar el P3 recién creado.
     if (totalOrigen <= 0) {
-      return entradas.map(([codigoPadre], i) => ({ codigoPadre, cantidadKg: i === 0 ? Math.round(cantidadKg) : 0 }));
+      return entradas.map(([codigoPadre], i) => ({ codigoPadre, cantidad: i === 0 ? Math.round(cantidad) : 0 }));
     }
-    return entradas.map(([codigoPadre, cantidad]) => ({
+    return entradas.map(([codigoPadre, pesoOrigen]) => ({
       codigoPadre,
-      cantidadKg: Math.round(cantidadKg * (cantidad / totalOrigen))
+      cantidad: Math.round(cantidad * (pesoOrigen / totalOrigen))
     }));
   }, [materialOrigenesPlantaMapPorCentro]);
 
@@ -2680,7 +2663,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           codigo_detalle_tactico: existente?.codigo_detalle_tactico ?? 0,
           material: row.material,
           descripcion: row.descripcion,
-          cantidad: split.cantidadKg,
+          cantidad: split.cantidad,
           marcadoEliminar: false,
           esNuevo: !existente,
           codigo_plan_grupo_padre: split.codigoPadre,
@@ -2822,12 +2805,12 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     if (!needRow) return;
     const splits = getOrigenesProrrateoEspuma(needRow.material, needRow.cantidadUnidades, editPlanPreview.centro, editPlanPreview.codigo_plan_grupo);
     const nuevasFilas: EditableDetalleRowEspuma[] = splits
-      .filter(split => split.cantidadKg > 0)
+      .filter(split => split.cantidad > 0)
       .map(split => ({
         codigo_detalle_tactico: 0,
         material: needRow.material,
         descripcion: needRow.descripcion,
-        cantidad: split.cantidadKg,
+        cantidad: split.cantidad,
         marcadoEliminar: false,
         esNuevo: true,
         codigo_plan_grupo_padre: split.codigoPadre,
@@ -2933,16 +2916,16 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           let fallidos = 0;
 
           for (const row of preview.rows) {
-            // row.cantidadUnidades (no cantidadKg): el P2 que se responde pide y registra en UN, no
-            // en Kg — grabar Kg producía comparaciones falsas contra el P2 en Venta Externa/Muebles/
-            // Prensado (ver cantidadUnidades en RespuestaP3Row).
+            // row.cantidadUnidades: el P2 que se responde pide y registra en UN — Respuesta P3 ya
+            // compara/calcula todo en UN (ver respuestaSalidaRowsPorCentro), sin conversión Kg de por
+            // medio.
             const splits = getOrigenesProrrateoEspuma(row.material, row.cantidadUnidades, preview.centro, nuevoCodigoPlanGrupo);
             for (const split of splits) {
               try {
                 const detallePayload = {
                   codigo_detalle_tactico: 0,
                   codigo_material: Number(row.material),
-                  cantidad_produccion_neta: Math.round(split.cantidadKg).toFixed(0),
+                  cantidad_produccion_neta: Math.round(split.cantidad).toFixed(0),
                   resp_ctrl_prod: '',
                   clase_aprovisionamiento: 'E',
                   cantidad_aprovisionamiento: 0,
@@ -3063,16 +3046,16 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           let fallidos = 0;
 
           for (const row of preview.rows) {
-            // row.cantidadUnidades (no cantidadKg): el P2 que se responde pide y registra en UN, no
-            // en Kg — grabar Kg producía comparaciones falsas contra el P2 en Venta Externa/Muebles/
-            // Prensado (ver cantidadUnidades en RespuestaP3Row).
+            // row.cantidadUnidades: el P2 que se responde pide y registra en UN — Respuesta P3 ya
+            // compara/calcula todo en UN (ver respuestaSalidaRowsPorCentro), sin conversión Kg de por
+            // medio.
             const splits = getOrigenesProrrateoEspuma(row.material, row.cantidadUnidades, preview.centro, nuevoCodigoPlanGrupo);
             for (const split of splits) {
               try {
                 const detallePayload = {
                   codigo_detalle_tactico: 0,
                   codigo_material: Number(row.material),
-                  cantidad_produccion_neta: Math.round(split.cantidadKg).toFixed(0),
+                  cantidad_produccion_neta: Math.round(split.cantidad).toFixed(0),
                   resp_ctrl_prod: '',
                   clase_aprovisionamiento: 'E',
                   cantidad_aprovisionamiento: 0,
@@ -4375,14 +4358,14 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               const rows = respuestaSalidaRowsPorCentro(centro);
               const nombrePlanta = centro === '1000' ? 'UIO' : 'GYE';
               const conDato = rows.filter(r => r.tienePlan).length;
-              // "Sin dato" (necesidadKg <= 0: el material no trae necesidad real este ciclo, no que
+              // "Sin dato" (necesidad <= 0: el material no trae necesidad real este ciclo, no que
               // le falte cobertura) se cuenta APARTE de "Sin Cobertura" — antes se sumaba junto y el
               // badge rojo "X sin cobertura" incluía materiales sin necesidad alguna, sobreestimando
               // el problema real. Ver comentario en FuenteRespuestaP3 ('Sin dato') y el Estado por fila.
               const sinNecesidad = rows.filter(r => r.fuente === 'Sin dato').length;
               const sinCoberturaReal = rows.length - conDato - sinNecesidad;
-              const totalFaltanteKg = rows.reduce((s, r) => s + r.faltanteKg, 0);
-              const materialesAProducir = rows.filter(r => r.faltanteKg > 0).length;
+              const totalFaltanteKg = rows.reduce((s, r) => s + r.faltanteKgEstimado, 0);
+              const materialesAProducir = rows.filter(r => r.faltante > 0).length;
               return (
                 <div key={centro} className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
                   <div className="flex items-center justify-between px-6 py-4 bg-gray-50 border-b border-gray-100">
@@ -4391,7 +4374,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                       <span className="text-[9px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 rounded-full px-3 py-1">{conDato} con cobertura</span>
                       <span className="text-[9px] font-black uppercase tracking-wider bg-red-50 text-red-600 rounded-full px-3 py-1">{sinCoberturaReal} sin cobertura</span>
                       {sinNecesidad > 0 && (
-                        <span className="text-[9px] font-black uppercase tracking-wider bg-slate-100 text-slate-500 rounded-full px-3 py-1" title="Materiales de Necesidades Planta cuya cantidad no se pudo convertir a Kg (sin geometría/peso calculable) — no es que falte cobertura, es que no hay necesidad real que evaluar este ciclo.">{sinNecesidad} sin necesidad</span>
+                        <span className="text-[9px] font-black uppercase tracking-wider bg-slate-100 text-slate-500 rounded-full px-3 py-1" title="Materiales sin ninguna cantidad real en la Necesidad P2 este ciclo — no es que falte cobertura, es que no hay necesidad que evaluar.">{sinNecesidad} sin necesidad</span>
                       )}
                       <span className="text-[9px] font-black uppercase tracking-wider bg-orange-50 text-orange-700 rounded-full px-3 py-1" title="Necesidad P2 que ni el stock ni las órdenes provisionales cubren — es lo que el PFD manda a fabricar.">Faltante: {formatKg(totalFaltanteKg)} Kg · {materialesAProducir} mat.</span>
                     </h3>
@@ -4429,12 +4412,12 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                         <tr>
                           <th className="px-4 py-3 border-r border-gray-100 text-left">Material</th>
                           <th className="px-4 py-3 border-r border-gray-100 text-left">Descripción</th>
-                          <th className="px-4 py-3 border-r border-gray-100">Necesidad P2 (Kg)</th>
+                          <th className="px-4 py-3 border-r border-gray-100">Necesidad P2 (UN)</th>
                           <th className="px-4 py-3 border-r border-gray-100 bg-amber-50/40 text-amber-700">Stock</th>
                           <th className="px-4 py-3 border-r border-gray-100 bg-sky-50/40 text-sky-700">Provisional</th>
                           <th className="px-4 py-3 border-r border-gray-100 bg-indigo-50/40 text-indigo-700" title="Órdenes FERT programadas hacia adelante (fecha posterior a hoy): son las provisionales ya convertidas que responden al P2 vigente. SÍ cuentan como cobertura.">FERT vigente</th>
-                          <th className="px-4 py-3 border-r border-gray-100 font-black bg-yellow-50/50 text-yellow-700">Cubierto (Kg)</th>
-                          <th className="px-4 py-3 border-r border-gray-100 bg-orange-50/40 text-orange-700">Faltante (Kg)</th>
+                          <th className="px-4 py-3 border-r border-gray-100 font-black bg-yellow-50/50 text-yellow-700">Cubierto (UN)</th>
+                          <th className="px-4 py-3 border-r border-gray-100 bg-orange-50/40 text-orange-700">Faltante (UN)</th>
                           <th className="px-4 py-3 border-r border-gray-100 bg-slate-50/40 text-slate-500" title="Órdenes FERT programadas de hoy hacia atrás: pertenecen a un ciclo de P2 ya ejecutado. NO cubren este P2; se muestran como referencia y alimentan la carga en curso de Capacidad Operativa.">FERT ciclo anterior</th>
                           <th className="px-4 py-3 border-r border-gray-100">Fuente</th>
                           <th className="px-4 py-3 border-r border-gray-100">Estado</th>
@@ -4448,13 +4431,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                           <tr key={idx} className="hover:bg-gray-50/50 transition-colors font-mono text-[10px]">
                             <td className="px-4 py-3 border-r border-slate-50 text-left text-indigo-600 font-black">{row.material}</td>
                             <td className="px-4 py-3 border-r border-slate-50 text-left font-sans normal-case">{row.descripcion}</td>
-                            <td className="px-4 py-3 border-r border-slate-50 text-slate-500">{formatKg(row.necesidadKg)}</td>
-                            <td className="px-4 py-3 border-r border-slate-50 text-amber-700 bg-amber-50/20">{formatKg(row.stockKg)}</td>
-                            <td className="px-4 py-3 border-r border-slate-50 text-sky-700 bg-sky-50/20">{formatKg(row.provisionalKg)}</td>
-                            <td className="px-4 py-3 border-r border-slate-50 text-indigo-700 bg-indigo-50/20">{formatKg(row.fertVigenteKg)}</td>
-                            <td className="px-4 py-3 border-r border-slate-50 text-slate-900 font-black bg-yellow-50">{formatKg(row.cubiertoKg)}</td>
-                            <td className={cn("px-4 py-3 border-r border-slate-50 font-black bg-orange-50/20", row.faltanteKg > 0 ? "text-orange-700" : "text-slate-300")}>{formatKg(row.faltanteKg)}</td>
-                            <td className="px-4 py-3 border-r border-slate-50 text-slate-500 bg-slate-50/20">{row.fertAnteriorKg > 0 ? formatKg(row.fertAnteriorKg) : '—'}</td>
+                            <td className="px-4 py-3 border-r border-slate-50 text-slate-500">{formatNum(row.necesidad, 0)}</td>
+                            <td className="px-4 py-3 border-r border-slate-50 text-amber-700 bg-amber-50/20">{formatNum(row.stock, 0)}</td>
+                            <td className="px-4 py-3 border-r border-slate-50 text-sky-700 bg-sky-50/20">{formatNum(row.provisional, 0)}</td>
+                            <td className="px-4 py-3 border-r border-slate-50 text-indigo-700 bg-indigo-50/20">{formatNum(row.fertVigente, 0)}</td>
+                            <td className="px-4 py-3 border-r border-slate-50 text-slate-900 font-black bg-yellow-50">{formatNum(row.cubierto, 0)}</td>
+                            <td className={cn("px-4 py-3 border-r border-slate-50 font-black bg-orange-50/20", row.faltante > 0 ? "text-orange-700" : "text-slate-300")}>{formatNum(row.faltante, 0)}</td>
+                            <td className="px-4 py-3 border-r border-slate-50 text-slate-500 bg-slate-50/20">{row.fertAnterior > 0 ? formatNum(row.fertAnterior, 0) : '—'}</td>
                             <td className="px-4 py-3 border-r border-slate-50">
                               <Badge
                                 className={cn(
@@ -4634,11 +4617,11 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                           {preview.rows.map((row, i) => (
                             <tr key={i}>
                               <td className="px-3 py-2 text-left font-mono">{row.material}</td>
-                              <td className="px-3 py-2 text-right font-mono text-slate-400">{formatKg(row.necesidadKg)}</td>
-                              <td className="px-3 py-2 text-right font-mono text-amber-700">{formatKg(row.stockKg)}</td>
-                              <td className="px-3 py-2 text-right font-mono text-sky-700">{formatKg(row.provisionalKg)}</td>
-                              <td className="px-3 py-2 text-right font-mono font-black bg-yellow-50">{formatKg(row.cantidadKg)}</td>
-                              <td className={cn("px-3 py-2 text-right font-mono", row.faltanteKg > 0 ? "text-orange-700 font-black" : "text-slate-300")}>{formatKg(row.faltanteKg)}</td>
+                              <td className="px-3 py-2 text-right font-mono text-slate-400">{formatNum(row.necesidad, 0)}</td>
+                              <td className="px-3 py-2 text-right font-mono text-amber-700">{formatNum(row.stock, 0)}</td>
+                              <td className="px-3 py-2 text-right font-mono text-sky-700">{formatNum(row.provisional, 0)}</td>
+                              <td className="px-3 py-2 text-right font-mono font-black bg-yellow-50">{formatNum(row.cantidadUnidades, 0)}</td>
+                              <td className={cn("px-3 py-2 text-right font-mono", row.faltante > 0 ? "text-orange-700 font-black" : "text-slate-300")}>{formatNum(row.faltante, 0)}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -4693,9 +4676,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                           {preview.rows.map((row, i) => (
                             <tr key={i}>
                               <td className="px-3 py-2 text-left font-mono">{row.material}</td>
-                              <td className="px-3 py-2 text-right font-mono text-slate-400">{formatKg(row.necesidadKg)}</td>
-                              <td className="px-3 py-2 text-right font-mono text-slate-500">{formatKg(row.cubiertoKg)}</td>
-                              <td className={cn("px-3 py-2 text-right font-mono font-black bg-orange-50/40", row.cantidadKg > 0 ? "text-orange-700" : "text-slate-300")}>{formatKg(row.cantidadKg)}</td>
+                              <td className="px-3 py-2 text-right font-mono text-slate-400">{formatNum(row.necesidad, 0)}</td>
+                              <td className="px-3 py-2 text-right font-mono text-slate-500">{formatNum(row.cubierto, 0)}</td>
+                              <td className={cn("px-3 py-2 text-right font-mono font-black bg-orange-50/40", row.cantidadUnidades > 0 ? "text-orange-700" : "text-slate-300")}>{formatNum(row.cantidadUnidades, 0)}</td>
                               <td className="px-3 py-2 text-left">
                                 <Badge
                                   className={cn(
