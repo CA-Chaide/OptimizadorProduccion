@@ -55,7 +55,7 @@ interface DataAprobadaRow {
 }
 
 // Misma regla que ya usaba el JSX de "Data Aprobada" inline, subida a función compartida para que
-// "PFD - VENTA" (calcularPfdVenta) no la duplique.
+// "PFD - VENTA" (generarPfdVentaPreview) no la duplique.
 const estadoDataAprobada = (row: DataAprobadaRow): 'pendiente' | 'parcial' | 'completo' =>
   row.respuestaCant <= 0 ? 'pendiente' : row.respuestaCant >= row.cantidad ? 'completo' : 'parcial';
 
@@ -174,10 +174,6 @@ interface SnapshotVentaExterna {
   necesidadEspumas2000: NecesidadMaterial[];
   necesidadRollos1000: NecesidadMaterial[];
   necesidadRollos2000: NecesidadMaterial[];
-  // Trazabilidad inversa componente -> FERT/PT, side-output de la misma explosión de arriba — ver
-  // "PFD - VENTA"/calcularPfdVenta.
-  trazabilidadPT1000: Record<string, string[]>;
-  trazabilidadPT2000: Record<string, string[]>;
 }
 
 export const TacticalPlanVentaExternaSection: React.FC = () => {
@@ -246,10 +242,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const [necesidadEspumas2000, setNecesidadEspumas2000] = useState<NecesidadMaterial[]>([]);
   const [necesidadRollos1000, setNecesidadRollos1000] = useState<NecesidadMaterial[]>([]);
   const [necesidadRollos2000, setNecesidadRollos2000] = useState<NecesidadMaterial[]>([]);
-  // Trazabilidad inversa componente -> FERT/PT (solo Espumas, ver "PFD - VENTA"/calcularPfdVenta) —
-  // side-output de explodeNecesidadesFert, se recalcula junto con la Necesidad P2.
-  const [trazabilidadPT1000, setTrazabilidadPT1000] = useState<Record<string, string[]>>({});
-  const [trazabilidadPT2000, setTrazabilidadPT2000] = useState<Record<string, string[]>>({});
   const [isExplodingBom, setIsExplodingBom] = useState(false);
   const [bomProgress, setBomProgress] = useState({ current: 0, total: 0 });
   // Diagnóstico de la última corrida de "Calcular Necesidad": qué FERT llegaron a explotarse
@@ -259,10 +251,17 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const [savingPlanP2, setSavingPlanP2] = useState<Record<string, boolean>>({});
   const [planP2Generado, setPlanP2Generado] = useState<Record<string, number>>({});
   const [isSavingAllPlanP2, setIsSavingAllPlanP2] = useState(false);
-  // "PFD - VENTA": vista previa (calcularPfdVenta, en memoria, no se cachea entre navegaciones porque
-  // se recalcula al instante desde dataAprobada/trazabilidadPT — ver sección al final del tab "Data
-  // Aprobada") y estado de guardado por centro.
+  // "PFD - VENTA": vista previa (generarPfdVentaPreview, en memoria, no se cachea entre navegaciones —
+  // se recalcula desde cero cada vez que se pulsa "Generar PFD-VENTA", con su propia explosión BOM
+  // fresca, ver sección al final del tab "Data Aprobada") y estado de guardado por centro. No depende
+  // de haber corrido "Generar Necesidades · BOM FERT" antes — antes sí dependía de un estado
+  // (`trazabilidadPT1000/2000`) que solo se llenaba ahí, y si el usuario ya estaba viendo Data
+  // Aprobada actualizada sin haber vuelto a pasar por ese botón en la misma sesión, PFD-VENTA no
+  // encontraba trazabilidad para nada (reportado por el usuario con datos reales) — ver
+  // generarPfdVentaPreview.
   const [pfdVentaPreview, setPfdVentaPreview] = useState<Record<string, PfdVentaPreview>>({});
+  const [isGeneratingPfdVenta, setIsGeneratingPfdVenta] = useState<Record<string, boolean>>({});
+  const [pfdVentaBomProgress, setPfdVentaBomProgress] = useState<Record<string, { current: number; total: number }>>({});
   const [savingPfdVenta, setSavingPfdVenta] = useState<Record<string, boolean>>({});
   const [pfdVentaGenerado, setPfdVentaGenerado] = useState<Record<string, number>>({});
   const [expandedPfdVenta, setExpandedPfdVenta] = useState<Record<string, string[]>>({});
@@ -381,8 +380,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
         necesidadEspumas2000,
         necesidadRollos1000,
         necesidadRollos2000,
-        trazabilidadPT1000,
-        trazabilidadPT2000,
       });
       // No se llama handleCalcularNecesidadRollos() directo acá: leería fertC1000ParaP2/
       // fertC2000ParaP2 (useMemo derivados del estado que se acaba de actualizar arriba) por closure
@@ -392,7 +389,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [dataAprobada, necesidadEspumas1000, necesidadEspumas2000, necesidadRollos1000, necesidadRollos2000, trazabilidadPT1000, trazabilidadPT2000]);
+  }, [dataAprobada, necesidadEspumas1000, necesidadEspumas2000, necesidadRollos1000, necesidadRollos2000]);
 
   // Rehidratación: si ya se había sincronizado en esta sesión, se recupera lo trabajado en vez de
   // dejar el módulo vacío al volver de otro módulo (ver @/lib/cache-modulos). Incluye Data Aprobada
@@ -413,8 +410,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       setNecesidadEspumas2000(snap.necesidadEspumas2000 || []);
       setNecesidadRollos1000(snap.necesidadRollos1000 || []);
       setNecesidadRollos2000(snap.necesidadRollos2000 || []);
-      setTrazabilidadPT1000(snap.trazabilidadPT1000 || {});
-      setTrazabilidadPT2000(snap.trazabilidadPT2000 || {});
       setDatosCargados(true);
     }
   }, [mounted]);
@@ -763,7 +758,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     // del MISMO BOM walk forward de acá abajo, sin llamadas SAP nuevas. Se usa para, desde un
     // componente YA RESPONDIDO por Corte Espuma/Laminado (Data Aprobada), subir de nivel hacia el
     // FERT/PT que depende de él — dirección opuesta a la de esta función (que baja de FERT a
-    // componente) — ver calcularPfdVenta.
+    // componente) — ver generarPfdVentaPreview.
     const trazabilidadMap = new Map<string, Set<string>>();
     // Diagnóstico: distingue, para cada Provisional que SÍ llegó hasta acá (ya pasó centro +
     // restricciones + fecha), entre "la consulta BOM falló" (conError) y "la consulta respondió pero
@@ -818,7 +813,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
             // no es el mismo componente que se está respondiendo — verificado observando el flujo:
             // aceptar cualquier nivel devolvía relaciones incorrectas. Un componente sin match en
             // nivel 1 simplemente no obtiene entrada en `trazabilidadMap` y cae en "Sin trazabilidad"
-            // en calcularPfdVenta, en vez de generar una relación falsa.
+            // en generarPfdVentaPreview, en vez de generar una relación falsa.
             const nivel = Number(row.NIVEL ?? row.Nivel);
             if (nivel === 1) {
               if (!trazabilidadMap.has(compCode)) trazabilidadMap.set(compCode, new Set());
@@ -866,8 +861,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
       setNecesidadEspumas2000(n2000.espumas);
       setNecesidadRollos1000(n1000.rollos);
       setNecesidadRollos2000(n2000.rollos);
-      setTrazabilidadPT1000(n1000.trazabilidad);
-      setTrazabilidadPT2000(n2000.trazabilidad);
       // Mantiene el snapshot en sync — si el usuario navega a otro modulo y vuelve, esta tabla ya no
       // aparece vacia (ver SnapshotVentaExterna). No-op si todavia no se sincronizo ningun dato base.
       actualizarEnCache<SnapshotVentaExterna>(CACHE_VENTA_EXTERNA, {
@@ -875,8 +868,6 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
         necesidadEspumas2000: n2000.espumas,
         necesidadRollos1000: n1000.rollos,
         necesidadRollos2000: n2000.rollos,
-        trazabilidadPT1000: n1000.trazabilidad,
-        trazabilidadPT2000: n2000.trazabilidad,
       });
 
       const sinMatch = [...n1000.sinMatch, ...n2000.sinMatch];
@@ -1166,7 +1157,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   // así que el riesgo real es bajo, pero se evita igual) y cada línea de DetalleTactico graba
   // codigo_plan_grupo_padre = el P2 activo del que se deriva (a diferencia del P2, que no se
   // auto-referencia — ver el comentario en generarPlanP2Core). Requiere haber generado la vista previa
-  // primero (pfdVentaPreview, ver calcularPfdVenta) — solo Espumas, un plan por centro.
+  // primero (pfdVentaPreview, ver generarPfdVentaPreview) — solo Espumas, un plan por centro.
   const guardarPfdVentaCore = useCallback(async (centro: '1000' | '2000'): Promise<ResultadoGeneracionP2> => {
     const tipo = 'ESPUMAS' as const;
     const key = `PFD-${centro}`;
@@ -1471,45 +1462,71 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
 
   // "PFD - VENTA": dirección OPUESTA a explodeNecesidadesFert — en vez de bajar de FERT/PT a
   // componente, sube desde el componente YA RESPONDIDO (Data Aprobada, estado 'completo') hacia su(s)
-  // FERT/PT padre (trazabilidadPT1000/2000, side-output de la misma explosión BOM de la Necesidad P2 —
-  // sin llamadas SAP nuevas). Solo Espumas: Rollos no tiene Data Aprobada con datos reales hoy (las
-  // corridas se aplazan a propósito hasta resolver stock, ver captura real de esta sesión).
-  const calcularPfdVenta = (centro: '1000' | '2000') => {
+  // FERT/PT padre. La trazabilidad (componente -> FERT/PT) se calcula FRESCA acá mismo, en cada clic
+  // de "Generar PFD-VENTA" (explota fertC1000ParaP2/fertC2000ParaP2, los mismos candidatos que ya
+  // generaron el P2 — sin datos nuevos, solo se vuelve a recorrer su BOM) — antes se guardaba en un
+  // estado aparte (trazabilidadPT1000/2000) que solo se llenaba al pulsar "Generar Necesidades · BOM
+  // FERT" en otro punto del módulo: si Data Aprobada ya estaba actualizada sin haber vuelto a pasar
+  // por ese botón en la misma sesión del navegador, PFD-VENTA no encontraba trazabilidad para NADA
+  // (reportado por el usuario con datos reales) — recalcularla acá elimina esa dependencia oculta.
+  // Solo Espumas: Rollos no tiene Data Aprobada con datos reales hoy (las corridas se aplazan a
+  // propósito hasta resolver stock, ver captura real de esta sesión).
+  const generarPfdVentaPreview = async (centro: '1000' | '2000') => {
     const rows = dataAprobada[`${centro}-ESPUMAS`] || [];
-    const trazabilidad = centro === '1000' ? trazabilidadPT1000 : trazabilidadPT2000;
     const fertOrigen = centro === '1000' ? fertC1000ParaP2 : fertC2000ParaP2;
+    if (fertOrigen.length === 0) {
+      addNotification('warning', `No hay Órdenes FERT cargadas para el Centro ${centro} — sincroniza y elige una "Ventana de Producción" primero.`);
+      return;
+    }
 
-    const ptCubiertos = new Set<string>();
-    const sinTrazabilidad: DataAprobadaRow[] = [];
+    setIsGeneratingPfdVenta(prev => ({ ...prev, [centro]: true }));
+    const uniqueMaterialCount = new Set(fertOrigen.map(o => extractMaterialInfo(o).code).filter(Boolean)).size;
+    setPfdVentaBomProgress(prev => ({ ...prev, [centro]: { current: 0, total: uniqueMaterialCount } }));
+    let current = 0;
+    const onStep = () => setPfdVentaBomProgress(prev => ({ ...prev, [centro]: { current: ++current, total: uniqueMaterialCount } }));
 
-    rows.filter(r => estadoDataAprobada(r) === 'completo').forEach(r => {
-      const padres = trazabilidad[r.material];
-      if (!padres || padres.length === 0) { sinTrazabilidad.push(r); return; }
-      padres.forEach(pt => ptCubiertos.add(pt));
-    });
+    try {
+      const { trazabilidad } = await explodeNecesidadesFert(centro, fertOrigen, onStep);
 
-    // "si existe varios FERT con el mismo HALB, es simple la suma" -> calculateSummary ya agrupa por
-    // material/categoría sumando CANTPROGRAMADA de todas las órdenes que compartan código.
-    const fertCubierto = fertOrigen.filter(o => ptCubiertos.has(cleanCode(o.MATERIAL)));
+      const ptCubiertos = new Set<string>();
+      const sinTrazabilidad: DataAprobadaRow[] = [];
 
-    // Lista plana por material (para el guardado — el `resumen` de arriba agrupa por
-    // máquina|categoría|espesor|tipo, no por código de material, así que no sirve directo para armar
-    // las líneas de DetalleTactico).
-    const porMaterial = new Map<string, NecesidadMaterial>();
-    fertCubierto.forEach(o => {
-      const info = extractMaterialInfo(o);
-      if (!info.code) return;
-      const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
-      if (!porMaterial.has(info.code)) porMaterial.set(info.code, { material: info.code, descripcion: info.desc, cantidad: 0 });
-      porMaterial.get(info.code)!.cantidad += qty;
-    });
+      rows.filter(r => estadoDataAprobada(r) === 'completo').forEach(r => {
+        const padres = trazabilidad[r.material];
+        if (!padres || padres.length === 0) { sinTrazabilidad.push(r); return; }
+        padres.forEach(pt => ptCubiertos.add(pt));
+      });
 
-    return {
-      resumen: groupByCategoria(calculateSummary(fertCubierto, centro)),
-      sinTrazabilidad,
-      ptCubiertos,
-      lineas: Array.from(porMaterial.values()).sort((a, b) => a.material.localeCompare(b.material)),
-    };
+      // "si existe varios FERT con el mismo HALB, es simple la suma" -> calculateSummary ya agrupa por
+      // material/categoría sumando CANTPROGRAMADA de todas las órdenes que compartan código.
+      const fertCubierto = fertOrigen.filter(o => ptCubiertos.has(cleanCode(o.MATERIAL)));
+
+      // Lista plana por material (para el guardado — el `resumen` de arriba agrupa por
+      // máquina|categoría|espesor|tipo, no por código de material, así que no sirve directo para
+      // armar las líneas de DetalleTactico).
+      const porMaterial = new Map<string, NecesidadMaterial>();
+      fertCubierto.forEach(o => {
+        const info = extractMaterialInfo(o);
+        if (!info.code) return;
+        const qty = Number(o.CANTPROGRAMADA || o.CANTIDAD || 0);
+        if (!porMaterial.has(info.code)) porMaterial.set(info.code, { material: info.code, descripcion: info.desc, cantidad: 0 });
+        porMaterial.get(info.code)!.cantidad += qty;
+      });
+
+      setPfdVentaPreview(prev => ({
+        ...prev,
+        [centro]: {
+          resumen: groupByCategoria(calculateSummary(fertCubierto, centro)),
+          sinTrazabilidad,
+          ptCubiertos,
+          lineas: Array.from(porMaterial.values()).sort((a, b) => a.material.localeCompare(b.material)),
+        },
+      }));
+    } catch (error) {
+      addNotification('error', `Error al generar PFD-VENTA Centro ${centro}: ${(error as Error).message}`);
+    } finally {
+      setIsGeneratingPfdVenta(prev => ({ ...prev, [centro]: false }));
+    }
   };
 
   // Totales globales para el dashboard superior
@@ -2278,7 +2295,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
 
           {/* "PFD - VENTA": sube desde el componente YA RESPONDIDO (estado "completo" arriba) hacia su
               FERT/PT padre — dirección opuesta a como se explota el BOM para generar la Necesidad P2
-              (ver calcularPfdVenta). Solo Espumas: Rollos no tiene Data Aprobada con datos reales hoy. */}
+              (ver generarPfdVentaPreview). Solo Espumas: Rollos no tiene Data Aprobada con datos reales hoy. */}
           <div className="pt-6 mt-6 border-t-2 border-dashed border-gray-100 space-y-6">
             <div className="bg-indigo-50/40 p-4 rounded-2xl border border-indigo-100 text-left">
               <p className="text-[10px] font-bold uppercase text-indigo-400 tracking-wider">Siguiente paso</p>
@@ -2300,11 +2317,12 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                     </h3>
                     <div className="flex items-center gap-2">
                       <Button
-                        onClick={() => setPfdVentaPreview(prev => ({ ...prev, [centro]: calcularPfdVenta(centro) }))}
+                        onClick={() => generarPfdVentaPreview(centro)}
+                        disabled={isGeneratingPfdVenta[centro]}
                         variant="outline" size="sm"
                         className="h-9 px-4 rounded-2xl gap-2 font-bold text-[10px] uppercase border-indigo-200 text-indigo-700 hover:bg-indigo-50"
                       >
-                        <RefreshCw className="w-3.5 h-3.5" /> Generar PFD-VENTA
+                        {isGeneratingPfdVenta[centro] ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />} Generar PFD-VENTA
                       </Button>
                       {preview && preview.lineas.length > 0 && (
                         <Button
@@ -2322,9 +2340,23 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
                     </div>
                   </div>
 
+                  {isGeneratingPfdVenta[centro] && (
+                    <div className="flex items-center gap-3 rounded-xl border border-indigo-100 bg-indigo-50/40 px-4 py-2.5">
+                      <div className="flex-1 h-1.5 bg-indigo-100 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-indigo-600 transition-all duration-300 ease-out"
+                          style={{ width: `${(pfdVentaBomProgress[centro]?.total ?? 0) > 0 ? ((pfdVentaBomProgress[centro]?.current ?? 0) / (pfdVentaBomProgress[centro]!.total)) * 100 : 0}%` }}
+                        />
+                      </div>
+                      <span className="text-[10px] font-black uppercase tracking-widest text-indigo-700 shrink-0">
+                        Explotando BOM {pfdVentaBomProgress[centro]?.current ?? 0} / {pfdVentaBomProgress[centro]?.total ?? 0} materiales
+                      </span>
+                    </div>
+                  )}
+
                   {!preview ? (
                     <Card className="rounded-2xl border border-dashed border-gray-200 py-10 text-center text-gray-300 font-bold uppercase tracking-widest text-xs">
-                      Pulsa &quot;Generar PFD-VENTA&quot; para ver los materiales FERT/PT listos.
+                      {isGeneratingPfdVenta[centro] ? 'Explotando BOM...' : <>Pulsa &quot;Generar PFD-VENTA&quot; para ver los materiales FERT/PT listos.</>}
                     </Card>
                   ) : (
                     <>
