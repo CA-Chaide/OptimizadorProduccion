@@ -2386,15 +2386,22 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             // Por qué cambió: decidir por el nombre perdía material real. Auditado con datos de
             // producción — "ESPUMA BABY D15 AM AF" (resp 039), "LAMINA ESQUINA 012X031X5" (036/039) y
             // "LAMINA ESPUMA D30 PLATA RR" (038) son de Corte Espuma y quedaban fuera solo porque su
-            // descripción no empieza por "LAMINA D". A la vez "LAMINA PRENSADA D100" (resp 017) sigue
-            // quedando fuera sola, sin necesidad de excluirla por nombre. La nomenclatura se dispersa
-            // en los niveles profundos del árbol (LAMINA D / ESPUMA BABY / LAMINA ESQUINA / TACO
-            // ESPUMA conviven en el mismo nivel); el responsable no.
+            // descripción no empieza por "LAMINA D". "LAMINA PRENSADA D100" (resp 017) sigue quedando
+            // fuera sola. La nomenclatura se dispersa en los niveles profundos del árbol (LAMINA D /
+            // ESPUMA BABY / LAMINA ESQUINA / TACO ESPUMA conviven en el mismo nivel); el responsable no.
             const respComponente = materialRespCPPorCentro[centro]?.get(laminaCode) || '';
             // FORRO nunca es de corte, sin importar el responsable — ver ES_FORRO. Se comprueba ANTES
             // del criterio de responsable/patrón porque el responsable por sí solo puede dar falso
             // positivo (verificado: 105 de 122 materiales con resp. de corte en Centro 2000 son FORRO).
-            const esDeCorte = !ES_FORRO(desc) && (respComponente
+            //
+            // PRENSADO tiene el MISMO problema, verificado después con datos reales (CuboInventarios):
+            // 27 materiales "TACO PRENSADO"/"TACO DE PRENSADO" reales tienen responsable 029 o 039 —
+            // ambos códigos SÍ están en `allowedRespPorCentro` (029/039 son "operación alterna" de
+            // Corte Espuma) — se colaban como si fueran "TACO ESPUMA" (que sí es de Corte, mismos
+            // responsables) solo por compartir máquina/responsable. El comentario de arriba asumía que
+            // solo el resp 017 ("LAMINA PRENSADA") quedaba fuera del filtro de responsable — cierto,
+            // pero incompleto: no cubría "TACO PRENSADO" con 029/039.
+            const esDeCorte = !ES_FORRO(desc) && !/PRENSAD/i.test(desc) && (respComponente
               ? allowedRespPorCentro(centro).includes(respComponente)
               : ES_LAMINA_CORTADA(desc));
             if (!esDeCorte) return;
