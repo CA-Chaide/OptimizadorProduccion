@@ -681,6 +681,15 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     return Number(match.Tiempo_Min || match.Tiempo || 0);
   };
 
+  // Línea de producción real (ej. "Carruseles - LINEA 1") para poblar linea_produccion al grabar
+  // DetalleTactico — mismo lookup que matchTiempoEstandar, sin filtrar por máquina (un material
+  // puede repetirse en varios puestos; se toma el primero).
+  const matchLineaProduccion = (materialCode: string, lookup: Map<string, Record<string, unknown>[]>) => {
+    const candidates = lookup.get(materialCode);
+    if (!candidates || candidates.length === 0) return '';
+    return String(candidates[0].PuestoTrabajoLinea || candidates[0].Linea || '').trim();
+  };
+
   // --- Necesidad P2 (origen para Corte Espuma / Corte y Laminado) ---
   // Ambas necesidades salen de explotar la lista de materiales (BOM) de las Órdenes FERT
   // (fertC1000ParaP2/fertC2000ParaP2, ya filtradas por centro/RESPCTRLPROD/ALMACEN/SECTOR y por la
@@ -1140,6 +1149,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
             // hereda de un origen rastreable.
             codigo_plan_grupo_padre: null,
             usuario_modificacion: usuario,
+            linea_produccion: matchLineaProduccion(linea.material, centro === '1000' ? tiempoLookup1000 : tiempoLookup2000),
           };
           await detalleTacticoService.save(detallePayload as unknown as DetalleTactico);
           if (existente) actualizados++; else agregados++;
@@ -1170,7 +1180,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     } finally {
       setSavingPlanP2(prev => ({ ...prev, [key]: false }));
     }
-  }, [grupos, necesidadEspumas1000, necesidadEspumas2000, necesidadRollos1000, necesidadRollos2000, ventanaP2, siguienteDiaHabil]);
+  }, [grupos, necesidadEspumas1000, necesidadEspumas2000, necesidadRollos1000, necesidadRollos2000, ventanaP2, siguienteDiaHabil, tiempoLookup1000, tiempoLookup2000]);
 
   // "PFD - VENTA": mismo grupo (18/19) y patrón de guardado que el P2 (generarPlanP2Core arriba), pero
   // el valor lleva el token compuesto "PFD-VENTA" (no "PFD" suelto, para no chocar con el /pfd/i que ya
@@ -1241,6 +1251,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
             codigo_plan_grupo: codigoPlanGrupo,
             codigo_plan_grupo_padre: p2Activo.codigo_plan_grupo,
             usuario_modificacion: usuario,
+            linea_produccion: matchLineaProduccion(linea.material, centro === '1000' ? tiempoLookup1000 : tiempoLookup2000),
           };
           await detalleTacticoService.save(detallePayload as unknown as DetalleTactico);
           agregados++;
@@ -1263,7 +1274,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     } finally {
       setSavingPfdVenta(prev => ({ ...prev, [key]: false }));
     }
-  }, [pfdVentaPreview, siguienteDiaHabil]);
+  }, [pfdVentaPreview, siguienteDiaHabil, tiempoLookup1000, tiempoLookup2000]);
 
   // Botón individual por bloque: genera un solo subgrupo y notifica su resultado puntual.
   // 'confirmar-reemplazo' (solo ESPUMAS, ver generarPlanP2Core): se cortó ANTES de escribir porque la

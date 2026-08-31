@@ -1042,6 +1042,14 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return map;
   }, [inventarioSAP]);
 
+  // Línea de producción real (ej. "Carruseles - LINEA 1") por material+centro, para poblar
+  // linea_produccion al grabar DetalleTactico — usa el mismo tiemposCatalogo que ya se consulta para
+  // el Tiempo[H] real (ver auditMapper), sin fetch nuevo.
+  const matchLineaProduccionEspuma = useCallback((materialCode: string, centroId: string): string => {
+    const match = tiemposCatalogo.find(t => cleanCode(t.CodMaterial) === materialCode && String(t.Centro).trim() === centroId);
+    return match ? getProp(match, ['PuestoTrabajoLinea']) : '';
+  }, [tiemposCatalogo]);
+
   // Respaldo de geometría contra el maestro de SAP. Caso real que lo motivó: el material 30016934
   // llega desde el P2 de Prensado descrito como "CHN MED ESP SEMIORTOPEDICO 110x090x018" — sin token
   // de densidad (D15/D19/D25...), así que pesoUN = ancho×largo×espesor×densidad daba 0 y el material
@@ -2710,7 +2718,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const persistirFilasEditablesEspuma = useCallback(async (
     codigoPlanGrupo: number,
     rows: EditableDetalleRowEspuma[],
-    usuario: string
+    usuario: string,
+    centro: string
   ) => {
     let actualizados = 0;
     let agregados = 0;
@@ -2736,6 +2745,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           codigo_plan_grupo: codigoPlanGrupo,
           codigo_plan_grupo_padre: row.codigo_plan_grupo_padre,
           usuario_modificacion: usuario,
+          linea_produccion: matchLineaProduccionEspuma(row.material, centro),
         };
         await detalleTacticoService.save(detallePayload as unknown as DetalleTactico);
         if (row.esNuevo) agregados++; else actualizados++;
@@ -2746,7 +2756,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     }
 
     return { actualizados, agregados, eliminados, fallidos };
-  }, []);
+  }, [matchLineaProduccionEspuma]);
 
   // Paso 1 de edición: lista los PlanGrupo activos (P3 o PFD, cualquiera de los dos) de ESE centro
   // para que el usuario elija cuál corregir — mismo criterio de filtro (codigo_grupo + "Espuma" +
@@ -2872,7 +2882,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       } as unknown as PlanGrupo);
 
       const { actualizados, agregados, eliminados, fallidos } =
-        await persistirFilasEditablesEspuma(editPlanPreview.codigo_plan_grupo, editPlanPreview.rows, usuario);
+        await persistirFilasEditablesEspuma(editPlanPreview.codigo_plan_grupo, editPlanPreview.rows, usuario, editPlanPreview.centro);
 
       const superados = await desactivarPlanesEspumaSuperados(editPlanPreview.centro, editPlanPreview.fechaInicio, editPlanPreview.codigo_plan_grupo, /pfd/i.test(editPlanPreview.valor));
       const sufijoSuperados = superados > 0 ? ` ${superados} Plan Grupo previo(s) del mismo día o anterior fueron desactivados.` : '';
@@ -2949,6 +2959,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                   codigo_plan_grupo: nuevoCodigoPlanGrupo,
                   codigo_plan_grupo_padre: split.codigoPadre,
                   usuario_modificacion: usuario,
+                  linea_produccion: matchLineaProduccionEspuma(row.material, preview.centro),
                 };
                 await detalleTacticoService.save(detallePayload as unknown as DetalleTactico);
                 exitosos++;
@@ -2983,7 +2994,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     } finally {
       setIsSavingPlanP3(false);
     }
-  }, [planPreviewP3, addNotification, fetchNecesidadesPlanta, getOrigenesProrrateoEspuma, desactivarPlanesEspumaSuperados]);
+  }, [planPreviewP3, addNotification, fetchNecesidadesPlanta, getOrigenesProrrateoEspuma, desactivarPlanesEspumaSuperados, matchLineaProduccionEspuma]);
 
   // Variante PFD de construirPreviewP3 (ver conversación): mismo universo de materiales y misma
   // fecha de respuesta, pero con la cascada de respuestaSalidaRowsPorCentro forzando a 0 la fuente
@@ -3079,6 +3090,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                   codigo_plan_grupo: nuevoCodigoPlanGrupo,
                   codigo_plan_grupo_padre: split.codigoPadre,
                   usuario_modificacion: usuario,
+                  linea_produccion: matchLineaProduccionEspuma(row.material, preview.centro),
                 };
                 await detalleTacticoService.save(detallePayload as unknown as DetalleTactico);
                 exitosos++;
@@ -3113,7 +3125,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     } finally {
       setIsSavingPlanPFD(false);
     }
-  }, [planPreviewPFD, addNotification, fetchNecesidadesPlanta, getOrigenesProrrateoEspuma, desactivarPlanesEspumaSuperados]);
+  }, [planPreviewPFD, addNotification, fetchNecesidadesPlanta, getOrigenesProrrateoEspuma, desactivarPlanesEspumaSuperados, matchLineaProduccionEspuma]);
 
   useEffect(() => {
     setMounted(true);
