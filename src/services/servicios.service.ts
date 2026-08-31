@@ -408,4 +408,19 @@ export const serviciosService = {
     }
     return response.json();
   },
+
+  // "destino" es una sola cadena con los correos separados por coma (no un array) — así lo espera
+  // el endpoint real, confirmado por el usuario con el contrato exacto.
+  async enviarCorreo(payload: { destino: string; asunto: string; cuerpo: string; nota?: string }): Promise<{ message: string; destinatarios: string[] }> {
+    const response = await fetch(API_URL + "/enviarCorreo", {
+      method: "POST",
+      headers: getHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({ message: "Error desconocido" }));
+      throw new Error(errorBody.message || "Failed to send Correo");
+    }
+    return response.json();
+  },
 };

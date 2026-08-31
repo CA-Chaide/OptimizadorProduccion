@@ -23,7 +23,8 @@ import {
   Boxes,
   Pencil,
   Trash2,
-  CheckCircle2
+  CheckCircle2,
+  Mail
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -626,7 +627,14 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [necesidadesPlantaLoading, setNecesidadesPlantaLoading] = useState(false);
 
   const [selectedDates, setSelectedDates] = useState<Set<string>>(new Set());
-  const [viewDate, setViewDate] = useState<Date>(new Date()); 
+  const [viewDate, setViewDate] = useState<Date>(new Date());
+
+  // "Enviar Reporte" (Gestión de Tiempos → correo): destinatarios editables en pantalla, no fijos en
+  // código (decisión del usuario) — se guardan tal cual se escriben, sin validar formato acá, el
+  // backend es quien reparte por coma. isSendingReporte cubre solo la llamada real a
+  // serviciosService.enviarCorreo, no el resto del módulo.
+  const [destinatariosReporte, setDestinatariosReporte] = useState('');
+  const [isSendingReporte, setIsSendingReporte] = useState(false);
   
   const [unifiedNeeds, setUnifiedNeeds] = useState<UnifiedNeedRow[]>([]);
   const [isProcessingResumen, setIsProcessingResumen] = useState(false);
@@ -2998,6 +3006,152 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return (totalsUnified.tProceso / tDisponible) * 100;
   }, [tDisponible, totalsUnified.tProceso]);
 
+  // Cuerpo del correo "Enviar Reporte" (Gestión de Tiempos) — HTML tabla, estilos inline (sin <style>,
+  // sin fuentes externas: los clientes de correo los ignoran o los rompen). Formato ya evaluado con el
+  // usuario vía vista previa antes de conectar el envío real. Mismos umbrales/colores que ya usa este
+  // panel en pantalla (rojo cuando ocupacionPorc > 100, ver isSaturated más abajo).
+  const construirReporteHtml = () => {
+    const fechaHoy = format(new Date(), "EEEE d 'de' MMMM 'de' yyyy", { locale: es });
+    const diaLabel = diaShiftOptions.find(o => o.v === selectedDiaShift)?.l || '—';
+    const nocheLabel = nocheShiftOptions.find(o => o.v === selectedNocheShift)?.l || '—';
+    const critico = ocupacionPorc > 100;
+    const ocupacionColor = critico ? '#7f1d1d' : '#065f46';
+    return `
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto;background:#ffffff;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <tr>
+    <td style="background:#1d4ed8;padding:22px 28px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+          <td style="font-size:15px;font-weight:700;color:#ffffff;letter-spacing:0.02em;">CHAIDE Y CHAIDE</td>
+          <td align="right" style="font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:#c7d7fd;">Planificación de Producción</td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+  <tr>
+    <td style="padding:26px 28px 6px;">
+      <p style="margin:0;font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6b7280;">Corte y Laminado · Reporte diario</p>
+      <h1 style="margin:4px 0 0;font-size:20px;font-weight:700;color:#111827;">Rollos y disponibilidad de máquina</h1>
+      <p style="margin:6px 0 0;font-size:12px;color:#6b7280;text-transform:capitalize;">${fechaHoy} · Correo automático, no responder</p>
+    </td>
+  </tr>
+  <tr>
+    <td style="padding:18px 28px 4px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+          <td width="33.33%" style="background:#eef4ff;border-radius:10px 0 0 10px;padding:14px 12px;border:1px solid #e5e7eb;border-right:none;">
+            <p style="margin:0;font-size:9px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#6b7280;">Rollos req. (kg)</p>
+            <p style="margin:4px 0 0;font-size:20px;font-weight:700;color:#1d4ed8;font-variant-numeric:tabular-nums;">${formatNum(totalsUnified.planKg, 0)}</p>
+          </td>
+          <td width="33.34%" style="background:#eef4ff;padding:14px 12px;border-top:1px solid #e5e7eb;border-bottom:1px solid #e5e7eb;">
+            <p style="margin:0;font-size:9px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#6b7280;">Rollos req. (un)</p>
+            <p style="margin:4px 0 0;font-size:20px;font-weight:700;color:#1d4ed8;font-variant-numeric:tabular-nums;">${formatNum(totalsUnified.planUn, 0)}</p>
+          </td>
+          <td width="33.33%" style="background:#eef4ff;border-radius:0 10px 10px 0;padding:14px 12px;border:1px solid #e5e7eb;border-left:none;">
+            <p style="margin:0;font-size:9px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#6b7280;">Corridas looper</p>
+            <p style="margin:4px 0 0;font-size:20px;font-weight:700;color:#1d4ed8;font-variant-numeric:tabular-nums;">${totalsUnified.totalRuns}</p>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+  <tr>
+    <td style="padding:22px 28px 4px;">
+      <p style="margin:0 0 10px;font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6b7280;">Gestión de tiempos</p>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;">
+        <tr style="background:#ecfdf5;">
+          <td style="padding:10px 14px;font-size:12px;font-weight:700;color:#047857;border-bottom:1px solid #e5e7eb;">Día</td>
+          <td style="padding:10px 14px;font-size:12px;color:#374151;border-bottom:1px solid #e5e7eb;font-variant-numeric:tabular-nums;">${diaLabel}</td>
+          <td align="right" style="padding:10px 14px;font-size:12px;font-weight:700;color:#047857;border-bottom:1px solid #e5e7eb;font-variant-numeric:tabular-nums;">${diaDisponibleOEE.toFixed(2)} h</td>
+        </tr>
+        <tr style="background:#eef2ff;">
+          <td style="padding:10px 14px;font-size:12px;font-weight:700;color:#4338ca;border-bottom:1px solid #e5e7eb;">Noche</td>
+          <td style="padding:10px 14px;font-size:12px;color:#374151;border-bottom:1px solid #e5e7eb;font-variant-numeric:tabular-nums;">${nocheLabel}</td>
+          <td align="right" style="padding:10px 14px;font-size:12px;font-weight:700;color:#4338ca;border-bottom:1px solid #e5e7eb;font-variant-numeric:tabular-nums;">${nocheDisponibleOEE.toFixed(2)} h</td>
+        </tr>
+        <tr style="background:#fffbeb;">
+          <td style="padding:10px 14px;font-size:12px;font-weight:700;color:#b45309;">Mtto. preventivo</td>
+          <td style="padding:10px 14px;font-size:12px;color:#374151;">—</td>
+          <td align="right" style="padding:10px 14px;font-size:12px;font-weight:700;color:#b45309;font-variant-numeric:tabular-nums;">${mttoPreventivoHoras.toFixed(2)} h</td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+  <tr>
+    <td style="padding:22px 28px 6px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+          <td width="33.33%" style="padding-right:6px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${ocupacionColor};border-radius:10px;">
+              <tr><td style="padding:14px 14px;">
+                <p style="margin:0;font-size:9px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#fecaca;">Ocupación real</p>
+                <p style="margin:4px 0 0;font-size:22px;font-weight:700;color:#ffffff;font-variant-numeric:tabular-nums;">${ocupacionPorc.toFixed(1)}%</p>
+              </td></tr>
+            </table>
+          </td>
+          <td width="33.34%" style="padding:0 6px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#111827;border-radius:10px;">
+              <tr><td style="padding:14px 14px;">
+                <p style="margin:0;font-size:9px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#9ca3af;">Tiempo operativo</p>
+                <p style="margin:4px 0 0;font-size:22px;font-weight:700;color:#ffffff;font-variant-numeric:tabular-nums;">${totalsUnified.tProceso.toFixed(2)} h</p>
+              </td></tr>
+            </table>
+          </td>
+          <td width="33.33%" style="padding-left:6px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#111827;border-radius:10px;">
+              <tr><td style="padding:14px 14px;">
+                <p style="margin:0;font-size:9px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#9ca3af;">Disponibilidad total</p>
+                <p style="margin:4px 0 0;font-size:22px;font-weight:700;color:#ffffff;font-variant-numeric:tabular-nums;">${tDisponible.toFixed(2)} h</p>
+              </td></tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+  ${critico ? `
+  <tr>
+    <td style="padding:10px 28px 24px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;">
+        <tr><td style="padding:10px 14px;font-size:11px;font-weight:600;color:#b91c1c;">
+          <strong>Capacidad crítica:</strong> la ocupación real supera el 100% — evaluar minimización de corridas para optimizar la carga del Looper.
+        </td></tr>
+      </table>
+    </td>
+  </tr>` : ''}
+  <tr>
+    <td style="padding:0 28px 28px;">
+      <p style="margin:0;font-size:11px;line-height:1.6;color:#9ca3af;border-top:1px solid #e5e7eb;padding-top:16px;">
+        Este correo fue generado automáticamente por el Optimizador de Producción, favor no responder.
+        Para dudas sobre estos datos, contacta a Planificación Táctica.
+      </p>
+    </td>
+  </tr>
+</table>`;
+  };
+
+  const handleEnviarReporte = async () => {
+    const destino = destinatariosReporte.trim();
+    if (!destino) {
+      addNotification('warning', 'Escribe al menos un correo destinatario antes de enviar.');
+      return;
+    }
+    setIsSendingReporte(true);
+    try {
+      const resultado = await serviciosService.enviarCorreo({
+        destino,
+        asunto: 'Reporte de producción — Corte y Laminado',
+        cuerpo: construirReporteHtml(),
+        nota: 'Este correo fue generado automáticamente, favor no responder.',
+      });
+      addNotification('success', `${resultado.message} — ${resultado.destinatarios.join(', ')}`);
+    } catch (error) {
+      addNotification('error', `Error al enviar el reporte: ${(error as Error).message}`);
+    } finally {
+      setIsSendingReporte(false);
+    }
+  };
+
   // Empaqueta los materiales de un grupo dentro de sus N corridas (bins de 40 un.) usando
   // Best-Fit-Decreasing: cada material entra ENTERO en la corrida donde mejor quepa, y solo
   // se fracciona entre varias corridas si su necesidad por sí sola supera el tamaño de un bloque.
@@ -3294,7 +3448,39 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
           {/* 4. Gestión de Tiempos (2 cols - Ampliada) */}
           <div className="col-span-2 p-3 border-r border-gray-100 flex flex-col justify-center">
-            <p className="text-[8px] font-black uppercase text-slate-400 tracking-widest mb-4 text-center">GESTIÓN DE TIEMPOS</p>
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-[8px] font-black uppercase text-slate-400 tracking-widest">GESTIÓN DE TIEMPOS</p>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    title="Envía por correo un resumen de Rollos, Gestión de Tiempos, Tiempo Operativo y Disponibilidad Total"
+                    className="flex items-center gap-1 text-[7px] font-black uppercase tracking-wider text-indigo-700 border border-indigo-200 bg-white rounded px-2 py-1 hover:bg-indigo-50 transition-colors"
+                  >
+                    <Mail className="w-2.5 h-2.5" /> Enviar Reporte
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[300px] p-4 bg-white border border-gray-100 rounded-2xl shadow-xl text-slate-800" align="end">
+                  <p className="text-[9px] font-black uppercase text-indigo-700 tracking-widest mb-1">Enviar Reporte por Correo</p>
+                  <p className="text-[8px] text-slate-400 font-bold uppercase mb-3">Rollos, Gestión de Tiempos, Ocupación y Disponibilidad — snapshot de este momento</p>
+                  <label className="text-[8px] font-black uppercase text-slate-500 tracking-wider block mb-1">Destinatarios (separados por coma)</label>
+                  <textarea
+                    value={destinatariosReporte}
+                    onChange={(e) => setDestinatariosReporte(e.target.value)}
+                    placeholder="nombre@chaideychaide.com, otro@chaideychaide.com"
+                    rows={2}
+                    className="w-full bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-[10px] text-slate-700 font-bold outline-none focus:border-indigo-500 resize-none"
+                  />
+                  <Button
+                    onClick={handleEnviarReporte}
+                    disabled={isSendingReporte || !destinatariosReporte.trim()}
+                    className="w-full mt-3 h-9 rounded-xl gap-2 font-black text-[10px] uppercase bg-indigo-600 text-white hover:bg-indigo-700"
+                  >
+                    {isSendingReporte ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Mail className="w-3.5 h-3.5" />} Enviar
+                  </Button>
+                </PopoverContent>
+              </Popover>
+            </div>
             <div className="space-y-3">
               <div className="flex items-center gap-3">
                 <span className="text-[9px] font-black text-slate-400 w-12">DÍA:</span>
