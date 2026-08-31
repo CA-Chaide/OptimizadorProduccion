@@ -201,12 +201,12 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const siguienteDiaHabil = useCallback((d: Date) => nextBusinessDayCal(d, diasNoLaborables), [diasNoLaborables]);
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
   const [viewDate, setViewDate] = useState(new Date());
-  // Fecha de corte del tab "Resumen Necesidades" ("Ejecutado hasta X") — selector PROPIO de este tab,
-  // deliberadamente separado de `selectedDates` ("Ventana de Producción", usada por Provisionales/
-  // generar P2): antes estaba fija a hoy sin poder cambiarla, y el usuario pidió poder elegir otra
-  // fecha de corte sin afectar esa otra selección. Un solo día (no multi-select), igual criterio que
-  // ya se usó para Capacidad Operativa en Corte Espuma.
-  const [selectedDateResumen, setSelectedDateResumen] = useState<string>(() => format(new Date(), 'yyyy-MM-dd'));
+  // Fecha(s) de "Resumen Necesidades" — selector PROPIO de este tab, deliberadamente separado de
+  // `selectedDates` ("Ventana de Producción", usada por Provisionales/generar P2). Multi-select
+  // EXACTO (no acumulado "hasta"): una fecha muestra solo lo de ESE día; varias fechas suman solo esos
+  // días entre sí — no todo lo anterior. Corregido a pedido del usuario (la primera versión sumaba
+  // "hasta" la fecha elegida, arrastrando días previos sin que el usuario lo esperara). Default: hoy.
+  const [selectedDatesResumen, setSelectedDatesResumen] = useState<string[]>(() => [format(new Date(), 'yyyy-MM-dd')]);
   const [viewDateResumen, setViewDateResumen] = useState(new Date());
   const [expandedCategorias1000, setExpandedCategorias1000] = useState<string[]>([]);
   const [expandedCategorias2000, setExpandedCategorias2000] = useState<string[]>([]);
@@ -281,6 +281,12 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   // tiempo/what-if, no solo para el rango real hoy+1..hoy+3.
   const toggleSelectedDate = (dateStr: string) => {
     setSelectedDates(prev => (
+      prev.includes(dateStr) ? prev.filter(d => d !== dateStr) : [...prev, dateStr]
+    ));
+  };
+
+  const toggleSelectedDateResumen = (dateStr: string) => {
+    setSelectedDatesResumen(prev => (
       prev.includes(dateStr) ? prev.filter(d => d !== dateStr) : [...prev, dateStr]
     ));
   };
@@ -467,7 +473,7 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   }, [viewDate]);
 
   // Mismo cálculo que calendarDays, pero para el selector propio de "Resumen Necesidades"
-  // (selectedDateResumen) — mes de navegación independiente del de "Ventana de Producción".
+  // (selectedDatesResumen) — mes de navegación independiente del de "Ventana de Producción".
   const calendarDaysResumen = useMemo(() => {
     const start = startOfMonth(viewDateResumen);
     const end = endOfMonth(viewDateResumen);
@@ -608,8 +614,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   }, [ordenes, provC1000]);
   // (Se eliminaron fertC1000/fertC2000, las FERT filtradas por el selector "Fecha": eran las únicas
   //  consumidoras del selector en el lado FERT y alimentaban "Resumen Necesidades", que ahora usa su
-  //  propio corte hoy-hacia-atrás — ver fertC1000HastaHoy más abajo. El selector "Fecha" quedó como
-  //  exclusivo de Provisionales, que es lo que se había decidido.)
+  //  propio selector — ver fertC1000Resumen más abajo. El selector "Fecha" quedó como exclusivo de
+  //  Provisionales, que es lo que se había decidido.)
 
   // Tab "Órdenes FERT": ya NO se filtra por el selector "Fecha" (a diferencia de fertC1000/fertC2000
   // de arriba, que siguen date-filtradas porque alimentan las tarjetas de "Resumen Necesidades",
@@ -619,20 +625,20 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const fertC1000SinFecha = useMemo(() => filterData(ordenesFert, '1000', false), [ordenesFert, grupos, restricciones]);
   const fertC2000SinFecha = useMemo(() => filterData(ordenesFert, '2000', false), [ordenesFert, grupos, restricciones]);
 
-  // "Resumen Necesidades": Órdenes FERT hasta una fecha de corte elegible — vista de "lo ya
-  // ejecutado/comprometido" (carga operativa, no necesidad futura), sin cambios por el giro a FERT en
-  // la generación del P2 (ver fertC1000ParaP2 más arriba): ese cálculo usa FERT de la fecha
-  // SELECCIONADA en "Ventana de Producción" (pasada o futura), mientras que ESTE resumen corta en
-  // `selectedDateResumen` (por defecto hoy, seleccionable en su propio calendario — antes fijo a hoy
-  // sin poder cambiarlo) — son dos ventanas de fecha distintas sobre la misma fuente (FERT), no hay
-  // que confundirlas. Mismo criterio de corte que ya usa Corte Espuma para separar FERT vigente de
-  // FERT de ciclo anterior (ver fertKgPorMaterialPorCentro allá).
-  const soloFertHastaHoy = (data: Record<string, unknown>[]) => data.filter(o => {
+  // "Resumen Necesidades": Órdenes FERT fechadas EXACTO en alguna de las fechas elegidas — vista de
+  // "lo ya ejecutado/comprometido" (carga operativa, no necesidad futura), sin cambios por el giro a
+  // FERT en la generación del P2 (ver fertC1000ParaP2 más arriba): ese cálculo usa FERT de la fecha
+  // SELECCIONADA en "Ventana de Producción" (pasada o futura), mientras que ESTE resumen usa
+  // `selectedDatesResumen` (su propio selector, ver más abajo) — son dos ventanas de fecha distintas
+  // sobre la misma fuente (FERT), no hay que confundirlas. Match EXACTO por fecha, no acumulado: una
+  // fecha = solo ese día; varias fechas = la suma de esos días entre sí, nunca arrastra días previos
+  // no elegidos (corregido a pedido del usuario, la primera versión sí acumulaba "hasta" la fecha).
+  const soloFertFechasResumen = (data: Record<string, unknown>[]) => data.filter(o => {
     const fecha = String(o.FECHA || o.Fecha || '').split('T')[0];
-    return fecha && fecha <= selectedDateResumen;
+    return fecha && selectedDatesResumen.includes(fecha);
   });
-  const fertC1000HastaHoy = useMemo(() => soloFertHastaHoy(filterData(ordenesFert, '1000', false)), [ordenesFert, grupos, restricciones, selectedDateResumen]);
-  const fertC2000HastaHoy = useMemo(() => soloFertHastaHoy(filterData(ordenesFert, '2000', false)), [ordenesFert, grupos, restricciones, selectedDateResumen]);
+  const fertC1000Resumen = useMemo(() => soloFertFechasResumen(filterData(ordenesFert, '1000', false)), [ordenesFert, grupos, restricciones, selectedDatesResumen]);
+  const fertC2000Resumen = useMemo(() => soloFertFechasResumen(filterData(ordenesFert, '2000', false)), [ordenesFert, grupos, restricciones, selectedDatesResumen]);
 
   // Ventana informativa de selección (Espumas/Rollos): resume selectedDates en {inicio, fin, fechas}
   // para mostrar en la UI ("Ventana de Producción") y en el mensaje de resultado — ya no se usa para
@@ -1453,8 +1459,8 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     );
   };
 
-  const summaryData1000 = useMemo(() => calculateSummary(fertC1000HastaHoy, '1000'), [fertC1000HastaHoy]);
-  const summaryData2000 = useMemo(() => calculateSummary(fertC2000HastaHoy, '2000'), [fertC2000HastaHoy]);
+  const summaryData1000 = useMemo(() => calculateSummary(fertC1000Resumen, '1000'), [fertC1000Resumen]);
+  const summaryData2000 = useMemo(() => calculateSummary(fertC2000Resumen, '2000'), [fertC2000Resumen]);
 
   // Agrupación por Categoría Técnica (la categoría ya embebe la densidad, p.ej. D40ESP)
   const groupByCategoria = (data: typeof summaryData1000) => {
@@ -1702,13 +1708,17 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     </Popover>
   );
 
-  // Popover del selector de fecha PROPIO de "Resumen Necesidades" (selectedDateResumen) — un solo
-  // día (no combina varias, a diferencia de fechaPopover), reemplaza la fecha fija a hoy de antes.
+  // Popover del selector de fecha PROPIO de "Resumen Necesidades" (selectedDatesResumen) —
+  // multi-select EXACTO (toggle, igual patrón que fechaPopover/selectedDates): varias fechas SUMAN
+  // solo esos días entre sí, no arrastran nada anterior no elegido.
   const fechaResumenPopover = (
     <Popover>
       <PopoverTrigger asChild>
         <Button variant="outline" size="sm" className="h-9 px-4 rounded-xl border-gray-200 hover:bg-white hover:border-primary/50 gap-2 font-bold text-[10px] uppercase transition-all shadow-sm">
-          <CalendarIcon className="w-3.5 h-3.5" /> {format(parseISO(selectedDateResumen), 'd MMM yyyy', { locale: es })}
+          <CalendarIcon className="w-3.5 h-3.5" />
+          {selectedDatesResumen.length === 1
+            ? format(parseISO(selectedDatesResumen[0]), 'd MMM yyyy', { locale: es })
+            : `${selectedDatesResumen.length} fechas`}
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-64 p-0 border-none shadow-2xl rounded-2xl overflow-hidden mt-2" align="start">
@@ -1720,21 +1730,21 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
               <Button variant="ghost" size="icon" onClick={() => setViewDateResumen(addMonths(viewDateResumen, 1))} className="h-7 w-7 hover:bg-white hover:shadow-sm"><ChevronRight className="w-4 h-4" /></Button>
             </div>
           </div>
-          <p className="text-[9px] font-bold text-gray-300 uppercase tracking-widest mb-2">Fecha de corte — un solo día</p>
+          <p className="text-[9px] font-bold text-gray-300 uppercase tracking-widest mb-2">Toca varias fechas para sumarlas</p>
           <div className="grid grid-cols-7 gap-y-1 text-center mb-3">
             {['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO'].map((day, idx) => <div key={`cal-res-head-${idx}`} className="text-[9px] font-bold text-gray-300 uppercase py-1">{day}</div>)}
             {calendarDaysResumen.map((day, idx) => {
               if (!day) return <div key={`cal-res-pad-${idx}`} className="p-1" />;
               const dateStr = format(day, 'yyyy-MM-dd');
-              const isSelected = dateStr === selectedDateResumen;
+              const isSelected = selectedDatesResumen.includes(dateStr);
               return (
-                <button key={dateStr} onClick={() => setSelectedDateResumen(dateStr)} className={cn("relative h-8 w-8 mx-auto rounded-xl flex items-center justify-center transition-all", isSelected ? "bg-primary text-white shadow-md" : "hover:bg-gray-100")}>
+                <button key={dateStr} onClick={() => toggleSelectedDateResumen(dateStr)} className={cn("relative h-8 w-8 mx-auto rounded-xl flex items-center justify-center transition-all", isSelected ? "bg-primary text-white shadow-md" : "hover:bg-gray-100")}>
                   <span className="text-xs font-bold">{format(day, 'd')}</span>
                 </button>
               );
             })}
           </div>
-          <Button variant="ghost" size="sm" className="w-full text-[10px] font-black uppercase text-primary h-8 mt-1 rounded-xl hover:bg-primary/5 tracking-widest" onClick={() => setSelectedDateResumen(format(new Date(), 'yyyy-MM-dd'))}>Hoy</Button>
+          <Button variant="ghost" size="sm" className="w-full text-[10px] font-black uppercase text-primary h-8 mt-1 rounded-xl hover:bg-primary/5 tracking-widest" onClick={() => setSelectedDatesResumen([format(new Date(), 'yyyy-MM-dd')])}>Solo hoy</Button>
         </div>
       </PopoverContent>
     </Popover>
@@ -1814,17 +1824,21 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
         </TabsList>
 
         <TabsContent value="resumen" className="space-y-6 animate-in fade-in duration-300">
-          {/* Selector PROPIO de este tab (selectedDateResumen/fechaResumenPopover) — deliberadamente
+          {/* Selector PROPIO de este tab (selectedDatesResumen/fechaResumenPopover) — deliberadamente
               separado de `selectedDates` ("Ventana de Producción", usada por Provisionales/generar
-              P2). Antes esta fecha de corte estaba fija a hoy sin poder cambiarla; el usuario pidió
-              poder elegir otra fecha aquí sin afectar esa otra selección. */}
+              P2). Antes esta fecha estaba fija a hoy sin poder cambiarla; ahora es multi-select EXACTO
+              (no acumulado "hasta" — una fecha muestra solo ese día, varias suman solo esos días). */}
           <div className="flex justify-between items-center bg-gray-50/50 p-4 rounded-2xl border border-gray-100">
             <div className="flex items-center gap-4 text-left">
               <div className="p-2 bg-primary/10 rounded-xl"><CalendarIcon className="w-5 h-5 text-primary" /></div>
               <div>
                 <p className="text-[10px] font-bold uppercase text-gray-400 tracking-wider">Carga Operativa</p>
                 <h3 className="text-sm font-black text-gray-700 uppercase">
-                  Ejecutado hasta {selectedDateResumen === format(new Date(), 'yyyy-MM-dd') ? 'hoy' : format(parseISO(selectedDateResumen), 'd MMM yyyy', { locale: es })} (FERT)
+                  {selectedDatesResumen.length === 1 && selectedDatesResumen[0] === format(new Date(), 'yyyy-MM-dd')
+                    ? 'Ejecutado hoy (FERT)'
+                    : selectedDatesResumen.length === 1
+                    ? `Ejecutado el ${format(parseISO(selectedDatesResumen[0]), 'd MMM yyyy', { locale: es })} (FERT)`
+                    : `Ejecutado en ${selectedDatesResumen.length} fechas (FERT)`}
                 </h3>
               </div>
             </div>
