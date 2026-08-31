@@ -587,6 +587,7 @@ interface SnapshotCorteLaminado {
   ordenes: RawApiRow[];
   ordenesFert: RawApiRow[];
   kpiLooperData: RawApiRow[];
+  tiemposEnsambladoData: RawApiRow[];
   inventarioSAP: InventarioSapRow[];
   operadoresLaminado: RawApiRow[];
   mantenimientosSAP: RawApiRow[];
@@ -614,6 +615,11 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   const [ordenes, setOrders] = useState<RawApiRow[]>([]);
   const [ordenesFert, setOrdersFert] = useState<RawApiRow[]>([]);
   const [kpiLooperData, setKpiLooperData] = useState<RawApiRow[]>([]);
+  // Tiempos de ensamblado (mismo endpoint que ya usan Venta Externa/Corte Espuma) — aquí solo se usa
+  // para recuperar PuestoTrabajoLinea (ej. "Carruseles - LINEA 1") y grabarlo en linea_produccion del
+  // DetalleTactico; el tiempo de proceso de Laminado sigue viniendo de kpiLooperData (TiempoRolloMin),
+  // un catálogo propio y distinto, ya real y aplicado en tProceso.
+  const [tiemposEnsambladoData, setTiemposEnsambladoData] = useState<RawApiRow[]>([]);
   const [inventarioSAP, setInventarioSAP] = useState<InventarioSapRow[]>([]);
   const [operadoresLaminado, setOperadoresLaminado] = useState<RawApiRow[]>([]);
   const [mantenimientosSAP, setMantenimientosSAP] = useState<RawApiRow[]>([]);
@@ -855,6 +861,20 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return { code, desc };
   }, []);
 
+  // Línea de producción real (ej. "Carruseles - LINEA 1") por material, para poblar
+  // linea_produccion al grabar DetalleTactico — antes salía vacía porque este módulo nunca había
+  // consultado el endpoint de tiempos de ensamblado (solo usaba kpiLooperData, que no trae esa
+  // columna). Un material puede repetirse en varios PuestoTrabajo; se toma la primera línea no vacía.
+  const puestoTrabajoLineaPorMaterial = useMemo(() => {
+    const map = new Map<string, string>();
+    tiemposEnsambladoData.forEach((t) => {
+      const code = cleanCode(getProp(t, ['CodMaterial', 'MATERIAL', 'Material']));
+      const linea = getProp(t, ['PuestoTrabajoLinea']);
+      if (code && linea && !map.has(code)) map.set(code, linea);
+    });
+    return map;
+  }, [tiemposEnsambladoData]);
+
   const initData = useCallback(async () => {
     try {
       const groupsRes = await grupoService.getAll();
@@ -865,20 +885,22 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       setGrupos(filteredGroups);
       const ids = filteredGroups.map(g => g.codigo_grupo);
 
-      const [restrs, provs, kpiLooper, invSAP, ferts, skills, maint] = await Promise.all([
+      const [restrs, provs, kpiLooper, invSAP, ferts, skills, maint, tiempos] = await Promise.all([
         restriccionService.getAll(),
         serviciosService.OrdenesProvisionalesPaginados(1, 20000).catch(() => ({ data: [] })),
         serviciosService.getKPIMAestroLooper().catch(() => ({ data: [] })),
         serviciosService.getInventarioAñoActual().catch(() => ({ data: [] })),
         serviciosService.getOrdenesFert(1, 20000).catch(() => ({ data: [] })),
         serviciosService.getCuboHabilidadesOP().catch(() => ({ data: [] })),
-        serviciosService.ListarMantenimientoPreventivosProgramados().catch(() => ({ data: [] }))
+        serviciosService.ListarMantenimientoPreventivosProgramados().catch(() => ({ data: [] })),
+        serviciosService.getTiemposEnsambladobyCentroyCodigoGrupo('1000', CODIGO_GRUPO_LAMINADO).catch(() => ({ data: [] }))
       ]);
 
       const restriccionesFiltradas = (restrs.data || []).filter((r) => ids.includes(r.codigo_grupo));
       const provOrdenes = provs.data?.data || provs.data || [];
       const fertOrdenes = ferts.data?.data || ferts.data || [];
       const kpiLooperRows = kpiLooper?.data || [];
+      const tiemposRows = tiempos?.data?.data || tiempos?.data || [];
       const inventario = Array.isArray(invSAP?.data) ? invSAP.data : (invSAP?.data?.data || []);
       const mantenimientos = Array.isArray(maint?.data) ? maint.data : (maint?.data?.data || []);
       const skillRows: RawApiRow[] = Array.isArray(skills.data) ? skills.data : [];
@@ -890,6 +912,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       setOrders(provOrdenes);
       setOrdersFert(fertOrdenes);
       setKpiLooperData(kpiLooperRows);
+      setTiemposEnsambladoData(tiemposRows);
       setInventarioSAP(inventario);
       setMantenimientosSAP(mantenimientos);
       setOperadoresLaminado(laminadoOps);
@@ -900,6 +923,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         ordenes: provOrdenes,
         ordenesFert: fertOrdenes,
         kpiLooperData: kpiLooperRows,
+        tiemposEnsambladoData: tiemposRows,
         inventarioSAP: inventario,
         operadoresLaminado: laminadoOps,
         mantenimientosSAP: mantenimientos,
@@ -1098,6 +1122,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       setOrders(snap.ordenes);
       setOrdersFert(snap.ordenesFert);
       setKpiLooperData(snap.kpiLooperData);
+      setTiemposEnsambladoData(snap.tiemposEnsambladoData || []);
       setInventarioSAP(snap.inventarioSAP);
       setOperadoresLaminado(snap.operadoresLaminado);
       setMantenimientosSAP(snap.mantenimientosSAP);
@@ -1547,6 +1572,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           codigo_plan_grupo: codigoPlanGrupo,
           codigo_plan_grupo_padre: row.codigo_plan_grupo_padre,
           usuario_modificacion: usuario,
+          linea_produccion: puestoTrabajoLineaPorMaterial.get(cleanCode(row.material)) || '',
         };
         await detalleTacticoService.save(detallePayload as unknown as DetalleTactico);
         if (row.esNuevo) agregados++; else actualizados++;
@@ -1557,7 +1583,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     }
 
     return { actualizados, agregados, eliminados, fallidos };
-  }, []);
+  }, [puestoTrabajoLineaPorMaterial]);
 
   // Desactiva un PlanGrupo (estado -> 'I'). El servicio no tiene PATCH parcial: se reenvía el
   // objeto completo tal cual vino de getAll(), solo sobreescribiendo estado. Los DetalleTactico
@@ -2500,6 +2526,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               codigo_plan_grupo: nuevoCodigoPlanGrupo,
               codigo_plan_grupo_padre: split.codigoPadre,
               usuario_modificacion: usuario,
+              linea_produccion: puestoTrabajoLineaPorMaterial.get(cleanCode(row.material)) || '',
             };
             await detalleTacticoService.save(detallePayload as unknown as DetalleTactico);
             exitosos++;
@@ -2526,7 +2553,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     } finally {
       setIsSavingPlan(false);
     }
-  }, [planPreview, addNotification, fetchNecesidadesPlanta, getOrigenesProrrateo, flushFaltanteInternoNotification, desactivarPlanesLaminadoSuperados]);
+  }, [planPreview, addNotification, fetchNecesidadesPlanta, getOrigenesProrrateo, flushFaltanteInternoNotification, desactivarPlanesLaminadoSuperados, puestoTrabajoLineaPorMaterial]);
 
   // Variante "PFD" del Paso 1: mismo universo de materiales que "Guardar Plan" (P3), pero los
   // materiales sin corrida ("No — stock", tieneCorrida === false) se fuerzan a cantidad 0 en vez de
@@ -2609,6 +2636,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
               codigo_plan_grupo: nuevoCodigoPlanGrupo,
               codigo_plan_grupo_padre: split.codigoPadre,
               usuario_modificacion: usuario,
+              linea_produccion: puestoTrabajoLineaPorMaterial.get(cleanCode(row.material)) || '',
             };
             await detalleTacticoService.save(detallePayload as unknown as DetalleTactico);
             exitosos++;
@@ -2635,7 +2663,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     } finally {
       setIsSavingPlanPFD(false);
     }
-  }, [planPreviewPFD, addNotification, fetchNecesidadesPlanta, getOrigenesProrrateo, flushFaltanteInternoNotification, desactivarPlanesLaminadoSuperados]);
+  }, [planPreviewPFD, addNotification, fetchNecesidadesPlanta, getOrigenesProrrateo, flushFaltanteInternoNotification, desactivarPlanesLaminadoSuperados, puestoTrabajoLineaPorMaterial]);
 
   // Paso 1 de edición: busca los PlanGrupo activos de Corte y Laminado directo por codigo_grupo
   // (CODIGO_GRUPO_LAMINADO) en planGrupoService.getAll(), NO a través de "Necesidades Planta"
