@@ -201,6 +201,13 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const siguienteDiaHabil = useCallback((d: Date) => nextBusinessDayCal(d, diasNoLaborables), [diasNoLaborables]);
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
   const [viewDate, setViewDate] = useState(new Date());
+  // Fecha de corte del tab "Resumen Necesidades" ("Ejecutado hasta X") — selector PROPIO de este tab,
+  // deliberadamente separado de `selectedDates` ("Ventana de Producción", usada por Provisionales/
+  // generar P2): antes estaba fija a hoy sin poder cambiarla, y el usuario pidió poder elegir otra
+  // fecha de corte sin afectar esa otra selección. Un solo día (no multi-select), igual criterio que
+  // ya se usó para Capacidad Operativa en Corte Espuma.
+  const [selectedDateResumen, setSelectedDateResumen] = useState<string>(() => format(new Date(), 'yyyy-MM-dd'));
+  const [viewDateResumen, setViewDateResumen] = useState(new Date());
   const [expandedCategorias1000, setExpandedCategorias1000] = useState<string[]>([]);
   const [expandedCategorias2000, setExpandedCategorias2000] = useState<string[]>([]);
 
@@ -459,6 +466,17 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     return [...Array(padding).fill(null), ...days];
   }, [viewDate]);
 
+  // Mismo cálculo que calendarDays, pero para el selector propio de "Resumen Necesidades"
+  // (selectedDateResumen) — mes de navegación independiente del de "Ventana de Producción".
+  const calendarDaysResumen = useMemo(() => {
+    const start = startOfMonth(viewDateResumen);
+    const end = endOfMonth(viewDateResumen);
+    const days = eachDayOfInterval({ start, end });
+    const startDay = getDay(start);
+    const padding = startDay === 0 ? 6 : startDay - 1;
+    return [...Array(padding).fill(null), ...days];
+  }, [viewDateResumen]);
+
   const extractMaterialInfo = (item: Record<string, unknown>) => {
     const matStr = String(item.MATERIAL || item.Material || item.CodMaterial || '').trim();
     const nameStr = String(item.NOMBRE || item.NombreMaterial || item.Descripcion || '').trim();
@@ -601,20 +619,20 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
   const fertC1000SinFecha = useMemo(() => filterData(ordenesFert, '1000', false), [ordenesFert, grupos, restricciones]);
   const fertC2000SinFecha = useMemo(() => filterData(ordenesFert, '2000', false), [ordenesFert, grupos, restricciones]);
 
-  // "Resumen Necesidades": Órdenes FERT de HOY HACIA ATRÁS — vista de "lo ya ejecutado/comprometido"
-  // (carga operativa, no necesidad futura), sin cambios por el giro a FERT en la generación del P2
-  // (ver fertC1000ParaP2 más arriba): ese cálculo usa FERT de la fecha SELECCIONADA (pasada o
-  // futura, según el filtro "Fecha"), mientras que ESTE resumen siempre corta en HOY exacto,
-  // independiente de esa selección — son dos ventanas de fecha distintas sobre la misma fuente
-  // (FERT), no hay que confundirlas. Mismo criterio de corte que ya usa Corte Espuma para separar
-  // FERT vigente de FERT de ciclo anterior (ver fertKgPorMaterialPorCentro allá).
-  const fechaCorteFert = format(new Date(), 'yyyy-MM-dd');
+  // "Resumen Necesidades": Órdenes FERT hasta una fecha de corte elegible — vista de "lo ya
+  // ejecutado/comprometido" (carga operativa, no necesidad futura), sin cambios por el giro a FERT en
+  // la generación del P2 (ver fertC1000ParaP2 más arriba): ese cálculo usa FERT de la fecha
+  // SELECCIONADA en "Ventana de Producción" (pasada o futura), mientras que ESTE resumen corta en
+  // `selectedDateResumen` (por defecto hoy, seleccionable en su propio calendario — antes fijo a hoy
+  // sin poder cambiarlo) — son dos ventanas de fecha distintas sobre la misma fuente (FERT), no hay
+  // que confundirlas. Mismo criterio de corte que ya usa Corte Espuma para separar FERT vigente de
+  // FERT de ciclo anterior (ver fertKgPorMaterialPorCentro allá).
   const soloFertHastaHoy = (data: Record<string, unknown>[]) => data.filter(o => {
     const fecha = String(o.FECHA || o.Fecha || '').split('T')[0];
-    return fecha && fecha <= fechaCorteFert;
+    return fecha && fecha <= selectedDateResumen;
   });
-  const fertC1000HastaHoy = useMemo(() => soloFertHastaHoy(filterData(ordenesFert, '1000', false)), [ordenesFert, grupos, restricciones]);
-  const fertC2000HastaHoy = useMemo(() => soloFertHastaHoy(filterData(ordenesFert, '2000', false)), [ordenesFert, grupos, restricciones]);
+  const fertC1000HastaHoy = useMemo(() => soloFertHastaHoy(filterData(ordenesFert, '1000', false)), [ordenesFert, grupos, restricciones, selectedDateResumen]);
+  const fertC2000HastaHoy = useMemo(() => soloFertHastaHoy(filterData(ordenesFert, '2000', false)), [ordenesFert, grupos, restricciones, selectedDateResumen]);
 
   // Ventana informativa de selección (Espumas/Rollos): resume selectedDates en {inicio, fin, fechas}
   // para mostrar en la UI ("Ventana de Producción") y en el mensaje de resultado — ya no se usa para
@@ -1644,9 +1662,9 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
     };
   }, [pendientesFiltrados, fertFechaEntregaPorCodBuscar]);
 
-  // Popover del filtro "Fecha" — se usa tanto en Resumen (filtro de vista) como en Plan P2 (ahora
-  // también controla la ventana de generación del P2, ver ventanaP2), para no obligar al usuario a
-  // cambiar de tab para ajustar la selección.
+  // Popover del filtro "Fecha" ("Ventana de Producción") — se usa en Provisionales y en Plan P2
+  // (también controla la ventana de generación del P2, ver ventanaP2). "Resumen Necesidades" tiene su
+  // PROPIO selector aparte (fechaResumenPopover, más abajo) — no comparte esta selección a propósito.
   const fechaPopover = (
     <Popover>
       <PopoverTrigger asChild>
@@ -1679,6 +1697,44 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
             })}
           </div>
           <Button variant="ghost" size="sm" className="w-full text-[10px] font-black uppercase text-primary h-8 mt-1 rounded-xl hover:bg-primary/5 tracking-widest" onClick={() => setSelectedDates([])}>Ver Todo</Button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+
+  // Popover del selector de fecha PROPIO de "Resumen Necesidades" (selectedDateResumen) — un solo
+  // día (no combina varias, a diferencia de fechaPopover), reemplaza la fecha fija a hoy de antes.
+  const fechaResumenPopover = (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button variant="outline" size="sm" className="h-9 px-4 rounded-xl border-gray-200 hover:bg-white hover:border-primary/50 gap-2 font-bold text-[10px] uppercase transition-all shadow-sm">
+          <CalendarIcon className="w-3.5 h-3.5" /> {format(parseISO(selectedDateResumen), 'd MMM yyyy', { locale: es })}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-64 p-0 border-none shadow-2xl rounded-2xl overflow-hidden mt-2" align="start">
+        <div className="bg-white p-4 font-sans">
+          <div className="flex items-center justify-between mb-4 text-left">
+            <h3 className="text-xs font-bold text-gray-800 capitalize">{format(viewDateResumen, 'MMMM yyyy', { locale: es })}</h3>
+            <div className="flex gap-1 bg-gray-50 rounded-xl p-1">
+              <Button variant="ghost" size="icon" onClick={() => setViewDateResumen(subMonths(viewDateResumen, 1))} className="h-7 w-7 hover:bg-white hover:shadow-sm"><ChevronLeft className="w-4 h-4" /></Button>
+              <Button variant="ghost" size="icon" onClick={() => setViewDateResumen(addMonths(viewDateResumen, 1))} className="h-7 w-7 hover:bg-white hover:shadow-sm"><ChevronRight className="w-4 h-4" /></Button>
+            </div>
+          </div>
+          <p className="text-[9px] font-bold text-gray-300 uppercase tracking-widest mb-2">Fecha de corte — un solo día</p>
+          <div className="grid grid-cols-7 gap-y-1 text-center mb-3">
+            {['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO'].map((day, idx) => <div key={`cal-res-head-${idx}`} className="text-[9px] font-bold text-gray-300 uppercase py-1">{day}</div>)}
+            {calendarDaysResumen.map((day, idx) => {
+              if (!day) return <div key={`cal-res-pad-${idx}`} className="p-1" />;
+              const dateStr = format(day, 'yyyy-MM-dd');
+              const isSelected = dateStr === selectedDateResumen;
+              return (
+                <button key={dateStr} onClick={() => setSelectedDateResumen(dateStr)} className={cn("relative h-8 w-8 mx-auto rounded-xl flex items-center justify-center transition-all", isSelected ? "bg-primary text-white shadow-md" : "hover:bg-gray-100")}>
+                  <span className="text-xs font-bold">{format(day, 'd')}</span>
+                </button>
+              );
+            })}
+          </div>
+          <Button variant="ghost" size="sm" className="w-full text-[10px] font-black uppercase text-primary h-8 mt-1 rounded-xl hover:bg-primary/5 tracking-widest" onClick={() => setSelectedDateResumen(format(new Date(), 'yyyy-MM-dd'))}>Hoy</Button>
         </div>
       </PopoverContent>
     </Popover>
@@ -1758,20 +1814,21 @@ export const TacticalPlanVentaExternaSection: React.FC = () => {
         </TabsList>
 
         <TabsContent value="resumen" className="space-y-6 animate-in fade-in duration-300">
-          {/* Se quitó el selector "Fecha" de este header: el contenido (summaryData1000/2000) es
-              carga de FERT ejecutada hasta hoy — ya NO depende de selectedDates desde que se corrigió
-              ese criterio (ver fertC1000HastaHoy/fertC2000HastaHoy). El filtro seguía mostrándose y
-              cambiando el título ("3 fechas seleccionadas"...) sin que eligiera nada realmente, lo
-              que confundía sobre qué se estaba mirando. El filtro "Fecha" real de Provisionales sigue
-              en su propio tab, intacto. */}
+          {/* Selector PROPIO de este tab (selectedDateResumen/fechaResumenPopover) — deliberadamente
+              separado de `selectedDates` ("Ventana de Producción", usada por Provisionales/generar
+              P2). Antes esta fecha de corte estaba fija a hoy sin poder cambiarla; el usuario pidió
+              poder elegir otra fecha aquí sin afectar esa otra selección. */}
           <div className="flex justify-between items-center bg-gray-50/50 p-4 rounded-2xl border border-gray-100">
             <div className="flex items-center gap-4 text-left">
               <div className="p-2 bg-primary/10 rounded-xl"><CalendarIcon className="w-5 h-5 text-primary" /></div>
               <div>
                 <p className="text-[10px] font-bold uppercase text-gray-400 tracking-wider">Carga Operativa</p>
-                <h3 className="text-sm font-black text-gray-700 uppercase">Ejecutado hasta hoy (FERT)</h3>
+                <h3 className="text-sm font-black text-gray-700 uppercase">
+                  Ejecutado hasta {selectedDateResumen === format(new Date(), 'yyyy-MM-dd') ? 'hoy' : format(parseISO(selectedDateResumen), 'd MMM yyyy', { locale: es })} (FERT)
+                </h3>
               </div>
             </div>
+            {fechaResumenPopover}
           </div>
 
           {/* Estadísticas de Carga - Dashboard Superior */}
