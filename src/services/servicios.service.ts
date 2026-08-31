@@ -200,8 +200,13 @@ export const serviciosService = {
     return response.json();
   },
 
+  // Endpoint nuevo (tiemposEnsambladoByGrupoYCentro) — reemplaza a TiemposEnsambladoPorCentroYCodigoGrupo:
+  // mismo payload {Centro, CodigoGrupo} y misma forma de respuesta, verificado en vivo (1138 vs 1137
+  // filas para Centro 1000/Grupo 8, 1 material adicional en el nuevo, sin diferencias en el resto) —
+  // se actualiza acá el único punto de llamada, sin tocar los 2 módulos que lo consumen (Venta Externa,
+  // Corte Espuma).
   async getTiemposEnsambladobyCentroyCodigoGrupo(centro: string, codigoGrupo: number): Promise<BodyResponse<any>> {
-    const response = await fetch(API_URL + "/TiemposEnsambladoPorCentroYCodigoGrupo", {
+    const response = await fetch(API_URL + "/tiemposEnsambladoByGrupoYCentro", {
       method: "POST",
       headers: getHeaders(),
       body: JSON.stringify({ Centro: String(centro), CodigoGrupo: Number(codigoGrupo) }),
