@@ -1966,11 +1966,22 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         ];
       };
 
+      // Mismo criterio que renderDashboard (ver su comentario extenso): además del backlog "por
+      // necesidad" (solo fechas con PlanGrupo todavía activo), se suma el backlog "por orden real"
+      // — FERT pendiente (CANTPENDIENTE>0) cuyo plan origen ya rotó a inactivo, para no perder tiempo
+      // de máquina genuinamente sin ejecutar solo porque el ciclo que lo generó ya no está vigente.
       const calcularBacklogAntesDe = (fechaLimite: string) => {
         const fechasConNecesidad = Array.from(new Set(
           [...necesidadCapacidad, ...necesidadCapacidadNivel2].map(r => r.fecha)
         )).filter(f => f < fechaLimite);
-        return fechasConNecesidad.flatMap(f => resolverFecha(f).map(x => ({ ...x, fecha: f })));
+        const backlogNecesidad = fechasConNecesidad.flatMap(f => resolverFecha(f).map(x => ({ ...x, fecha: f })));
+
+        const yaCapturado = new Set(backlogNecesidad.map(x => `${x.row.orden}|${x.row.material}`));
+        const backlogFertReal = fertSinVentana
+          .filter(r => r.centro === centroId && r.fecha < fechaLimite && r.cant > 0 && !yaCapturado.has(`${r.orden}|${r.material}`))
+          .map(row => ({ row, estado: 'FERT' as const, fecha: row.fecha }));
+
+        return [...backlogNecesidad, ...backlogFertReal];
       };
 
       const fechasSel = Array.from(selectedDatesCapacidad[planta]).sort();
@@ -3954,11 +3965,29 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     // no desaparece ni se sigue midiendo contra la capacidad de ese día ya vencido, se suma a la carga
     // operativa del día que se está revisando ahora. Reutiliza resolverFecha (ya prioriza FERT-exacto
     // por fecha — si esa fecha pasada SÍ tiene FERT, no aporta nada al backlog, ya se ejecutó).
+    //
+    // Caso real verificado (2026-09-03): el backlog "por necesidad" solo mira fechas que TODAVÍA
+    // tienen un PlanGrupo activo (necesidadCapacidad/Nivel2, ambos filtrados a estado='A') — pero la
+    // necesidad P2/P1-PFF rota a diario, así que un plan de hace varios días ya está 'I' (superado
+    // por el ciclo siguiente) aunque su orden FERT real siga con CANTPENDIENTE>0 sin ejecutar. Esa
+    // orden quedaba invisible para Capacidad Operativa (verificado con datos reales: 22 de 183
+    // materiales FERT con responsable permitido en Centro 1000 remontan a un plan P2/P3 ya inactivo).
+    // Se agrega un segundo origen de backlog, directo desde las órdenes FERT reales (no desde
+    // necesidad), para no perder tiempo de máquina genuinamente pendiente solo porque el plan que lo
+    // originó ya rotó — con dedupe por orden+material para no contar dos veces lo que el camino de
+    // necesidad ya capturó (cuando la fecha SÍ sigue teniendo necesidad activa).
     const calcularBacklogAntesDe = (fechaLimite: string) => {
       const fechasConNecesidad = Array.from(new Set(
         [...necesidadCapacidad, ...necesidadCapacidadNivel2].map(r => r.fecha)
       )).filter(f => f < fechaLimite);
-      return fechasConNecesidad.flatMap(f => resolverFecha(f).map(x => ({ ...x, fecha: f })));
+      const backlogNecesidad = fechasConNecesidad.flatMap(f => resolverFecha(f).map(x => ({ ...x, fecha: f })));
+
+      const yaCapturado = new Set(backlogNecesidad.map(x => `${x.row.orden}|${x.row.material}`));
+      const backlogFertReal = fertSinVentana
+        .filter(r => r.centro === centroId && r.fecha < fechaLimite && r.cant > 0 && !yaCapturado.has(`${r.orden}|${r.material}`))
+        .map(row => ({ row, estado: 'FERT' as const, fecha: row.fecha }));
+
+      return [...backlogNecesidad, ...backlogFertReal];
     };
 
     const fechasSel = Array.from(selectedDatesCapacidad[planta]).sort();
