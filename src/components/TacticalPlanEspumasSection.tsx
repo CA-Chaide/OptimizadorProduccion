@@ -1840,6 +1840,21 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     });
     return porCentro;
   }, [necesidadPFFNivel2Data]);
+  // Necesidad total por material, Nivel 1 + Nivel 2 combinados — para `resolverFecha` (más abajo en
+  // renderDashboard), que evalúa ambos niveles JUNTOS en una sola llamada a
+  // calcularFaltanteNecesidadPlanta para una fecha puntual. Sin este mapa combinado, esa llamada caía
+  // por defecto solo al pool de Nivel 1 (materialNecesidadesPlantaMapPorCentro) y un material con
+  // necesidad SOLO en Nivel 2 quedaba con necesidad=0 ahí — se perdía del todo, no solo se contaba mal.
+  const necesidadPorMaterialCombinadoPorCentro = useMemo(() => {
+    const porCentro: Record<'1000' | '2000', Map<string, number>> = { '1000': new Map(), '2000': new Map() };
+    (['1000', '2000'] as const).forEach(centro => {
+      const combinado = new Map<string, number>();
+      materialNecesidadesPlantaMapPorCentro[centro]?.forEach((qty, material) => combinado.set(material, (combinado.get(material) || 0) + qty));
+      materialNecesidadPFFNivel2MapPorCentro[centro]?.forEach((qty, material) => combinado.set(material, (combinado.get(material) || 0) + qty));
+      porCentro[centro] = combinado;
+    });
+    return porCentro;
+  }, [materialNecesidadesPlantaMapPorCentro, materialNecesidadPFFNivel2MapPorCentro]);
 
   // "Necesidades Planta" (P2) que todavía NO cubre ni el stock ni una orden provisional — la parte de
   // la demanda que aún no tiene con qué producirse y que, por lo tanto, sigue pesando en la capacidad.
@@ -1870,31 +1885,53 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   // que debe netear contra el pool de necesidad DE ESE nivel, no contra el de Nivel 1
   // (materialNecesidadesPlantaMapPorCentro, que solo tiene el ciclo fresco de hoy). Sin override, el
   // único call-site preexistente (Nivel 1, antes de esta reestructuración) sigue igual.
+  // stockYaReservadoPorMaterial: stock que YA se le adjudicó a otra necesidad evaluada antes (ver
+  // Nivel 1/Nivel 2 en renderDashboard) — sin esto, dos necesidades del mismo material podían netear
+  // cada una contra el stock COMPLETO por separado, "cubriendo" el mismo stock dos veces y escondiendo
+  // un faltante real (caso reportado por el usuario, 2026-09-02: material con necesidad repartida
+  // entre Nivel 1 y Nivel 2, stock=80, cada nivel por su lado veía faltante=0 aunque la necesidad
+  // combinada fuera mayor a 80). Devuelve también stockUsadoPorMaterial para encadenar la reserva
+  // hacia la siguiente llamada.
   const calcularFaltanteNecesidadPlanta = useCallback((
     centroId: '1000' | '2000',
     provRows: UnifiedRow[],
     necesidadRows: UnifiedRow[],
-    necesidadPorMaterialOverride?: Map<string, number>
-  ): UnifiedRow[] => {
+    necesidadPorMaterialOverride?: Map<string, number>,
+    stockYaReservadoPorMaterial?: Map<string, number>
+  ): { faltante: UnifiedRow[]; stockUsadoPorMaterial: Map<string, number> } => {
     const necesidadPorMaterial = necesidadPorMaterialOverride ?? materialNecesidadesPlantaMapPorCentro[centroId];
-    if (!necesidadPorMaterial || necesidadPorMaterial.size === 0) return [];
+    const stockUsadoPorMaterial = new Map<string, number>();
+    if (!necesidadPorMaterial || necesidadPorMaterial.size === 0) return { faltante: [], stockUsadoPorMaterial };
 
     const stockPorMaterial = stockUnidadesPorMaterialPorCentro[centroId];
-    const qtyCubiertaPorMaterial = new Map<string, number>();
-    provRows.forEach(r => qtyCubiertaPorMaterial.set(r.material, (qtyCubiertaPorMaterial.get(r.material) || 0) + r.cant));
-    stockPorMaterial?.forEach((unidades, material) => {
-      qtyCubiertaPorMaterial.set(material, (qtyCubiertaPorMaterial.get(material) || 0) + unidades);
+    const provisionalPorMaterial = new Map<string, number>();
+    provRows.forEach(r => provisionalPorMaterial.set(r.material, (provisionalPorMaterial.get(r.material) || 0) + r.cant));
+
+    // Faltante y stock realmente consumido, UNA vez por material (no por fila): necesidadRows puede
+    // traer varias filas del mismo material (una por área de origen), todas comparten el mismo total.
+    const faltantePorMaterial = new Map<string, number>();
+    necesidadPorMaterial.forEach((necesidad, material) => {
+      if (necesidad <= 0) return;
+      const provisional = provisionalPorMaterial.get(material) || 0;
+      const stockTotal = stockPorMaterial?.get(material) || 0;
+      const stockYaReservado = stockYaReservadoPorMaterial?.get(material) || 0;
+      const stockDisponible = Math.max(0, stockTotal - stockYaReservado);
+      const cubierta = provisional + stockDisponible;
+      faltantePorMaterial.set(material, Math.max(0, necesidad - cubierta));
+      const stockUsado = Math.min(stockDisponible, Math.max(0, necesidad - provisional));
+      if (stockUsado > 0) stockUsadoPorMaterial.set(material, stockUsado);
     });
 
-    return necesidadRows.reduce<UnifiedRow[]>((acc, r) => {
+    const faltante = necesidadRows.reduce<UnifiedRow[]>((acc, r) => {
       const necesidad = necesidadPorMaterial.get(r.material) || 0;
       if (necesidad <= 0) return acc;
-      const cubierta = qtyCubiertaPorMaterial.get(r.material) || 0;
-      const faltante = Math.max(0, necesidad - cubierta);
-      if (faltante <= 0) return acc;
-      acc.push({ ...r, tTotal: r.tTotal * (faltante / necesidad) });
+      const faltanteQty = faltantePorMaterial.get(r.material) || 0;
+      if (faltanteQty <= 0) return acc;
+      acc.push({ ...r, tTotal: r.tTotal * (faltanteQty / necesidad) });
       return acc;
     }, []);
+
+    return { faltante, stockUsadoPorMaterial };
   }, [materialNecesidadesPlantaMapPorCentro, stockUnidadesPorMaterialPorCentro]);
 
   // Materiales de "Laminado Cilíndrico" (descripción "LAMINA CILINDRICA...") — verificado con datos
@@ -3517,7 +3554,15 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     // día previo a cuando se necesita) y calcula el Faltante neto. Alimenta únicamente el total de
     // fondo (candidatosDiferir) — el resultado visible del panel ahora lo resuelve `resolverFecha`,
     // más abajo, por selección manual del usuario.
-    const calcularNivel = (necesidadRows: UnifiedRow[], necesidadPorMaterialOverride?: Map<string, number>) => {
+    // stockYaReservadoPorMaterial: encadena lo que un nivel anterior ya usó del stock, para que el
+    // siguiente no vuelva a netear contra el stock COMPLETO (ver comentario en
+    // calcularFaltanteNecesidadPlanta — caso real 2026-09-02: mismo material con necesidad en Nivel 1
+    // y Nivel 2 a la vez, cada uno "cubría" con el mismo stock por separado).
+    const calcularNivel = (
+      necesidadRows: UnifiedRow[],
+      necesidadPorMaterialOverride?: Map<string, number>,
+      stockYaReservadoPorMaterial?: Map<string, number>
+    ) => {
       const fechasUnicas = Array.from(new Set(necesidadRows.map(r => r.fecha).filter(f => f && f !== '—')));
       const fertRows: UnifiedRow[] = [];
       const provRows: UnifiedRow[] = [];
@@ -3530,12 +3575,14 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         const prov = filasCentroEnFechaPareo(provSinVentana, centroId, fechaPareo);
         fertRows.push(...fert); provRows.push(...prov);
       });
-      const faltante = calcularFaltanteNecesidadPlanta(centroId, [...fertRows, ...provRows], necesidadRows, necesidadPorMaterialOverride);
-      return { fertRows, provRows, faltante };
+      const { faltante, stockUsadoPorMaterial } = calcularFaltanteNecesidadPlanta(
+        centroId, [...fertRows, ...provRows], necesidadRows, necesidadPorMaterialOverride, stockYaReservadoPorMaterial
+      );
+      return { fertRows, provRows, faltante, stockUsadoPorMaterial };
     };
 
     const nivel1 = calcularNivel(necesidadCapacidad);
-    const nivel2 = calcularNivel(necesidadCapacidadNivel2, materialNecesidadPFFNivel2MapPorCentro[centroId]);
+    const nivel2 = calcularNivel(necesidadCapacidadNivel2, materialNecesidadPFFNivel2MapPorCentro[centroId], nivel1.stockUsadoPorMaterial);
 
     const faltanteNecesidad = [...nivel1.faltante, ...nivel2.faltante];
     const firmeNivel1y2 = [...nivel1.fertRows, ...nivel1.provRows, ...nivel2.fertRows, ...nivel2.provRows];
@@ -3694,7 +3741,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
       const provX = filasCentroEnFecha(provSinVentana, centroId, fecha, 'hasta');
       const materialesNecesidad = new Set(necesidadX.map(r => r.material));
-      const faltanteX = calcularFaltanteNecesidadPlanta(centroId, provX, necesidadX);
+      // necesidadPorMaterialCombinadoPorCentro: necesidadX mezcla filas de Nivel 1 Y Nivel 2 — sin el
+      // pool combinado, calcularFaltanteNecesidadPlanta caía por defecto solo al de Nivel 1 y perdía
+      // por completo la necesidad de un material que solo existiera en Nivel 2.
+      const { faltante: faltanteX } = calcularFaltanteNecesidadPlanta(centroId, provX, necesidadX, necesidadPorMaterialCombinadoPorCentro[centroId]);
       return [
         ...provX.filter(r => materialesNecesidad.has(r.material)).map(row => ({ row, estado: 'Ya firme' as const })),
         ...faltanteX.map(row => ({ row, estado: 'Faltante' as const })),
