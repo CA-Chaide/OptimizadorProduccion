@@ -1967,18 +1967,23 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       };
 
       // Mismo criterio que renderDashboard (ver su comentario extenso): además del backlog "por
-      // necesidad" (solo fechas con PlanGrupo todavía activo), se suma el backlog "por orden real"
-      // — FERT pendiente (CANTPENDIENTE>0) cuyo plan origen ya rotó a inactivo, para no perder tiempo
-      // de máquina genuinamente sin ejecutar solo porque el ciclo que lo generó ya no está vigente.
+      // necesidad" (solo fechas con PlanGrupo todavía activo), se suma el backlog "por orden real" —
+      // FERT pendiente (CANTPENDIENTE>0) cuyo plan origen ya rotó a inactivo. ACOTADO al día hábil
+      // INMEDIATO anterior a la fecha elegida (no "todo hacia atrás" sin límite): verificado con
+      // datos reales que órdenes FERT con CANTPENDIENTE>0 pueden remontar semanas atrás (SAP no
+      // siempre cierra el remanente aunque la orden ya esté resuelta en la práctica) — sumar eso sin
+      // tope disparó la Ocupación Total a 200%. El backlog es "lo de ayer que no se hizo", no un
+      // acumulado histórico completo.
       const calcularBacklogAntesDe = (fechaLimite: string) => {
         const fechasConNecesidad = Array.from(new Set(
           [...necesidadCapacidad, ...necesidadCapacidadNivel2].map(r => r.fecha)
         )).filter(f => f < fechaLimite);
         const backlogNecesidad = fechasConNecesidad.flatMap(f => resolverFecha(f).map(x => ({ ...x, fecha: f })));
 
+        const diaHabilAnterior = format(restarDiasHabiles(parseFechaLocal(fechaLimite), 1), 'yyyy-MM-dd');
         const yaCapturado = new Set(backlogNecesidad.map(x => `${x.row.orden}|${x.row.material}`));
         const backlogFertReal = fertSinVentana
-          .filter(r => r.centro === centroId && r.fecha < fechaLimite && r.cant > 0 && !yaCapturado.has(`${r.orden}|${r.material}`))
+          .filter(r => r.centro === centroId && r.fecha === diaHabilAnterior && r.cant > 0 && !yaCapturado.has(`${r.orden}|${r.material}`))
           .map(row => ({ row, estado: 'FERT' as const, fecha: row.fecha }));
 
         return [...backlogNecesidad, ...backlogFertReal];
@@ -2028,6 +2033,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     fertAuditAllUIO, fertAuditAllGYE, provAuditAllUIO, provAuditAllGYE, sinProvisionalesTransformadas,
     filasCentroEnFecha, calcularFaltanteNecesidadPlanta, necesidadPorMaterialCombinadoPorCentro,
     selectedDatesCapacidad, uioConfig, gyeConfig, shiftOptions, nightShiftOptions, responsablesPorCentro,
+    restarDiasHabiles,
   ]);
 
   // Cuerpo del correo — mismo formato ya aprobado en Artifact (Día/Noche/Mtto simple, Carruseles y
@@ -3976,15 +3982,22 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     // necesidad), para no perder tiempo de máquina genuinamente pendiente solo porque el plan que lo
     // originó ya rotó — con dedupe por orden+material para no contar dos veces lo que el camino de
     // necesidad ya capturó (cuando la fecha SÍ sigue teniendo necesidad activa).
+    //
+    // ACOTADO al día hábil INMEDIATO anterior (no "todo hacia atrás" sin límite): verificado con
+    // datos reales que hay órdenes FERT con CANTPENDIENTE>0 que remontan semanas atrás — SAP no
+    // siempre cierra el remanente aunque la orden ya esté resuelta en la práctica. Sumar eso sin tope
+    // disparó la Ocupación Total a 200% en la primera versión de este fix. El backlog es "lo de ayer
+    // que no se hizo", no un acumulado histórico completo.
     const calcularBacklogAntesDe = (fechaLimite: string) => {
       const fechasConNecesidad = Array.from(new Set(
         [...necesidadCapacidad, ...necesidadCapacidadNivel2].map(r => r.fecha)
       )).filter(f => f < fechaLimite);
       const backlogNecesidad = fechasConNecesidad.flatMap(f => resolverFecha(f).map(x => ({ ...x, fecha: f })));
 
+      const diaHabilAnterior = format(restarDiasHabiles(parseFechaLocal(fechaLimite), 1), 'yyyy-MM-dd');
       const yaCapturado = new Set(backlogNecesidad.map(x => `${x.row.orden}|${x.row.material}`));
       const backlogFertReal = fertSinVentana
-        .filter(r => r.centro === centroId && r.fecha < fechaLimite && r.cant > 0 && !yaCapturado.has(`${r.orden}|${r.material}`))
+        .filter(r => r.centro === centroId && r.fecha === diaHabilAnterior && r.cant > 0 && !yaCapturado.has(`${r.orden}|${r.material}`))
         .map(row => ({ row, estado: 'FERT' as const, fecha: row.fecha }));
 
       return [...backlogNecesidad, ...backlogFertReal];
