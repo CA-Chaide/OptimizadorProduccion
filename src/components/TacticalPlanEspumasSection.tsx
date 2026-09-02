@@ -23,7 +23,8 @@ import {
   Truck,
   FileOutput,
   Pencil,
-  Trash2
+  Trash2,
+  Mail
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from '@/components/ui/button';
@@ -1002,6 +1003,11 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const todayStr = format(new Date(), 'yyyy-MM-dd');
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
+  // Reporte por correo (Capacidad Operativa) — mismo destinatario para ambas plantas, envío
+  // independiente por planta (cada una arma y manda su propio cuerpo de correo).
+  const [destinatariosReporte, setDestinatariosReporte] = useState('');
+  const [isSendingReporte, setIsSendingReporte] = useState<{ UIO: boolean; GYE: boolean }>({ UIO: false, GYE: false });
+
   // --- CONFIGURACIÓN DASHBOARDS ---
   const [uioConfig, setUioConfig] = useState<PlantaConfig>({
     performance: 90,
@@ -1933,6 +1939,198 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
     return { faltante, stockUsadoPorMaterial };
   }, [materialNecesidadesPlantaMapPorCentro, stockUnidadesPorMaterialPorCentro]);
+
+  // Resumen de capacidad para el reporte por correo (Capacidad Operativa) — reusa los mismos hooks
+  // pesados que ya alimentan renderDashboard (necesidad, faltante neto de stock, etc.), sin duplicar
+  // esa lógica; solo reconstruye el "pegamento" de resolución por fecha (resolverFecha/backlog) que
+  // renderDashboard mantiene local a su propia función y por eso no es reutilizable desde afuera.
+  const resumenReportePorPlanta = useMemo(() => {
+    const calcularPlanta = (planta: 'UIO' | 'GYE') => {
+      const centroId: '1000' | '2000' = planta === 'UIO' ? '1000' : '2000';
+      const necesidadCapacidad = planta === 'UIO' ? necesidadCapacidadUIO : necesidadCapacidadGYE;
+      const necesidadCapacidadNivel2 = planta === 'UIO' ? necesidadCapacidadNivel2UIO : necesidadCapacidadNivel2GYE;
+      const fertSinVentana = planta === 'UIO' ? fertAuditAllUIO : fertAuditAllGYE;
+      const provSinVentana = sinProvisionalesTransformadas(planta === 'UIO' ? provAuditAllUIO : provAuditAllGYE, centroId);
+
+      const resolverFecha = (fecha: string): { row: UnifiedRow; estado: 'FERT' | 'Ya firme' | 'Faltante' }[] => {
+        const fertX = filasCentroEnFecha(fertSinVentana, centroId, fecha, 'exacta');
+        if (fertX.length > 0) return fertX.map(row => ({ row, estado: 'FERT' as const }));
+        const necesidadX = [...necesidadCapacidad, ...necesidadCapacidadNivel2].filter(r => r.fecha === fecha);
+        if (necesidadX.length === 0) return [];
+        const provX = filasCentroEnFecha(provSinVentana, centroId, fecha, 'hasta');
+        const materialesNecesidad = new Set(necesidadX.map(r => r.material));
+        const { faltante: faltanteX } = calcularFaltanteNecesidadPlanta(centroId, provX, necesidadX, necesidadPorMaterialCombinadoPorCentro[centroId]);
+        return [
+          ...provX.filter(r => materialesNecesidad.has(r.material)).map(row => ({ row, estado: 'Ya firme' as const })),
+          ...faltanteX.map(row => ({ row, estado: 'Faltante' as const })),
+        ];
+      };
+
+      const calcularBacklogAntesDe = (fechaLimite: string) => {
+        const fechasConNecesidad = Array.from(new Set(
+          [...necesidadCapacidad, ...necesidadCapacidadNivel2].map(r => r.fecha)
+        )).filter(f => f < fechaLimite);
+        return fechasConNecesidad.flatMap(f => resolverFecha(f).map(x => ({ ...x, fecha: f })));
+      };
+
+      const fechasSel = Array.from(selectedDatesCapacidad[planta]).sort();
+      const backlogSeleccion = fechasSel.length > 0 ? calcularBacklogAntesDe(fechasSel[0]) : [];
+      const filasSeleccion = [...backlogSeleccion, ...fechasSel.flatMap(f => resolverFecha(f).map(x => ({ ...x, fecha: f })))];
+
+      const config = planta === 'UIO' ? uioConfig : gyeConfig;
+      const machines = MACHINES_BY_PLANTA[planta];
+      const rendimientoDe = (proceso: ProcesoCorte) => proceso === 'vertical' ? 1 : config.performance / 100;
+      const horasDeMaquina = (id: string) => {
+        const c = config.shifts[id];
+        if (!c || c.activa === false) return 0;
+        const proceso = machines.find(m => m.id === id)?.proceso ?? 'carrusel';
+        const hD = shiftOptions.find(o => o.v === c.day)?.h || 0;
+        const hN = nightShiftOptions.find(o => o.v === c.night)?.h || 0;
+        return ((hD * (1 - c.paro1 / 100)) + (hN * (1 - c.paro2 / 100))) * rendimientoDe(proceso);
+      };
+      const capacidadPorProceso = machines.reduce<Record<ProcesoCorte, number>>((acc, m) => {
+        acc[m.proceso] += horasDeMaquina(m.id);
+        return acc;
+      }, { carrusel: 0, vertical: 0 });
+
+      const CARRUSEL_RESP = responsablesPorCentro[centroId].carruseles;
+      const VERTICAL_RESP = responsablesPorCentro[centroId].verticales;
+      const ocupadoPorProceso = (resp: string[]) =>
+        filasSeleccion.filter(x => resp.includes(x.row.responsable)).reduce((s, x) => s + x.row.tTotal, 0);
+
+      const diaComun = machines.length > 0 && new Set(machines.map(m => config.shifts[m.id]?.day)).size === 1 ? config.shifts[machines[0].id]?.day : '';
+      const nocheComun = machines.length > 0 && new Set(machines.map(m => config.shifts[m.id]?.night)).size === 1 ? config.shifts[machines[0].id]?.night : '';
+
+      return {
+        fecha: fechasSel[0] || '',
+        diaLabel: shiftOptions.find(o => o.v === diaComun)?.l || '—',
+        nocheLabel: nightShiftOptions.find(o => o.v === nocheComun)?.l || '—',
+        paroPorc: machines[0] ? config.shifts[machines[0].id]?.paro1 ?? 0 : 0,
+        rendimientoPct: config.performance,
+        carruseles: { capacidad: capacidadPorProceso.carrusel, ocupacion: ocupadoPorProceso(CARRUSEL_RESP) },
+        verticales: { capacidad: capacidadPorProceso.vertical, ocupacion: ocupadoPorProceso(VERTICAL_RESP) },
+      };
+    };
+    return { UIO: calcularPlanta('UIO'), GYE: calcularPlanta('GYE') };
+  }, [
+    necesidadCapacidadUIO, necesidadCapacidadGYE, necesidadCapacidadNivel2UIO, necesidadCapacidadNivel2GYE,
+    fertAuditAllUIO, fertAuditAllGYE, provAuditAllUIO, provAuditAllGYE, sinProvisionalesTransformadas,
+    filasCentroEnFecha, calcularFaltanteNecesidadPlanta, necesidadPorMaterialCombinadoPorCentro,
+    selectedDatesCapacidad, uioConfig, gyeConfig, shiftOptions, nightShiftOptions, responsablesPorCentro,
+  ]);
+
+  // Cuerpo del correo — mismo formato ya aprobado en Artifact (Día/Noche/Mtto simple, Carruseles y
+  // Verticales SIN combinar en un solo "Tiempo Disponible": mezclarlos diluye la lectura real de cada
+  // proceso, mismo criterio que ya usa este dashboard). El % de paro que se aplica es manual
+  // (config.shifts[...].paro1/2) — el mantenimiento real (mantenimientosSAP) no entra en este cálculo
+  // todavía, se deja fuera del correo por ahora para no mostrar un número que no se está usando.
+  const construirReporteHtmlEspuma = (planta: 'UIO' | 'GYE') => {
+    const r = resumenReportePorPlanta[planta];
+    const nombrePlanta = planta === 'UIO' ? 'Quito' : 'Guayaquil';
+    const fechaLabel = r.fecha ? format(parseFechaLocal(r.fecha), "EEEE d 'de' MMMM 'de' yyyy", { locale: es }) : format(new Date(), "EEEE d 'de' MMMM 'de' yyyy", { locale: es });
+    const pctCarruseles = r.carruseles.capacidad > 0 ? (r.carruseles.ocupacion / r.carruseles.capacidad) * 100 : 0;
+    const pctVerticales = r.verticales.capacidad > 0 ? (r.verticales.ocupacion / r.verticales.capacidad) * 100 : 0;
+    return `
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto;background:#ffffff;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <tr>
+    <td style="background:#dc2626;padding:22px 28px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+          <td style="font-size:15px;font-weight:700;color:#ffffff;letter-spacing:0.02em;">CHAIDE Y CHAIDE</td>
+          <td align="right" style="font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:#fecaca;">Planificación de Producción</td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+  <tr>
+    <td style="padding:26px 28px 6px;">
+      <p style="margin:0;font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6b7280;">Corte Espuma · ${nombrePlanta} · Reporte diario</p>
+      <h1 style="margin:4px 0 0;font-size:20px;font-weight:700;color:#111827;">Gestión de tiempos y capacidad de carrusel</h1>
+      <p style="margin:6px 0 0;font-size:12px;color:#6b7280;text-transform:capitalize;">${fechaLabel} · Correo automático, no responder</p>
+    </td>
+  </tr>
+  <tr>
+    <td style="padding:18px 28px 4px;">
+      <p style="margin:0 0 10px;font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6b7280;">Gestión de tiempos</p>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;">
+        <tr style="background:#ecfdf5;">
+          <td style="padding:10px 14px;font-size:12px;font-weight:700;color:#047857;border-bottom:1px solid #e5e7eb;">Día</td>
+          <td style="padding:10px 14px;font-size:12px;color:#374151;border-bottom:1px solid #e5e7eb;font-variant-numeric:tabular-nums;">${r.diaLabel}</td>
+          <td align="right" style="padding:10px 14px;font-size:12px;font-weight:700;color:#047857;border-bottom:1px solid #e5e7eb;">—</td>
+        </tr>
+        <tr style="background:#eef2ff;">
+          <td style="padding:10px 14px;font-size:12px;font-weight:700;color:#4338ca;border-bottom:1px solid #e5e7eb;">Noche</td>
+          <td style="padding:10px 14px;font-size:12px;color:#374151;border-bottom:1px solid #e5e7eb;font-variant-numeric:tabular-nums;">${r.nocheLabel}</td>
+          <td align="right" style="padding:10px 14px;font-size:12px;font-weight:700;color:#4338ca;border-bottom:1px solid #e5e7eb;">—</td>
+        </tr>
+        <tr style="background:#fffbeb;">
+          <td style="padding:10px 14px;font-size:12px;font-weight:700;color:#b45309;">Paro programado</td>
+          <td style="padding:10px 14px;font-size:12px;color:#374151;">Por turno, todas las máquinas</td>
+          <td align="right" style="padding:10px 14px;font-size:12px;font-weight:700;color:#b45309;font-variant-numeric:tabular-nums;">${r.paroPorc}%</td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+  <tr>
+    <td style="padding:22px 28px 6px;">
+      <p style="margin:0 0 10px;font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6b7280;">Ocupación por proceso — no se combinan (procesos distintos, capacidad distinta)</p>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+          <td width="49%" style="padding-right:2%;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#111827;border-radius:10px;">
+              <tr><td style="padding:14px 14px;">
+                <p style="margin:0;font-size:9px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#9ca3af;">Carruseles (rend. ${r.rendimientoPct}%)</p>
+                <p style="margin:4px 0 0;font-size:20px;font-weight:700;color:#ffffff;font-variant-numeric:tabular-nums;">${r.carruseles.ocupacion.toFixed(1)} h <span style="font-size:12px;font-weight:600;color:#9ca3af;">/ ${r.carruseles.capacidad.toFixed(1)} h</span></p>
+                <p style="margin:2px 0 0;font-size:11px;font-weight:700;color:${pctCarruseles > 100 ? '#f87171' : '#5eead4'};">${pctCarruseles.toFixed(0)}% ocupado</p>
+              </td></tr>
+            </table>
+          </td>
+          <td width="49%" style="padding-left:2%;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#111827;border-radius:10px;">
+              <tr><td style="padding:14px 14px;">
+                <p style="margin:0;font-size:9px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#9ca3af;">Verticales (100% rend.)</p>
+                <p style="margin:4px 0 0;font-size:20px;font-weight:700;color:#ffffff;font-variant-numeric:tabular-nums;">${r.verticales.ocupacion.toFixed(1)} h <span style="font-size:12px;font-weight:600;color:#9ca3af;">/ ${r.verticales.capacidad.toFixed(1)} h</span></p>
+                <p style="margin:2px 0 0;font-size:11px;font-weight:700;color:${pctVerticales > 100 ? '#f87171' : '#5eead4'};">${pctVerticales.toFixed(0)}% ocupado</p>
+              </td></tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+      ${!r.fecha ? '<p style="margin:8px 0 0;font-size:10px;color:#b45309;">Sin fecha seleccionada en Capacidad Operativa — la ocupación mostrada es 0. Selecciona una fecha antes de enviar.</p>' : ''}
+    </td>
+  </tr>
+  <tr>
+    <td style="padding:0 28px 28px;">
+      <p style="margin:0;font-size:11px;line-height:1.6;color:#9ca3af;border-top:1px solid #e5e7eb;padding-top:16px;">
+        Este correo fue generado automáticamente por el Optimizador de Producción, favor no responder.
+        Para dudas sobre estos datos, contacta a Planificación Táctica.
+      </p>
+    </td>
+  </tr>
+</table>`;
+  };
+
+  const handleEnviarReporteEspuma = async (planta: 'UIO' | 'GYE') => {
+    const destino = destinatariosReporte.trim();
+    if (!destino) {
+      addNotification('warning', 'Escribe al menos un correo destinatario antes de enviar.');
+      return;
+    }
+    setIsSendingReporte(prev => ({ ...prev, [planta]: true }));
+    try {
+      const resultado = await serviciosService.enviarCorreo({
+        destino,
+        asunto: `Reporte de producción — Corte Espuma (${planta === 'UIO' ? 'Quito' : 'Guayaquil'})`,
+        cuerpo: construirReporteHtmlEspuma(planta),
+        nota: 'Este correo fue generado automáticamente, favor no responder.',
+      });
+      addNotification('success', `${resultado.message} — ${resultado.destinatarios.join(', ')}`);
+    } catch (error) {
+      addNotification('error', `Error al enviar el reporte: ${(error as Error).message}`);
+    } finally {
+      setIsSendingReporte(prev => ({ ...prev, [planta]: false }));
+    }
+  };
 
   // Materiales de "Laminado Cilíndrico" (descripción "LAMINA CILINDRICA...") — verificado con datos
   // reales: son 6 materiales, todos de Muebles, y ya reciben su respuesta P3 desde el módulo de
@@ -3815,17 +4013,48 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               <h3 className="text-xl font-black tracking-tighter text-gray-800">{planta === 'UIO' ? 'QUITO' : 'GUAYAQUIL'}</h3>
               <p className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Gestión de Tiempos</p>
             </div>
-            <div title="Elige una fecha para ver la ocupación de Capacidad Operativa: FERT real si ya existe, o el plan (Necesidad) todavía sin ejecutar si no. Elegir otra fecha reemplaza la anterior.">
-              <DateFilterPopover
-                label="Evaluar Capacidad"
-                selectedDates={selectedDatesCapacidad[planta]}
-                onToggleDate={toggleFechaCapacidad}
-                onClear={limpiarFechasCapacidad}
-                viewDate={viewDateCapacidad}
-                setViewDate={setViewDateCapacidad}
-                datesWithOrders={selectedDatesCapacidad[planta]}
-                isDateDisabled={() => false}
-              />
+            <div className="flex items-center gap-2">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-600 hover:bg-slate-50"
+                  >
+                    <Mail className="w-3.5 h-3.5" /> Enviar Reporte
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-80 p-4 space-y-3" align="end">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-widest text-slate-700">Enviar reporte por correo</p>
+                    <p className="text-[10px] text-slate-400 mt-1">Gestión de tiempos y ocupación por proceso — snapshot de {planta === 'UIO' ? 'Quito' : 'Guayaquil'} en este momento.</p>
+                  </div>
+                  <textarea
+                    value={destinatariosReporte}
+                    onChange={(e) => setDestinatariosReporte(e.target.value)}
+                    placeholder="correo1@chaideychaide.com, correo2@chaideychaide.com"
+                    className="w-full h-20 text-[11px] border border-slate-200 rounded-lg p-2 outline-none focus:border-red-400"
+                  />
+                  <Button
+                    onClick={() => handleEnviarReporteEspuma(planta)}
+                    disabled={isSendingReporte[planta] || !destinatariosReporte.trim()}
+                    className="w-full bg-red-600 hover:bg-red-700 text-white text-[10px] font-black uppercase tracking-widest h-9"
+                  >
+                    {isSendingReporte[planta] ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />} Enviar
+                  </Button>
+                </PopoverContent>
+              </Popover>
+              <div title="Elige una fecha para ver la ocupación de Capacidad Operativa: FERT real si ya existe, o el plan (Necesidad) todavía sin ejecutar si no. Elegir otra fecha reemplaza la anterior.">
+                <DateFilterPopover
+                  label="Evaluar Capacidad"
+                  selectedDates={selectedDatesCapacidad[planta]}
+                  onToggleDate={toggleFechaCapacidad}
+                  onClear={limpiarFechasCapacidad}
+                  viewDate={viewDateCapacidad}
+                  setViewDate={setViewDateCapacidad}
+                  datesWithOrders={selectedDatesCapacidad[planta]}
+                  isDateDisabled={() => false}
+                />
+              </div>
             </div>
           </div>
           <div className="flex items-start gap-8 flex-wrap">
