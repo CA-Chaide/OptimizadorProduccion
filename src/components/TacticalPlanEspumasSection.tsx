@@ -111,6 +111,13 @@ const ES_FORRO = (desc: string): boolean => /FORRO/i.test(String(desc || ''));
 // no coincidió con ES_LAMINA_CORTADA (ahí sí puede haber un gap real de nomenclatura).
 const TIENE_COMPONENTE_ESPUMA = (desc: string): boolean => /ESPUMA/i.test(String(desc || ''));
 const CAROUSEL_DIAMETER_CM = 320;
+// Tiempo real de un ciclo de descarga física del carrusel, cronometrado en campo por el usuario
+// (2026-08-31): Centro 1000 (Quito) 2.7 min, Centro 2000 (Guayaquil) 4.48 min — reemplaza el modelo
+// simulado con marcadores de posición (ver [[corte_espuma_modelo_carga_descarga_simulado]]; el peso
+// máximo de levantamiento ya no se usa: cada sub-bloque corresponde a 1 ciclo real medido, sin
+// desglose por peso). Solo cubre DESCARGA — el tiempo de CARGA sigue sin dato real, se deja el "4
+// ciclos por la cúpula" existente sin tocar.
+const TIEMPO_DESCARGA_CICLO_MIN: Record<string, number> = { '1000': 2.7, '2000': 4.48 };
  // El 13% de pérdidas estándar (OEE) YA se aplica como "Paro T1/T2" de cada turno, que por defecto
 // vale 13 y es editable por máquina. Existía además esta constante EFFICIENCY_FACTOR = 0.87 que lo
 // volvía a descontar: la capacidad salía ~13% más baja de lo real. Verificado contra el cálculo del
@@ -260,7 +267,10 @@ interface UnifiedRow {
   alturaTotal: number;
   tIndiv: number;
   tTotal: number;
-  subBloques: number; 
+  // Componente de tTotal correspondiente solo a descarga física (subBloques × ciclo real medido por
+  // centro / 60) — ver TIEMPO_DESCARGA_CICLO_MIN y calcularMetricasCapacidad.
+  tiempoDescargaH: number;
+  subBloques: number;
   nroCargas: number;  
   undBatch: number;
   apertura: string;
@@ -581,6 +591,7 @@ interface MetricasCapacidad {
   tIndivEstimado: boolean;
   tIndivEstimadoNivel: '3a' | '3b' | '3c' | undefined;
   tTotal: number;
+  tiempoDescargaH: number;
   sinGeometria: boolean;
 }
 
@@ -594,11 +605,15 @@ const calcularMetricasCapacidad = (
   densVal: number,
   qty: number,
   tIndivReal: number,
-  conocidos: MaterialGeomConocido[]
+  conocidos: MaterialGeomConocido[],
+  centro: string
 ): MetricasCapacidad => {
   const usefulHeight = densVal >= 28 ? 85 : 103;
   const hTotal = info.esp * qty;
   const subB = usefulHeight > 0 ? hTotal / usefulHeight : 0;
+  // Descarga real: 1 ciclo cronometrado por sub-bloque (ver TIEMPO_DESCARGA_CICLO_MIN) — subB YA es
+  // (cantidad×espesor)/alturaÚtil, la misma fórmula que dio el usuario como ejemplo.
+  const tiempoDescargaH = (subB * (TIEMPO_DESCARGA_CICLO_MIN[centro] || 0)) / 60;
 
   const gap = 10;
   const radioCarrusel = CAROUSEL_DIAMETER_CM / 2;
@@ -645,7 +660,8 @@ const calcularMetricasCapacidad = (
     tIndiv,
     tIndivEstimado,
     tIndivEstimadoNivel,
-    tTotal: (tIndiv * totalCycles) / 60,
+    tTotal: (tIndiv * totalCycles) / 60 + tiempoDescargaH,
+    tiempoDescargaH,
     sinGeometria: tIndiv === 0 && !hasValidGeometria,
   };
 };
@@ -1121,8 +1137,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       // REGLA: Responsables de operación alterna (039, 036, 044)
       const isAlterna = esRespVertical(centroId, resp);
 
-      const metrics = calcularMetricasCapacidad(info, densVal, qty, tIndivReal, conocidos);
-      const { hTotal, subBloques: subB, undBatch, nroCargas: nLoads, tIndiv, tIndivEstimado, tIndivEstimadoNivel, tTotal, sinGeometria } = metrics;
+      const metrics = calcularMetricasCapacidad(info, densVal, qty, tIndivReal, conocidos, centroId);
+      const { hTotal, subBloques: subB, undBatch, nroCargas: nLoads, tIndiv, tIndivEstimado, tIndivEstimadoNivel, tTotal, tiempoDescargaH, sinGeometria } = metrics;
 
       const looperMatch = kpiLooperData.find(k => cleanCode(k.Material) === info.code);
       const pesoUN = looperMatch ? safeNum(looperMatch.PesoUN) : (info.ancho * info.largo * info.esp * densVal) / 1000000;
@@ -1187,6 +1203,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         tIndivEstimado,
         tIndivEstimadoNivel,
         tTotal,
+        tiempoDescargaH,
         sinGeometria,
         apertura: info.apertura,
         categoria: getProp(o, ['CATEGORIA', 'Categoria', 'CATEGORIA_DESC']) || '—',
@@ -1737,8 +1754,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return prepared.map(({ r, info, tIndivReal }) => {
       const qty = parseQty(r.cantidad_produccion_neta);
       const densVal = safeNum(info.dens);
-      const { hTotal, subBloques, undBatch, nroCargas, tIndiv, tIndivEstimado, tIndivEstimadoNivel, tTotal, sinGeometria } =
-        calcularMetricasCapacidad(info, densVal, qty, tIndivReal, conocidos);
+      const { hTotal, subBloques, undBatch, nroCargas, tIndiv, tIndivEstimado, tIndivEstimadoNivel, tTotal, tiempoDescargaH, sinGeometria } =
+        calcularMetricasCapacidad(info, densVal, qty, tIndivReal, conocidos, centroId);
 
       const looperMatch = kpiLooperData.find(k => cleanCode(k.Material) === info.code);
       const pesoUN = looperMatch ? safeNum(looperMatch.PesoUN) : (info.ancho * info.largo * info.esp * densVal) / 1000000;
@@ -1774,6 +1791,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         tIndivEstimado,
         tIndivEstimadoNivel,
         tTotal,
+        tiempoDescargaH,
         sinGeometria,
         atrasado: pendienteInfo?.atrasado,
         proximaFechaEntrega: pendienteInfo?.proximaFechaEntrega,
