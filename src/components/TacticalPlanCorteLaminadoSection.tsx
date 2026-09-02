@@ -53,7 +53,7 @@ import type { Grupo, Restriccion, PlanGrupo, DetalleTactico } from '@/types/inte
 import { cn } from '@/lib/utils';
 import { nextBusinessDay as nextBusinessDayCal, cargarDiasNoLaborables, fechaLocalEcuador, type DiasNoLaborables } from '@/lib/dias-laborables';
 import { guardarEnCache, leerDeCache, actualizarEnCache } from '@/lib/cache-modulos';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, isValid } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, isValid, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 // --- CONSTANTES TÉCNICAS PLANTA ---
@@ -3044,6 +3044,47 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     const nocheLabel = nocheShiftOptions.find(o => o.v === selectedNocheShift)?.l || '—';
     const critico = ocupacionPorc > 100;
     const ocupacionColor = critico ? '#7f1d1d' : '#065f46';
+    // Plan de Salida — detalle completo por material (no resumen): el operador necesita saber
+    // exactamente qué cortar en cada corrida, no solo un total. La fecha (ya corregida a
+    // siguienteDiaHabil, ver outputPlanRows) se muestra solo en la primera fila de cada corrida,
+    // igual que en la tabla real de "Salida de Datos".
+    const fechaEjecucion = outputPlanRows[0]?.fecha
+      ? format(parseISO(outputPlanRows[0].fecha), "EEEE d 'de' MMMM", { locale: es })
+      : '—';
+    const planSalidaFilas = outputPlanRows.map((row, i) => {
+      const esPrimeraDeCorrida = i === 0 || outputPlanRows[i - 1].corridaId !== row.corridaId;
+      const bg = i % 2 === 0 ? '#ffffff' : '#fafafa';
+      return `
+        <tr style="background:${bg};">
+          <td style="padding:7px 10px;font-size:10px;color:${esPrimeraDeCorrida ? '#9ca3af' : '#d1d5db'};border-bottom:1px solid #f3f4f6;font-variant-numeric:tabular-nums;">${esPrimeraDeCorrida ? format(parseISO(row.fecha), 'dd/MM') : '&nbsp;'}</td>
+          <td style="padding:7px 10px;font-size:11px;font-weight:600;color:#111827;border-bottom:1px solid #f3f4f6;">${row.corrida}</td>
+          <td style="padding:7px 10px;font-size:11px;color:#4338ca;font-family:ui-monospace,Consolas,monospace;border-bottom:1px solid #f3f4f6;">${row.material}</td>
+          <td align="right" style="padding:7px 10px;font-size:11px;color:#374151;border-bottom:1px solid #f3f4f6;font-variant-numeric:tabular-nums;">${Math.round(row.planUn)}</td>
+          <td align="right" style="padding:7px 10px;font-size:11px;color:#374151;border-bottom:1px solid #f3f4f6;font-variant-numeric:tabular-nums;">${formatNum(row.planKg, 1)}</td>
+          <td align="center" style="padding:7px 10px;font-size:10px;font-weight:700;color:#b45309;border-bottom:1px solid #f3f4f6;">${row.isConvNested ? '—' : row.prioridad}</td>
+        </tr>`;
+    }).join('');
+    const planSalidaHtml = outputPlanRows.length === 0 ? '' : `
+  <tr>
+    <td style="padding:22px 28px 4px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;">
+        <tr>
+          <td style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6b7280;">Plan de salida — corridas looper</td>
+          <td align="right" style="font-size:10px;font-weight:700;color:#b45309;text-transform:capitalize;">Ejecución: ${fechaEjecucion}</td>
+        </tr>
+      </table>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;">
+        <tr style="background:#f9fafb;">
+          <td style="padding:8px 10px;font-size:9px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:#6b7280;border-bottom:1px solid #e5e7eb;">Fecha</td>
+          <td style="padding:8px 10px;font-size:9px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:#6b7280;border-bottom:1px solid #e5e7eb;">Corrida</td>
+          <td style="padding:8px 10px;font-size:9px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:#6b7280;border-bottom:1px solid #e5e7eb;">Material</td>
+          <td align="right" style="padding:8px 10px;font-size:9px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:#6b7280;border-bottom:1px solid #e5e7eb;">UN</td>
+          <td align="right" style="padding:8px 10px;font-size:9px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:#6b7280;border-bottom:1px solid #e5e7eb;">Kg</td>
+          <td align="center" style="padding:8px 10px;font-size:9px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:#6b7280;border-bottom:1px solid #e5e7eb;">Prior.</td>
+        </tr>${planSalidaFilas}
+      </table>
+    </td>
+  </tr>`;
     return `
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto;background:#ffffff;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
   <tr>
@@ -3104,7 +3145,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         </tr>
       </table>
     </td>
-  </tr>
+  </tr>${planSalidaHtml}
   <tr>
     <td style="padding:22px 28px 6px;">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
