@@ -3230,7 +3230,12 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   // luego % de déficit, luego mayor consumo total) y reparte las corridas de cada grupo en
   // round-robin para no dejar todas las corridas de un mismo grupo consecutivas.
   const outputPlanRows = useMemo(() => {
-    const defaultDate = selectedDates.size > 0 ? Array.from(selectedDates).sort()[0] : format(new Date(), 'yyyy-MM-dd');
+    // Antes caía a la "Ventana de Producción" seleccionada (o a hoy) — pero el guardado real del P3
+    // (ver handleOpenGuardarPlan) SIEMPRE fecha la respuesta al día hábil siguiente a la revisión, sin
+    // importar qué esté marcado en el calendario (esas fechas son el rango de producción, no la
+    // respuesta). La vista previa de "Plan de Salida" mostraba entonces una fecha distinta a la que
+    // terminaba grabándose — se alinea al mismo criterio, editable igual por fila si hace falta.
+    const defaultDate = format(siguienteDiaHabil(new Date()), 'yyyy-MM-dd');
 
     const eligibleGroups = groupedNeeds.filter(g => {
       const isConvOnly = g.items.every(it => it.descripcion.toUpperCase().includes('CONV') || it.descripcion.toUpperCase().includes('CV'));
@@ -3317,7 +3322,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     });
 
     return rows;
-  }, [groupedNeeds, selectedDates, corridaFechas]);
+  }, [groupedNeeds, corridaFechas, siguienteDiaHabil]);
 
   const handleUpdateCorridaFecha = (corridaId: string, fecha: string) => {
     setCorridaFechas(prev => ({ ...prev, [corridaId]: fecha }));
