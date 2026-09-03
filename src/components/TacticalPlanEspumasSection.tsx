@@ -3628,26 +3628,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     addNotification('success', `Turno ${campo === 'day' ? 'Día' : 'Noche'} → ${etiqueta} en todas las máquinas de ${planta}. Capacidad y ocupación recalculadas.`);
   }, [addNotification, shiftOptions, nightShiftOptions]);
 
-  const getMttoTime = (machineId: string, planta: string) => {
-    const target = machineId.trim().toUpperCase();
-    // "Capacidad Operativa" combina Provisionales + FERT (ver renderMachineCol: allAudit), así que
-    // el mantenimiento a descontar debe considerar la UNIÓN de los días seleccionados en ambos
-    // selectores — ya no hay un único selector global de fecha.
-    const diasEvaluados = new Set([...selectedDatesProv, ...selectedDatesFert]);
-    return uniqueMantenimientosSAP
-      .filter(m => {
-        const idMaquina = getProp(m, ['ID_MAQUINA', 'MAQUINA']);
-        const link = resolveMachineLink(idMaquina, getProp(m, ['Centro', 'CENTRO']), getProp(m, ['PLANTA']));
-        if (!link || link.id !== target || link.planta !== planta) return false;
-        // fechaLocalEcuador (no split('T')[0]): FECHA_OT_PRG_INI es un timestamp UTC real (ej.
-        // 2026-07-09T19:00:00.000Z) y diasEvaluados son fechas LOCALES elegidas en el calendario —
-        // mismo bug de zona horaria que en explotarPFFParaCentro.
-        const date = fechaLocalEcuador(getProp(m, ['FECHA_OT_PRG_INI']));
-        return diasEvaluados.size === 0 || diasEvaluados.has(date);
-      })
-      .reduce((sum, row) => sum + getMttoDurationH(row), 0);
-  };
-
   const renderMachineCol = (id: string, name: string, planta: 'UIO' | 'GYE') => {
     const config = planta === 'UIO' ? uioConfig.shifts[id] : gyeConfig.shifts[id];
 
@@ -3658,7 +3638,15 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     // columnas —lo que se leía como "esta máquina está libre" cuando en realidad era "no encontré
     // nada que cruzar"— y solo acertaba por casualidad en V02/V03, donde 'HR_V02'.includes('V02').
     // Para devolverla hace falta un mapeo explícito ID de configuración → código(s) SAP.
-    const mttoHours = getMttoTime(id, planta);
+    //
+    // MTTO PREVENTIVO: antes usaba los selectores de fecha de Provisionales/FERT (getMttoTime, ya
+    // eliminada) — mostraba 0.00h casi siempre porque esos selectores no tienen por qué coincidir
+    // con la fecha que se está evaluando en Capacidad Operativa. Caso real reportado por el usuario:
+    // la tarjeta mostraba 0.00h mientras el resumen de abajo (que sí usa la fecha de Capacidad
+    // Operativa) ya restaba mantenimiento real — dos fuentes distintas para el mismo dato. Ahora
+    // ambas usan la MISMA fecha (selectedDatesCapacidad[planta]).
+    const fechaCapacidadSel = Array.from(selectedDatesCapacidad[planta]).sort()[0];
+    const mttoHours = fechaCapacidadSel ? getMttoTimeParaFecha(id, planta, fechaCapacidadSel) : 0;
 
     const activa = config.activa !== false;
 
