@@ -1770,26 +1770,63 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     setResumenProgress({ current: 0, total: totalToProcess });
     const consolidatedMap = new Map<string, UnifiedNeedRow>();
 
+    // Cache de explosiones por material propio (Fert=el material en sí, no un padre que lo consume).
+    // Necesario porque BLOQUE FORMULADO (densidad/apertura reales) de un componente SOLO aparece en
+    // LA EXPLOSIÓN DE SU PROPIO CÓDIGO -- la respuesta del servicio para un Fert dado trae únicamente
+    // hijos DIRECTOS de ese Fert, nunca nietos. Antes se buscaba dentro del rawData del padre/orden
+    // FERT que descubrió el componente (que estructuralmente NUNCA podía contener esa relación), así
+    // que la apertura resultante dependía de qué material lo descubriera primero cada día -- a veces
+    // vía P2-only (que sí auto-explota el propio código y encuentra el bloque real), a veces vía una
+    // orden FERT real (que no) -- dando resultados inestables día a día para el MISMO material físico
+    // (caso real reportado: "D19 PL AF"/"D22 BL"/"D15 AM AF" apareciendo divididos en dos corridas
+    // -- "—" y un valor real -- de un día para otro sin que cambiara ningún criterio de agrupación).
+    const explosionCache = new Map<string, MaterialExplosionRow[]>();
+    const getExplosion = async (code: string): Promise<MaterialExplosionRow[]> => {
+      if (explosionCache.has(code)) return explosionCache.get(code)!;
+      let rows: MaterialExplosionRow[] = [];
+      try {
+        const response = await serviciosService.getMaestroMaterialesExplosion("1000", code.padStart(18, '0'), 1, 500);
+        const data: MaterialExplosionRow[] = response?.data?.data || response?.data || [];
+        rows = Array.isArray(data) ? data : [];
+      } catch (e) {
+        console.warn(`Error explotando material propio ${code}:`, (e as Error).message);
+      }
+      explosionCache.set(code, rows);
+      return rows;
+    };
+
     // Construye/mergea la fila de un componente (compCode) en consolidatedMap. Se usa tanto para
     // los componentes "LAMINA CILINDRICA" normales (hijos de un FERT explotado) como para materiales
     // P2 auto-explotados, donde compCode/desc corresponden al material mismo.
-    const addComponentRow = (
+    const addComponentRow = async (
       compCode: string,
       desc: string,
-      rawData: MaterialExplosionRow[],
       qtyHalb: number,
       cantUnitaria: number
     ) => {
+      const kgHalb = qtyHalb * cantUnitaria;
+
+      if (consolidatedMap.has(compCode)) {
+        const existingRow = consolidatedMap.get(compCode)!;
+        existingRow.consumoKgHalb += kgHalb;
+        existingRow.totalConsumoKg = existingRow.consumoKg + existingRow.consumoKgHalb;
+        // FERT units contribution also needed for total rollos calculation
+        const rollosContributionHalb = existingRow.peso > 0 ? kgHalb / existingRow.peso : 0;
+        existingRow.nroRollosHalb += rollosContributionHalb;
+        return;
+      }
+
       const isConvRow = desc.includes('CONV') || desc.includes('CV');
 
       // Las variantes CONV no se cortan directo de un BLOQUE FORMULADO: se producen consumiendo
       // la lámina base (otra máquina, nivel posterior). Por eso, para heredar la MISMA apertura/
       // densidad/distancia que su lámina base (y así caer en el mismo bloque de corridas), se ubica
-      // primero esa lámina base en el árbol BOM: la fila donde MATERIAL_PADRE = código CONV y el
-      // componente es otra "LAMINA CILINDRICA" (no CONV).
+      // primero esa lámina base en la explosión DEL PROPIO CONV: la fila donde MATERIAL_PADRE =
+      // código CONV y el componente es otra "LAMINA CILINDRICA" (no CONV).
       let baseLaminaRow: MaterialExplosionRow | null | undefined = null;
       if (isConvRow) {
-        baseLaminaRow = rawData.find(r => {
+        const ownExplosion = await getExplosion(compCode);
+        baseLaminaRow = ownExplosion.find(r => {
           const rDesc = (r.DESCRIPCION_COMPONENTE || '').toUpperCase();
           return cleanCode(r.MATERIAL_PADRE) === compCode &&
             rDesc.includes('LAMINA CILINDRICA') &&
@@ -1800,7 +1837,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       const dimsSourceCode = baseLaminaRow ? cleanCode(baseLaminaRow.COMPONENTE) : compCode;
       const dimsSourceDesc = baseLaminaRow ? String(baseLaminaRow.DESCRIPCION_COMPONENTE || '').toUpperCase() : desc;
 
-      const blockComp = rawData.find(r =>
+      const blockExplosion = await getExplosion(dimsSourceCode);
+      const blockComp = blockExplosion.find(r =>
         cleanCode(r.MATERIAL_PADRE) === dimsSourceCode &&
         (r.DESCRIPCION_COMPONENTE || '').toUpperCase().includes('BLOQUE FORMULADO')
       );
@@ -1813,16 +1851,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       const finalAperture = blockDesc ? extractAperture(blockDesc) : extractAperture(dimsSourceDesc);
       const finalDistancia = blockDims && blockDims.distancia > 0 ? blockDims.distancia : dimsSource.distancia;
 
-      const kgHalb = qtyHalb * cantUnitaria;
-
-      if (consolidatedMap.has(compCode)) {
-        const existingRow = consolidatedMap.get(compCode)!;
-        existingRow.consumoKgHalb += kgHalb;
-        existingRow.totalConsumoKg = existingRow.consumoKg + existingRow.consumoKgHalb;
-        // FERT units contribution also needed for total rollos calculation
-        const rollosContributionHalb = existingRow.peso > 0 ? kgHalb / existingRow.peso : 0;
-        existingRow.nroRollosHalb += rollosContributionHalb;
-      } else {
+      {
         const pesoTeorico = (finalDistancia * dims.altura * dims.espesor * safeNum(finalDens)) / 10000;
         const looperMatch = kpiLooperData.find(k => cleanCode(k.Material) === compCode);
         const finalPeso = looperMatch ? safeNum(looperMatch.PesoUN) : pesoTeorico;
@@ -1885,36 +1914,32 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
     for (let i = 0; i < allMaterials.length; i++) {
       const matCode = allMaterials[i];
-      const fullCode = matCode.padStart(18, '0');
       const qtyHalb = materialGroupsHalb.get(matCode) || 0;
 
       try {
-        const response = await serviciosService.getMaestroMaterialesExplosion("1000", fullCode, 1, 500);
-        const rawData: MaterialExplosionRow[] = response?.data?.data || response?.data || [];
-        if (Array.isArray(rawData)) {
-          // El servicio de explosión, para un material INTERMEDIO (ej. un acolchado usado en varios
-          // colchones), devuelve una fila DUPLICADA por cada producto final (FERT_PRINCIPAL) que lo
-          // consume en algún punto de su árbol -- no una sola relación matCode->componente. Verificado
-          // en vivo: MATERIAL_PADRE siempre es matCode (relación directa de 1 nivel) y CANTIDAD_UNITARIA
-          // es CONSTANTE entre esas filas duplicadas; CANTIDAD_ACUMULADA en cambio varía porque acarrea
-          // el acumulado desde CADA producto final distinto, ajeno al pedido real de matCode. Sumar
-          // CANTIDAD_ACUMULADA de cada duplicado (como se hacía antes) multiplicaba la necesidad real
-          // por la cantidad de productos finales que comparten el componente (caso real: 30004186
-          // pasó de 101.572 Kg a ~980 Kg, un material compartido por 64 variantes de colchón).
-          const laminaRowsByComponente = new Map<string, MaterialExplosionRow>();
-          rawData.forEach(row => {
-            if (!(row.DESCRIPCION_COMPONENTE || '').toUpperCase().includes('LAMINA CILINDRICA')) return;
-            const compCode = cleanCode(row.COMPONENTE);
-            if (EXCLUDED_LAMINA_MATERIALS.has(compCode)) return;
-            if (!laminaRowsByComponente.has(compCode)) laminaRowsByComponente.set(compCode, row);
-          });
+        const rawData = await getExplosion(matCode);
+        // El servicio de explosión, para un material INTERMEDIO (ej. un acolchado usado en varios
+        // colchones), devuelve una fila DUPLICADA por cada producto final (FERT_PRINCIPAL) que lo
+        // consume en algún punto de su árbol -- no una sola relación matCode->componente. Verificado
+        // en vivo: MATERIAL_PADRE siempre es matCode (relación directa de 1 nivel) y CANTIDAD_UNITARIA
+        // es CONSTANTE entre esas filas duplicadas; CANTIDAD_ACUMULADA en cambio varía porque acarrea
+        // el acumulado desde CADA producto final distinto, ajeno al pedido real de matCode. Sumar
+        // CANTIDAD_ACUMULADA de cada duplicado (como se hacía antes) multiplicaba la necesidad real
+        // por la cantidad de productos finales que comparten el componente (caso real: 30004186
+        // pasó de 101.572 Kg a ~980 Kg, un material compartido por 64 variantes de colchón).
+        const laminaRowsByComponente = new Map<string, MaterialExplosionRow>();
+        rawData.forEach(row => {
+          if (!(row.DESCRIPCION_COMPONENTE || '').toUpperCase().includes('LAMINA CILINDRICA')) return;
+          const compCode = cleanCode(row.COMPONENTE);
+          if (EXCLUDED_LAMINA_MATERIALS.has(compCode)) return;
+          if (!laminaRowsByComponente.has(compCode)) laminaRowsByComponente.set(compCode, row);
+        });
 
-          laminaRowsByComponente.forEach(comp => {
-            const compCode = cleanCode(comp.COMPONENTE);
-            const desc = String(comp.DESCRIPCION_COMPONENTE || '').toUpperCase();
-            const cantUnitaria = safeNum(comp.CANTIDAD_UNITARIA || comp.CANTIDAD_ACUMULADA || 0);
-            addComponentRow(compCode, desc, rawData, qtyHalb, cantUnitaria);
-          });
+        for (const comp of laminaRowsByComponente.values()) {
+          const compCode = cleanCode(comp.COMPONENTE);
+          const desc = String(comp.DESCRIPCION_COMPONENTE || '').toUpperCase();
+          const cantUnitaria = safeNum(comp.CANTIDAD_UNITARIA || comp.CANTIDAD_ACUMULADA || 0);
+          await addComponentRow(compCode, desc, qtyHalb, cantUnitaria);
         }
       } catch (e) {
         console.warn(`Error material ${matCode}:`, (e as Error).message);
@@ -1929,12 +1954,9 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     for (let k = 0; k < p2OnlyCodes.length; k++) {
       const matCode = p2OnlyCodes[k];
       if (!consolidatedMap.has(matCode)) {
-        const fullCode = matCode.padStart(18, '0');
         const desc = (materialDescByCode.get(matCode) || '').toUpperCase();
         try {
-          const response = await serviciosService.getMaestroMaterialesExplosion("1000", fullCode, 1, 500);
-          const rawData: MaterialExplosionRow[] = response?.data?.data || response?.data || [];
-          addComponentRow(matCode, desc, Array.isArray(rawData) ? rawData : [], 0, 1);
+          await addComponentRow(matCode, desc, 0, 1);
         } catch (e) {
           console.warn(`Error material P2 ${matCode}:`, (e as Error).message);
         }
