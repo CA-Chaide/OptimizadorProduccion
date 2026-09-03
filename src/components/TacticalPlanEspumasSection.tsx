@@ -2127,19 +2127,49 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       // CNC se separa por MÁQUINA real (esFilaCNC, código SAP HR-CTCNC), no por responsable — sus
       // responsables (044, 038) ya estaban dentro de CARRUSEL_RESP, así que Carruseles debe excluir
       // explícitamente las filas de CNC para no contarlas dos veces.
-      const ocupadoPorProceso = (resp: string[]) =>
-        filasSeleccion.filter(x => resp.includes(x.row.responsable) && !esFilaCNC(x.row.maquina)).reduce((s, x) => s + x.row.tTotal, 0);
-      const ocupadoCNC = filasSeleccion.filter(x => esFilaCNC(x.row.maquina)).reduce((s, x) => s + x.row.tTotal, 0);
+      const filasProceso = (proceso: ProcesoCorte) => proceso === 'cnc'
+        ? filasSeleccion.filter(x => esFilaCNC(x.row.maquina))
+        : filasSeleccion.filter(x => (proceso === 'carrusel' ? CARRUSEL_RESP : VERTICAL_RESP).includes(x.row.responsable) && !esFilaCNC(x.row.maquina));
+      const ocupadoPorProceso = (proceso: ProcesoCorte) => filasProceso(proceso).reduce((s, x) => s + x.row.tTotal, 0);
+      // Cantidad (UN) y Peso (Kg) reales — mismas filas que ya se usan para el tiempo (confirmado por
+      // el usuario), no un cálculo aparte.
+      const cantidadPorProceso = (proceso: ProcesoCorte) => filasProceso(proceso).reduce((s, x) => s + x.row.cantUnidadReal, 0);
+      const pesoPorProceso = (proceso: ProcesoCorte) => filasProceso(proceso).reduce((s, x) => s + x.row.peso, 0);
 
       // Mantenimiento real (mantenimientosSAP), para la fecha seleccionada — antes solo se mostraba
       // informativo, ahora resta de la capacidad de cada proceso (confirmado por el usuario).
       const fechaMtto = fechasSel[0];
-      const mttoPorProceso = (proceso: ProcesoCorte) => fechaMtto
-        ? machines.filter(m => m.proceso === proceso).reduce((s, m) => s + getMttoTimeParaFecha(m.id, planta, fechaMtto), 0)
-        : 0;
+      const mttoDeMaquina = (id: string) => fechaMtto ? getMttoTimeParaFecha(id, planta, fechaMtto) : 0;
+      const mttoPorProceso = (proceso: ProcesoCorte) =>
+        machines.filter(m => m.proceso === proceso).reduce((s, m) => s + mttoDeMaquina(m.id), 0);
 
       const diaComun = machines.length > 0 && new Set(machines.map(m => config.shifts[m.id]?.day)).size === 1 ? config.shifts[machines[0].id]?.day : '';
       const nocheComun = machines.length > 0 && new Set(machines.map(m => config.shifts[m.id]?.night)).size === 1 ? config.shifts[machines[0].id]?.night : '';
+
+      // Detalle por máquina — para el correo (bloque expandido por carrusel, tabla compacta para
+      // CNC/Verticales, ver construirReporteHtmlEspuma): cada máquina con su turno, paro, mtto real
+      // ya restado, y el total neto.
+      const detallePorMaquina = machines.map(m => {
+        const c = config.shifts[m.id];
+        const diaLabel = shiftOptions.find(o => o.v === c?.day)?.l || '—';
+        const nocheLabel = nightShiftOptions.find(o => o.v === c?.night)?.l || '—';
+        const hD = shiftOptions.find(o => o.v === c?.day)?.h || 0;
+        const hN = nightShiftOptions.find(o => o.v === c?.night)?.h || 0;
+        const rendimiento = rendimientoDe(m.proceso);
+        const diaNeta = hD * (1 - (c?.paro1 ?? 0) / 100) * rendimiento;
+        const nocheNeta = hN * (1 - (c?.paro2 ?? 0) / 100) * rendimiento;
+        const mttoReal = mttoDeMaquina(m.id);
+        return {
+          id: m.id,
+          nombre: m.n,
+          proceso: m.proceso,
+          diaLabel, nocheLabel,
+          diaNeta, nocheNeta,
+          paro: c?.paro1 ?? 0,
+          mttoReal,
+          total: Math.max(0, horasDeMaquina(m.id) - mttoReal),
+        };
+      });
 
       return {
         fecha: fechasSel[0] || '',
@@ -2148,9 +2178,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         paroPorc: machines[0] ? config.shifts[machines[0].id]?.paro1 ?? 0 : 0,
         rendimientoPct: config.performance,
         rendimientoCNCPct: config.performanceCNC,
-        carruseles: { capacidad: Math.max(0, capacidadPorProceso.carrusel - mttoPorProceso('carrusel')), ocupacion: ocupadoPorProceso(CARRUSEL_RESP) },
-        verticales: { capacidad: Math.max(0, capacidadPorProceso.vertical - mttoPorProceso('vertical')), ocupacion: ocupadoPorProceso(VERTICAL_RESP) },
-        cnc: { capacidad: Math.max(0, capacidadPorProceso.cnc - mttoPorProceso('cnc')), ocupacion: ocupadoCNC },
+        detallePorMaquina,
+        carruseles: { capacidad: Math.max(0, capacidadPorProceso.carrusel - mttoPorProceso('carrusel')), ocupacion: ocupadoPorProceso('carrusel'), cantidad: cantidadPorProceso('carrusel'), peso: pesoPorProceso('carrusel') },
+        verticales: { capacidad: Math.max(0, capacidadPorProceso.vertical - mttoPorProceso('vertical')), ocupacion: ocupadoPorProceso('vertical'), cantidad: cantidadPorProceso('vertical'), peso: pesoPorProceso('vertical') },
+        cnc: { capacidad: Math.max(0, capacidadPorProceso.cnc - mttoPorProceso('cnc')), ocupacion: ocupadoPorProceso('cnc'), cantidad: cantidadPorProceso('cnc'), peso: pesoPorProceso('cnc') },
       };
     };
     return { UIO: calcularPlanta('UIO'), GYE: calcularPlanta('GYE') };
@@ -2174,7 +2205,43 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const pctCarruseles = r.carruseles.capacidad > 0 ? (r.carruseles.ocupacion / r.carruseles.capacidad) * 100 : 0;
     const pctVerticales = r.verticales.capacidad > 0 ? (r.verticales.ocupacion / r.verticales.capacidad) * 100 : 0;
     const pctCnc = r.cnc.capacidad > 0 ? (r.cnc.ocupacion / r.cnc.capacidad) * 100 : 0;
-    const tieneCnc = r.cnc.capacidad > 0 || r.cnc.ocupacion > 0;
+    const tieneCnc = r.cnc.capacidad > 0 || r.cnc.ocupacion > 0 || r.detallePorMaquina.some(m => m.proceso === 'cnc');
+
+    // Detalle por máquina — carruseles: bloque expandido (Día/Noche/Paro programado/Mantenimiento),
+    // igual al mockup aprobado por el usuario.
+    const carruselesMaquinas = r.detallePorMaquina.filter(m => m.proceso === 'carrusel');
+    const carruselesDetalleHtml = carruselesMaquinas.map((m, idx) => `
+      <p style="margin:0 0 6px;font-size:11px;font-weight:700;color:#0e7490;text-transform:capitalize;">${m.nombre} <span style="float:right;font-weight:700;color:#111827;">${m.total.toFixed(2)} h</span></p>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;${idx < carruselesMaquinas.length - 1 ? 'margin-bottom:12px;' : ''}">
+        <tr style="background:#ecfdf5;"><td style="padding:7px 12px;font-size:11px;font-weight:700;color:#047857;border-bottom:1px solid #e5e7eb;">Día</td><td style="padding:7px 12px;font-size:11px;color:#374151;border-bottom:1px solid #e5e7eb;">${m.diaLabel}</td><td align="right" style="padding:7px 12px;font-size:11px;font-weight:700;color:#047857;border-bottom:1px solid #e5e7eb;font-variant-numeric:tabular-nums;">${m.diaNeta.toFixed(2)}</td></tr>
+        <tr style="background:#eef2ff;"><td style="padding:7px 12px;font-size:11px;font-weight:700;color:#4338ca;border-bottom:1px solid #e5e7eb;">Noche</td><td style="padding:7px 12px;font-size:11px;color:#374151;border-bottom:1px solid #e5e7eb;">${m.nocheLabel}</td><td align="right" style="padding:7px 12px;font-size:11px;font-weight:700;color:#4338ca;border-bottom:1px solid #e5e7eb;font-variant-numeric:tabular-nums;">${m.nocheNeta.toFixed(2)}</td></tr>
+        <tr style="background:#fffbeb;"><td style="padding:7px 12px;font-size:11px;font-weight:700;color:#b45309;border-bottom:1px solid #e5e7eb;">Paro programado</td><td style="padding:7px 12px;font-size:11px;color:#374151;border-bottom:1px solid #e5e7eb;"></td><td align="right" style="padding:7px 12px;font-size:11px;font-weight:700;color:#b45309;border-bottom:1px solid #e5e7eb;">${m.paro}%</td></tr>
+        <tr style="background:#f9fafb;"><td style="padding:7px 12px;font-size:11px;font-weight:700;color:#6b7280;">Mantenimiento</td><td style="padding:7px 12px;font-size:11px;color:#374151;"></td><td align="right" style="padding:7px 12px;font-size:11px;font-weight:700;color:#6b7280;">${m.mttoReal > 0 ? m.mttoReal.toFixed(2) : '–'}</td></tr>
+      </table>`).join('');
+
+    // Detalle por máquina — tabla compacta (CNC y Verticales, mismo formato Recurso/T1/T2/Mtto/T.Total).
+    const tablaCompactaMaquinas = (lista: typeof r.detallePorMaquina) => `
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;">
+        <tr style="background:#f9fafb;">
+          <td style="padding:8px 10px;font-size:9px;font-weight:700;letter-spacing:0.03em;text-transform:uppercase;color:#6b7280;border-bottom:1px solid #e5e7eb;">Recurso</td>
+          <td align="right" style="padding:8px 8px;font-size:9px;font-weight:700;text-transform:uppercase;color:#6b7280;border-bottom:1px solid #e5e7eb;">T1</td>
+          <td align="right" style="padding:8px 8px;font-size:9px;font-weight:700;text-transform:uppercase;color:#6b7280;border-bottom:1px solid #e5e7eb;">T2</td>
+          <td align="right" style="padding:8px 8px;font-size:9px;font-weight:700;text-transform:uppercase;color:#6b7280;border-bottom:1px solid #e5e7eb;">Mtto</td>
+          <td align="right" style="padding:8px 10px;font-size:9px;font-weight:700;text-transform:uppercase;color:#6b7280;border-bottom:1px solid #e5e7eb;">T. Total</td>
+        </tr>
+        ${lista.map((m, idx) => `
+        <tr${idx % 2 === 1 ? ' style="background:#fafafa;"' : ''}>
+          <td style="padding:8px 10px;font-size:11px;font-weight:600;color:#111827;${idx < lista.length - 1 ? 'border-bottom:1px solid #f3f4f6;' : ''}">${m.nombre}</td>
+          <td align="right" style="padding:8px 8px;font-size:11px;color:#374151;${idx < lista.length - 1 ? 'border-bottom:1px solid #f3f4f6;' : ''}font-variant-numeric:tabular-nums;">${m.diaNeta.toFixed(2)}</td>
+          <td align="right" style="padding:8px 8px;font-size:11px;color:#374151;${idx < lista.length - 1 ? 'border-bottom:1px solid #f3f4f6;' : ''}font-variant-numeric:tabular-nums;">${m.nocheNeta.toFixed(2)}</td>
+          <td align="right" style="padding:8px 8px;font-size:11px;color:#374151;${idx < lista.length - 1 ? 'border-bottom:1px solid #f3f4f6;' : ''}font-variant-numeric:tabular-nums;">${m.mttoReal.toFixed(2)}</td>
+          <td align="right" style="padding:8px 10px;font-size:11px;font-weight:700;color:#111827;${idx < lista.length - 1 ? 'border-bottom:1px solid #f3f4f6;' : ''}font-variant-numeric:tabular-nums;">${m.total.toFixed(2)}</td>
+        </tr>`).join('')}
+      </table>`;
+
+    const cncMaquinas = r.detallePorMaquina.filter(m => m.proceso === 'cnc');
+    const verticalesMaquinas = r.detallePorMaquina.filter(m => m.proceso === 'vertical');
+
     return `
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto;background:#ffffff;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
   <tr>
@@ -2196,24 +2263,23 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   </tr>
   <tr>
     <td style="padding:18px 28px 4px;">
-      <p style="margin:0 0 10px;font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6b7280;">Gestión de tiempos</p>
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;">
-        <tr style="background:#ecfdf5;">
-          <td style="padding:10px 14px;font-size:12px;font-weight:700;color:#047857;border-bottom:1px solid #e5e7eb;">Día</td>
-          <td style="padding:10px 14px;font-size:12px;color:#374151;border-bottom:1px solid #e5e7eb;font-variant-numeric:tabular-nums;">${r.diaLabel}</td>
-          <td align="right" style="padding:10px 14px;font-size:12px;font-weight:700;color:#047857;border-bottom:1px solid #e5e7eb;">—</td>
-        </tr>
-        <tr style="background:#eef2ff;">
-          <td style="padding:10px 14px;font-size:12px;font-weight:700;color:#4338ca;border-bottom:1px solid #e5e7eb;">Noche</td>
-          <td style="padding:10px 14px;font-size:12px;color:#374151;border-bottom:1px solid #e5e7eb;font-variant-numeric:tabular-nums;">${r.nocheLabel}</td>
-          <td align="right" style="padding:10px 14px;font-size:12px;font-weight:700;color:#4338ca;border-bottom:1px solid #e5e7eb;">—</td>
-        </tr>
-        <tr style="background:#fffbeb;">
-          <td style="padding:10px 14px;font-size:12px;font-weight:700;color:#b45309;">Paro programado</td>
-          <td style="padding:10px 14px;font-size:12px;color:#374151;">Por turno, todas las máquinas</td>
-          <td align="right" style="padding:10px 14px;font-size:12px;font-weight:700;color:#b45309;font-variant-numeric:tabular-nums;">${r.paroPorc}%</td>
-        </tr>
-      </table>
+      <p style="margin:0 0 10px;font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6b7280;">Detalle por máquina — carruseles</p>
+      ${carruselesDetalleHtml}
+    </td>
+  </tr>
+  ${tieneCnc ? `
+  <tr>
+    <td style="padding:14px 28px 4px;">
+      <p style="margin:0 0 10px;font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6b7280;">Detalle por máquina — cnc</p>
+      ${tablaCompactaMaquinas(cncMaquinas)}
+      <p style="margin:6px 0 0;font-size:10px;color:#9ca3af;">Rendimiento ${r.rendimientoCNCPct}% (editable aparte de Carruseles) · ${cncMaquinas.length} máquina${cncMaquinas.length === 1 ? '' : 's'} · Capacidad ${r.cnc.capacidad.toFixed(1)} h · Ocupación ${r.cnc.ocupacion.toFixed(1)} h (${pctCnc.toFixed(0)}%)</p>
+    </td>
+  </tr>` : ''}
+  <tr>
+    <td style="padding:14px 28px 4px;">
+      <p style="margin:0 0 10px;font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6b7280;">Detalle por máquina — verticales</p>
+      ${tablaCompactaMaquinas(verticalesMaquinas)}
+      <p style="margin:6px 0 0;font-size:10px;color:#9ca3af;">100% fijo, no aplica rendimiento · ${verticalesMaquinas.length} máquina${verticalesMaquinas.length === 1 ? '' : 's'} · Capacidad ${r.verticales.capacidad.toFixed(1)} h · Ocupación ${r.verticales.ocupacion.toFixed(1)} h (${pctVerticales.toFixed(0)}%)</p>
     </td>
   </tr>
   <tr>
@@ -2225,8 +2291,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#111827;border-radius:10px;">
               <tr><td style="padding:14px 14px;">
                 <p style="margin:0;font-size:9px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#9ca3af;">Carruseles (rend. ${r.rendimientoPct}%)</p>
-                <p style="margin:4px 0 0;font-size:20px;font-weight:700;color:#ffffff;font-variant-numeric:tabular-nums;">${r.carruseles.ocupacion.toFixed(1)} h <span style="font-size:12px;font-weight:600;color:#9ca3af;">/ ${r.carruseles.capacidad.toFixed(1)} h</span></p>
-                <p style="margin:2px 0 0;font-size:11px;font-weight:700;color:${pctCarruseles > 100 ? '#f87171' : '#5eead4'};">${pctCarruseles.toFixed(0)}% ocupado</p>
+                <p style="margin:4px 0 0;font-size:18px;font-weight:700;color:#ffffff;font-variant-numeric:tabular-nums;">${r.carruseles.ocupacion.toFixed(1)} h <span style="font-size:11px;font-weight:600;color:#9ca3af;">/ ${r.carruseles.capacidad.toFixed(1)} h</span></p>
+                <p style="margin:5px 0 0;font-size:10px;color:#9ca3af;">Cantidad (und) <span style="color:#e5e7eb;font-weight:700;">${formatNum(r.carruseles.cantidad, 0)}</span></p>
+                <p style="margin:1px 0 0;font-size:10px;color:#9ca3af;">Peso (Kg) <span style="color:#e5e7eb;font-weight:700;">${formatNum(r.carruseles.peso, 0)}</span></p>
+                <p style="margin:5px 0 0;font-size:11px;font-weight:700;color:${pctCarruseles > 100 ? '#f87171' : '#5eead4'};">${pctCarruseles.toFixed(0)}% ocupado</p>
               </td></tr>
             </table>
           </td>
@@ -2235,8 +2303,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#111827;border-radius:10px;">
               <tr><td style="padding:14px 14px;">
                 <p style="margin:0;font-size:9px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#9ca3af;">CNC (rend. ${r.rendimientoCNCPct}%)</p>
-                <p style="margin:4px 0 0;font-size:20px;font-weight:700;color:#ffffff;font-variant-numeric:tabular-nums;">${r.cnc.ocupacion.toFixed(1)} h <span style="font-size:12px;font-weight:600;color:#9ca3af;">/ ${r.cnc.capacidad.toFixed(1)} h</span></p>
-                <p style="margin:2px 0 0;font-size:11px;font-weight:700;color:${pctCnc > 100 ? '#f87171' : '#5eead4'};">${pctCnc.toFixed(0)}% ocupado</p>
+                <p style="margin:4px 0 0;font-size:18px;font-weight:700;color:#ffffff;font-variant-numeric:tabular-nums;">${r.cnc.ocupacion.toFixed(1)} h <span style="font-size:11px;font-weight:600;color:#9ca3af;">/ ${r.cnc.capacidad.toFixed(1)} h</span></p>
+                <p style="margin:5px 0 0;font-size:10px;color:#9ca3af;">Cantidad (und) <span style="color:#e5e7eb;font-weight:700;">${formatNum(r.cnc.cantidad, 0)}</span></p>
+                <p style="margin:1px 0 0;font-size:10px;color:#9ca3af;">Peso (Kg) <span style="color:#e5e7eb;font-weight:700;">${formatNum(r.cnc.peso, 0)}</span></p>
+                <p style="margin:5px 0 0;font-size:11px;font-weight:700;color:${pctCnc > 100 ? '#f87171' : '#5eead4'};">${pctCnc.toFixed(0)}% ocupado</p>
               </td></tr>
             </table>
           </td>` : ''}
@@ -2244,8 +2314,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#111827;border-radius:10px;">
               <tr><td style="padding:14px 14px;">
                 <p style="margin:0;font-size:9px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#9ca3af;">Verticales (100% rend.)</p>
-                <p style="margin:4px 0 0;font-size:20px;font-weight:700;color:#ffffff;font-variant-numeric:tabular-nums;">${r.verticales.ocupacion.toFixed(1)} h <span style="font-size:12px;font-weight:600;color:#9ca3af;">/ ${r.verticales.capacidad.toFixed(1)} h</span></p>
-                <p style="margin:2px 0 0;font-size:11px;font-weight:700;color:${pctVerticales > 100 ? '#f87171' : '#5eead4'};">${pctVerticales.toFixed(0)}% ocupado</p>
+                <p style="margin:4px 0 0;font-size:18px;font-weight:700;color:#ffffff;font-variant-numeric:tabular-nums;">${r.verticales.ocupacion.toFixed(1)} h <span style="font-size:11px;font-weight:600;color:#9ca3af;">/ ${r.verticales.capacidad.toFixed(1)} h</span></p>
+                <p style="margin:5px 0 0;font-size:10px;color:#9ca3af;">Cantidad (und) <span style="color:#e5e7eb;font-weight:700;">${formatNum(r.verticales.cantidad, 0)}</span></p>
+                <p style="margin:1px 0 0;font-size:10px;color:#9ca3af;">Peso (Kg) <span style="color:#e5e7eb;font-weight:700;">${formatNum(r.verticales.peso, 0)}</span></p>
+                <p style="margin:5px 0 0;font-size:11px;font-weight:700;color:${pctVerticales > 100 ? '#f87171' : '#5eead4'};">${pctVerticales.toFixed(0)}% ocupado</p>
               </td></tr>
             </table>
           </td>
