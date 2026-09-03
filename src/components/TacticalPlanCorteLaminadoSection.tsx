@@ -1837,6 +1837,16 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       const dimsSourceCode = baseLaminaRow ? cleanCode(baseLaminaRow.COMPONENTE) : compCode;
       const dimsSourceDesc = baseLaminaRow ? String(baseLaminaRow.DESCRIPCION_COMPONENTE || '').toUpperCase() : desc;
 
+      // El "nivel superior" del CONV (su lámina base) puede no tener necesidad propia este ciclo --
+      // sin FERT ni P2 propios, nunca se descubriría por ninguna de las 2 vías normales y quedaría
+      // invisible en el resumen, aunque el CONV sí dependa físicamente de ella (confirmado por el
+      // usuario con un caso real: 30004574 desaparecía del grupo "D22 BL-219" mientras su CONV
+      // 30004576 sí aparecía). Se fuerza su fila con necesidad 0 -- solo para que quede visible como
+      // referencia del material compartido, sin inventar ninguna cantidad.
+      if (baseLaminaRow && !consolidatedMap.has(dimsSourceCode)) {
+        await addComponentRow(dimsSourceCode, dimsSourceDesc, 0, 0);
+      }
+
       const blockExplosion = await getExplosion(dimsSourceCode);
       const blockComp = blockExplosion.find(r =>
         cleanCode(r.MATERIAL_PADRE) === dimsSourceCode &&
