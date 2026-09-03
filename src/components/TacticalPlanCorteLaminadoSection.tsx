@@ -25,7 +25,8 @@ import {
   Trash2,
   CheckCircle2,
   Mail,
-  Clock
+  Clock,
+  Search
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -621,6 +622,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
   // DetalleTactico; el tiempo de proceso de Laminado sigue viniendo de kpiLooperData (TiempoRolloMin),
   // un catálogo propio y distinto, ya real y aplicado en tProceso.
   const [tiemposEnsambladoData, setTiemposEnsambladoData] = useState<RawApiRow[]>([]);
+  const [tiemposEnsambladoSearch, setTiemposEnsambladoSearch] = useState('');
   const [inventarioSAP, setInventarioSAP] = useState<InventarioSapRow[]>([]);
   const [operadoresLaminado, setOperadoresLaminado] = useState<RawApiRow[]>([]);
   const [mantenimientosSAP, setMantenimientosSAP] = useState<RawApiRow[]>([]);
@@ -875,6 +877,28 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     });
     return map;
   }, [tiemposEnsambladoData]);
+
+  // Descripción por material (desde Inventario SAP, la única fuente con nombre disponible en este
+  // módulo) — usada solo para el buscador del tab "Tiempos Ensamblado", la respuesta cruda del
+  // endpoint no trae descripción propia.
+  const materialDescPorCodigo = useMemo(() => {
+    const map = new Map<string, string>();
+    inventarioSAP.forEach(inv => {
+      const code = cleanCode(inv.MATERIAL);
+      if (code && !map.has(code)) map.set(code, String(inv.NOMBRE || inv.DESCRIPCION || '').toUpperCase());
+    });
+    return map;
+  }, [inventarioSAP]);
+
+  const tiemposEnsambladoFiltrado = useMemo(() => {
+    const term = tiemposEnsambladoSearch.trim().toUpperCase();
+    if (!term) return tiemposEnsambladoData;
+    return tiemposEnsambladoData.filter(row => {
+      const code = cleanCode(getProp(row, ['CodMaterial', 'MATERIAL', 'Material']));
+      const desc = materialDescPorCodigo.get(code) || '';
+      return code.toUpperCase().includes(term) || desc.includes(term);
+    });
+  }, [tiemposEnsambladoData, tiemposEnsambladoSearch, materialDescPorCodigo]);
 
   const initData = useCallback(async () => {
     try {
@@ -4664,10 +4688,20 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="tiemposEnsamblado" className="animate-in fade-in duration-300 space-y-4 text-left">
-          <div className="flex items-center justify-between px-2">
+          <div className="flex items-center justify-between px-2 flex-wrap gap-3">
             <div className="flex items-center gap-3 text-left">
               <div className="p-2 bg-amber-600 rounded-xl text-white shadow-lg"><Clock className="w-4 h-4" /></div>
               <h3 className="text-sm font-black uppercase tracking-widest text-slate-800">Tiempos Ensamblado (Auditado)</h3>
+            </div>
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="search"
+                value={tiemposEnsambladoSearch}
+                onChange={(e) => setTiemposEnsambladoSearch(e.target.value)}
+                placeholder="Buscar por código o descripción de material..."
+                className="w-72 pl-8 pr-3 py-2 rounded-xl border border-gray-200 text-[11px] font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-400"
+              />
             </div>
           </div>
           {/* Entrada real que se envía al endpoint getTiemposEnsambladobyCentroyCodigoGrupo (ver
@@ -4689,6 +4723,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 <thead className="bg-gray-50 uppercase font-bold tracking-widest text-[8px] text-gray-400 sticky top-0 z-10">
                   <tr>
                     <th className="px-4 py-5 border-r border-gray-100">Material</th>
+                    <th className="px-6 py-5 border-r border-gray-100 text-left">Descripción</th>
                     <th className="px-3 py-5 border-r border-gray-100">Centro</th>
                     <th className="px-6 py-5 border-r border-gray-100 text-left bg-amber-50 text-amber-700">Puesto Trabajo Línea</th>
                     <th className="px-4 py-5 border-r border-gray-100">Línea</th>
@@ -4701,12 +4736,16 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50 text-[11px] font-black text-slate-700">
-                  {tiemposEnsambladoData.length === 0 ? (
-                    <tr><td colSpan={10} className="py-24 text-slate-300 font-black uppercase tracking-widest italic text-center">Sin datos — sincroniza el módulo o el servicio no devolvió filas para este grupo/centro</td></tr>
+                  {tiemposEnsambladoFiltrado.length === 0 ? (
+                    <tr><td colSpan={11} className="py-24 text-slate-300 font-black uppercase tracking-widest italic text-center">{tiemposEnsambladoData.length === 0 ? 'Sin datos — sincroniza el módulo o el servicio no devolvió filas para este grupo/centro' : 'Sin resultados para la búsqueda'}</td></tr>
                   ) : (
-                    tiemposEnsambladoData.map((row, i) => (
+                    tiemposEnsambladoFiltrado.map((row, i) => {
+                      const codigo = cleanCode(String(row.CodMaterial ?? ''));
+                      const descripcion = materialDescPorCodigo.get(codigo) || '';
+                      return (
                       <tr key={i} className="hover:bg-amber-50/10 transition-colors">
-                        <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-blue-700 text-center font-black">{cleanCode(String(row.CodMaterial ?? ''))}</td>
+                        <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-blue-700 text-center font-black">{codigo}</td>
+                        <td className="px-6 py-3 border-r border-dashed border-gray-100 text-left uppercase text-slate-700 font-black truncate max-w-[200px]" title={descripcion}>{descripcion || '—'}</td>
                         <td className="px-3 py-3 border-r border-dashed border-gray-100 text-center">{String(row.Centro ?? '—')}</td>
                         <td className="px-6 py-3 border-r border-dashed border-gray-100 text-left uppercase text-amber-700 font-black bg-amber-50/30 truncate max-w-[200px]" title={String(row.PuestoTrabajoLinea ?? '')}>{String(row.PuestoTrabajoLinea ?? '—')}</td>
                         <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center uppercase">{String(row.Linea ?? '—')}</td>
@@ -4717,7 +4756,8 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                         <td className="px-3 py-3 border-r border-dashed border-gray-100 font-mono text-indigo-700 text-center">{String(row.HojaRuta ?? '—')}</td>
                         <td className="px-3 py-3 text-[10px] text-slate-400 text-center uppercase font-bold">{String(row.VersionFabricacion_Manual ?? '—')}</td>
                       </tr>
-                    ))
+                      );
+                    })
                   )}
                 </tbody>
               </table>
