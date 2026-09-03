@@ -1778,7 +1778,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       desc: string,
       rawData: MaterialExplosionRow[],
       qtyHalb: number,
-      cantAcum: number
+      cantUnitaria: number
     ) => {
       const isConvRow = desc.includes('CONV') || desc.includes('CV');
 
@@ -1813,7 +1813,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       const finalAperture = blockDesc ? extractAperture(blockDesc) : extractAperture(dimsSourceDesc);
       const finalDistancia = blockDims && blockDims.distancia > 0 ? blockDims.distancia : dimsSource.distancia;
 
-      const kgHalb = qtyHalb * cantAcum;
+      const kgHalb = qtyHalb * cantUnitaria;
 
       if (consolidatedMap.has(compCode)) {
         const existingRow = consolidatedMap.get(compCode)!;
@@ -1892,16 +1892,28 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
         const response = await serviciosService.getMaestroMaterialesExplosion("1000", fullCode, 1, 500);
         const rawData: MaterialExplosionRow[] = response?.data?.data || response?.data || [];
         if (Array.isArray(rawData)) {
-          const laminaRows = rawData.filter(row =>
-            (row.DESCRIPCION_COMPONENTE || '').toUpperCase().includes('LAMINA CILINDRICA') &&
-            !EXCLUDED_LAMINA_MATERIALS.has(cleanCode(row.COMPONENTE))
-          );
+          // El servicio de explosión, para un material INTERMEDIO (ej. un acolchado usado en varios
+          // colchones), devuelve una fila DUPLICADA por cada producto final (FERT_PRINCIPAL) que lo
+          // consume en algún punto de su árbol -- no una sola relación matCode->componente. Verificado
+          // en vivo: MATERIAL_PADRE siempre es matCode (relación directa de 1 nivel) y CANTIDAD_UNITARIA
+          // es CONSTANTE entre esas filas duplicadas; CANTIDAD_ACUMULADA en cambio varía porque acarrea
+          // el acumulado desde CADA producto final distinto, ajeno al pedido real de matCode. Sumar
+          // CANTIDAD_ACUMULADA de cada duplicado (como se hacía antes) multiplicaba la necesidad real
+          // por la cantidad de productos finales que comparten el componente (caso real: 30004186
+          // pasó de 101.572 Kg a ~980 Kg, un material compartido por 64 variantes de colchón).
+          const laminaRowsByComponente = new Map<string, MaterialExplosionRow>();
+          rawData.forEach(row => {
+            if (!(row.DESCRIPCION_COMPONENTE || '').toUpperCase().includes('LAMINA CILINDRICA')) return;
+            const compCode = cleanCode(row.COMPONENTE);
+            if (EXCLUDED_LAMINA_MATERIALS.has(compCode)) return;
+            if (!laminaRowsByComponente.has(compCode)) laminaRowsByComponente.set(compCode, row);
+          });
 
-          laminaRows.forEach(comp => {
+          laminaRowsByComponente.forEach(comp => {
             const compCode = cleanCode(comp.COMPONENTE);
             const desc = String(comp.DESCRIPCION_COMPONENTE || '').toUpperCase();
-            const cantAcum = safeNum(comp.CANTIDAD_ACUMULADA || comp.CANTIDAD_UNITARIA || 0);
-            addComponentRow(compCode, desc, rawData, qtyHalb, cantAcum);
+            const cantUnitaria = safeNum(comp.CANTIDAD_UNITARIA || comp.CANTIDAD_ACUMULADA || 0);
+            addComponentRow(compCode, desc, rawData, qtyHalb, cantUnitaria);
           });
         }
       } catch (e) {
