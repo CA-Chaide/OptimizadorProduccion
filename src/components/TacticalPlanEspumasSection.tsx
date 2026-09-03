@@ -4098,23 +4098,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const fechasSel = Array.from(selectedDatesCapacidad[planta]).sort();
     const backlogSeleccion = fechasSel.length > 0 ? calcularBacklogAntesDe(fechasSel[0]) : [];
     const filasSeleccion = [...backlogSeleccion, ...fechasSel.flatMap(f => resolverFecha(f).map(x => ({ ...x, fecha: f })))];
-    const plannedSeleccion = filasSeleccion.reduce((s, x) => s + x.row.tTotal, 0);
-    const backlogH = backlogSeleccion.reduce((s, x) => s + x.row.tTotal, 0);
-    // Con el selector limitado a UNA fecha (ver toggleFechaCapacidad), fechasSel.length siempre es
-    // 0 o 1 — capacidadSeleccion queda en la práctica igual a totalH (un solo día), sin necesidad
-    // de tocar esta fórmula. El backlog (arriba) SOLO sube el numerador (Ocupación), nunca la
-    // capacidad — es carga adicional sobre el mismo día, no un día extra de máquina.
-    const capacidadSeleccion = totalH * fechasSel.length;
-    const occSeleccion = capacidadSeleccion > 0 ? (plannedSeleccion / capacidadSeleccion) * 100 : 0;
-    const labelSeleccion = fechasSel.length === 1
-      ? `Fecha (${format(parseFechaLocal(fechasSel[0]), 'dd.MM.yyyy')})`
-      : `${fechasSel.length} fechas seleccionadas`;
-    // <80% verde, 80-100% ámbar, >100% rojo.
-    const colorTarjeta = (occ: number) => occ > 100
-      ? { borde: 'border-red-200', fondo: 'bg-red-50/60', texto: 'text-red-700', barra: 'bg-red-500' }
-      : occ >= 80
-        ? { borde: 'border-amber-200', fondo: 'bg-amber-50/60', texto: 'text-amber-700', barra: 'bg-amber-500' }
-        : { borde: 'border-emerald-200', fondo: 'bg-emerald-50/60', texto: 'text-emerald-700', barra: 'bg-emerald-500' };
     // Selector de UNA sola fecha a la vez (antes multi-select): elegir una fecha reemplaza la
     // anterior, no se acumulan — el usuario pidió simplificar, comparar varios días combinados en
     // un solo % confundía más de lo que ayudaba. Con esto, capacidadSeleccion (más abajo) queda
@@ -4217,8 +4200,12 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                     {comun === '' && <option value="">— Mixto —</option>}
                     {t.opciones.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
                   </select>
-                  <span className={cn("text-[11px] font-black whitespace-nowrap tabular-nums", t.color)} title={`Disponibilidad neta por CARRUSEL: horario − paro ${paroComun}% − rendimiento ${config.performance}%`}>
-                    {netas.toFixed(2)}h
+                  {/* Muestra la hora CRUDA del turno (antes mostraba "netas" — ya con paro y
+                      rendimiento aplicados — al lado del "13% Paros", lo que parecía un descuento
+                      duplicado). El neto real por máquina sigue disponible en el tooltip y en
+                      "Capacidad Total (por día)" de cada panel, más abajo. */}
+                  <span className={cn("text-[11px] font-black whitespace-nowrap tabular-nums", t.color)} title={`Disponibilidad neta por CARRUSEL: ${horasBase}h − paro ${paroComun}% − rendimiento ${config.performance}% = ${netas.toFixed(2)}h`}>
+                    {horasBase}h
                   </span>
                   {/* Se quitó el "/ 7.61 vert." que iba aquí: no se entendía qué representaba. La
                       diferencia (el vertical no lleva el % de rendimiento) sigue aplicándose en el
@@ -4294,39 +4281,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             </div>
           </div>
         )}
-
-        {/* Resultado de la fecha (o fechas) elegidas en el selector "Evaluar Capacidad" del header —
-            reemplaza las tarjetas fijas: la fuente (FERT real / Necesidad+Provisional) se decide sola
-            por fecha, ver resolverFecha arriba. Sin selección, invita a elegir en vez de calcular
-            algo por su cuenta. */}
-        <div className="px-8 py-5 border-t border-gray-100">
-          {fechasSel.length === 0 ? (
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest text-center py-4">
-              Selecciona una fecha arriba para ver la ocupación
-            </p>
-          ) : (() => {
-            const color = colorTarjeta(occSeleccion);
-            // Solo el dato final (%, horas planificadas / capacidad) — el usuario pidió quitar el
-            // desglose Carrusel/Vertical y la tabla de materiales de este panel: "en este tab solo es
-            // necesario el dato final, para su evaluación". El detalle por material sigue disponible
-            // en los tabs de auditoría (Provisionales/Órdenes FERT/Necesidades Planta).
-            return (
-              <div className={cn("rounded-2xl border overflow-hidden px-4 py-3", color.borde, color.fondo)}>
-                <p className={cn("text-[9px] font-black uppercase tracking-widest mb-1", color.texto)}>{labelSeleccion}</p>
-                <p className={cn("text-2xl font-black tracking-tighter", color.texto)}>{occSeleccion.toFixed(0)}%</p>
-                <div className="h-1.5 bg-white/70 rounded-full overflow-hidden mt-1.5 mb-1 max-w-xs">
-                  <div className={cn("h-full", color.barra)} style={{ width: `${Math.min(occSeleccion, 100)}%` }} />
-                </div>
-                <p className="text-[9px] font-bold text-slate-500">{plannedSeleccion.toFixed(1)}h / {capacidadSeleccion.toFixed(1)}h</p>
-                {/* Nota mínima, no un desglose aparte — el usuario pidió lo más simple posible. Solo
-                    avisa que el número YA incluye lo pendiente de fechas anteriores sin FERT. */}
-                {backlogH > 0.05 && (
-                  <p className={cn("text-[8px] font-bold mt-0.5", color.texto)}>incluye {backlogH.toFixed(1)}h de pendiente acumulado</p>
-                )}
-              </div>
-            );
-          })()}
-        </div>
 
         {candidatosDiferir.length > 0 && (
           <div className="border-t border-gray-100 bg-amber-50/40 p-6">
