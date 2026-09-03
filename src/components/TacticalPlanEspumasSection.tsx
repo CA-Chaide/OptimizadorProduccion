@@ -3967,49 +3967,50 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             {proceso === 'vertical' ? (
               <p className="text-[9px] font-bold text-slate-400 max-w-[8rem]">100% fijo, no aplica Rendimiento</p>
             ) : (
-              <>
-                <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Rendim. (%)</p>
-                <input
-                  type="number"
-                  value={esCnc ? config.performanceCNC : config.performance}
-                  onChange={e => {
-                    const v = safeNum(e.target.value);
-                    const patch = esCnc ? { performanceCNC: v } : { performance: v };
-                    if (planta === 'UIO') setUioConfig({ ...uioConfig, ...patch });
-                    else setGyeConfig({ ...gyeConfig, ...patch });
-                  }}
-                  className="w-20 bg-white border border-gray-200 rounded-lg px-2 py-1 text-sm font-black text-emerald-600 outline-none focus:border-emerald-500"
-                />
-                {esCnc && <p className="text-[8px] font-bold text-slate-400 mt-1 max-w-[8rem]">Editable aparte de Carruseles: los tiempos de corte en CNC dependen más de estimados que del catálogo real.</p>}
-              </>
+              <div className="flex items-center gap-1.5">
+                <div>
+                  <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Rendim. (%)</p>
+                  <input
+                    type="number"
+                    value={esCnc ? config.performanceCNC : config.performance}
+                    onChange={e => {
+                      const v = safeNum(e.target.value);
+                      const patch = esCnc ? { performanceCNC: v } : { performance: v };
+                      if (planta === 'UIO') setUioConfig({ ...uioConfig, ...patch });
+                      else setGyeConfig({ ...gyeConfig, ...patch });
+                    }}
+                    className="w-20 bg-white border border-gray-200 rounded-lg px-2 py-1 text-sm font-black text-emerald-600 outline-none focus:border-emerald-500"
+                  />
+                </div>
+                {esCnc && (
+                  <span className="inline-flex cursor-help shrink-0" title="Editable aparte de Carruseles: los tiempos de corte en CNC dependen más de estimados que del catálogo real.">
+                    <AlertCircle className="w-3.5 h-3.5 text-slate-400" />
+                  </span>
+                )}
+              </div>
             )}
           </div>
 
           <div className="shrink-0 min-w-[7rem]">
             <p className="text-[9px] font-black text-slate-600 uppercase tracking-widest mb-1">Capacidad Total (por día)</p>
-            <div className="flex items-baseline gap-1"><span className="text-xl font-black text-blue-700 tracking-tighter">{cap.toFixed(1)}</span><span className="text-[10px] font-black text-slate-500 uppercase">h</span></div>
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-xl font-black text-blue-700 tracking-tighter">{cap.toFixed(1)}</span>
+              <span className="text-[10px] font-black text-slate-500 uppercase">h</span>
+              {/* Antes 3 líneas de texto siempre visibles (turno sin horario / estimado / mtto real)
+                  — el usuario pidió reducir el ruido visual: mismos avisos, ahora como íconos con
+                  tooltip en vez de párrafos que compiten por espacio. */}
+              {turnosFaltantesProceso.length > 0 && (
+                <span className="inline-flex cursor-help shrink-0" title={`Turnos sin horario: ${turnosFaltantesProceso.join(', ')} (${resumenTurnosProceso}). Sus horas no entran en la capacidad. Se fijan arriba.`}>
+                  <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
+                </span>
+              )}
+              {mttoProceso > 0 && (
+                <span className="inline-flex cursor-help shrink-0" title={`Mantenimiento real (SAP) para la fecha seleccionada: −${mttoProceso.toFixed(2)}h, ya descontado de esta capacidad.`}>
+                  <Wrench className="w-3.5 h-3.5 text-indigo-600" />
+                </span>
+              )}
+            </div>
             <p className="text-[8px] font-bold text-slate-400 mt-0.5">{nMaquinas} máquina(s){estimada ? ' · estimado*' : ''}</p>
-            {/* La capacidad solo suma los turnos elegidos. Con el Turno Noche en "VACÍO" (su valor
-                por defecto) las horas de la noche NO entran, y la ocupación sale optimista sin que
-                nada lo advierta — pasaba desapercibido. */}
-            {turnosFaltantesProceso.length > 0 && (
-              <p
-                className="text-[9px] font-bold text-amber-700 mt-1"
-                title={`Turnos sin horario: ${turnosFaltantesProceso.join(', ')}. Sus horas no entran en la capacidad. Se fijan en Gestión de Tiempos, arriba.`}
-              >
-                Sin turno: {resumenTurnosProceso}
-              </p>
-            )}
-            {estimada && (
-              <p className="text-[8px] font-bold text-amber-600 mt-1 cursor-help" title="No hay máquinas verticales configuradas: se usa como referencia la capacidad de un Turno Día de carrusel. Al cargar las máquinas verticales con su horario, pasa a medirse contra su capacidad real.">
-                * estimado
-              </p>
-            )}
-            {mttoProceso > 0 && (
-              <p className="text-[8px] font-bold text-indigo-600 mt-1 cursor-help" title="Mantenimiento real (SAP) para la fecha seleccionada, ya descontado de la capacidad de este proceso.">
-                −{mttoProceso.toFixed(2)}h mtto real
-              </p>
-            )}
           </div>
 
           <div className="shrink-0 min-w-[7rem]">
@@ -4174,49 +4175,49 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               </div>
             </div>
           </div>
-          <div className="flex items-start gap-8 flex-wrap">
-            {([
-              { campo: 'day' as const, etiqueta: 'Día', opciones: shiftOptions, paro: 'paro1' as const, color: 'text-indigo-700' },
-              { campo: 'night' as const, etiqueta: 'Noche', opciones: nightShiftOptions, paro: 'paro2' as const, color: 'text-purple-700' },
-            ]).map(t => {
-              // Valor común si todas las máquinas comparten horario; si difieren, queda "Mixto" para
-              // no mentir sobre el estado real (y ahí el detalle se ve en cada columna).
-              const valores = new Set(machines.map(m => config.shifts[m.id]?.[t.campo]));
-              const comun = valores.size === 1 ? [...valores][0] : '';
-              // Disponibilidad neta del turno para UNA máquina, con su paro y el rendimiento de la
-              // planta — mismo criterio con el que se calcula la capacidad total.
-              const horasBase = t.opciones.find(o => o.v === comun)?.h || 0;
-              const paroComun = machines[0] ? config.shifts[machines[0].id]?.[t.paro] ?? 0 : 0;
-              const netas = horasBase * (1 - paroComun / 100) * (config.performance / 100);
-              return (
-                <div key={t.campo} className="flex items-center gap-3">
-                  <span className="text-[10px] font-black text-slate-600 uppercase w-14">{t.etiqueta}</span>
-                  <select
-                    value={comun}
-                    onChange={(e) => aplicarTurnoAPlanta(planta, t.campo, e.target.value)}
-                    className={cn("bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-[11px] font-black outline-none appearance-none cursor-pointer min-w-[155px]", t.color)}
-                    title={`Aplica este horario a las ${machines.length} máquinas de ${planta}. Después puedes ajustar una máquina puntual en su propia columna, o apagarla si no hay demanda.`}
-                  >
-                    {comun === '' && <option value="">— Mixto —</option>}
-                    {t.opciones.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
-                  </select>
-                  {/* Muestra la hora CRUDA del turno (antes mostraba "netas" — ya con paro y
-                      rendimiento aplicados — al lado del "13% Paros", lo que parecía un descuento
-                      duplicado). El neto real por máquina sigue disponible en el tooltip y en
-                      "Capacidad Total (por día)" de cada panel, más abajo. */}
-                  <span className={cn("text-[11px] font-black whitespace-nowrap tabular-nums", t.color)} title={`Disponibilidad neta por CARRUSEL: ${horasBase}h − paro ${paroComun}% − rendimiento ${config.performance}% = ${netas.toFixed(2)}h`}>
-                    {horasBase}h
-                  </span>
-                  {/* Se quitó el "/ 7.61 vert." que iba aquí: no se entendía qué representaba. La
-                      diferencia (el vertical no lleva el % de rendimiento) sigue aplicándose en el
-                      cálculo y se explica en el tooltip de la ocupación de Verticales. */}
-                </div>
-              );
-            })}
-            {/* El paro se informa una sola vez acá: es el mismo para todas las máquinas y ya no se
-                edita por columna (ocupaba media columna sin que nadie lo cambiara). */}
-            <span className="text-[10px] font-bold text-slate-500">Paros aplicados: <span className="font-black text-slate-700">{paroPlanta}%</span> por turno</span>
-          </div>
+        </div>
+        {/* Turnos Día/Noche + Paro: antes vivía como fila grande dentro de la cabecera de arriba —
+            el usuario pidió bajarlo, más compacto, justo encima de Carruseles/Rendimiento (donde
+            realmente se usa), en vez de un bloque prominente separado del resto. */}
+        <div className="px-8 py-2.5 bg-white border-b border-gray-100 flex items-center gap-6 flex-wrap">
+          {([
+            { campo: 'day' as const, etiqueta: 'Día', opciones: shiftOptions, paro: 'paro1' as const, color: 'text-indigo-700' },
+            { campo: 'night' as const, etiqueta: 'Noche', opciones: nightShiftOptions, paro: 'paro2' as const, color: 'text-purple-700' },
+          ]).map(t => {
+            // Valor común si todas las máquinas comparten horario; si difieren, queda "Mixto" para
+            // no mentir sobre el estado real (y ahí el detalle se ve en cada columna).
+            const valores = new Set(machines.map(m => config.shifts[m.id]?.[t.campo]));
+            const comun = valores.size === 1 ? [...valores][0] : '';
+            // Disponibilidad neta del turno para UNA máquina, con su paro y el rendimiento de la
+            // planta — mismo criterio con el que se calcula la capacidad total.
+            const horasBase = t.opciones.find(o => o.v === comun)?.h || 0;
+            const paroComun = machines[0] ? config.shifts[machines[0].id]?.[t.paro] ?? 0 : 0;
+            const netas = horasBase * (1 - paroComun / 100) * (config.performance / 100);
+            return (
+              <div key={t.campo} className="flex items-center gap-2">
+                <span className="text-[9px] font-black text-slate-500 uppercase w-10">{t.etiqueta}</span>
+                <select
+                  value={comun}
+                  onChange={(e) => aplicarTurnoAPlanta(planta, t.campo, e.target.value)}
+                  className={cn("bg-white border border-slate-200 rounded-md px-2 py-1 text-[10px] font-black outline-none appearance-none cursor-pointer min-w-[130px]", t.color)}
+                  title={`Aplica este horario a las ${machines.length} máquinas de ${planta}. Después puedes ajustar una máquina puntual en su propia columna, o apagarla si no hay demanda.`}
+                >
+                  {comun === '' && <option value="">— Mixto —</option>}
+                  {t.opciones.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
+                </select>
+                {/* Muestra la hora CRUDA del turno (antes mostraba "netas" — ya con paro y
+                    rendimiento aplicados — al lado del "13% Paros", lo que parecía un descuento
+                    duplicado). El neto real por máquina sigue disponible en el tooltip y en
+                    "Capacidad Total (por día)" de cada panel, más abajo. */}
+                <span className={cn("text-[10px] font-black whitespace-nowrap tabular-nums", t.color)} title={`Disponibilidad neta por CARRUSEL: ${horasBase}h − paro ${paroComun}% − rendimiento ${config.performance}% = ${netas.toFixed(2)}h`}>
+                  {horasBase}h
+                </span>
+              </div>
+            );
+          })}
+          {/* El paro se informa una sola vez acá: es el mismo para todas las máquinas y ya no se
+              edita por columna (ocupaba media columna sin que nadie lo cambiara). */}
+          <span className="text-[9px] font-bold text-slate-400">Paros: <span className="font-black text-slate-600">{paroPlanta}%</span> por turno</span>
         </div>
         {/* Columnas de máquina agrupadas por proceso, con una barra de cabecera coloreada (mismo
             cyan/fuchsia que los resúmenes de abajo) para que se vea de un vistazo qué columnas
