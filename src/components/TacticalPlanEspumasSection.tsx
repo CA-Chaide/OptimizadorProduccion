@@ -226,13 +226,21 @@ const ALMACENES_STOCK_POR_CENTRO: Record<'1000' | '2000', string[]> = {
 // UIO → HR_V03_1 (124 órdenes), HR_V02 (33), HR_V03_3 (20), HR_V03_2 (8), HR-TACOS (19), V03_MBL (5);
 // GYE → HR-VAGYE (46). Mientras no se agreguen con su horario, la ocupación de Verticales no tiene
 // contra qué medirse y se muestra como "sin capacidad configurada" en vez de un porcentaje inventado.
-type ProcesoCorte = 'carrusel' | 'vertical';
+type ProcesoCorte = 'carrusel' | 'vertical' | 'cnc';
+// Código real de puesto de trabajo SAP para la Cortadora CNC (HR-CTCNC) — verificado con el maestro
+// MaquinaSim/PuestoTrabajo/RespCtrlProd que compartió el usuario y con la restricción real
+// "Hojas_Rutas_ PuestoTrabajo" (codigo_restriccion 554, grupo 8, ver hojaRutaPuestoTrabajoPorCentro).
+// Es el ÚNICO código de este maestro sin ambigüedad entre máquinas (a diferencia de HR-CAR03, que
+// comparten CR03 y CR04, o HR-TACOS, que comparten CR04 y la Vertical 3) — por eso CNC se puede
+// separar de forma confiable hoy; CR01/CR03/CR04 individuales, no todavía.
+const CODIGO_MAQUINA_CNC = 'HR-CTCNC';
+const esFilaCNC = (maquina: unknown): boolean => String(maquina || '').trim().toUpperCase() === CODIGO_MAQUINA_CNC;
 const MACHINES_BY_PLANTA: Record<'UIO' | 'GYE', { id: string; n: string; proceso: ProcesoCorte }[]> = {
   UIO: [
     { id: 'CR04', n: 'CARRUSEL 4 FECKEN', proceso: 'carrusel' },
     { id: 'CR03', n: 'CARRUSEL 3 SCHMUZIGER', proceso: 'carrusel' },
     { id: 'CR01', n: 'CARRUSEL 1 SCHMUZIGER', proceso: 'carrusel' },
-    { id: 'CNC01', n: 'CORTADORA CNC GIOTTO', proceso: 'carrusel' },
+    { id: 'CNC01', n: 'CORTADORA CNC GIOTTO', proceso: 'cnc' },
     // Corte vertical: dos máquinas que se activan en el turno DÍA con el mismo horario que los
     // carruseles (8.75 h − 13% de paros). Los códigos salen de las órdenes reales de los
     // responsables verticales (039/036/029) en Provisionales y FERT: HR_V02 y HR_V03.
@@ -434,6 +442,11 @@ interface MachineShiftConfig {
 
 interface PlantaConfig {
   performance: number;
+  // Rendimiento propio de la Cortadora CNC — separado del de Carruseles: sus tiempos de corte no
+  // están tan calibrados como los de los carruseles reales (más dependientes de tIndiv estimado por
+  // vecino, no siempre del catálogo real de SAP), así que aplicarle el mismo % que a los carruseles
+  // sobreestima su ocupación real. Editable en la UI, sin valor "quemado" — el usuario lo ajusta.
+  performanceCNC: number;
   shifts: Record<string, MachineShiftConfig>;
 }
 
@@ -867,6 +880,23 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   const allowedRespPorCentro = useCallback((centro: string) => responsablesPorCentro[centro as '1000' | '2000']?.permitidos || [], [responsablesPorCentro]);
   const esRespVertical = useCallback((centro: string, resp: string) => (responsablesPorCentro[centro as '1000' | '2000']?.verticales || []).includes(resp), [responsablesPorCentro]);
 
+  // Valida CODIGO_MAQUINA_CNC (constante, código SAP real HR-CTCNC — igual de "quemado" que los IDs
+  // CR01/CR03/CR04/V02/V03 en MACHINES_BY_PLANTA, ya existentes) contra la restricción real
+  // "Hojas_Rutas_ PuestoTrabajo" (codigo_restriccion 554, grupo 8) que el usuario agregó — si SAP
+  // alguna vez cambia/retira ese código, esto lo advierte en vez de fallar en silencio.
+  useEffect(() => {
+    const restr = restriccionesCorte.find(r =>
+      r.codigo_grupo === CODIGO_GRUPO_CORTE_POR_CENTRO['1000'] &&
+      r.estado === 'A' &&
+      /HOJAS_RUTAS.*PUESTOTRABAJO/i.test(String(r.nombre_restriccion || ''))
+    );
+    if (!restr) return;
+    const codigos = String(restr.valor_restriccion || '').split(/[,&]/).map(v => v.trim().toUpperCase());
+    if (!codigos.includes(CODIGO_MAQUINA_CNC)) {
+      console.warn(`[Capacidad Espuma] El código de máquina CNC (${CODIGO_MAQUINA_CNC}) ya no aparece en la restricción real "Hojas_Rutas_ PuestoTrabajo" — verificar si SAP lo cambió.`);
+    }
+  }, [restriccionesCorte]);
+
   const [necesidadesPlantaData, setNecesidadesPlantaData] = useState<Record<string, NecesidadPlantaRow[]>>({});
   const [necesidadesPlantaLoading, setNecesidadesPlantaLoading] = useState(false);
 
@@ -1011,6 +1041,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   // --- CONFIGURACIÓN DASHBOARDS ---
   const [uioConfig, setUioConfig] = useState<PlantaConfig>({
     performance: 90,
+    performanceCNC: 90,
     shifts: {
       CR04: { day: 'H1', night: 'EMPTY', op1D: '', op2D: '', op1N: '', op2N: '', paro1: 13, paro2: 13, activa: true },
       CR03: { day: 'H1', night: 'EMPTY', op1D: '', op2D: '', op1N: '', op2N: '', paro1: 13, paro2: 13, activa: true },
@@ -1024,6 +1055,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
   const [gyeConfig, setGyeConfig] = useState<PlantaConfig>({
     performance: 75,
+    performanceCNC: 75, // Guayaquil no tiene máquina CNC hoy (ver MACHINES_BY_PLANTA.GYE) — sin uso real, solo por tipado.
     shifts: {
       CR02: { day: 'H1', night: 'EMPTY', op1D: '', op2D: '', op1N: '', op2N: '', paro1: 13, paro2: 13, activa: true },
       CR01: { day: 'H1', night: 'EMPTY', op1D: '', op2D: '', op1N: '', op2N: '', paro1: 13, paro2: 13, activa: true },
@@ -1940,6 +1972,86 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     return { faltante, stockUsadoPorMaterial };
   }, [materialNecesidadesPlantaMapPorCentro, stockUnidadesPorMaterialPorCentro]);
 
+  // Duración en horas de una fila de Mantenimiento SAP. El campo real es Duracion_Minutos
+  // (en minutos); T_MTTO_PLANIFICADO no existe en el endpoint pero se conserva como
+  // resguardo por si alguna variante del servicio lo llega a incluir (en horas).
+  // NOTA: movida más arriba en el archivo (junto con uniqueMantenimientosSAP/resolveMachineLink/
+  // getMttoTimeParaFecha) para que resumenReportePorPlanta pueda usarla — antes vivían junto a
+  // renderMachineCol/getMttoTime, mucho más abajo, fuera del alcance de este useMemo.
+  const getMttoDurationH = (row: RawApiRow): number => {
+    const durMin = safeNum(getProp(row, ['Duracion_Minutos']));
+    if (durMin > 0) return durMin / 60;
+    const legacyH = safeNum(getProp(row, ['T_MTTO_PLANIFICADO', 't_mtto_planificado']));
+    if (legacyH > 0) return legacyH;
+    const ini = new Date(getProp(row, ['FECHA_OT_PRG_INI']));
+    const fin = new Date(getProp(row, ['FECHA_OT_PRG_FIN']));
+    if (isValid(ini) && isValid(fin)) return (fin.getTime() - ini.getTime()) / 3600000;
+    return 0;
+  };
+
+  // El endpoint de SAP no expone un ID de orden (no existe OT_PRG_ID): la misma ventana de
+  // mantenimiento (misma máquina + mismo inicio/fin) se repite una vez por cada línea de
+  // proceso/responsable que usa esa máquina (fan-out del join de origen). Se deduplica por
+  // ID_MAQUINA + FECHA_OT_PRG_INI + FECHA_OT_PRG_FIN para quedarnos con una sola línea por
+  // ventana de mantenimiento real. Filtro por AREA: el endpoint trae TODO el mantenimiento de la
+  // planta, sin filtrar por área — y los ID_MAQUINA de este módulo NO son exclusivos de Corte
+  // Espuma en SAP, se reutilizan en otras áreas (verificado con datos reales). El valor real en SAP
+  // trae doble espacio ("Corte y  Laminado"), de ahí el \s+ en vez de comparar literal.
+  const uniqueMantenimientosSAP = useMemo(() => {
+    const seen = new Set<string>();
+    return mantenimientosSAP
+      .filter(m => /^corte\s+y\s+laminado$/i.test(getProp(m, ['AREA']).trim()))
+      .filter(m => {
+        const key = [
+          getProp(m, ['ID_MAQUINA']),
+          getProp(m, ['FECHA_OT_PRG_INI']),
+          getProp(m, ['FECHA_OT_PRG_FIN']),
+        ].join('|').trim().toUpperCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+  }, [mantenimientosSAP]);
+
+  // Vincula un ID_MAQUINA de Mantenimiento SAP con la máquina real del módulo. El endpoint no
+  // expone PLANTA como texto: el campo confiable es Centro (1000 = UIO, 2000 = GYE). Si no viene
+  // informado, se busca en ambas listas de máquinas (el ID de la máquina ya acota el resultado
+  // salvo para CR01, que existe en ambas plantas).
+  const resolveMachineLink = (idMaquina: string, centro: string | number, plantaTexto?: string) => {
+    const id = String(idMaquina || '').trim().toUpperCase();
+    if (!id) return null;
+    const centroStr = String(centro ?? '').trim();
+    const pStr = String(plantaTexto || '').toUpperCase();
+    let candidates: ('UIO' | 'GYE')[];
+    if (centroStr === '1000') candidates = ['UIO'];
+    else if (centroStr === '2000') candidates = ['GYE'];
+    else if (pStr.includes('QUITO')) candidates = ['UIO'];
+    else if (pStr.includes('GUAYAQUIL')) candidates = ['GYE'];
+    else candidates = ['UIO', 'GYE'];
+    for (const planta of candidates) {
+      const match = MACHINES_BY_PLANTA[planta].find(m => m.id === id || id.includes(m.id));
+      if (match) return { ...match, planta };
+    }
+    return null;
+  };
+
+  // Mantenimiento real para UNA fecha explícita (a diferencia de getMttoTime, más abajo, que usa
+  // los selectores de Provisionales/FERT para la tarjeta informativa por máquina) — usado para
+  // restar mantenimiento real de la capacidad de Capacidad Operativa y del reporte por correo
+  // (antes solo se mostraba informativo, sin afectar el cálculo — confirmado por el usuario que
+  // debe afectar el tiempo de la máquina, según fecha).
+  const getMttoTimeParaFecha = useCallback((machineId: string, planta: string, fecha: string): number => {
+    const target = machineId.trim().toUpperCase();
+    return uniqueMantenimientosSAP
+      .filter(m => {
+        const idMaquina = getProp(m, ['ID_MAQUINA', 'MAQUINA']);
+        const link = resolveMachineLink(idMaquina, getProp(m, ['Centro', 'CENTRO']), getProp(m, ['PLANTA']));
+        if (!link || link.id !== target || link.planta !== planta) return false;
+        return fechaLocalEcuador(getProp(m, ['FECHA_OT_PRG_INI'])) === fecha;
+      })
+      .reduce((sum, row) => sum + getMttoDurationH(row), 0);
+  }, [uniqueMantenimientosSAP]);
+
   // Resumen de capacidad para el reporte por correo (Capacidad Operativa) — reusa los mismos hooks
   // pesados que ya alimentan renderDashboard (necesidad, faltante neto de stock, etc.), sin duplicar
   // esa lógica; solo reconstruye el "pegamento" de resolución por fecha (resolverFecha/backlog) que
@@ -1995,7 +2107,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
       const config = planta === 'UIO' ? uioConfig : gyeConfig;
       const machines = MACHINES_BY_PLANTA[planta];
-      const rendimientoDe = (proceso: ProcesoCorte) => proceso === 'vertical' ? 1 : config.performance / 100;
+      const rendimientoDe = (proceso: ProcesoCorte) =>
+        proceso === 'vertical' ? 1 : proceso === 'cnc' ? config.performanceCNC / 100 : config.performance / 100;
       const horasDeMaquina = (id: string) => {
         const c = config.shifts[id];
         if (!c || c.activa === false) return 0;
@@ -2007,12 +2120,23 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const capacidadPorProceso = machines.reduce<Record<ProcesoCorte, number>>((acc, m) => {
         acc[m.proceso] += horasDeMaquina(m.id);
         return acc;
-      }, { carrusel: 0, vertical: 0 });
+      }, { carrusel: 0, vertical: 0, cnc: 0 });
 
       const CARRUSEL_RESP = responsablesPorCentro[centroId].carruseles;
       const VERTICAL_RESP = responsablesPorCentro[centroId].verticales;
+      // CNC se separa por MÁQUINA real (esFilaCNC, código SAP HR-CTCNC), no por responsable — sus
+      // responsables (044, 038) ya estaban dentro de CARRUSEL_RESP, así que Carruseles debe excluir
+      // explícitamente las filas de CNC para no contarlas dos veces.
       const ocupadoPorProceso = (resp: string[]) =>
-        filasSeleccion.filter(x => resp.includes(x.row.responsable)).reduce((s, x) => s + x.row.tTotal, 0);
+        filasSeleccion.filter(x => resp.includes(x.row.responsable) && !esFilaCNC(x.row.maquina)).reduce((s, x) => s + x.row.tTotal, 0);
+      const ocupadoCNC = filasSeleccion.filter(x => esFilaCNC(x.row.maquina)).reduce((s, x) => s + x.row.tTotal, 0);
+
+      // Mantenimiento real (mantenimientosSAP), para la fecha seleccionada — antes solo se mostraba
+      // informativo, ahora resta de la capacidad de cada proceso (confirmado por el usuario).
+      const fechaMtto = fechasSel[0];
+      const mttoPorProceso = (proceso: ProcesoCorte) => fechaMtto
+        ? machines.filter(m => m.proceso === proceso).reduce((s, m) => s + getMttoTimeParaFecha(m.id, planta, fechaMtto), 0)
+        : 0;
 
       const diaComun = machines.length > 0 && new Set(machines.map(m => config.shifts[m.id]?.day)).size === 1 ? config.shifts[machines[0].id]?.day : '';
       const nocheComun = machines.length > 0 && new Set(machines.map(m => config.shifts[m.id]?.night)).size === 1 ? config.shifts[machines[0].id]?.night : '';
@@ -2023,8 +2147,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         nocheLabel: nightShiftOptions.find(o => o.v === nocheComun)?.l || '—',
         paroPorc: machines[0] ? config.shifts[machines[0].id]?.paro1 ?? 0 : 0,
         rendimientoPct: config.performance,
-        carruseles: { capacidad: capacidadPorProceso.carrusel, ocupacion: ocupadoPorProceso(CARRUSEL_RESP) },
-        verticales: { capacidad: capacidadPorProceso.vertical, ocupacion: ocupadoPorProceso(VERTICAL_RESP) },
+        rendimientoCNCPct: config.performanceCNC,
+        carruseles: { capacidad: Math.max(0, capacidadPorProceso.carrusel - mttoPorProceso('carrusel')), ocupacion: ocupadoPorProceso(CARRUSEL_RESP) },
+        verticales: { capacidad: Math.max(0, capacidadPorProceso.vertical - mttoPorProceso('vertical')), ocupacion: ocupadoPorProceso(VERTICAL_RESP) },
+        cnc: { capacidad: Math.max(0, capacidadPorProceso.cnc - mttoPorProceso('cnc')), ocupacion: ocupadoCNC },
       };
     };
     return { UIO: calcularPlanta('UIO'), GYE: calcularPlanta('GYE') };
@@ -2033,7 +2159,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     fertAuditAllUIO, fertAuditAllGYE, provAuditAllUIO, provAuditAllGYE, sinProvisionalesTransformadas,
     filasCentroEnFecha, calcularFaltanteNecesidadPlanta, necesidadPorMaterialCombinadoPorCentro,
     selectedDatesCapacidad, uioConfig, gyeConfig, shiftOptions, nightShiftOptions, responsablesPorCentro,
-    restarDiasHabiles,
+    restarDiasHabiles, getMttoTimeParaFecha,
   ]);
 
   // Cuerpo del correo — mismo formato ya aprobado en Artifact (Día/Noche/Mtto simple, Carruseles y
@@ -2047,6 +2173,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const fechaLabel = r.fecha ? format(parseFechaLocal(r.fecha), "EEEE d 'de' MMMM 'de' yyyy", { locale: es }) : format(new Date(), "EEEE d 'de' MMMM 'de' yyyy", { locale: es });
     const pctCarruseles = r.carruseles.capacidad > 0 ? (r.carruseles.ocupacion / r.carruseles.capacidad) * 100 : 0;
     const pctVerticales = r.verticales.capacidad > 0 ? (r.verticales.ocupacion / r.verticales.capacidad) * 100 : 0;
+    const pctCnc = r.cnc.capacidad > 0 ? (r.cnc.ocupacion / r.cnc.capacidad) * 100 : 0;
+    const tieneCnc = r.cnc.capacidad > 0 || r.cnc.ocupacion > 0;
     return `
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto;background:#ffffff;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
   <tr>
@@ -2093,7 +2221,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       <p style="margin:0 0 10px;font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6b7280;">Ocupación por proceso — no se combinan (procesos distintos, capacidad distinta)</p>
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
         <tr>
-          <td width="49%" style="padding-right:2%;">
+          <td width="${tieneCnc ? '32' : '49'}%" style="padding-right:2%;">
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#111827;border-radius:10px;">
               <tr><td style="padding:14px 14px;">
                 <p style="margin:0;font-size:9px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#9ca3af;">Carruseles (rend. ${r.rendimientoPct}%)</p>
@@ -2102,7 +2230,17 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               </td></tr>
             </table>
           </td>
-          <td width="49%" style="padding-left:2%;">
+          ${tieneCnc ? `
+          <td width="32%" style="padding:0 2%;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#111827;border-radius:10px;">
+              <tr><td style="padding:14px 14px;">
+                <p style="margin:0;font-size:9px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#9ca3af;">CNC (rend. ${r.rendimientoCNCPct}%)</p>
+                <p style="margin:4px 0 0;font-size:20px;font-weight:700;color:#ffffff;font-variant-numeric:tabular-nums;">${r.cnc.ocupacion.toFixed(1)} h <span style="font-size:12px;font-weight:600;color:#9ca3af;">/ ${r.cnc.capacidad.toFixed(1)} h</span></p>
+                <p style="margin:2px 0 0;font-size:11px;font-weight:700;color:${pctCnc > 100 ? '#f87171' : '#5eead4'};">${pctCnc.toFixed(0)}% ocupado</p>
+              </td></tr>
+            </table>
+          </td>` : ''}
+          <td width="${tieneCnc ? '32' : '49'}%" style="padding-left:2%;">
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#111827;border-radius:10px;">
               <tr><td style="padding:14px 14px;">
                 <p style="margin:0;font-size:9px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#9ca3af;">Verticales (100% rend.)</p>
@@ -2113,6 +2251,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           </td>
         </tr>
       </table>
+      ${tieneCnc ? '<p style="margin:8px 0 0;font-size:10px;color:#9ca3af;">CNC se muestra aparte de Carruseles: mismo criterio que ya separa Verticales, para no diluir la lectura de cada proceso.</p>' : ''}
       ${!r.fecha ? '<p style="margin:8px 0 0;font-size:10px;color:#b45309;">Sin fecha seleccionada en Capacidad Operativa — la ocupación mostrada es 0. Selecciona una fecha antes de enviar.</p>' : ''}
     </td>
   </tr>
@@ -3489,74 +3628,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     addNotification('success', `Turno ${campo === 'day' ? 'Día' : 'Noche'} → ${etiqueta} en todas las máquinas de ${planta}. Capacidad y ocupación recalculadas.`);
   }, [addNotification, shiftOptions, nightShiftOptions]);
 
-  // Duración en horas de una fila de Mantenimiento SAP. El campo real es Duracion_Minutos
-  // (en minutos); T_MTTO_PLANIFICADO no existe en el endpoint pero se conserva como
-  // resguardo por si alguna variante del servicio lo llega a incluir (en horas).
-  const getMttoDurationH = (row: RawApiRow): number => {
-    const durMin = safeNum(getProp(row, ['Duracion_Minutos']));
-    if (durMin > 0) return durMin / 60;
-    const legacyH = safeNum(getProp(row, ['T_MTTO_PLANIFICADO', 't_mtto_planificado']));
-    if (legacyH > 0) return legacyH;
-    const ini = new Date(getProp(row, ['FECHA_OT_PRG_INI']));
-    const fin = new Date(getProp(row, ['FECHA_OT_PRG_FIN']));
-    if (isValid(ini) && isValid(fin)) return (fin.getTime() - ini.getTime()) / 3600000;
-    return 0;
-  };
-
-  // El endpoint de SAP no expone un ID de orden (no existe OT_PRG_ID): la misma ventana de
-  // mantenimiento (misma máquina + mismo inicio/fin) se repite una vez por cada línea de
-  // proceso/responsable que usa esa máquina (fan-out del join de origen). Se deduplica por
-  // ID_MAQUINA + FECHA_OT_PRG_INI + FECHA_OT_PRG_FIN para quedarnos con una sola línea por
-  // ventana de mantenimiento real.
-  //
-  // Filtro por AREA, bug real reportado por el usuario ("veo algo que no corresponde/no está
-  // ligado al Área Corte y Laminado"): el endpoint trae TODO el mantenimiento de la planta, sin
-  // filtrar por área — y los ID_MAQUINA de este módulo (CR01/CR03/CR04/CNC01/CR02) NO son
-  // exclusivos de Corte Espuma en SAP, se reutilizan en otras áreas. Verificado con datos reales:
-  // CR04 aparece en Almohadas/Corte y Laminado/Forros/Taller de Corte; CR02 (carrusel de
-  // Guayaquil) aparece en Forros/Prensado/Taller de Corte — CERO registros de "Corte y Laminado"
-  // real. Sin este filtro, `resolveMachineLink` (que solo cruza por ID_MAQUINA + Centro, sin mirar
-  // AREA) le atribuía a Corte Espuma mantenimiento de otras áreas por la sola coincidencia del
-  // código de máquina. El valor real en SAP trae doble espacio ("Corte y  Laminado"), de ahí el
-  // \s+ en vez de comparar literal.
-  const uniqueMantenimientosSAP = useMemo(() => {
-    const seen = new Set<string>();
-    return mantenimientosSAP
-      .filter(m => /^corte\s+y\s+laminado$/i.test(getProp(m, ['AREA']).trim()))
-      .filter(m => {
-        const key = [
-          getProp(m, ['ID_MAQUINA']),
-          getProp(m, ['FECHA_OT_PRG_INI']),
-          getProp(m, ['FECHA_OT_PRG_FIN']),
-        ].join('|').trim().toUpperCase();
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-  }, [mantenimientosSAP]);
-
-  // Vincula un ID_MAQUINA de Mantenimiento SAP con la tarjeta de cabecera del resumen.
-  // El endpoint no expone PLANTA como texto: el campo confiable es Centro (1000 = UIO,
-  // 2000 = GYE). Si no viene informado, se busca en ambas listas de máquinas (el ID de la
-  // máquina ya acota el resultado salvo para CR01, que existe en ambas plantas).
-  const resolveMachineLink = (idMaquina: string, centro: string | number, plantaTexto?: string) => {
-    const id = String(idMaquina || '').trim().toUpperCase();
-    if (!id) return null;
-    const centroStr = String(centro ?? '').trim();
-    const pStr = String(plantaTexto || '').toUpperCase();
-    let candidates: ('UIO' | 'GYE')[];
-    if (centroStr === '1000') candidates = ['UIO'];
-    else if (centroStr === '2000') candidates = ['GYE'];
-    else if (pStr.includes('QUITO')) candidates = ['UIO'];
-    else if (pStr.includes('GUAYAQUIL')) candidates = ['GYE'];
-    else candidates = ['UIO', 'GYE'];
-    for (const planta of candidates) {
-      const match = MACHINES_BY_PLANTA[planta].find(m => m.id === id || id.includes(m.id));
-      if (match) return { ...match, planta };
-    }
-    return null;
-  };
-
   const getMttoTime = (machineId: string, planta: string) => {
     const target = machineId.trim().toUpperCase();
     // "Capacidad Operativa" combina Provisionales + FERT (ver renderMachineCol: allAudit), así que
@@ -3663,6 +3734,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     // visualmente con los paneles Carruseles/Verticales de la izquierda.
     const machinesCarrusel = machines.filter(m => m.proceso === 'carrusel');
     const machinesVertical = machines.filter(m => m.proceso === 'vertical');
+    const machinesCnc = machines.filter(m => m.proceso === 'cnc');
     // Ajuste visual pedido por el usuario: en Guayaquil (3 carruseles vs 1 vertical) el panel de
     // Verticales quedaba demasiado angosto para su contenido (flex proporcional al conteo real de
     // máquinas, 3:1). Se le da un peso mínimo de 2 SOLO en GYE — ensancha Verticales y achica un
@@ -3692,7 +3764,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     const capacidadPorProceso = machines.reduce<Record<ProcesoCorte, number>>((acc, m) => {
       acc[m.proceso] += horasDeMaquina(m.id);
       return acc;
-    }, { carrusel: 0, vertical: 0 });
+    }, { carrusel: 0, vertical: 0, cnc: 0 });
 
     // Las máquinas de corte vertical todavía no están cargadas en la configuración (ver
     // MACHINES_BY_PLANTA), así que Verticales se quedaba sin nada contra qué medirse. Mientras tanto
@@ -3861,12 +3933,14 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     // vivía mezclada con Capacidad Planificada/Ocupación, que sí variaban por Nivel).
     const renderProcesoConfig = (proceso: ProcesoCorte) => {
       const esCarrusel = proceso === 'carrusel';
-      const nEnGrupo = esCarrusel ? machinesCarrusel.length : flexVertical;
+      const esCnc = proceso === 'cnc';
+      const nEnGrupo = esCarrusel ? machinesCarrusel.length : esCnc ? machinesCnc.length : flexVertical;
       if (nEnGrupo === 0) return null;
-      const label = esCarrusel ? 'Carruseles' : 'Verticales';
-      const colorClass = esCarrusel ? 'text-cyan-700' : 'text-fuchsia-700';
-      const cap = esCarrusel ? capacidadPorProceso.carrusel : capacidadVerticalUsada;
-      const estimada = !esCarrusel && verticalEsEstimada;
+      const label = esCarrusel ? 'Carruseles' : esCnc ? 'CNC' : 'Verticales';
+      const colorClass = esCarrusel ? 'text-cyan-700' : esCnc ? 'text-amber-700' : 'text-fuchsia-700';
+      const bgClass = esCarrusel ? 'bg-cyan-50/30 border-cyan-200' : esCnc ? 'bg-amber-50/30 border-amber-200' : 'bg-fuchsia-50/30 border-fuchsia-200';
+      const cap = esCarrusel ? capacidadPorProceso.carrusel : esCnc ? capacidadPorProceso.cnc : capacidadVerticalUsada;
+      const estimada = proceso === 'vertical' && verticalEsEstimada;
       const { lista: turnosFaltantesProceso, resumen: resumenTurnosProceso } = turnosSinConfigurarPorProceso(proceso);
       const nMaquinas = machines.filter(m => m.proceso === proceso && config.shifts[m.id]?.activa !== false).length;
       // Ocupación de ESTE proceso para la fecha (o fechas) elegidas en "Evaluar Capacidad" — filasSeleccion
@@ -3874,27 +3948,52 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       // renderiza (JSX se evalúa al final). Escala la capacidad igual que el resultado principal
       // (N fechas seleccionadas × capacidad de 1 día), para no comparar demanda de varios días
       // contra la capacidad de uno solo.
+      //
+      // CNC se separa por MÁQUINA real (esFilaCNC, código SAP HR-CTCNC), no por responsable — sus
+      // responsables (044, 038) ya estaban dentro de CARRUSEL_RESP, así que Carruseles excluye
+      // explícitamente las filas de CNC para no contarlas dos veces (caso real 30016933: el mismo
+      // material puede cortarse en carrusel, vertical o CNC — cada orden real ya dice a cuál fue).
       const respProceso = esCarrusel ? CARRUSEL_RESP : VERTICAL_RESP;
-      const ocupadoProceso = filasSeleccion.filter(x => respProceso.includes(x.row.responsable)).reduce((s, x) => s + x.row.tTotal, 0);
-      const capSeleccionProceso = cap * fechasSel.length;
+      const ocupadoProceso = esCnc
+        ? filasSeleccion.filter(x => esFilaCNC(x.row.maquina)).reduce((s, x) => s + x.row.tTotal, 0)
+        : filasSeleccion.filter(x => respProceso.includes(x.row.responsable) && !esFilaCNC(x.row.maquina)).reduce((s, x) => s + x.row.tTotal, 0);
+
+      // Mantenimiento real (mantenimientosSAP) para la fecha seleccionada — antes solo se mostraba
+      // informativo en la tarjeta por máquina, ahora resta de la capacidad de este proceso
+      // (confirmado por el usuario: debe afectar el tiempo de la máquina, según fecha).
+      const fechaMtto = fechasSel[0];
+      const mttoProceso = fechaMtto
+        ? machines.filter(m => m.proceso === proceso).reduce((s, m) => s + getMttoTimeParaFecha(m.id, planta, fechaMtto), 0)
+        : 0;
+      const capSeleccionProceso = Math.max(0, cap * fechasSel.length - mttoProceso);
       const ocupacionPctProceso = capSeleccionProceso > 0 ? (ocupadoProceso / capSeleccionProceso) * 100 : null;
 
       return (
         <div
           key={proceso}
-          className={cn("flex flex-wrap items-start gap-x-6 gap-y-3 p-4 border-t-2", esCarrusel ? "bg-cyan-50/30 border-cyan-200" : "bg-fuchsia-50/30 border-fuchsia-200")}
+          className={cn("flex flex-wrap items-start gap-x-6 gap-y-3 p-4 border-t-2", bgClass)}
           style={{ flex: `${nEnGrupo} 1 0%` }}
         >
           <div className="shrink-0">
             <p className={cn("text-[10px] font-black uppercase tracking-widest mb-1.5", colorClass)}>{label}</p>
-            {esCarrusel ? (
+            {proceso === 'vertical' ? (
+              <p className="text-[9px] font-bold text-slate-400 max-w-[8rem]">100% fijo, no aplica Rendimiento</p>
+            ) : (
               <>
                 <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Rendim. (%)</p>
-                <input type="number" value={config.performance} onChange={e => planta === 'UIO' ? setUioConfig({ ...uioConfig, performance: safeNum(e.target.value) }) : setGyeConfig({ ...gyeConfig, performance: safeNum(e.target.value) })}
-                  className="w-20 bg-white border border-gray-200 rounded-lg px-2 py-1 text-sm font-black text-emerald-600 outline-none focus:border-emerald-500" />
+                <input
+                  type="number"
+                  value={esCnc ? config.performanceCNC : config.performance}
+                  onChange={e => {
+                    const v = safeNum(e.target.value);
+                    const patch = esCnc ? { performanceCNC: v } : { performance: v };
+                    if (planta === 'UIO') setUioConfig({ ...uioConfig, ...patch });
+                    else setGyeConfig({ ...gyeConfig, ...patch });
+                  }}
+                  className="w-20 bg-white border border-gray-200 rounded-lg px-2 py-1 text-sm font-black text-emerald-600 outline-none focus:border-emerald-500"
+                />
+                {esCnc && <p className="text-[8px] font-bold text-slate-400 mt-1 max-w-[8rem]">Editable aparte de Carruseles: los tiempos de corte en CNC dependen más de estimados que del catálogo real.</p>}
               </>
-            ) : (
-              <p className="text-[9px] font-bold text-slate-400 max-w-[8rem]">100% fijo, no aplica Rendimiento</p>
             )}
           </div>
 
@@ -3916,6 +4015,11 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             {estimada && (
               <p className="text-[8px] font-bold text-amber-600 mt-1 cursor-help" title="No hay máquinas verticales configuradas: se usa como referencia la capacidad de un Turno Día de carrusel. Al cargar las máquinas verticales con su horario, pasa a medirse contra su capacidad real.">
                 * estimado
+              </p>
+            )}
+            {mttoProceso > 0 && (
+              <p className="text-[8px] font-bold text-indigo-600 mt-1 cursor-help" title="Mantenimiento real (SAP) para la fecha seleccionada, ya descontado de la capacidad de este proceso.">
+                −{mttoProceso.toFixed(2)}h mtto real
               </p>
             )}
           </div>
@@ -4149,6 +4253,11 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               <span className="text-[9px] font-black uppercase tracking-widest text-cyan-700">Carruseles ({machinesCarrusel.length})</span>
             </div>
           )}
+          {machinesCnc.length > 0 && (
+            <div className="flex items-center justify-center py-1.5 border-b-2 border-amber-300 bg-amber-50/50" style={{ flex: `${machinesCnc.length} 1 0%` }}>
+              <span className="text-[9px] font-black uppercase tracking-widest text-amber-700">CNC ({machinesCnc.length})</span>
+            </div>
+          )}
           {machinesVertical.length > 0 && (
             <div className="flex items-center justify-center py-1.5 border-b-2 border-fuchsia-300 bg-fuchsia-50/50" style={{ flex: `${flexVertical} 1 0%` }}>
               <span className="text-[9px] font-black uppercase tracking-widest text-fuchsia-700">Verticales ({machinesVertical.length})</span>
@@ -4159,6 +4268,11 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           {machinesCarrusel.length > 0 && (
             <div className="grid" style={{ flex: `${machinesCarrusel.length} 1 0%`, gridTemplateColumns: `repeat(${machinesCarrusel.length}, minmax(0, 1fr))` }}>
               {machinesCarrusel.map(m => renderMachineCol(m.id, m.n, planta))}
+            </div>
+          )}
+          {machinesCnc.length > 0 && (
+            <div className="grid border-l-2 border-amber-200" style={{ flex: `${machinesCnc.length} 1 0%`, gridTemplateColumns: `repeat(${machinesCnc.length}, minmax(0, 1fr))` }}>
+              {machinesCnc.map(m => renderMachineCol(m.id, m.n, planta))}
             </div>
           )}
           {machinesVertical.length > 0 && (
@@ -4172,6 +4286,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             fecha, más abajo, porque sí varía según qué día se esté mirando. */}
         <div className="flex">
           {renderProcesoConfig('carrusel')}
+          {renderProcesoConfig('cnc')}
           {renderProcesoConfig('vertical')}
         </div>
 
