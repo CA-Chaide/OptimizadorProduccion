@@ -24,7 +24,8 @@ import {
   Pencil,
   Trash2,
   CheckCircle2,
-  Mail
+  Mail,
+  Clock
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -3863,7 +3864,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
       )}
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-5 h-11 bg-gray-100/50 p-1.5 rounded-2xl border border-gray-200 mb-8">
+        <TabsList className="grid grid-cols-6 h-11 bg-gray-100/50 p-1.5 rounded-2xl border border-gray-200 mb-8">
           {[
             { v: 'resumen', l: 'Resumen Necesidades', i: LayoutDashboard },
             { v: 'necesidadesPlanta', l: 'Necesidades Planta', i: Boxes },
@@ -3874,6 +3875,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
             // handleProcessResumen.
             { v: 'ordenesFert', l: 'Órdenes FERT', i: ShoppingCart },
             { v: 'inventario', l: 'Inventarios SAP', i: Database },
+            { v: 'tiemposEnsamblado', l: 'Tiempos Ensamblado', i: Clock },
             { v: 'salida', l: 'Salida de Datos', i: ClipboardList }
           ].map(tab => (
             <TabsTrigger key={tab.v} value={tab.v} className="gap-2 text-[10px] font-black uppercase transition-all data-[state=active]:bg-white data-[state=active]:shadow-lg data-[state=active]:text-red-600 rounded-xl">
@@ -4652,6 +4654,68 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                         <td className="px-3 py-3 border-r border-dashed border-gray-100 font-mono text-red-700 text-center">{Number(row.BLOQUEADO || 0).toLocaleString()}</td>
                         <td className="px-3 py-3 border-r border-dashed border-gray-100 font-mono text-indigo-600 text-center">{Number(row.PUNTOPEDIDO || 0).toLocaleString()}</td>
                         <td className="px-3 py-3 text-[10px] text-slate-400 text-center uppercase font-bold">{row.TIPO_MATERIAL}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="tiemposEnsamblado" className="animate-in fade-in duration-300 space-y-4 text-left">
+          <div className="flex items-center justify-between px-2">
+            <div className="flex items-center gap-3 text-left">
+              <div className="p-2 bg-amber-600 rounded-xl text-white shadow-lg"><Clock className="w-4 h-4" /></div>
+              <h3 className="text-sm font-black uppercase tracking-widest text-slate-800">Tiempos Ensamblado (Auditado)</h3>
+            </div>
+          </div>
+          {/* Entrada real que se envía al endpoint getTiemposEnsambladobyCentroyCodigoGrupo (ver
+              initData): Centro y CodigoGrupo fijos, no seleccionables -- este tab es solo auditoría de
+              lo que el servicio devuelve para el grupo/centro real de este módulo, no un filtro. */}
+          <div className="grid grid-cols-2 gap-3 px-2">
+            <Card className="rounded-2xl border border-amber-100 shadow-sm p-4 bg-amber-50/40">
+              <p className="text-[9px] font-black uppercase tracking-widest text-amber-600 mb-1">Grupo asociado</p>
+              <p className="text-sm font-black text-slate-800">{grupos[0]?.nombre_grupo || '—'} <span className="text-slate-400 font-bold">(código {CODIGO_GRUPO_LAMINADO})</span></p>
+            </Card>
+            <Card className="rounded-2xl border border-amber-100 shadow-sm p-4 bg-amber-50/40">
+              <p className="text-[9px] font-black uppercase tracking-widest text-amber-600 mb-1">Centro</p>
+              <p className="text-sm font-black text-slate-800">1000 <span className="text-slate-400 font-bold">({grupos[0]?.centro === '1000' ? 'Quito' : grupos[0]?.centro || '—'})</span></p>
+            </Card>
+          </div>
+          <Card className="rounded-2xl border border-amber-100 shadow-sm overflow-hidden bg-white">
+            <div className="overflow-x-auto max-h-[600px] relative text-center">
+              <table className="w-full border-collapse text-center font-sans text-[10px]">
+                <thead className="bg-gray-50 uppercase font-bold tracking-widest text-[8px] text-gray-400 sticky top-0 z-10">
+                  <tr>
+                    <th className="px-4 py-5 border-r border-gray-100">Material</th>
+                    <th className="px-3 py-5 border-r border-gray-100">Centro</th>
+                    <th className="px-6 py-5 border-r border-gray-100 text-left bg-amber-50 text-amber-700">Puesto Trabajo Línea</th>
+                    <th className="px-4 py-5 border-r border-gray-100">Línea</th>
+                    <th className="px-4 py-5 border-r border-gray-100">Puesto Trabajo</th>
+                    <th className="px-3 py-5 border-r border-gray-100 bg-blue-50 text-blue-700">Tiempo (Min)</th>
+                    <th className="px-3 py-5 border-r border-gray-100">Resp. Ctrl. Prod.</th>
+                    <th className="px-6 py-5 border-r border-gray-100 text-left">Nombre Resp.</th>
+                    <th className="px-3 py-5 border-r border-gray-100 text-indigo-700">Hoja Ruta</th>
+                    <th className="px-3 py-5">Versión Fabr.</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50 text-[11px] font-black text-slate-700">
+                  {tiemposEnsambladoData.length === 0 ? (
+                    <tr><td colSpan={10} className="py-24 text-slate-300 font-black uppercase tracking-widest italic text-center">Sin datos — sincroniza el módulo o el servicio no devolvió filas para este grupo/centro</td></tr>
+                  ) : (
+                    tiemposEnsambladoData.map((row, i) => (
+                      <tr key={i} className="hover:bg-amber-50/10 transition-colors">
+                        <td className="px-4 py-3 border-r border-dashed border-gray-100 font-mono text-blue-700 text-center font-black">{cleanCode(String(row.CodMaterial ?? ''))}</td>
+                        <td className="px-3 py-3 border-r border-dashed border-gray-100 text-center">{String(row.Centro ?? '—')}</td>
+                        <td className="px-6 py-3 border-r border-dashed border-gray-100 text-left uppercase text-amber-700 font-black bg-amber-50/30 truncate max-w-[200px]" title={String(row.PuestoTrabajoLinea ?? '')}>{String(row.PuestoTrabajoLinea ?? '—')}</td>
+                        <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center uppercase">{String(row.Linea ?? '—')}</td>
+                        <td className="px-4 py-3 border-r border-dashed border-gray-100 text-center uppercase">{String(row.PuestoTrabajo ?? '—')}</td>
+                        <td className="px-3 py-3 border-r border-dashed border-gray-100 font-mono text-blue-700 bg-blue-50/30 text-center font-black">{formatNum(row.Tiempo_Min, 4)}</td>
+                        <td className="px-3 py-3 border-r border-dashed border-gray-100 text-center">{String(row.RespCtrlProd ?? '—')}</td>
+                        <td className="px-6 py-3 border-r border-dashed border-gray-100 text-left uppercase text-slate-600 font-bold truncate max-w-[200px]" title={String(row.NombRespControlProd ?? '')}>{String(row.NombRespControlProd ?? '—')}</td>
+                        <td className="px-3 py-3 border-r border-dashed border-gray-100 font-mono text-indigo-700 text-center">{String(row.HojaRuta ?? '—')}</td>
+                        <td className="px-3 py-3 text-[10px] text-slate-400 text-center uppercase font-bold">{String(row.VersionFabricacion_Manual ?? '—')}</td>
                       </tr>
                     ))
                   )}
