@@ -2860,7 +2860,20 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           // 0,399 y en nivel 5 con 0,178). Sumar ambas filas contaría el mismo corte dos veces, así
           // que se conserva UNA sola por componente: la del nivel MÁS PROFUNDO, que es la que refleja
           // la cantidad real de ese componente en el árbol completo.
-          const porComponente = new Map<string, { nivel: number; cantAcum: number }>();
+          //
+          // Caso real distinto (verificado 2026-09-03, material 20004463 -> lámina 30027586, plan
+          // #602): 2 filas para el MISMO COMPONENTE con el MISMO MATERIAL_PADRE (20004463, el propio
+          // FERT consultado) -- no son 2 rutas BOM reales, es la MISMA relación directa reportada dos
+          // veces por SAP con un NIVEL/CANTIDAD_ACUMULADA distinto (nivel1: unitaria=2/acumulada=2;
+          // nivel2: unitaria=2/acumulada=0.02). "Preferir el nivel más profundo" en este caso tomaba
+          // la fila corrupta (0.02) sobre la sana (2) -- 120 unidades del plan devolvían 2.4 en vez de
+          // 240. Una relación directa (MATERIAL_PADRE = el Fert consultado) SIEMPRE debe cumplir
+          // acumulada=unitaria (verificado también en otro material real con 10/10 filas nivel 1
+          // consistentes) -- cuando 2 filas comparten el mismo MATERIAL_PADRE, se prefiere la que sí
+          // cumple esa igualdad (autoconsistente) sobre la que no, antes de aplicar el criterio de
+          // nivel más profundo (que sigue aplicando tal cual para rutas BOM genuinamente distintas,
+          // es decir, MATERIAL_PADRE diferente).
+          const porComponente = new Map<string, { nivel: number; cantAcum: number; materialPadre: string; autoconsistente: boolean }>();
 
           (rawData as Record<string, unknown>[]).forEach((row) => {
             const desc = String(row.DESCRIPCION_COMPONENTE || '');
@@ -2897,9 +2910,20 @@ export const TacticalPlanEspumasSection: React.FC = () => {
 
             encontroMatch = true;
             const nivel = Number(row.NIVEL || 0);
-            const cantAcum = Number(row.CANTIDAD_ACUMULADA || row.CANTIDAD_UNITARIA || 0);
+            const cantUnitaria = Number(row.CANTIDAD_UNITARIA || 0);
+            const cantAcum = Number(row.CANTIDAD_ACUMULADA || cantUnitaria || 0);
+            const materialPadre = cleanCode(row.MATERIAL_PADRE);
+            const autoconsistente = Math.abs(cantAcum - cantUnitaria) < 0.0001;
             const previo = porComponente.get(laminaCode);
-            if (!previo || nivel > previo.nivel) porComponente.set(laminaCode, { nivel, cantAcum });
+            if (!previo) {
+              porComponente.set(laminaCode, { nivel, cantAcum, materialPadre, autoconsistente });
+            } else if (previo.materialPadre === materialPadre) {
+              if (autoconsistente && !previo.autoconsistente) {
+                porComponente.set(laminaCode, { nivel, cantAcum, materialPadre, autoconsistente });
+              }
+            } else if (nivel > previo.nivel) {
+              porComponente.set(laminaCode, { nivel, cantAcum, materialPadre, autoconsistente });
+            }
           });
 
           porComponente.forEach(({ cantAcum }, laminaCode) => {
