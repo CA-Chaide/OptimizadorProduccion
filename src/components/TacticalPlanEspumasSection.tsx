@@ -1071,7 +1071,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     { v: 'H1', l: '07:00 - 15:45', h: 8.75 },
     { v: 'H2', l: '07:00 - 17:00', h: 10 },
     { v: 'H3', l: '07:00 - 18:00', h: 11 },
-    { v: 'H4', l: '07:00 - 19:00', h: 12 }
+    { v: 'H4', l: '07:00 - 19:00', h: 12 },
+    // Turno corto para sábado, activación manual cuando se necesita capacidad extra (mismo criterio
+    // que Corte y Laminado) -- el sábado no se trata como laborable por defecto; se elige este
+    // horario solo el día puntual en que se decide producir. Requiere generar en 2 pasadas (viernes+
+    // sábado con este turno, lunes aparte con el normal) porque el módulo no tiene un turno distinto
+    // por día de la semana en una misma corrida.
+    { v: 'H5', l: '07:00 - 13:00 (sábado)', h: 6 }
   ], []);
 
   const nightShiftOptions = useMemo(() => [

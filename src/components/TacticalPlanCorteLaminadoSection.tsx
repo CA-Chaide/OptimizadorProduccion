@@ -761,7 +761,12 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     { v: 'H1', l: '07:00 - 15:45', h: 8.75 },
     { v: 'H2', l: '07:00 - 17:00', h: 10 },
     { v: 'H3', l: '07:00 - 18:00', h: 11 },
-    { v: 'H4', l: '07:00 - 19:00', h: 12 }
+    { v: 'H4', l: '07:00 - 19:00', h: 12 },
+    // Turno corto para sábado, cuando se necesita capacidad extra (activación manual, no automática
+    // -- el sábado no se trata como laborable por defecto, se elige este horario solo ese día puntual).
+    // El turno noche del viernes (21:00-05:30, H1 de nocheShiftOptions) ya cubre la madrugada del
+    // sábado sin necesitar una opción nueva; el lunes vuelve al horario normal (H1, 07:00-15:45).
+    { v: 'H5', l: '07:00 - 13:00 (sábado)', h: 6 }
   ];
 
   const nocheShiftOptions = [
