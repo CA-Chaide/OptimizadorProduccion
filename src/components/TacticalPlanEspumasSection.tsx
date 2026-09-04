@@ -4307,10 +4307,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             </div>
           </div>
         </div>
-        {/* Turnos Día/Noche + Paro: antes vivía como fila grande dentro de la cabecera de arriba —
-            el usuario pidió bajarlo, más compacto, justo encima de Carruseles/Rendimiento (donde
-            realmente se usa), en vez de un bloque prominente separado del resto. */}
-        <div className="px-8 py-2.5 bg-white border-b border-gray-100 flex items-center gap-6 flex-wrap">
+        {/* Turnos Día/Noche/Sábado + Paro: antes en una sola fila horizontal -- con 3 turnos ya no
+            entraba bien, se veía apretado y confuso (el usuario lo marcó tras agregar Sábado).
+            Apilados verticalmente, uno por línea, misma info. */}
+        <div className="px-8 py-3 bg-white border-b border-gray-100 flex flex-col gap-1.5">
           {([
             { campo: 'day' as const, etiqueta: 'Día', opciones: shiftOptions, paro: 'paro1' as const, color: 'text-indigo-700' },
             { campo: 'night' as const, etiqueta: 'Noche', opciones: nightShiftOptions, paro: 'paro2' as const, color: 'text-purple-700' },
@@ -4326,12 +4326,12 @@ export const TacticalPlanEspumasSection: React.FC = () => {
             const paroComun = machines[0] ? config.shifts[machines[0].id]?.[t.paro] ?? 0 : 0;
             const netas = horasBase * (1 - paroComun / 100) * (config.performance / 100);
             return (
-              <div key={t.campo} className="flex items-center gap-2">
-                <span className="text-[9px] font-black text-slate-500 uppercase w-10">{t.etiqueta}</span>
+              <div key={t.campo} className="flex items-center gap-3">
+                <span className="text-[9px] font-black text-slate-500 uppercase w-14">{t.etiqueta}</span>
                 <select
                   value={comun}
                   onChange={(e) => aplicarTurnoAPlanta(planta, t.campo, e.target.value)}
-                  className={cn("bg-white border border-slate-200 rounded-md px-2 py-1 text-[10px] font-black outline-none appearance-none cursor-pointer min-w-[130px]", t.color)}
+                  className={cn("bg-white border border-slate-200 rounded-md px-2 py-1 text-[10px] font-black outline-none appearance-none cursor-pointer w-[160px]", t.color)}
                   title={`Aplica este horario a las ${machines.length} máquinas de ${planta}. Después puedes ajustar una máquina puntual en su propia columna, o apagarla si no hay demanda.`}
                 >
                   {comun === '' && <option value="">— Mixto —</option>}
@@ -4341,15 +4341,18 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                     rendimiento aplicados — al lado del "13% Paros", lo que parecía un descuento
                     duplicado). El neto real por máquina sigue disponible en el tooltip y en
                     "Capacidad Total (por día)" de cada panel, más abajo. */}
-                <span className={cn("text-[10px] font-black whitespace-nowrap tabular-nums", t.color)} title={`Disponibilidad neta por CARRUSEL: ${horasBase}h − paro ${paroComun}% − rendimiento ${config.performance}% = ${netas.toFixed(2)}h`}>
+                <span className={cn("text-[10px] font-black whitespace-nowrap tabular-nums w-10", t.color)} title={`Disponibilidad neta por CARRUSEL: ${horasBase}h − paro ${paroComun}% − rendimiento ${config.performance}% = ${netas.toFixed(2)}h`}>
                   {horasBase}h
                 </span>
+                {t.campo === 'day' && (
+                  // El paro se informa una sola vez, en la fila de Día: es el mismo para todas las
+                  // máquinas y ya no se edita por columna (ocupaba media columna sin que nadie lo
+                  // cambiara).
+                  <span className="text-[9px] font-bold text-slate-400">Paros: <span className="font-black text-slate-600">{paroPlanta}%</span> por turno</span>
+                )}
               </div>
             );
           })}
-          {/* El paro se informa una sola vez acá: es el mismo para todas las máquinas y ya no se
-              edita por columna (ocupaba media columna sin que nadie lo cambiara). */}
-          <span className="text-[9px] font-bold text-slate-400">Paros: <span className="font-black text-slate-600">{paroPlanta}%</span> por turno</span>
         </div>
         {/* Columnas de máquina agrupadas por proceso, con una barra de cabecera coloreada (mismo
             cyan/fuchsia que los resúmenes de abajo) para que se vea de un vistazo qué columnas
