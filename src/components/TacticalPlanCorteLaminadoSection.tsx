@@ -773,7 +773,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     // -- el sábado no se trata como laborable por defecto, se elige este horario solo ese día puntual).
     // El turno noche del viernes (21:00-05:30, H1 de nocheShiftOptions) ya cubre la madrugada del
     // sábado sin necesitar una opción nueva; el lunes vuelve al horario normal (H1, 07:00-15:45).
-    { v: 'H5', l: '07:00 - 13:00 (sábado)', h: 6 }
+    { v: 'H5', l: '07:00 - 13:00', h: 6 }
   ];
 
   const nocheShiftOptions = [

@@ -1085,7 +1085,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     // horario solo el día puntual en que se decide producir. Requiere generar en 2 pasadas (viernes+
     // sábado con este turno, lunes aparte con el normal) porque el módulo no tiene un turno distinto
     // por día de la semana en una misma corrida.
-    { v: 'H5', l: '07:00 - 13:00 (sábado)', h: 6 }
+    { v: 'H5', l: '07:00 - 13:00', h: 6 }
   ], []);
 
   const nightShiftOptions = useMemo(() => [
@@ -3927,8 +3927,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       ].filter(Boolean).join(' · ');
       return { lista, resumen };
     };
-    // Paro común de la planta (todas las máquinas comparten el valor; ya no se edita por columna).
-    const paroPlanta = machines[0] ? config.shifts[machines[0].id]?.paro1 ?? 0 : 0;
 
     // Capacidad Operativa se organiza por FECHA (una tarjeta por día) — "Nivel 1/2/3" es la
     // maquinaria interna que decide de dónde sale cada fecha y qué tan firme está, pero ya no es el
@@ -4344,12 +4342,6 @@ export const TacticalPlanEspumasSection: React.FC = () => {
                 <span className={cn("text-[10px] font-black whitespace-nowrap tabular-nums w-10", t.color)} title={`Disponibilidad neta por CARRUSEL: ${horasBase}h − paro ${paroComun}% − rendimiento ${config.performance}% = ${netas.toFixed(2)}h`}>
                   {horasBase}h
                 </span>
-                {t.campo === 'day' && (
-                  // El paro se informa una sola vez, en la fila de Día: es el mismo para todas las
-                  // máquinas y ya no se edita por columna (ocupaba media columna sin que nadie lo
-                  // cambiara).
-                  <span className="text-[9px] font-bold text-slate-400">Paros: <span className="font-black text-slate-600">{paroPlanta}%</span> por turno</span>
-                )}
               </div>
             );
           })}
