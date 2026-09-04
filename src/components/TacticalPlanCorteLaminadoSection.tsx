@@ -3253,7 +3253,10 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     try {
       const resultado = await serviciosService.enviarCorreo({
         destino,
-        asunto: 'Reporte de producción — Corte y Laminado',
+        // Mismo formato que el correo de Corte Espuma (Carruseles): "Corte y Laminado" es el
+        // departamento SAP real que agrupa ambos procesos, distinguidos por el nombre del proceso
+        // entre corchetes -- Looper solo opera Centro 1000 (Quito), sin variante por planta.
+        asunto: 'Reporte de producción — Corte y Laminado [Looper]-[Quito]',
         cuerpo: construirReporteHtml(),
         nota: 'Este correo fue generado automáticamente, favor no responder.',
       });

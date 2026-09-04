@@ -2348,7 +2348,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     try {
       const resultado = await serviciosService.enviarCorreo({
         destino,
-        asunto: `Reporte de producción — Corte Espuma (${planta === 'UIO' ? 'Quito' : 'Guayaquil'})`,
+        // "Corte y Laminado" es el departamento SAP real que agrupa Carruseles (este módulo) y Looper
+        // (Corte y Laminado) -- confirmado por el usuario, mismo nombre que ambos correos ya deben
+        // usar en el asunto, distinguidos por el proceso entre corchetes, no por el nombre del módulo.
+        asunto: `Reporte de producción — Corte y Laminado [Carruseles]-[${planta === 'UIO' ? 'Quito' : 'Guayaquil'}]`,
         cuerpo: construirReporteHtmlEspuma(planta),
         nota: 'Este correo fue generado automáticamente, favor no responder.',
       });
