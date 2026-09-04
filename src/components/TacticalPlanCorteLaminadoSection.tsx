@@ -755,6 +755,13 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
 
   const [selectedDiaShift, setSelectedDiaShift] = useState('EMPTY');
   const [selectedNocheShift, setSelectedNocheShift] = useState('EMPTY');
+  // Turno Sábado: independiente de Turno Día (mismas opciones, ver diaShiftOptions) -- antes elegir
+  // el horario corto de sábado en el MISMO selector de Turno Día "tapaba" el turno día normal (el
+  // lunes quedaba sin considerar en Disponibilidad Total, confirmado por el usuario con un caso
+  // real). Ahora Día sigue representando el turno día normal (lunes a viernes) y Sábado se suma
+  // aparte -- así una sola selección de fechas (viernes+sábado+lunes) puede evaluar la ventana
+  // completa sin las "2 pasadas" que exigía el diseño anterior.
+  const [selectedSabadoShift, setSelectedSabadoShift] = useState('EMPTY');
 
   const diaShiftOptions = [
     { v: 'EMPTY', l: 'VACÍO', h: 0 },
@@ -3074,9 +3081,14 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
     return nocheH * 0.87;
   }, [selectedNocheShift]);
 
+  const sabadoDisponibleOEE = useMemo(() => {
+    const sabadoH = diaShiftOptions.find(o => o.v === selectedSabadoShift)?.h || 0;
+    return sabadoH * 0.87;
+  }, [selectedSabadoShift]);
+
   const tDisponible = useMemo(() => {
-    return Math.max(0, (diaDisponibleOEE + nocheDisponibleOEE) - mttoPreventivoHoras); // + descuento del MTTO Preventivo (Operación Adicional)
-  }, [diaDisponibleOEE, nocheDisponibleOEE, mttoPreventivoHoras]);
+    return Math.max(0, (diaDisponibleOEE + nocheDisponibleOEE + sabadoDisponibleOEE) - mttoPreventivoHoras); // + descuento del MTTO Preventivo (Operación Adicional)
+  }, [diaDisponibleOEE, nocheDisponibleOEE, sabadoDisponibleOEE, mttoPreventivoHoras]);
 
   const ocupacionPorc = useMemo(() => {
     if (tDisponible <= 0) return 0;
@@ -3623,6 +3635,13 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
                 <span className="text-[8px] font-black text-purple-700 whitespace-nowrap tabular-nums" title="Disponibilidad neta del turno Noche (-13% OEE)">{nocheDisponibleOEE.toFixed(2)}h</span>
               </div>
               <div className="flex items-center gap-3">
+                <span className="text-[9px] font-black text-slate-400 w-12">SÁBADO:</span>
+                <select value={selectedSabadoShift} onChange={(e) => setSelectedSabadoShift(e.target.value)} className="bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-[10px] text-amber-700 flex-1 font-black outline-none appearance-none cursor-pointer">
+                  {diaShiftOptions.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
+                </select>
+                <span className="text-[8px] font-black text-amber-700 whitespace-nowrap tabular-nums" title="Disponibilidad neta del turno Sábado (-13% OEE) -- se suma aparte de Día, no lo reemplaza">{sabadoDisponibleOEE.toFixed(2)}h</span>
+              </div>
+              <div className="flex items-center gap-3">
                 <span className="text-[9px] font-black text-slate-400 w-12">MTTO:</span>
                 <Popover>
                   <PopoverTrigger asChild>
@@ -3765,7 +3784,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           <div className="col-span-2 p-4 border-r border-gray-100 flex flex-col items-center justify-center">
             <p className="text-[9px] font-black text-slate-400 uppercase tracking-tighter mb-1">DISPONIBILIDAD TOTAL (H)</p>
             <span className="text-2xl font-black text-amber-600 leading-none tabular-nums">{tDisponible.toFixed(2)}</span>
-            <p className="text-[7px] font-bold text-slate-400 uppercase tracking-tighter mt-1">Día {diaDisponibleOEE.toFixed(2)}h + Noche {nocheDisponibleOEE.toFixed(2)}h (-13% OEE c/u) -{mttoPreventivoHoras.toFixed(2)}h MTTO</p>
+            <p className="text-[7px] font-bold text-slate-400 uppercase tracking-tighter mt-1">Día {diaDisponibleOEE.toFixed(2)}h + Noche {nocheDisponibleOEE.toFixed(2)}h{selectedSabadoShift !== 'EMPTY' ? ` + Sábado ${sabadoDisponibleOEE.toFixed(2)}h` : ''} (-13% OEE c/u) -{mttoPreventivoHoras.toFixed(2)}h MTTO</p>
           </div>
           <div className="col-span-5 flex items-center px-6">
              {isSaturated && (
