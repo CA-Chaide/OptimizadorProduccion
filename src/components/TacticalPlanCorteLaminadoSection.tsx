@@ -3183,7 +3183,7 @@ export const TacticalPlanCorteLaminadoSection: React.FC = () => {
           <td align="right" style="padding:10px 14px;font-size:12px;font-weight:700;color:#4338ca;border-bottom:1px solid #e5e7eb;font-variant-numeric:tabular-nums;">${nocheDisponibleOEE.toFixed(2)} h</td>
         </tr>
         <tr style="background:#fffbeb;">
-          <td style="padding:10px 14px;font-size:12px;font-weight:700;color:#b45309;">Mtto. preventivo</td>
+          <td style="padding:10px 14px;font-size:12px;font-weight:700;color:#b45309;">Mantenimiento Programado</td>
           <td style="padding:10px 14px;font-size:12px;color:#374151;">—</td>
           <td align="right" style="padding:10px 14px;font-size:12px;font-weight:700;color:#b45309;font-variant-numeric:tabular-nums;">${mttoPreventivoHoras.toFixed(2)} h</td>
         </tr>
