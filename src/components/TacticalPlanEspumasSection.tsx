@@ -435,6 +435,14 @@ interface MachineShiftConfig {
   op2N: string;
   paro1: number;
   paro2: number;
+  // Turno Sábado: independiente de Día (mismas opciones, shiftOptions -- ya incluye 07:00-13:00), se
+  // SUMA a Día+Noche en vez de reemplazar a Día. En 'EMPTY' por defecto -- no es un turno regular,
+  // solo se activa cuando se decide producir un sábado puntual (mismo criterio ya aplicado en Corte y
+  // Laminado, ver [[sabado_turno_dia_corto_espuma_laminado]]).
+  saturday: string;
+  op1S: string;
+  op2S: string;
+  paro3: number;
   // Máquina fuera de servicio para esta corrida (no hay demanda que justifique encenderla): no aporta
   // horas a la capacidad. Distinto de dejar los turnos en "VACÍO", que es "todavía no lo definí".
   activa: boolean;
@@ -1043,13 +1051,13 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     performance: 90,
     performanceCNC: 90,
     shifts: {
-      CR04: { day: 'H1', night: 'EMPTY', op1D: '', op2D: '', op1N: '', op2N: '', paro1: 13, paro2: 13, activa: true },
-      CR03: { day: 'H1', night: 'EMPTY', op1D: '', op2D: '', op1N: '', op2N: '', paro1: 13, paro2: 13, activa: true },
-      CR01: { day: 'H1', night: 'EMPTY', op1D: '', op2D: '', op1N: '', op2N: '', paro1: 13, paro2: 13, activa: true },
-      CNC01: { day: 'H1', night: 'EMPTY', op1D: '', op2D: '', op1N: '', op2N: '', paro1: 13, paro2: 13, activa: true },
+      CR04: { day: 'H1', night: 'EMPTY', op1D: '', op2D: '', op1N: '', op2N: '', paro1: 13, paro2: 13, saturday: 'EMPTY', op1S: '', op2S: '', paro3: 13, activa: true },
+      CR03: { day: 'H1', night: 'EMPTY', op1D: '', op2D: '', op1N: '', op2N: '', paro1: 13, paro2: 13, saturday: 'EMPTY', op1S: '', op2S: '', paro3: 13, activa: true },
+      CR01: { day: 'H1', night: 'EMPTY', op1D: '', op2D: '', op1N: '', op2N: '', paro1: 13, paro2: 13, saturday: 'EMPTY', op1S: '', op2S: '', paro3: 13, activa: true },
+      CNC01: { day: 'H1', night: 'EMPTY', op1D: '', op2D: '', op1N: '', op2N: '', paro1: 13, paro2: 13, saturday: 'EMPTY', op1S: '', op2S: '', paro3: 13, activa: true },
       // Verticales: solo turno día, mismo horario que los carruseles.
-      V02: { day: 'H1', night: 'EMPTY', op1D: '', op2D: '', op1N: '', op2N: '', paro1: 13, paro2: 13, activa: true },
-      V03: { day: 'H1', night: 'EMPTY', op1D: '', op2D: '', op1N: '', op2N: '', paro1: 13, paro2: 13, activa: true }
+      V02: { day: 'H1', night: 'EMPTY', op1D: '', op2D: '', op1N: '', op2N: '', paro1: 13, paro2: 13, saturday: 'EMPTY', op1S: '', op2S: '', paro3: 13, activa: true },
+      V03: { day: 'H1', night: 'EMPTY', op1D: '', op2D: '', op1N: '', op2N: '', paro1: 13, paro2: 13, saturday: 'EMPTY', op1S: '', op2S: '', paro3: 13, activa: true }
     }
   });
 
@@ -1057,10 +1065,10 @@ export const TacticalPlanEspumasSection: React.FC = () => {
     performance: 75,
     performanceCNC: 75, // Guayaquil no tiene máquina CNC hoy (ver MACHINES_BY_PLANTA.GYE) — sin uso real, solo por tipado.
     shifts: {
-      CR02: { day: 'H1', night: 'EMPTY', op1D: '', op2D: '', op1N: '', op2N: '', paro1: 13, paro2: 13, activa: true },
-      CR01: { day: 'H1', night: 'EMPTY', op1D: '', op2D: '', op1N: '', op2N: '', paro1: 13, paro2: 13, activa: true },
-      LA02: { day: 'H1', night: 'EMPTY', op1D: '', op2D: '', op1N: '', op2N: '', paro1: 13, paro2: 13, activa: true },
-      VAGYE: { day: 'H1', night: 'EMPTY', op1D: '', op2D: '', op1N: '', op2N: '', paro1: 13, paro2: 13, activa: true }
+      CR02: { day: 'H1', night: 'EMPTY', op1D: '', op2D: '', op1N: '', op2N: '', paro1: 13, paro2: 13, saturday: 'EMPTY', op1S: '', op2S: '', paro3: 13, activa: true },
+      CR01: { day: 'H1', night: 'EMPTY', op1D: '', op2D: '', op1N: '', op2N: '', paro1: 13, paro2: 13, saturday: 'EMPTY', op1S: '', op2S: '', paro3: 13, activa: true },
+      LA02: { day: 'H1', night: 'EMPTY', op1D: '', op2D: '', op1N: '', op2N: '', paro1: 13, paro2: 13, saturday: 'EMPTY', op1S: '', op2S: '', paro3: 13, activa: true },
+      VAGYE: { day: 'H1', night: 'EMPTY', op1D: '', op2D: '', op1N: '', op2N: '', paro1: 13, paro2: 13, saturday: 'EMPTY', op1S: '', op2S: '', paro3: 13, activa: true }
     }
   });
 
@@ -2121,7 +2129,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
         const proceso = machines.find(m => m.id === id)?.proceso ?? 'carrusel';
         const hD = shiftOptions.find(o => o.v === c.day)?.h || 0;
         const hN = nightShiftOptions.find(o => o.v === c.night)?.h || 0;
-        return ((hD * (1 - c.paro1 / 100)) + (hN * (1 - c.paro2 / 100))) * rendimientoDe(proceso);
+        const hS = shiftOptions.find(o => o.v === c.saturday)?.h || 0;
+        return ((hD * (1 - c.paro1 / 100)) + (hN * (1 - c.paro2 / 100)) + (hS * (1 - c.paro3 / 100))) * rendimientoDe(proceso);
       };
       const capacidadPorProceso = machines.reduce<Record<ProcesoCorte, number>>((acc, m) => {
         acc[m.proceso] += horasDeMaquina(m.id);
@@ -3720,7 +3729,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
   // todavía tengan ese turno en "VACÍO". No pisa las que ya tienen horario propio — si una máquina
   // se configuró distinta a propósito, se respeta. Nace del aviso "Turnos sin configurar": avisar sin
   // dar la acción obligaba a repetir la misma selección máquina por máquina.
-  const aplicarTurnoAPlanta = useCallback((planta: 'UIO' | 'GYE', campo: 'day' | 'night', valor: string) => {
+  const aplicarTurnoAPlanta = useCallback((planta: 'UIO' | 'GYE', campo: 'day' | 'night' | 'saturday', valor: string) => {
     if (!valor) return; // '' = opción "Mixto", no es una selección real
     const setFn = planta === 'UIO' ? setUioConfig : setGyeConfig;
     setFn(prev => {
@@ -3728,8 +3737,9 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       Object.keys(shifts).forEach(id => { shifts[id] = { ...shifts[id], [campo]: valor }; });
       return { ...prev, shifts };
     });
-    const etiqueta = (campo === 'day' ? shiftOptions : nightShiftOptions).find(o => o.v === valor)?.l;
-    addNotification('success', `Turno ${campo === 'day' ? 'Día' : 'Noche'} → ${etiqueta} en todas las máquinas de ${planta}. Capacidad y ocupación recalculadas.`);
+    const etiqueta = (campo === 'day' || campo === 'saturday' ? shiftOptions : nightShiftOptions).find(o => o.v === valor)?.l;
+    const nombreCampo = campo === 'day' ? 'Día' : campo === 'saturday' ? 'Sábado' : 'Noche';
+    addNotification('success', `Turno ${nombreCampo} → ${etiqueta} en todas las máquinas de ${planta}. Capacidad y ocupación recalculadas.`);
   }, [addNotification, shiftOptions, nightShiftOptions]);
 
   const renderMachineCol = (id: string, name: string, planta: 'UIO' | 'GYE') => {
@@ -3810,6 +3820,22 @@ export const TacticalPlanEspumasSection: React.FC = () => {
               {operadoresCorte.map((op, i) => <option key={i} value={getProp(op, ['CodigoOperador ', 'CODIGO_OPERADOR'])}>{getProp(op, ['NombreOperador', 'NOMBRE_OPERADOR'])}</option>)}
             </select>
           </div>
+          {/* Turno Sábado: independiente de Turno Día, en VACÍO por defecto -- se suma aparte a la
+              capacidad, no reemplaza el turno día normal (ver MachineShiftConfig.saturday). */}
+          <div className="space-y-2 pt-2 border-t border-gray-100">
+            <p className="text-[9px] font-black text-slate-500 uppercase tracking-wide">Turno Sábado</p>
+            <select value={config.saturday} onChange={e => updateConfig(planta, id, 'saturday', e.target.value)} className="w-full bg-white text-amber-700 font-black text-[11px] rounded px-2 py-1.5 outline-none border border-gray-200">
+              {shiftOptions.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
+            </select>
+            <select value={config.op1S} onChange={e => updateConfig(planta, id, 'op1S', e.target.value)} className="w-full bg-white text-slate-700 text-[10px] rounded px-2 py-1 outline-none border border-gray-200">
+              <option value="">— OP1 —</option>
+              {operadoresCorte.map((op, i) => <option key={i} value={getProp(op, ['CodigoOperador ', 'CODIGO_OPERADOR'])}>{getProp(op, ['NombreOperador', 'NOMBRE_OPERADOR'])}</option>)}
+            </select>
+            <select value={config.op2S} onChange={e => updateConfig(planta, id, 'op2S', e.target.value)} className="w-full bg-white text-slate-700 text-[10px] rounded px-2 py-1 outline-none border border-gray-200">
+              <option value="">— OP2 AYUD —</option>
+              {operadoresCorte.map((op, i) => <option key={i} value={getProp(op, ['CodigoOperador ', 'CODIGO_OPERADOR'])}>{getProp(op, ['NombreOperador', 'NOMBRE_OPERADOR'])}</option>)}
+            </select>
+          </div>
           {/* Los paros T1/T2 (13% por turno) ya se descuentan solos en el cálculo — tenerlos como
               campo editable por máquina ocupaba media columna sin que nadie los cambiara. El valor
               sigue en la configuración y se informa una sola vez en la cabecera Gestión de Tiempos. */}
@@ -3845,7 +3871,8 @@ export const TacticalPlanEspumasSection: React.FC = () => {
       const proceso = machines.find(m => m.id === id)?.proceso ?? 'carrusel';
       const hD = shiftOptions.find(o => o.v === c.day)?.h || 0;
       const hN = nightShiftOptions.find(o => o.v === c.night)?.h || 0;
-      return ((hD * (1 - c.paro1 / 100)) + (hN * (1 - c.paro2 / 100))) * rendimientoDe(proceso);
+      const hS = shiftOptions.find(o => o.v === c.saturday)?.h || 0;
+      return ((hD * (1 - c.paro1 / 100)) + (hN * (1 - c.paro2 / 100)) + (hS * (1 - c.paro3 / 100))) * rendimientoDe(proceso);
     };
     const totalH = Object.keys(config.shifts).reduce((s, m) => s + horasDeMaquina(m), 0);
 
@@ -4287,6 +4314,7 @@ export const TacticalPlanEspumasSection: React.FC = () => {
           {([
             { campo: 'day' as const, etiqueta: 'Día', opciones: shiftOptions, paro: 'paro1' as const, color: 'text-indigo-700' },
             { campo: 'night' as const, etiqueta: 'Noche', opciones: nightShiftOptions, paro: 'paro2' as const, color: 'text-purple-700' },
+            { campo: 'saturday' as const, etiqueta: 'Sábado', opciones: shiftOptions, paro: 'paro3' as const, color: 'text-amber-700' },
           ]).map(t => {
             // Valor común si todas las máquinas comparten horario; si difieren, queda "Mixto" para
             // no mentir sobre el estado real (y ahí el detalle se ve en cada columna).
