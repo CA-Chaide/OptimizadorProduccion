@@ -3,12 +3,15 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { serviciosService } from '@/services/servicios.service';
 import { useAppContext } from '@/context/AppProvider';
-import { Loader2, RefreshCw, ListChecks, Check, ChevronsUpDown, Sparkles, TriangleAlert, CheckCircle2, LayoutGrid, CalendarDays } from 'lucide-react';
+import { Loader2, RefreshCw, ListChecks, Check, ChevronsUpDown, Sparkles, TriangleAlert, CheckCircle2, LayoutGrid, CalendarDays, Mail } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from '@/components/ui/command';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 
 const normalizeMaterialCode = (code: string | number): string => String(code).trim().slice(-8);
@@ -39,6 +42,17 @@ const GANTT_PALETTE = [
     'bg-violet-200 border-violet-300 text-violet-900',
     'bg-fuchsia-200 border-fuchsia-300 text-fuchsia-900',
     'bg-amber-200 border-amber-300 text-amber-900',
+];
+
+// Misma paleta que GANTT_PALETTE pero en hex, para el cuerpo HTML del correo (ver
+// buildGanttPuestosHtml) — los clientes de correo no aplican clases de Tailwind.
+const GANTT_PALETTE_HEX = [
+    { bg: '#c7d2fe', border: '#a5b4fc', text: '#312e81' }, // indigo
+    { bg: '#bae6fd', border: '#7dd3fc', text: '#0c4a6e' }, // sky
+    { bg: '#99f6e4', border: '#5eead4', text: '#134e4a' }, // teal
+    { bg: '#ddd6fe', border: '#c4b5fd', text: '#4c1d95' }, // violet
+    { bg: '#f5d0fe', border: '#f0abfc', text: '#701a75' }, // fuchsia
+    { bg: '#fde68a', border: '#fcd34d', text: '#78350f' }, // amber
 ];
 
 // Centro de fabricación del Taller de Corte (Quito) — mismo valor que el resto del módulo
@@ -140,6 +154,165 @@ const MultiSelect: React.FC<{
     );
 };
 
+// ---------------------------------------------------------------------------------------------
+// Generación del cuerpo HTML del correo "PLAN" del Taller de Corte (2026-09-06), mismo mecanismo ya
+// usado en la pestaña "PLAN" de Muebles (OrdenesFertTabSection.tsx): HTML basado 100% en <table>/
+// estilos inline (nada de flexbox/grid, no confiables en clientes de correo tipo Outlook), para las 3
+// secciones pedidas: 1) Resumen de Órdenes Lanzadas por Fecha, 2) Resumen por Puesto de Trabajo y
+// Máquina, 3) Diagrama de Gantt — Puestos de Trabajo (para la fecha del Gantt actualmente elegida).
+const escapeHtmlTC = (s: unknown): string =>
+    String(s ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+
+const CORREO_TC_TH_STYLE = 'padding:6px 10px;text-align:center;font-size:11px;font-weight:bold;color:#374151;background:#f3f4f6;border:1px solid #d1d5db;white-space:nowrap;';
+const CORREO_TC_TD_STYLE = 'padding:6px 10px;text-align:center;font-size:12px;color:#111827;border:1px solid #e5e7eb;';
+const CORREO_TC_SECTION_TITLE_STYLE = 'font-size:13px;font-weight:bold;color:#ffffff;background:#312e81;padding:8px 12px;margin:0;';
+
+const buildResumenPorFechaHtmlTC = (
+    resumenPorFecha: { fecha: string; ordenes: number; unidades: number; horas: number; sinTiempoCount: number }[]
+): string => {
+    if (resumenPorFecha.length === 0) return '<p style="font-size:12px;color:#6b7280;">No hay órdenes lanzadas.</p>';
+    const totalOrdenes = resumenPorFecha.reduce((s, r) => s + r.ordenes, 0);
+    const totalUnidades = resumenPorFecha.reduce((s, r) => s + r.unidades, 0);
+    const totalHoras = resumenPorFecha.reduce((s, r) => s + r.horas, 0);
+    const fechaCols = resumenPorFecha.map(r => `<th style="${CORREO_TC_TH_STYLE}">${escapeHtmlTC(r.fecha)}</th>`).join('');
+    const ordenesCols = resumenPorFecha.map(r => `<td style="${CORREO_TC_TD_STYLE}">${r.ordenes}</td>`).join('');
+    const unidadesCols = resumenPorFecha.map(r => `<td style="${CORREO_TC_TD_STYLE}">${r.unidades.toLocaleString()}</td>`).join('');
+    const horasCols = resumenPorFecha.map(r => `<td style="${CORREO_TC_TD_STYLE}color:#1d4ed8;font-weight:600;">${r.horas.toFixed(2)}${r.sinTiempoCount > 0 ? ' *' : ''}</td>`).join('');
+    return `
+        <table style="border-collapse:collapse;width:100%;" cellpadding="0" cellspacing="0">
+            <tr><th style="${CORREO_TC_TH_STYLE}text-align:left;">Fecha</th>${fechaCols}<th style="${CORREO_TC_TH_STYLE}background:#e5e7eb;">Total</th></tr>
+            <tr><td style="${CORREO_TC_TD_STYLE}text-align:left;font-weight:bold;">Órdenes Lanzadas</td>${ordenesCols}<td style="${CORREO_TC_TD_STYLE}font-weight:bold;background:#f9fafb;">${totalOrdenes}</td></tr>
+            <tr><td style="${CORREO_TC_TD_STYLE}text-align:left;font-weight:bold;">Unidades Lanzadas</td>${unidadesCols}<td style="${CORREO_TC_TD_STYLE}font-weight:bold;background:#f9fafb;">${totalUnidades.toLocaleString()}</td></tr>
+            <tr><td style="${CORREO_TC_TD_STYLE}text-align:left;font-weight:bold;">Horas Requeridas</td>${horasCols}<td style="${CORREO_TC_TD_STYLE}font-weight:bold;color:#1d4ed8;background:#f9fafb;">${totalHoras.toFixed(2)}</td></tr>
+        </table>
+        ${resumenPorFecha.some(r => r.sinTiempoCount > 0) ? '<p style="font-size:10px;color:#b45309;">* Hay orden(es) sin tiempo unitario cargado, no incluida(s) en la suma de horas.</p>' : ''}`;
+};
+
+const buildResumenPorPuestoMaquinaHtmlTC = (
+    resumenPorPuestoMaquina: { puesto: string; maquina: string; cantidad: number; tiempoTotalMin: number; sinTiempoCount: number }[]
+): string => {
+    if (resumenPorPuestoMaquina.length === 0) return '<p style="font-size:12px;color:#6b7280;">No hay órdenes para resumir en la fecha seleccionada.</p>';
+    const totalCant = resumenPorPuestoMaquina.reduce((s, r) => s + r.cantidad, 0);
+    const totalMin = resumenPorPuestoMaquina.reduce((s, r) => s + r.tiempoTotalMin, 0);
+    const rows = resumenPorPuestoMaquina.map(r => `
+        <tr>
+            <td style="${CORREO_TC_TD_STYLE}font-weight:bold;color:#4338ca;">${escapeHtmlTC(r.puesto)}</td>
+            <td style="${CORREO_TC_TD_STYLE}color:#4b5563;">${escapeHtmlTC(r.maquina)}</td>
+            <td style="${CORREO_TC_TD_STYLE}font-weight:600;">${r.cantidad.toLocaleString()}</td>
+            <td style="${CORREO_TC_TD_STYLE}color:#1d4ed8;font-weight:600;">${r.tiempoTotalMin.toFixed(2)}${r.sinTiempoCount > 0 ? ` <span style="color:#b45309;font-weight:normal;">(*${r.sinTiempoCount})</span>` : ''}</td>
+            <td style="${CORREO_TC_TD_STYLE}color:#1d4ed8;font-weight:600;">${(r.tiempoTotalMin / 60).toFixed(2)}</td>
+        </tr>`).join('');
+    return `
+        <table style="border-collapse:collapse;width:100%;" cellpadding="0" cellspacing="0">
+            <tr>
+                <th style="${CORREO_TC_TH_STYLE}">Pto. Trab.</th>
+                <th style="${CORREO_TC_TH_STYLE}">Máquina</th>
+                <th style="${CORREO_TC_TH_STYLE}">Unidades Programadas</th>
+                <th style="${CORREO_TC_TH_STYLE}">Tiempo Total (min)</th>
+                <th style="${CORREO_TC_TH_STYLE}">Tiempo Total (h)</th>
+            </tr>
+            ${rows}
+            <tr>
+                <td colspan="2" style="${CORREO_TC_TD_STYLE}font-weight:bold;background:#f9fafb;">Total</td>
+                <td style="${CORREO_TC_TD_STYLE}font-weight:bold;background:#f9fafb;">${totalCant.toLocaleString()}</td>
+                <td style="${CORREO_TC_TD_STYLE}font-weight:bold;color:#1d4ed8;background:#f9fafb;">${totalMin.toFixed(2)}</td>
+                <td style="${CORREO_TC_TD_STYLE}font-weight:bold;color:#1d4ed8;background:#f9fafb;">${(totalMin / 60).toFixed(2)}</td>
+            </tr>
+        </table>`;
+};
+
+// Aproximación del Gantt de pantalla (posicionamiento absoluto en %) usando <table> de ancho fijo por
+// puesto — mismo método que buildGanttHtml de Muebles (OrdenesFertTabSection.tsx): como las barras de
+// cada puesto ya son secuenciales (sin huecos, empiezan en 0), solo hace falta un hueco final si el
+// puesto no llena todo el eje. Las barras que cruzan el turno de referencia se resaltan con borde rojo.
+const GANTT_TC_EMAIL_WIDTH_PX = 640;
+
+const buildGanttPuestosHtmlTC = (
+    ganttRows: { puesto: string; bars: { orden: string; material: string; nombre: string; startHour: number; endHour: number; durationHours: number }[]; totalHoras: number }[],
+    ganttFecha: string,
+    turnoReferenciaHoras: number,
+    ganttMaxHours: number
+): string => {
+    if (ganttRows.length === 0) return '<p style="font-size:12px;color:#6b7280;">No hay órdenes para graficar en la fecha seleccionada.</p>';
+    const pxPerHour = GANTT_TC_EMAIL_WIDTH_PX / ganttMaxHours;
+
+    const filas = ganttRows.map(row => {
+        const celdas: string[] = [];
+        let cursor = 0;
+        row.bars.forEach((bar, idx) => {
+            const anchoPx = Math.max(Math.round(bar.durationHours * pxPerHour), 6);
+            const { bg, border, text } = GANTT_PALETTE_HEX[idx % GANTT_PALETTE_HEX.length];
+            const enRiesgo = bar.endHour > turnoReferenciaHoras;
+            const ordenLabel = bar.orden.replace(/^0{1,4}/, '');
+            celdas.push(`<td style="width:${anchoPx}px;height:26px;background:${bg};border:${enRiesgo ? '2px solid #dc2626' : `1px solid ${border}`};padding:0 2px;overflow:hidden;"><span style="font-size:8px;font-weight:600;color:${text};white-space:nowrap;">${escapeHtmlTC(ordenLabel)}</span></td>`);
+            cursor = bar.endHour;
+        });
+        if (cursor < ganttMaxHours) {
+            celdas.push(`<td style="width:${Math.round((ganttMaxHours - cursor) * pxPerHour)}px;padding:0;border:none;"></td>`);
+        }
+        return `
+            <tr>
+                <td style="${CORREO_TC_TD_STYLE}text-align:left;white-space:nowrap;width:110px;">
+                    <span style="font-weight:bold;">${escapeHtmlTC(row.puesto)}</span><br/>
+                    <span style="font-family:monospace;font-size:10px;${row.totalHoras > turnoReferenciaHoras ? 'color:#dc2626;' : 'color:#6b7280;'}">${row.totalHoras.toFixed(2)} h</span>
+                </td>
+                <td style="padding:2px;border:1px solid #e5e7eb;background:#f9fafb;">
+                    <table cellpadding="0" cellspacing="0" style="border-collapse:collapse;width:${GANTT_TC_EMAIL_WIDTH_PX}px;"><tr>${celdas.join('')}</tr></table>
+                </td>
+            </tr>`;
+    }).join('');
+
+    const horasEje = Array.from({ length: ganttMaxHours / 2 + 1 }, (_, i) => i * 2)
+        .map(h => `<td style="width:${Math.round(2 * pxPerHour)}px;font-size:9px;color:#9ca3af;font-family:monospace;">${formatShiftClockLabel(GANTT_TURNO_INICIO, h)}</td>`).join('');
+
+    return `
+        <p style="font-size:11px;color:#6b7280;margin:0 0 8px;">
+            Fecha: <strong>${escapeHtmlTC(ganttFecha)}</strong> — Proyección desde ${GANTT_TURNO_INICIO}, secuenciada por N° de Orden (no es una hora confirmada en SAP). Turno de referencia: ${turnoReferenciaHoras}h — las barras con borde rojo lo exceden.
+        </p>
+        <table style="border-collapse:collapse;" cellpadding="0" cellspacing="0">${filas}</table>
+        <table cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-left:110px;"><tr>${horasEje}</tr></table>`;
+};
+
+interface ReporteCorreoParamsTC {
+    resumenPorFecha: { fecha: string; ordenes: number; unidades: number; horas: number; sinTiempoCount: number }[];
+    resumenPorPuestoMaquina: { puesto: string; maquina: string; cantidad: number; tiempoTotalMin: number; sinTiempoCount: number }[];
+    selectedDates: string[];
+    ganttRows: { puesto: string; bars: { orden: string; material: string; nombre: string; startHour: number; endHour: number; durationHours: number }[]; totalHoras: number }[];
+    ganttFecha: string;
+    turnoReferenciaHoras: number;
+    ganttMaxHours: number;
+}
+
+const buildReporteCorreoHtmlTC = (p: ReporteCorreoParamsTC): string => {
+    const fechasLabel = p.selectedDates.length > 0 ? p.selectedDates.join(', ') : 'Todas las fechas disponibles';
+    const seccionTitulo = (n: number, titulo: string) => `<p style="${CORREO_TC_SECTION_TITLE_STYLE}border-radius:6px 6px 0 0;margin-top:20px;">${n}. ${escapeHtmlTC(titulo)}</p>`;
+
+    return `
+        <div style="font-family:Arial, Helvetica, sans-serif;color:#111827;max-width:900px;">
+            <h2 style="font-size:16px;color:#1e293b;margin:0 0 4px;">Planificación Táctica Taller de Corte — Reporte "PLAN"</h2>
+            <p style="font-size:11px;color:#6b7280;margin:0 0 16px;">Fecha(s) del filtro: <strong>${escapeHtmlTC(fechasLabel)}</strong> — generado ${escapeHtmlTC(new Date().toLocaleString('es-EC'))}</p>
+
+            ${seccionTitulo(1, 'Resumen de Órdenes Lanzadas por Fecha')}
+            <div style="border:1px solid #e5e7eb;border-top:none;padding:10px;overflow-x:auto;">
+                ${buildResumenPorFechaHtmlTC(p.resumenPorFecha)}
+            </div>
+
+            ${seccionTitulo(2, 'Resumen por Puesto de Trabajo y Máquina')}
+            <div style="border:1px solid #e5e7eb;border-top:none;padding:10px;overflow-x:auto;">
+                ${buildResumenPorPuestoMaquinaHtmlTC(p.resumenPorPuestoMaquina)}
+            </div>
+
+            ${seccionTitulo(3, 'Diagrama de Gantt — Puestos de Trabajo')}
+            <div style="border:1px solid #e5e7eb;border-top:none;padding:10px;overflow-x:auto;">
+                ${buildGanttPuestosHtmlTC(p.ganttRows, p.ganttFecha, p.turnoReferenciaHoras, p.ganttMaxHours)}
+            </div>
+        </div>`;
+};
+
 interface PlanTallerCorteTabProps {
     // Tiempo unitario manual (minutos) por código de material, ya normalizado — el mismo mapa EFECTIVO
     // (Excel + overrides) que consume la pestaña "PLAN TÁCTICO", para calcular el tiempo de fabricación
@@ -152,6 +325,15 @@ export const PlanTallerCorteTab: React.FC<PlanTallerCorteTabProps> = ({ tiemposM
     const [isLoading, setIsLoading] = useState(false);
     const [allFertRaw, setAllFertRaw] = useState<any[]>([]);
     const [selectedDates, setSelectedDates] = useState<string[]>([]);
+
+    // Estado para "Enviar Correo" — envía por email las 3 tablas de la pestaña "PLAN" (Resumen por
+    // Fecha, Resumen por Puesto de Trabajo y Máquina, Gantt de Puestos de Trabajo) para las fechas
+    // actualmente filtradas, vía POST /api/servicios/enviarCorreo — mismo mecanismo que la pestaña
+    // "PLAN" de Muebles (OrdenesFertTabSection.tsx).
+    const [emailDialogOpen, setEmailDialogOpen] = useState(false);
+    const [emailDestino, setEmailDestino] = useState('');
+    const [emailAsunto, setEmailAsunto] = useState('Reporte de Producción - Plan Táctico Taller de Corte');
+    const [emailSending, setEmailSending] = useState(false);
 
     // Scroll horizontal sincronizado (barra delgada arriba + la tabla real abajo) — mismo patrón que
     // OrdenesFertTabSection.tsx: con 24 columnas la tabla es más ancha que la pantalla, y un scroll
@@ -408,6 +590,53 @@ export const PlanTallerCorteTab: React.FC<PlanTallerCorteTabProps> = ({ tiemposM
         };
     }, [filteredOrders]);
 
+    // Cuerpo HTML del correo, recalculado en vivo mientras el modal está abierto — se usa tanto para la
+    // vista previa (iframe) como para el envío real, así lo que el usuario ve es exactamente lo que se
+    // manda (a pedido explícito del usuario, 2026-09-06: quiere revisar el contenido antes de enviar).
+    const emailCuerpoHtml = useMemo(() => buildReporteCorreoHtmlTC({
+        resumenPorFecha,
+        resumenPorPuestoMaquina,
+        selectedDates,
+        ganttRows,
+        ganttFecha,
+        turnoReferenciaHoras,
+        ganttMaxHours,
+    }), [resumenPorFecha, resumenPorPuestoMaquina, selectedDates, ganttRows, ganttFecha, turnoReferenciaHoras, ganttMaxHours]);
+
+    const handleEnviarCorreo = async () => {
+        const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        const destinatarios = emailDestino.split(',').map(d => d.trim()).filter(Boolean);
+        const invalidos = destinatarios.filter(d => !EMAIL_REGEX.test(d));
+        if (destinatarios.length === 0) {
+            addNotification('warning', 'Ingresa al menos un destinatario.');
+            return;
+        }
+        if (invalidos.length > 0) {
+            addNotification('warning', `Correo(s) inválido(s): ${invalidos.join(', ')}`);
+            return;
+        }
+        if (!emailAsunto.trim()) {
+            addNotification('warning', 'Ingresa un asunto para el correo.');
+            return;
+        }
+
+        setEmailSending(true);
+        try {
+            const res = await serviciosService.enviarCorreo(
+                destinatarios.join(','),
+                emailAsunto.trim(),
+                emailCuerpoHtml,
+                'Este correo fue generado automáticamente, favor no responder.'
+            );
+            addNotification('success', res.message || `Correo enviado a ${res.destinatarios.join(', ')}`);
+            setEmailDialogOpen(false);
+        } catch (e) {
+            addNotification('error', `Error al enviar el correo: ${(e as Error).message}`);
+        } finally {
+            setEmailSending(false);
+        }
+    };
+
     return (
         <div className="space-y-4">
             <div className="flex items-end justify-between gap-4">
@@ -420,15 +649,25 @@ export const PlanTallerCorteTab: React.FC<PlanTallerCorteTabProps> = ({ tiemposM
                         placeholder="Todas las fechas"
                     />
                 </div>
-                <Button
-                    onClick={fetchData}
-                    disabled={isLoading}
-                    size="sm"
-                    className="h-9 bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 font-bold gap-2"
-                >
-                    {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-                    Actualizar Datos
-                </Button>
+                <div className="flex items-center gap-2">
+                    <Button
+                        onClick={() => setEmailDialogOpen(true)}
+                        size="sm"
+                        className="h-9 bg-indigo-600 hover:bg-indigo-700 text-white font-bold gap-2"
+                    >
+                        <Mail className="w-3.5 h-3.5" />
+                        Enviar Correo
+                    </Button>
+                    <Button
+                        onClick={fetchData}
+                        disabled={isLoading}
+                        size="sm"
+                        className="h-9 bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 font-bold gap-2"
+                    >
+                        {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                        Actualizar Datos
+                    </Button>
+                </div>
             </div>
 
             {!isLoading && (
@@ -793,6 +1032,56 @@ export const PlanTallerCorteTab: React.FC<PlanTallerCorteTabProps> = ({ tiemposM
                     </div>
                 )}
             </div>
+
+            <Dialog open={emailDialogOpen} onOpenChange={(open) => !emailSending && setEmailDialogOpen(open)}>
+                <DialogContent className="sm:max-w-4xl max-h-[90vh] flex flex-col">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2"><Mail className="w-4 h-4 text-indigo-600" /> Enviar Correo — Reporte "PLAN"</DialogTitle>
+                        <DialogDescription>
+                            Se enviarán las tablas de Resumen por Fecha, Resumen por Puesto de Trabajo y Máquina, y el Diagrama de Gantt de Puestos de Trabajo — para {selectedDates.length > 0 ? `${selectedDates.length} fecha(s) seleccionada(s)` : 'todas las fechas disponibles'} (Gantt de la fecha {ganttFecha || '—'}).
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-3 overflow-y-auto flex-1 pr-1">
+                        <div className="space-y-1">
+                            <Label htmlFor="email-destino-tc" className="text-xs font-semibold">Destinatarios (separados por coma)</Label>
+                            <Input
+                                id="email-destino-tc"
+                                value={emailDestino}
+                                onChange={(e) => setEmailDestino(e.target.value)}
+                                placeholder="correo1@chaideychaide.com, correo2@chaideychaide.com"
+                                disabled={emailSending}
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <Label htmlFor="email-asunto-tc" className="text-xs font-semibold">Asunto</Label>
+                            <Input
+                                id="email-asunto-tc"
+                                value={emailAsunto}
+                                onChange={(e) => setEmailAsunto(e.target.value)}
+                                disabled={emailSending}
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <Label className="text-xs font-semibold">Vista previa del contenido</Label>
+                            <div className="border border-gray-300 rounded-md overflow-hidden bg-white">
+                                <iframe
+                                    title="Vista previa del correo"
+                                    srcDoc={`<!doctype html><html><head><meta charset="utf-8"/><style>body{margin:0;padding:12px;}</style></head><body>${emailCuerpoHtml}</body></html>`}
+                                    className="w-full h-[420px]"
+                                    sandbox=""
+                                />
+                            </div>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setEmailDialogOpen(false)} disabled={emailSending}>Cancelar</Button>
+                        <Button onClick={handleEnviarCorreo} disabled={emailSending} className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2">
+                            {emailSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
+                            {emailSending ? 'Enviando...' : 'Enviar Correo'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 };

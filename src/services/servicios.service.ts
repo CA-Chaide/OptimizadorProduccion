@@ -430,4 +430,19 @@ export const serviciosService = {
   async OrdenesProvisionalesAlphaPaginados(page: number, rowsPerPage: number): Promise<BodyResponse<any>> {
     return this.getOrdenesProvisionalesAlphaPaginados(page, rowsPerPage);
   },
+
+  async enviarCorreo(destino: string, asunto: string, cuerpo: string, nota: string): Promise<{ message: string; destinatarios: string[] }> {
+    const response = await fetchWithRetry(API_URL + "/enviarCorreo", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ destino, asunto, cuerpo, nota }),
+    });
+    if (!response.ok) {
+      const errorBody = await response
+        .json()
+        .catch(() => ({ message: "Error desconocido" }));
+      throw new Error(errorBody.message || "Failed to send email");
+    }
+    return response.json();
+  },
 };

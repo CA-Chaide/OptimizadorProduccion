@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { serviciosService } from '@/services/servicios.service';
 import { useAppContext } from '@/context/AppProvider';
-import { Package, Check, ChevronsUpDown, Loader2, BellRing, AlertTriangle, Clock, Calendar, CalendarDays, LayoutDashboard, History, ListChecks, ChevronUp, ChevronDown, Calculator, FileJson, Sparkles, CheckCircle2, PieChart, PackageSearch } from 'lucide-react';
+import { Package, Check, ChevronsUpDown, Loader2, BellRing, AlertTriangle, Clock, Calendar, CalendarDays, LayoutDashboard, History, ListChecks, ChevronUp, ChevronDown, Calculator, FileJson, Sparkles, CheckCircle2, PieChart, PackageSearch, Mail } from 'lucide-react';
 import type { OrdenFert, ProvisionalOrder, Restriccion } from '@/types/interfaces';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -11,6 +11,9 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from '
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 
 const normalizeMaterialCode = (code: string | number): string => {
@@ -319,6 +322,278 @@ const PlanDiarioGanttSection: React.FC<{ planSummaryByDate: PlanSummaryDay[] }> 
   );
 };
 
+// ---------------------------------------------------------------------------------------------
+// Generación del cuerpo HTML del correo "PLAN" (2026-09-06): reconstruye, en HTML basado 100% en
+// <table>/estilos inline (nada de flexbox/grid — no son confiables en clientes de correo tipo
+// Outlook), las mismas 5 secciones que se ven en pantalla para las fechas actualmente filtradas:
+// 1) Resumen de Órdenes Lanzadas por Fecha, 2) Resumen por Tipo de Mueble, 3) Capacidad Consolidada +
+// Estado de Órdenes, 4) Desglose por Fecha y Mesa, 5) Diagrama de Gantt (aproximado con celdas de
+// tabla de ancho fijo en vez de posicionamiento absoluto).
+const escapeHtml = (s: unknown): string =>
+  String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+
+const tamanoColorHex = (tamano: PlanDiarioSnapshotItem['tamano']): { bg: string; text: string; border: string } => {
+  if (tamano === 'Grande') return { bg: '#fecaca', text: '#991b1b', border: '#fca5a5' };
+  if (tamano === 'Mediano') return { bg: '#a7f3d0', text: '#065f46', border: '#6ee7b7' };
+  return { bg: '#bfdbfe', text: '#1e40af', border: '#93c5fd' };
+};
+
+const CORREO_TH_STYLE = 'padding:6px 10px;text-align:center;font-size:11px;font-weight:bold;color:#374151;background:#f3f4f6;border:1px solid #d1d5db;white-space:nowrap;';
+const CORREO_TD_STYLE = 'padding:6px 10px;text-align:center;font-size:12px;color:#111827;border:1px solid #e5e7eb;';
+const CORREO_SECTION_TITLE_STYLE = 'font-size:13px;font-weight:bold;color:#ffffff;background:#312e81;padding:8px 12px;margin:0;';
+
+const buildResumenPorFechaHtml = (
+  resumenPorFecha: { fecha: string; ordenes: number; unidades: number; horas: number; sinTiempoCount: number }[]
+): string => {
+  if (resumenPorFecha.length === 0) return '<p style="font-size:12px;color:#6b7280;">No hay órdenes lanzadas.</p>';
+  const totalOrdenes = resumenPorFecha.reduce((s, r) => s + r.ordenes, 0);
+  const totalUnidades = resumenPorFecha.reduce((s, r) => s + r.unidades, 0);
+  const totalHoras = resumenPorFecha.reduce((s, r) => s + r.horas, 0);
+  const fechaCols = resumenPorFecha.map(r => `<th style="${CORREO_TH_STYLE}">${escapeHtml(r.fecha)}</th>`).join('');
+  const ordenesCols = resumenPorFecha.map(r => `<td style="${CORREO_TD_STYLE}">${r.ordenes}</td>`).join('');
+  const unidadesCols = resumenPorFecha.map(r => `<td style="${CORREO_TD_STYLE}">${r.unidades.toLocaleString()}</td>`).join('');
+  const horasCols = resumenPorFecha.map(r => `<td style="${CORREO_TD_STYLE}color:#1d4ed8;font-weight:600;">${r.horas.toFixed(2)}${r.sinTiempoCount > 0 ? ' *' : ''}</td>`).join('');
+  return `
+    <table style="border-collapse:collapse;width:100%;" cellpadding="0" cellspacing="0">
+      <tr><th style="${CORREO_TH_STYLE}text-align:left;">Fecha</th>${fechaCols}<th style="${CORREO_TH_STYLE}background:#e5e7eb;">Total</th></tr>
+      <tr><td style="${CORREO_TD_STYLE}text-align:left;font-weight:bold;">Órdenes Lanzadas</td>${ordenesCols}<td style="${CORREO_TD_STYLE}font-weight:bold;background:#f9fafb;">${totalOrdenes}</td></tr>
+      <tr><td style="${CORREO_TD_STYLE}text-align:left;font-weight:bold;">Unidades Lanzadas</td>${unidadesCols}<td style="${CORREO_TD_STYLE}font-weight:bold;background:#f9fafb;">${totalUnidades.toLocaleString()}</td></tr>
+      <tr><td style="${CORREO_TD_STYLE}text-align:left;font-weight:bold;">Horas Requeridas</td>${horasCols}<td style="${CORREO_TD_STYLE}font-weight:bold;color:#1d4ed8;background:#f9fafb;">${totalHoras.toFixed(2)}</td></tr>
+    </table>
+    ${resumenPorFecha.some(r => r.sinTiempoCount > 0) ? '<p style="font-size:10px;color:#b45309;">* Hay orden(es) sin tiempo unitario cargado, no incluida(s) en la suma de horas.</p>' : ''}`;
+};
+
+const buildResumenPorTipoMuebleHtml = (
+  resumenPorTipoMueble: { tipo: TipoMueble; unidades: number; ordenes: number; pct: number }[]
+): string => {
+  if (resumenPorTipoMueble.length === 0) return '<p style="font-size:12px;color:#6b7280;">Sin datos.</p>';
+  const rows = resumenPorTipoMueble.map(r => `
+    <tr>
+      <td style="${CORREO_TD_STYLE}text-align:left;font-weight:bold;">${escapeHtml(TIPO_MUEBLE_LABEL[r.tipo])}</td>
+      <td style="${CORREO_TD_STYLE}">${r.unidades.toLocaleString()}</td>
+      <td style="${CORREO_TD_STYLE}">${r.ordenes}</td>
+      <td style="${CORREO_TD_STYLE}font-weight:bold;color:#4338ca;">${r.pct.toFixed(1)}%</td>
+    </tr>`).join('');
+  return `
+    <table style="border-collapse:collapse;width:100%;" cellpadding="0" cellspacing="0">
+      <tr>
+        <th style="${CORREO_TH_STYLE}text-align:left;">Tipo de Mueble</th>
+        <th style="${CORREO_TH_STYLE}">Unidades</th>
+        <th style="${CORREO_TH_STYLE}">Órdenes</th>
+        <th style="${CORREO_TH_STYLE}">% Participación</th>
+      </tr>
+      ${rows}
+    </table>`;
+};
+
+const buildCapacidadEstadoHtml = (
+  globalSummary: { totalCant: number; totalHours: number },
+  avgDailyCapacityHours: number,
+  statusSummary: { pastCant: number; pastHours: number; todayCant: number; todayHours: number; futureCant: number; futureHours: number }
+): string => {
+  const diasCarga = avgDailyCapacityHours > 0 ? (globalSummary.totalHours / avgDailyCapacityHours).toFixed(1) : '—';
+  return `
+    <table style="border-collapse:collapse;width:100%;" cellpadding="0" cellspacing="0">
+      <tr>
+        <td style="vertical-align:top;padding:0 6px 0 0;width:50%;">
+          <p style="${CORREO_SECTION_TITLE_STYLE}border-radius:6px 6px 0 0;">CAPACIDAD CONSOLIDADA (TOTAL SISTEMA)</p>
+          <table style="border-collapse:collapse;width:100%;" cellpadding="0" cellspacing="0">
+            <tr>
+              <th style="${CORREO_TH_STYLE}">Unidades Totales</th>
+              <th style="${CORREO_TH_STYLE}">Horas Totales</th>
+              <th style="${CORREO_TH_STYLE}">Días Carga</th>
+            </tr>
+            <tr>
+              <td style="${CORREO_TD_STYLE}font-weight:bold;">${globalSummary.totalCant.toLocaleString()}</td>
+              <td style="${CORREO_TD_STYLE}font-weight:bold;color:#4338ca;">${globalSummary.totalHours.toFixed(1)}h</td>
+              <td style="${CORREO_TD_STYLE}font-weight:bold;color:#1d4ed8;">${diasCarga} Días</td>
+            </tr>
+          </table>
+        </td>
+        <td style="vertical-align:top;padding:0 0 0 6px;width:50%;">
+          <p style="${CORREO_SECTION_TITLE_STYLE}border-radius:6px 6px 0 0;">ESTADO DE ÓRDENES (CRONOLÓGICO)</p>
+          <table style="border-collapse:collapse;width:100%;" cellpadding="0" cellspacing="0">
+            <tr>
+              <th style="${CORREO_TH_STYLE}color:#b91c1c;">Atrasadas</th>
+              <th style="${CORREO_TH_STYLE}color:#1d4ed8;">Hoy</th>
+              <th style="${CORREO_TH_STYLE}color:#15803d;">Por Planificar</th>
+            </tr>
+            <tr>
+              <td style="${CORREO_TD_STYLE}background:#fef2f2;color:#b91c1c;font-weight:bold;">${statusSummary.pastCant.toLocaleString()}<br/><span style="font-size:10px;font-weight:normal;">${statusSummary.pastHours.toFixed(1)}h</span></td>
+              <td style="${CORREO_TD_STYLE}background:#eff6ff;color:#1d4ed8;font-weight:bold;">${statusSummary.todayCant.toLocaleString()}<br/><span style="font-size:10px;font-weight:normal;">${statusSummary.todayHours.toFixed(1)}h</span></td>
+              <td style="${CORREO_TD_STYLE}background:#f0fdf4;color:#15803d;font-weight:bold;">${statusSummary.futureCant.toLocaleString()}<br/><span style="font-size:10px;font-weight:normal;">${statusSummary.futureHours.toFixed(1)}h</span></td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>`;
+};
+
+const buildDesglosePorFechaYMesaHtml = (planSummaryByDate: PlanSummaryDay[]): string => {
+  if (planSummaryByDate.length === 0) return '<p style="font-size:12px;color:#6b7280;">No hay fechas seleccionadas para analizar capacidad.</p>';
+  return planSummaryByDate.map(day => {
+    if (!day.snapshot) {
+      return `
+        <div style="margin-bottom:14px;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden;">
+          <p style="margin:0;padding:6px 10px;background:#4338ca;color:#ffffff;font-size:12px;font-weight:bold;text-align:center;">FECHA: ${escapeHtml(day.date)}</p>
+          <p style="margin:0;padding:10px;background:#fffbeb;color:#92400e;font-size:11px;font-style:italic;text-align:center;">No hay un Plan Diario guardado para esta fecha.</p>
+        </div>`;
+    }
+    const capacidadOcupadaTotal = day.capacidadTotalH > 0 ? (day.tiempoTotalH / day.capacidadTotalH) * 100 : 0;
+    const rows = day.mesas.map(mesa => {
+      const capMesa = mesa.capacityHours > 0 ? (mesa.usedHours / mesa.capacityHours) * 100 : 0;
+      const cantMesa = mesa.items.reduce((s, it) => s + it.cantidad, 0);
+      const personalLabel = mesa.person
+        ? `${mesa.person}${mesa.percentage ? ` (${mesa.percentage}%)` : ''}${mesa.calificacion !== null ? ` — Capacitación ${mesa.calificacion}%` : ''}`
+        : 'Sin Asignar';
+      return `
+        <tr${cantMesa === 0 ? ' style="background:#fee2e2;"' : ''}>
+          <td style="${CORREO_TD_STYLE}text-align:left;font-weight:600;">${escapeHtml(mesa.tableName)}</td>
+          <td style="${CORREO_TD_STYLE}text-align:left;color:#1d4ed8;">${escapeHtml(personalLabel)}</td>
+          <td style="${CORREO_TD_STYLE}">${cantMesa}</td>
+          <td style="${CORREO_TD_STYLE}">${mesa.usedHours.toFixed(2)}</td>
+          <td style="${CORREO_TD_STYLE}color:#6b7280;">${mesa.capacityHours.toFixed(2)}</td>
+          <td style="${CORREO_TD_STYLE}font-weight:bold;${capMesa > 100 ? 'color:#dc2626;background:#fef2f2;' : 'color:#1d4ed8;'}">${capMesa.toFixed(1)}%</td>
+        </tr>`;
+    }).join('');
+    return `
+      <div style="margin-bottom:14px;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden;">
+        <p style="margin:0;padding:6px 10px;background:#4338ca;color:#ffffff;font-size:11px;font-weight:bold;text-align:center;">
+          FECHA: ${escapeHtml(day.date)} &nbsp;|&nbsp; CANT: ${day.cantProgramada.toLocaleString()} &nbsp;|&nbsp; REQ: ${day.tiempoTotalH.toFixed(1)}h &nbsp;|&nbsp; DISP: ${day.capacidadTotalH.toFixed(1)}h (${escapeHtml(day.snapshot.shiftLabel)}) &nbsp;|&nbsp; OCUPACIÓN: ${capacidadOcupadaTotal.toFixed(1)}%
+        </p>
+        <table style="border-collapse:collapse;width:100%;" cellpadding="0" cellspacing="0">
+          <tr>
+            <th style="${CORREO_TH_STYLE}text-align:left;">Mesa</th>
+            <th style="${CORREO_TH_STYLE}text-align:left;">Personal</th>
+            <th style="${CORREO_TH_STYLE}">Cant</th>
+            <th style="${CORREO_TH_STYLE}">Horas Req</th>
+            <th style="${CORREO_TH_STYLE}">Horas Disp</th>
+            <th style="${CORREO_TH_STYLE}">Ocupación %</th>
+          </tr>
+          ${rows}
+        </table>
+      </div>`;
+  }).join('');
+};
+
+// Aproximación del Gantt de pantalla (posicionamiento absoluto en %) usando <table> de ancho fijo por
+// mesa: se ordenan los ítems por hora de inicio y se intercalan celdas vacías (huecos) entre ellos —
+// el ancho de cada celda en px es proporcional a su duración en horas. No requiere CSS de layout
+// moderno, por lo que se ve razonablemente bien también en Outlook.
+const GANTT_EMAIL_WIDTH_PX = 640;
+
+const buildGanttHtml = (planSummaryByDate: PlanSummaryDay[]): string => {
+  const diasConSnapshot = planSummaryByDate.filter(d => d.snapshot && d.mesas.length > 0);
+  if (diasConSnapshot.length === 0) return '';
+  const pxPerHour = GANTT_EMAIL_WIDTH_PX / GANTT_HOURS_SCALE;
+
+  const dias = diasConSnapshot.map(day => {
+    const snapshot = day.snapshot!;
+    const mesasHtml = (['Línea 1 – Línea de Camas', 'Línea 2 – Línea de Muebles'] as const).map(linea => {
+      const mesasLinea = day.mesas.filter(m => m.linea === linea);
+      if (mesasLinea.length === 0) return '';
+      const filas = mesasLinea.map(mesa => {
+        const items = [...mesa.items].sort((a, b) => a.startHour - b.startHour);
+        let cursor = 0;
+        const celdas: string[] = [];
+        items.forEach((item, idx) => {
+          const gapHoras = item.startHour - cursor;
+          if (gapHoras > 0.05) {
+            celdas.push(`<td style="width:${Math.round(gapHoras * pxPerHour)}px;padding:0;border:none;"></td>`);
+          }
+          const anchoPx = Math.max(Math.round((item.endHour - item.startHour) * pxPerHour), 6);
+          const { bg, text, border } = tamanoColorHex(item.tamano);
+          celdas.push(`<td style="width:${anchoPx}px;height:26px;background:${bg};border:1px solid ${border};padding:0 2px;overflow:hidden;"><span style="font-size:8px;font-weight:600;color:${text};white-space:nowrap;">${escapeHtml(item.material)}</span></td>`);
+          cursor = item.endHour;
+        });
+        if (cursor < GANTT_HOURS_SCALE) {
+          celdas.push(`<td style="width:${Math.round((GANTT_HOURS_SCALE - cursor) * pxPerHour)}px;padding:0;border:none;"></td>`);
+        }
+        const utilizacionPct = mesa.capacityHours > 0 ? (mesa.usedHours / mesa.capacityHours) * 100 : 0;
+        return `
+          <tr>
+            <td style="${CORREO_TD_STYLE}text-align:left;white-space:nowrap;width:130px;">
+              <span style="font-weight:bold;">${escapeHtml(mesa.tableName)}</span><br/>
+              <span style="font-family:monospace;font-size:10px;">${mesa.usedHours.toFixed(2)} / ${mesa.capacityHours.toFixed(2)} h</span>
+            </td>
+            <td style="padding:2px;border:1px solid #e5e7eb;background:#f9fafb;">
+              <table cellpadding="0" cellspacing="0" style="border-collapse:collapse;width:${GANTT_EMAIL_WIDTH_PX}px;"><tr>${celdas.join('')}</tr></table>
+            </td>
+            <td style="${CORREO_TD_STYLE}width:50px;font-weight:bold;${utilizacionPct > 100 ? 'color:#dc2626;' : 'color:#374151;'}">${utilizacionPct.toFixed(0)}%</td>
+          </tr>`;
+      }).join('');
+      return `
+        <p style="margin:10px 0 4px;font-size:11px;font-weight:bold;color:#4b5563;text-transform:uppercase;">${escapeHtml(linea)}</p>
+        <table style="border-collapse:collapse;" cellpadding="0" cellspacing="0">${filas}</table>`;
+    }).join('');
+
+    const horasEje = Array.from({ length: GANTT_HOURS_SCALE + 1 }, (_, h) => h).filter(h => h % 2 === 0)
+      .map(h => `<td style="width:${Math.round(2 * pxPerHour)}px;font-size:9px;color:#9ca3af;font-family:monospace;">${formatShiftClockLabel(snapshot.shiftStartTime, h)}</td>`).join('');
+
+    return `
+      <div style="margin-bottom:20px;">
+        <h4 style="font-size:12px;font-weight:bold;color:#374151;border-bottom:1px dashed #d1d5db;padding-bottom:4px;">${escapeHtml(day.date)} — ${escapeHtml(snapshot.shiftLabel)} (fin de turno ${escapeHtml(snapshot.shiftDisplayEndTime)})</h4>
+        <p style="font-size:10px;color:#6b7280;">
+          <span style="background:#fecaca;border:1px solid #fca5a5;padding:1px 5px;">&nbsp;</span> Grande &nbsp;
+          <span style="background:#a7f3d0;border:1px solid #6ee7b7;padding:1px 5px;">&nbsp;</span> Mediano &nbsp;
+          <span style="background:#bfdbfe;border:1px solid #93c5fd;padding:1px 5px;">&nbsp;</span> Pequeño
+        </p>
+        ${mesasHtml}
+        <table cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-left:130px;"><tr>${horasEje}</tr></table>
+      </div>`;
+  }).join('');
+
+  return `<p style="${CORREO_SECTION_TITLE_STYLE}border-radius:6px 6px 0 0;">Diagrama de Gantt — Plan Diario Guardado (Plan Táctico)</p><div style="border:1px solid #e5e7eb;border-top:none;padding:12px;overflow-x:auto;">${dias}</div>`;
+};
+
+interface ReporteCorreoParams {
+  fechasFiltro: string[];
+  resumenPorFecha: { fecha: string; ordenes: number; unidades: number; horas: number; sinTiempoCount: number }[];
+  resumenPorTipoMueble: { tipo: TipoMueble; unidades: number; ordenes: number; pct: number }[];
+  globalSummary: { totalCant: number; totalHours: number };
+  avgDailyCapacityHours: number;
+  statusSummary: { pastCant: number; pastHours: number; todayCant: number; todayHours: number; futureCant: number; futureHours: number };
+  planSummaryByDate: PlanSummaryDay[];
+}
+
+const buildReporteCorreoHtml = (p: ReporteCorreoParams): string => {
+  const fechasLabel = p.fechasFiltro.length > 0 ? p.fechasFiltro.join(', ') : 'Todas las fechas disponibles';
+  const seccionTitulo = (n: number, titulo: string) => `<p style="${CORREO_SECTION_TITLE_STYLE}border-radius:6px 6px 0 0;margin-top:20px;">${n}. ${escapeHtml(titulo)}</p>`;
+  const ganttHtml = buildGanttHtml(p.planSummaryByDate);
+
+  return `
+    <div style="font-family:Arial, Helvetica, sans-serif;color:#111827;max-width:900px;">
+      <h2 style="font-size:16px;color:#1e293b;margin:0 0 4px;">Planificación Táctica Muebles — Reporte "PLAN"</h2>
+      <p style="font-size:11px;color:#6b7280;margin:0 0 16px;">Fecha(s) del filtro: <strong>${escapeHtml(fechasLabel)}</strong> — generado ${escapeHtml(new Date().toLocaleString('es-EC'))}</p>
+
+      ${seccionTitulo(1, 'Resumen de Órdenes Lanzadas por Fecha')}
+      <div style="border:1px solid #e5e7eb;border-top:none;padding:10px;overflow-x:auto;">
+        ${buildResumenPorFechaHtml(p.resumenPorFecha)}
+      </div>
+
+      ${seccionTitulo(2, 'Resumen por Tipo de Mueble (Filtro Actual)')}
+      <div style="border:1px solid #e5e7eb;border-top:none;padding:10px;">
+        ${buildResumenPorTipoMuebleHtml(p.resumenPorTipoMueble)}
+      </div>
+
+      ${seccionTitulo(3, 'Capacidad Consolidada y Estado de Órdenes')}
+      <div style="border:1px solid #e5e7eb;border-top:none;padding:10px;">
+        ${buildCapacidadEstadoHtml(p.globalSummary, p.avgDailyCapacityHours, p.statusSummary)}
+      </div>
+
+      ${seccionTitulo(4, 'Desglose por Fecha y Mesa (Filtro Actual)')}
+      <div style="border:1px solid #e5e7eb;border-top:none;padding:10px;">
+        ${buildDesglosePorFechaYMesaHtml(p.planSummaryByDate)}
+      </div>
+
+      ${ganttHtml ? `<div style="margin-top:20px;">${ganttHtml}</div>` : ''}
+    </div>`;
+};
+
 interface OrdenesFertTabSectionProps {
   restricciones: Restriccion[];
   columns?: string[];
@@ -468,6 +743,14 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
   // Estado para Explosión de Materiales
   const [explosionResults, setExplosionResults] = useState<ComponentExplosion[]>([]);
   const [isExploding, setIsExploding] = useState(false);
+
+  // Estado para "Enviar Correo" — envía por email las 5 tablas de la pestaña "PLAN" (Resumen por Fecha,
+  // Resumen por Tipo de Mueble, Capacidad/Estado de Órdenes, Desglose por Fecha y Mesa, Gantt) para las
+  // fechas actualmente filtradas, vía POST /api/servicios/enviarCorreo.
+  const [emailDialogOpen, setEmailDialogOpen] = useState(false);
+  const [emailDestino, setEmailDestino] = useState('');
+  const [emailAsunto, setEmailAsunto] = useState('Reporte de Producción - Plan Táctico Muebles');
+  const [emailSending, setEmailSending] = useState(false);
 
   const topScrollRef = useRef<HTMLDivElement>(null);
   const tableScrollRef = useRef<HTMLDivElement>(null);
@@ -623,12 +906,12 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
           validResp.includes(String(o.RESPCTRLPROD).trim()) && o.CENTRO === '1000'
         ).map(o => ({ ...o, _isPrevisional: false, _displayId: o.ORDEN }));
 
-        const provMapped = allProv.filter(o => 
+        const provMapped = allProv.filter(o =>
           validResp.includes(String(o.RESPCONTROLPROD).trim()) && o.CENTRO === '1000'
         ).map(o => ({
           FECHA: o.FECHAINICIO,
-          PEDIDO: '',
-          POSICION: '',
+          PEDIDO: (o as any).PEDIDOVENTAS || '',
+          POSICION: (o as any).POSICIONPEDIDO || '',
           ORDEN: o.ORDENPREVISIONAL,
           MATERIAL: o.MATERIAL,
           NOMBRE: o.NOMBRE,
@@ -1103,6 +1386,53 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
     }
   };
 
+  // Cuerpo HTML del correo, recalculado en vivo mientras el modal está abierto — se usa tanto para la
+  // vista previa (iframe) como para el envío real, así lo que el usuario ve es exactamente lo que se
+  // manda (a pedido explícito del usuario, 2026-09-06: quiere revisar el contenido antes de enviar).
+  const emailCuerpoHtml = useMemo(() => buildReporteCorreoHtml({
+    fechasFiltro: selectedDates,
+    resumenPorFecha,
+    resumenPorTipoMueble,
+    globalSummary,
+    avgDailyCapacityHours,
+    statusSummary,
+    planSummaryByDate,
+  }), [selectedDates, resumenPorFecha, resumenPorTipoMueble, globalSummary, avgDailyCapacityHours, statusSummary, planSummaryByDate]);
+
+  const handleEnviarCorreo = async () => {
+    const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const destinatarios = emailDestino.split(',').map(d => d.trim()).filter(Boolean);
+    const invalidos = destinatarios.filter(d => !EMAIL_REGEX.test(d));
+    if (destinatarios.length === 0) {
+      addNotification('warning', 'Ingresa al menos un destinatario.');
+      return;
+    }
+    if (invalidos.length > 0) {
+      addNotification('warning', `Correo(s) inválido(s): ${invalidos.join(', ')}`);
+      return;
+    }
+    if (!emailAsunto.trim()) {
+      addNotification('warning', 'Ingresa un asunto para el correo.');
+      return;
+    }
+
+    setEmailSending(true);
+    try {
+      const res = await serviciosService.enviarCorreo(
+        destinatarios.join(','),
+        emailAsunto.trim(),
+        emailCuerpoHtml,
+        'Este correo fue generado automáticamente, favor no responder.'
+      );
+      addNotification('success', res.message || `Correo enviado a ${res.destinatarios.join(', ')}`);
+      setEmailDialogOpen(false);
+    } catch (e) {
+      addNotification('error', `Error al enviar el correo: ${(e as Error).message}`);
+    } finally {
+      setEmailSending(false);
+    }
+  };
+
   useEffect(() => {
     if (!isMounted) return;
     const calculateWidth = () => { if (tableRef.current) setTableWidth(tableRef.current.offsetWidth); };
@@ -1165,14 +1495,21 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
 
               {displayMode === 'plan' && (
                 <>
-                  <div className="flex items-end h-16">
-                    <Button 
-                        onClick={handleExplodeMaterials} 
+                  <div className="flex items-end h-16 gap-2">
+                    <Button
+                        onClick={handleExplodeMaterials}
                         disabled={isExploding || filteredOrders.length === 0}
                         className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 shadow-md h-9"
                     >
                         {isExploding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Calculator className="w-4 h-4" />}
                         Calcular Explosión
+                    </Button>
+                    <Button
+                        onClick={() => setEmailDialogOpen(true)}
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2 shadow-md h-9"
+                    >
+                        <Mail className="w-4 h-4" />
+                        Enviar Correo
                     </Button>
                   </div>
                 </>
@@ -1653,6 +1990,56 @@ export const OrdenesFertTabSection: React.FC<OrdenesFertTabSectionProps> = ({ re
             </Accordion>
         </div>
       )}
+
+      <Dialog open={emailDialogOpen} onOpenChange={(open) => !emailSending && setEmailDialogOpen(open)}>
+        <DialogContent className="sm:max-w-4xl max-h-[90vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Mail className="w-4 h-4 text-indigo-600" /> Enviar Correo — Reporte "PLAN"</DialogTitle>
+            <DialogDescription>
+              Se enviarán las tablas de Resumen por Fecha, Resumen por Tipo de Mueble, Capacidad/Estado de Órdenes, Desglose por Fecha y Mesa, y el Diagrama de Gantt — para {selectedDates.length > 0 ? `${selectedDates.length} fecha(s) seleccionada(s)` : 'todas las fechas disponibles'}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 overflow-y-auto flex-1 pr-1">
+            <div className="space-y-1">
+              <Label htmlFor="email-destino" className="text-xs font-semibold">Destinatarios (separados por coma)</Label>
+              <Input
+                id="email-destino"
+                value={emailDestino}
+                onChange={(e) => setEmailDestino(e.target.value)}
+                placeholder="correo1@chaideychaide.com, correo2@chaideychaide.com"
+                disabled={emailSending}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="email-asunto" className="text-xs font-semibold">Asunto</Label>
+              <Input
+                id="email-asunto"
+                value={emailAsunto}
+                onChange={(e) => setEmailAsunto(e.target.value)}
+                disabled={emailSending}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold">Vista previa del contenido</Label>
+              <div className="border border-gray-300 rounded-md overflow-hidden bg-white">
+                <iframe
+                  title="Vista previa del correo"
+                  srcDoc={`<!doctype html><html><head><meta charset="utf-8"/><style>body{margin:0;padding:12px;}</style></head><body>${emailCuerpoHtml}</body></html>`}
+                  className="w-full h-[420px]"
+                  sandbox=""
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEmailDialogOpen(false)} disabled={emailSending}>Cancelar</Button>
+            <Button onClick={handleEnviarCorreo} disabled={emailSending} className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2">
+              {emailSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
+              {emailSending ? 'Enviando...' : 'Enviar Correo'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

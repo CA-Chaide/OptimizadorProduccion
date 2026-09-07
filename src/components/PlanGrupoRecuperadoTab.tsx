@@ -28,10 +28,20 @@ const TOLERANCIA_DEFICIT = 0.01;
 const matchesGrupoNombre = (nombreGrupo: string | undefined, target: string): boolean =>
     String(nombreGrupo || '').trim().toLowerCase().includes(target);
 
-// Extrae el sufijo "P<n>" al final de un valor de PlanGrupo, ej. "Plan Táctico - Centro 1000 - P3" -> "P3"
+// Extrae el sufijo "P<n>" de un valor de PlanGrupo, ej. "Plan Táctico - Centro 1000 - P3" -> "P3". Busca un
+// segmento (separado por " - ") que sea EXACTAMENTE "P<dígitos>", empezando por el final, en vez de exigir
+// que "P3" sea literalmente el último token: "Corte y Laminado" empezó (2026-09-04) a agregar una categoría
+// después del sufijo (ej. "Plan Táctico - Centro 1000 - P3 - Espuma", "... - P2 - Rollos") y el ancla al
+// final de cadena (`$`) dejaba de matchear esos casos — el Plan de Respuesta existía en la base pero
+// "Plan Grupo Recuperado" lo mostraba como si no hubiera llegado ninguno. Sigue sin matchear "P1.3"/"P1.5"
+// (el segmento completo no es solo dígitos), que es el comportamiento ya esperado por el resto del archivo.
 const extractPlanSuffix = (valor: string | undefined): string | null => {
-    const match = String(valor || '').trim().match(/P(\d+)\s*$/i);
-    return match ? `P${match[1]}` : null;
+    const segmentos = String(valor || '').split('-').map(s => s.trim());
+    for (let i = segmentos.length - 1; i >= 0; i--) {
+        const match = segmentos[i].match(/^P(\d+)$/i);
+        if (match) return `P${match[1]}`;
+    }
+    return null;
 };
 
 const normalizeMaterialCode = (code: string | number): string => {
@@ -488,6 +498,17 @@ export const PlanGrupoRecuperadoTab: React.FC<PlanGrupoRecuperadoTabProps> = ({ 
         });
     }, [detallesRecuperados, detalleDeficitMap]);
 
+    // Cuántos Detalles Recuperados sí quedaron con déficit real (para el banner/botón de confirmación
+    // manual: el usuario puede revisar/investigar cada uno con "Investigar", pero también puede optar por
+    // continuar a Paso 3 de todos modos sin haber resuelto el déficit por completo — decisión suya, no del
+    // sistema, 2026-09-04).
+    const detallesConDeficit = useMemo(() => {
+        return detallesRecuperados.filter(d => {
+            const info = detalleDeficitMap.get(d.codigo_detalle_tactico);
+            return !!info && info.deficit > TOLERANCIA_DEFICIT;
+        }).length;
+    }, [detallesRecuperados, detalleDeficitMap]);
+
     // Resumen en vivo: cuánto se libera al mover las órdenes marcadas, y la utilización resultante contra
     // la capacidad ofrecida por Corte y Laminado (Plan Respuesta P3)
     const resumenInvestigacion = useMemo(() => {
@@ -569,6 +590,29 @@ export const PlanGrupoRecuperadoTab: React.FC<PlanGrupoRecuperadoTabProps> = ({ 
                         >
                             <ArrowRight className="w-3.5 h-3.5" />
                             IR A PASO 3: PLANIFICACIÓN FINAL
+                        </Button>
+                    )}
+                </div>
+            )}
+
+            {detallesRecuperados.length > 0 && !todoResueltoSinDeficit && (
+                <div className="bg-amber-50 border border-amber-300 rounded-lg p-4 flex items-center justify-between gap-4 flex-wrap">
+                    <div className="flex items-start gap-2">
+                        <TriangleAlert className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+                        <p className="text-xs text-amber-800">
+                            "{GRUPO_RESPUESTA_NOMBRE.replace(/\b\w/g, c => c.toUpperCase())}" respondió con déficit en {detallesConDeficit} de {detallesRecuperados.length} material(es).
+                            Puede usar "Investigar" en cada fila para mover órdenes en SAP y reducirlo, o confirmar y continuar al Paso 3 de todos modos
+                            (la decisión de aceptar el déficit pendiente es suya, no la bloquea el sistema).
+                        </p>
+                    </div>
+                    {onIrAPasoFinal && (
+                        <Button
+                            onClick={onIrAPasoFinal}
+                            size="sm"
+                            className="h-8 bg-amber-600 hover:bg-amber-700 text-white gap-1.5 text-xs shrink-0"
+                        >
+                            <ArrowRight className="w-3.5 h-3.5" />
+                            CONFIRMAR Y CONTINUAR A PASO 3
                         </Button>
                     )}
                 </div>

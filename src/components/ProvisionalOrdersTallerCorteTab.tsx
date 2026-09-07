@@ -5,7 +5,7 @@ import * as XLSX from 'xlsx';
 import { serviciosService } from '@/services/servicios.service';
 import { ecuadorHolidaysService } from '@/services/ecuador-holidays.service';
 import { useAppContext } from '@/context/AppProvider';
-import { Loader2, PlayCircle, LayoutGrid, Gauge, Clock, Sun, Moon, RefreshCw, TriangleAlert, Scissors, FileSpreadsheet, Download } from 'lucide-react';
+import { Loader2, PlayCircle, LayoutGrid, Gauge, Clock, Sun, Moon, RefreshCw, TriangleAlert, Scissors, FileSpreadsheet, Download, BedDouble } from 'lucide-react';
 import { Table, TableHeader, TableBody, TableFooter, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -55,26 +55,38 @@ const esExcepcionUSN = (descripcionUpper: string): boolean =>
     descripcionUpper.startsWith('FORRO COJIN INTER') ||
     descripcionUpper.startsWith('ANTIFAZ');
 
-// TC-COS04 fabrica ÚNICAMENTE los forros de cama (descripción empieza con "FORRO CAMA")
-const esForroCama = (descripcionUpper: string): boolean => descripcionUpper.startsWith('FORRO CAMA');
+// Forros de cama (descripción empieza con "FORRO CAMA") y forros de cabecero (empieza con "FORRO CAB",
+// ej. "FORRO CAB CAPRI ...") comparten el mismo pool de máquinas dedicadas — por defecto solo TC-COS04,
+// pero el usuario puede habilitar otras cosedoras adicionales (camasMachineIds) cuando por temas
+// operacionales haga falta más capacidad para camas/cabeceros (2026-09-02, pedido explícito del usuario).
+const esForroCamaOCabecero = (descripcionUpper: string): boolean =>
+    descripcionUpper.startsWith('FORRO CAMA') || descripcionUpper.startsWith('FORRO CAB');
 
 const MACHINE_IDS = ['TC-COS01', 'TC-COS02', 'TC-COS03', 'TC-COS04', 'TC-COS05', 'TC-COS06', 'TC-COS07', 'TC-COS08', 'TC-COS09', 'TC-COS10', 'TC-USN01'] as const;
 type MachineId = typeof MACHINE_IDS[number];
 
+// TC-COS04 siempre fabrica forros de cama/cabecero — es la única cosedora dedicada por defecto y no se
+// puede deshabilitar desde la UI (ver camasMachineIds/toggleCamasMachine más abajo).
+const MACHINE_CAMAS_DEFAULT: MachineId = 'TC-COS04';
+
 // Especialización de cada cosedora (evaluada en orden de prioridad):
 // 1. TC-USN01: ÚNICA que acepta "TAPA T. FALSO NEGRO"/forros de proceso corto (esExcepcionUSN) — no
 //    recibe nada más.
-// 2. TC-COS04: ÚNICA que acepta forros de cama (esForroCama) — no recibe nada más.
-// 3. TC-COS01..TC-COS10: pool general, sin distinción entre ellas (pedido explícito del usuario,
-//    2026-08-25) — el algoritmo de distribución (best-fit-decreasing, ordena de mayor a menor horas)
-//    ya prioriza los forros "grandes" hacia las máquinas con más capacidad libre, que al iniciar todas
-//    en cero uso son TC-COS01/02/03 (primeras del pool por orden de MACHINE_IDS); cuando no hay
+// 2. Forros de cama/cabecero (esForroCamaOCabecero): SOLO las cosedoras en `camasMachineIds` (por
+//    defecto únicamente TC-COS04, ampliable por el usuario) — el resto de cosedoras no las recibe.
+// 3. TC-COS04: fuera de camas/cabecero, sigue sin recibir nada más (dedicada), incluso si el usuario
+//    amplió `camasMachineIds` con otras cosedoras — esas otras SÍ siguen recibiendo su carga normal del
+//    pool general además de camas/cabecero.
+// 4. TC-COS01..TC-COS10 (salvo TC-COS04): pool general, sin distinción entre ellas (pedido explícito del
+//    usuario, 2026-08-25) — el algoritmo de distribución (best-fit-decreasing, ordena de mayor a menor
+//    horas) ya prioriza los forros "grandes" hacia las máquinas con más capacidad libre, que al iniciar
+//    todas en cero uso son TC-COS01/02/03 (primeras del pool por orden de MACHINE_IDS); cuando no hay
 //    suficientes forros grandes para llenarlas, el resto de forros (medianos/pequeños) también puede
 //    caer ahí, regularizando la carga entre las 10 mesas para que terminen en un horario similar.
-const machineAcceptsMaterial = (machineId: MachineId, descripcionUpper: string): boolean => {
+const machineAcceptsMaterial = (machineId: MachineId, descripcionUpper: string, camasMachineIds: Set<MachineId>): boolean => {
     if (esExcepcionUSN(descripcionUpper)) return machineId === 'TC-USN01';
     if (machineId === 'TC-USN01') return false;
-    if (esForroCama(descripcionUpper)) return machineId === 'TC-COS04';
+    if (esForroCamaOCabecero(descripcionUpper)) return camasMachineIds.has(machineId);
     if (machineId === 'TC-COS04') return false;
     return true;
 };
@@ -268,9 +280,24 @@ export const ProvisionalOrdersTallerCorteTab: React.FC<ProvisionalOrdersTallerCo
     const [turnoDuration, setTurnoDuration] = useState<Record<TurnoId, string>>({ dia: SHIFT_DURATIONS_TC_DIA[0].id, noche: SHIFT_DURATIONS_TC_NOCHE[0].id });
     const [turnoMachines, setTurnoMachines] = useState<Record<TurnoId, Set<MachineId>>>({ dia: new Set(MACHINE_IDS), noche: new Set() });
 
+    // Cosedoras habilitadas para fabricar forros de cama/cabecero, además de TC-COS04 (siempre incluida,
+    // no removible desde la UI). Configurable por el usuario con el botón "Habilitar p/ Camas y Cabecero"
+    // junto a cada cosedora, mismo patrón que camasOverflowMesaIds en "Planificación Táctica Muebles".
+    const [camasMachineIds, setCamasMachineIds] = useState<Set<MachineId>>(new Set([MACHINE_CAMAS_DEFAULT]));
+
     const [capacitySummary, setCapacitySummary] = useState<CapacitySummary | null>(null);
     const [machineDistribution, setMachineDistribution] = useState<Map<string, MachineDistributionEntry> | null>(null);
     const [unassignedOrders, setUnassignedOrders] = useState<TCOrder[]>([]);
+
+    const toggleCamasMachine = (machineId: MachineId) => {
+        if (machineId === MACHINE_CAMAS_DEFAULT) return;
+        setCamasMachineIds(prev => {
+            const next = new Set(prev);
+            if (next.has(machineId)) next.delete(machineId);
+            else next.add(machineId);
+            return next;
+        });
+    };
 
     const toggleTurnoMachine = (turno: TurnoId, machineId: MachineId) => {
         setTurnoMachines(prev => {
@@ -451,7 +478,7 @@ export const ProvisionalOrdersTallerCorteTab: React.FC<ProvisionalOrdersTallerCo
 
         sortedOrders.forEach(order => {
             const descUpper = order.nombre.toUpperCase();
-            const candidates = activeSlots.filter(slot => machineAcceptsMaterial(slot.machineId, descUpper));
+            const candidates = activeSlots.filter(slot => machineAcceptsMaterial(slot.machineId, descUpper, camasMachineIds));
             if (candidates.length === 0) {
                 unassigned.push(order);
                 return;
@@ -536,7 +563,7 @@ export const ProvisionalOrdersTallerCorteTab: React.FC<ProvisionalOrdersTallerCo
                     const descUpper = item.order.nombre.toUpperCase();
                     const destinos = machineKeys
                         .filter(key => key !== sourceKey)
-                        .filter(key => machineAcceptsMaterial(machineIdById.get(key)!, descUpper))
+                        .filter(key => machineAcceptsMaterial(machineIdById.get(key)!, descUpper, camasMachineIds))
                         .filter(key => usedHoursOf(key) + duracion <= (capacityById.get(key) ?? 0))
                         .sort((a, b) => utilizationOf(a) - utilizationOf(b));
 
@@ -789,6 +816,42 @@ export const ProvisionalOrdersTallerCorteTab: React.FC<ProvisionalOrdersTallerCo
                         <LayoutGrid className="w-4 h-4" />
                         Distribución de Máquinas de Coser
                     </Button>
+                </div>
+            </div>
+
+            {/* CONFIGURACIÓN DE COSEDORAS PARA FORROS DE CAMA Y CABECERO */}
+            <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm space-y-3">
+                <div className="flex items-center gap-2">
+                    <BedDouble className="w-5 h-5 text-indigo-600" />
+                    <h3 className="text-sm font-bold text-gray-800 uppercase tracking-tight">Cosedoras para Forros de Cama y Cabecero</h3>
+                </div>
+                <p className="text-xs text-gray-500">
+                    TC-COS04 fabrica siempre los forros de cama y de cabecero (materiales que empiezan con &quot;FORRO CAMA&quot; o &quot;FORRO CAB&quot;). Habilita otras cosedoras aquí cuando por temas operacionales haga falta repartir esa carga en más máquinas — esas cosedoras seguirán recibiendo también su carga normal del pool general.
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                    {MACHINE_IDS.filter(machineId => machineId !== 'TC-USN01').map(machineId => {
+                        const isDefault = machineId === MACHINE_CAMAS_DEFAULT;
+                        const active = camasMachineIds.has(machineId);
+                        return (
+                            <button
+                                key={machineId}
+                                type="button"
+                                onClick={() => toggleCamasMachine(machineId)}
+                                disabled={isDefault}
+                                title={isDefault ? 'TC-COS04 siempre fabrica forros de cama/cabecero' : 'Habilita esta cosedora para fabricar también forros de cama/cabecero'}
+                                className={cn(
+                                    "px-2.5 py-1 rounded-md text-[10px] font-bold border transition-colors inline-flex items-center gap-1",
+                                    active
+                                        ? "bg-sky-600 border-sky-600 text-white"
+                                        : "bg-white border-gray-300 text-gray-500 hover:border-sky-300",
+                                    isDefault && "cursor-default opacity-90"
+                                )}
+                            >
+                                <BedDouble className="w-3 h-3" />
+                                {machineId}{isDefault ? ' (siempre)' : ''}
+                            </button>
+                        );
+                    })}
                 </div>
             </div>
 

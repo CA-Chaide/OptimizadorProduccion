@@ -3018,9 +3018,13 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
         XLSX.writeFile(workbook, `Planificacion_Confirmada_Mesas_${fechaArchivo}.xlsx`);
     };
 
-    // Genera el archivo .txt de "Detalle de Planificación Ejecutada" para carga en SAP. Formato por línea:
-    // Material Cant. Planificada Fecha(DD.MM.AAAA, fecha objetivo + 3 días hábiles) Hora Inicio Hora Final Puesto de Trabajo
-    // Hora Inicio/Final y Puesto de Trabajo se calculan igual que en "Imprimir Planificación Confirmada"
+    // Genera el archivo .txt de "Detalle de Planificación Ejecutada" para carga en SAP (formato LSMW ZCSQ,
+    // 15 columnas separadas por TAB, pedido explícito del usuario 2026-09-04):
+    // "003" | correlativo (001, 002... orden en que se listan los ítems en este archivo) | "ZCSQ" | "1000"
+    // | Material | Cant. Planificada | "001" | Puesto de Trabajo | Fecha Planificación (hoy+3 días hábiles)
+    // | Hora Inicio | Fecha Planificación (repetida) | Hora Final | Pedido (sin ceros a la izquierda, vacío
+    // si es MTS) | Posición de Pedido (sin ceros a la izquierda, vacío si es MTS) | "001"
+    // Puesto de Trabajo/Hora Inicio/Hora Final se calculan igual que en "Imprimir Planificación Confirmada"
     // (requiere haber ejecutado la Distribución de Mesas).
     const exportPlanningDetailToLSMW = () => {
         if (!planningResult) return;
@@ -3033,16 +3037,37 @@ export const ProvisionalOrdersAlphaTab = React.forwardRef<ProvisionalOrdersAlpha
         const fechaTexto = `${String(fechaPlanificacion.getDate()).padStart(2, '0')}.${String(fechaPlanificacion.getMonth() + 1).padStart(2, '0')}.${fechaPlanificacion.getFullYear()}`;
 
         const shiftStartUTC = shiftTimeToUTC(planningTargetDate, selectedShiftConfig.startTime);
+        const sinCerosIniciales = (valor: string) => valor.replace(/^0+/, '');
 
         const lines: string[] = [];
+        let correlativo = 0;
         Array.from(mesaDistribution.values())
             .sort((a, b) => a.tableId - b.tableId)
             .forEach(mesa => {
                 const puestoTrabajo = `TAP-AR${String(mesa.tableId).padStart(2, '0')}`;
                 mesa.items.forEach(item => {
+                    correlativo += 1;
                     const horaInicio = new Date(shiftStartUTC.getTime() + item.startHour * 60 * 60 * 1000);
                     const horaFinal = new Date(shiftStartUTC.getTime() + item.endHour * 60 * 60 * 1000);
-                    lines.push(`${item.order.material} ${item.order.cantidadPlanificada} ${fechaTexto} ${formatEcuadorTime(horaInicio)} ${formatEcuadorTime(horaFinal)} ${puestoTrabajo}`);
+                    const pedido = sinCerosIniciales(item.order.pedido || '');
+                    const posicion = sinCerosIniciales(item.order.posicion || '');
+                    lines.push([
+                        '003',
+                        String(correlativo).padStart(3, '0'),
+                        'ZCSQ',
+                        '1000',
+                        item.order.material,
+                        item.order.cantidadPlanificada,
+                        '001',
+                        puestoTrabajo,
+                        fechaTexto,
+                        formatEcuadorTime(horaInicio),
+                        fechaTexto,
+                        formatEcuadorTime(horaFinal),
+                        pedido,
+                        posicion,
+                        '001',
+                    ].join('\t'));
                 });
             });
 
