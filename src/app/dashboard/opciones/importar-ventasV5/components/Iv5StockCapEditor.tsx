@@ -1,8 +1,8 @@
 'use client';
 
 import React from 'react';
-import type { Iv5StockCap } from './iv5Types';
-import { IV5_DEFAULT_CAP_C1000, IV5_DEFAULT_CAP_C2000 } from './iv5Constants';
+import type { Iv5StockCap, Iv5TransportCap } from './iv5Types';
+import { IV5_DEFAULT_CAP_C1000, IV5_DEFAULT_CAP_C2000, IV5_DEFAULT_TRANSPORT_UDS_DIA } from './iv5Constants';
 
 /**
  * Editor de topes agregados de stock IV5.
@@ -14,15 +14,23 @@ import { IV5_DEFAULT_CAP_C1000, IV5_DEFAULT_CAP_C2000 } from './iv5Constants';
 interface Props {
   value: Iv5StockCap;
   maxSabadosMes: number;
+  transportCap: Iv5TransportCap;
   onChange: (next: Iv5StockCap) => void;
   onMaxSabadosChange: (n: number) => void;
+  onTransportCapChange: (next: Iv5TransportCap) => void;
 }
 
-export const Iv5StockCapEditor: React.FC<Props> = ({ value, maxSabadosMes, onChange, onMaxSabadosChange }) => {
+export const Iv5StockCapEditor: React.FC<Props> = ({ value, maxSabadosMes, transportCap, onChange, onMaxSabadosChange, onTransportCapChange }) => {
   const handleNum = (key: 'centro1000' | 'centro2000', raw: string) => {
     const n = Number(raw);
     if (!Number.isFinite(n) || n < 0) return;
     onChange({ ...value, [key]: n });
+  };
+
+  const handleTransporte = (raw: string) => {
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n < 0) return;
+    onTransportCapChange({ ...transportCap, udsPorDia: n });
   };
 
   const handleReset = () => {
@@ -31,6 +39,7 @@ export const Iv5StockCapEditor: React.FC<Props> = ({ value, maxSabadosMes, onCha
       centro1000: IV5_DEFAULT_CAP_C1000,
       centro2000: IV5_DEFAULT_CAP_C2000,
     });
+    onTransportCapChange({ ...transportCap, udsPorDia: IV5_DEFAULT_TRANSPORT_UDS_DIA });
   };
 
   return (
@@ -84,7 +93,23 @@ export const Iv5StockCapEditor: React.FC<Props> = ({ value, maxSabadosMes, onCha
           className="w-full border border-gray-300 rounded px-2 py-1.5 text-xs"
         />
         <p className="text-[10px] text-gray-500 mt-0.5">
-          Limite fisico mensual usado por el motor IV5.
+          Limite fisico mensual usado por el motor de planificacion.
+        </p>
+      </div>
+      <div>
+        <label className="block text-[11px] font-medium text-gray-700 mb-1">
+          Tope transporte C1000→C2000 (uds/día)
+        </label>
+        <input
+          type="number"
+          min={0}
+          step={10}
+          value={transportCap.udsPorDia}
+          onChange={(e) => handleTransporte(e.target.value)}
+          className="w-full border border-gray-300 rounded px-2 py-1.5 text-xs"
+        />
+        <p className="text-[10px] text-gray-500 mt-0.5">
+          Default: {IV5_DEFAULT_TRANSPORT_UDS_DIA} uds/día (~{(IV5_DEFAULT_TRANSPORT_UDS_DIA * 21).toLocaleString('es-EC')}/mes). Sectores 01+02+03.
         </p>
       </div>
       <div className="flex items-end">

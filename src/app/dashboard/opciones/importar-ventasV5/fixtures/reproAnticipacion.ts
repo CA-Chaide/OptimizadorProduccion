@@ -823,3 +823,136 @@ function escenario9_perf(): void {
 }
 
 // escenario9_perf();  // perf a 600 materiales (~5 s/corrida tras la optimización). Activar a mano.
+
+// ============================================================================
+// ESCENARIO 10 — TOPE DE TRANSPORTE C1000 -> C2000.
+// Material clase F (producido en C1000, trasladado a C2000) con demanda
+// concentrada en diciembre. Sin tope: se traslada todo en dic. Con tope: el
+// excedente se adelanta a meses previos (F primero) + alerta si no entra.
+// ============================================================================
+function escenario10_transporte(): void {
+  console.log('\n\n' + '═'.repeat(92));
+  console.log('  ESCENARIO 10 — Tope de transporte C1000→C2000 (adelanto del excedente + alerta)');
+  console.log('═'.repeat(92));
+
+  const trasPorMes = (res: any): Record<number, number> => {
+    const o: Record<number, number> = {};
+    for (const r of res.resultC1000?.ledger ?? []) o[r.mes] = (o[r.mes] ?? 0) + (r.trasladoSaliente ?? 0);
+    return o;
+  };
+  const buildData = (meses: number[], demandaDic: number) =>
+    meses.map((m) => ({
+      CodMaterial: 'MF', Mes: m, ['Año']: 2026, Centro: '2000', LineaFabricacion: 'LINEA 1',
+      Sector: '01 COLCHONES', NombreMaterial: 'MF', NumeroPuestos: 1, TiempoPorUnidad: 1,
+      UnidadesProyectado: m === 12 ? demandaDic : 0, StockActual: 0, StockSeguridad: 0, ClaseAprovisionam: 'F',
+    }));
+
+  // ---- Caso A: horizonte largo (jun-dic), el excedente entra completo ----
+  {
+    const weekSegments = makeWeekSegments(1); // 7 meses, 20 días laborables c/u
+    const tiemposCanon = makeTiemposCanon(
+      { 6: 26000, 7: 26000, 8: 26000, 9: 26000, 10: 26000, 11: 26000, 12: 26000 }, ['LINEA 1']);
+    const base: any = {
+      weekSegments, effectiveData: buildData(MESES, 3000), tiemposCanon,
+      activeSatKeysC1000: new Set<string>(), activeSatKeysC2000: new Set<string>(),
+      horasTrabajo: 8, maxExtrasHoras: 0, horasExtrasFin: 0, pioMap: new Map() as any,
+      stockCap: { centro1000: 9e9, centro2000: 9e9, sectoresAplicables: ['01 COLCHONES'] },
+      maxSabadosMes: 0, wantC1000: true, wantC2000: true,
+    };
+    const sin = runIv5EngineRediseñado({ ...base });
+    const con = runIv5EngineRediseñado({ ...base, transportCap: { udsPorDia: 50, sectoresAplicables: ['01', '02', '03'] } });
+    const tSin = trasPorMes(sin), tCon = trasPorMes(con);
+    console.log('\n  Caso A — jun-dic, demanda dic=3000, tope 50/día (1000/mes):');
+    console.log('  Mes        | Traslado SIN tope | Traslado CON tope');
+    for (const m of MESES) {
+      console.log(`    ${NOMBRE_MES[m].padEnd(10)}: ${String(tSin[m] ?? 0).padStart(6)}            ${String(tCon[m] ?? 0).padStart(6)}`);
+    }
+    const alertasA = (con.diagnosticos ?? []).filter((d: any) => d.code === 'TRANSPORTE_INSUFICIENTE');
+    console.log(`  Alertas TRANSPORTE_INSUFICIENTE: ${alertasA.length} (esperado 0: el excedente entra en meses previos)`);
+    console.log(`  Traslado dic CON tope: ${tCon[12] ?? 0} (esperado ≤ 1000)`);
+    verificarBalance(con.resultC1000, 'esc10A-C1000');
+    verificarBalance(con.resultC2000, 'esc10A-C2000');
+  }
+
+  // ---- Caso B: horizonte corto (nov-dic), el excedente NO entra => alerta ----
+  {
+    const weekSegments = [11, 12].map((m, i) => ({
+      isoWeek: i + 1, isoYear: 2026, mes: m, anio: 2026, diasLaborales: 20,
+      tieneSabado: false, label: `M${m}`, weekKey: `2026W${i + 1}|2026-${m}`, satKey: `2026W${i + 1}`,
+    }));
+    const tiemposCanon = [11, 12].map((m) => ({
+      mesNumero: m, mes: m, data: [{ nombre_linea: 'LINEA 1', minutos_horario_normal_TOTAL: 26000 }],
+    }));
+    const base: any = {
+      weekSegments, effectiveData: buildData([11, 12], 3000), tiemposCanon,
+      activeSatKeysC1000: new Set<string>(), activeSatKeysC2000: new Set<string>(),
+      horasTrabajo: 8, maxExtrasHoras: 0, horasExtrasFin: 0, pioMap: new Map() as any,
+      stockCap: { centro1000: 9e9, centro2000: 9e9, sectoresAplicables: ['01 COLCHONES'] },
+      maxSabadosMes: 0, wantC1000: true, wantC2000: true,
+    };
+    const con = runIv5EngineRediseñado({ ...base, transportCap: { udsPorDia: 50, sectoresAplicables: ['01', '02', '03'] } });
+    const tCon = trasPorMes(con);
+    console.log('\n  Caso B — nov-dic, demanda dic=3000, tope 1000/mes (solo nov para adelantar):');
+    console.log(`    Noviembre : ${String(tCon[11] ?? 0).padStart(6)} (recibe adelanto, ≤ 1000)`);
+    console.log(`    Diciembre : ${String(tCon[12] ?? 0).padStart(6)} (sigue > 1000 => alerta)`);
+    const alertasB = (con.diagnosticos ?? []).filter((d: any) => d.code === 'TRANSPORTE_INSUFICIENTE');
+    console.log(`  Alertas TRANSPORTE_INSUFICIENTE: ${alertasB.length} (esperado ≥ 1)`);
+    for (const a of alertasB) console.log(`    → ${a.mensaje}`);
+    verificarBalance(con.resultC1000, 'esc10B-C1000');
+    verificarBalance(con.resultC2000, 'esc10B-C2000');
+  }
+}
+
+escenario10_transporte();
+
+// ============================================================================
+// ESCENARIO 11 — DESBORDE a línea secundaria (colchones C2000).
+// Material X/E con demanda > capacidad de su línea principal, y una línea
+// secundaria con ocioso. Con `lineasSecundarias`: el faltante se produce en la
+// secundaria (produccionAlternativa) en vez de quedar como backlog/traslado.
+// ============================================================================
+function escenario11_lineasSecundarias(): void {
+  console.log('\n\n' + '═'.repeat(92));
+  console.log('  ESCENARIO 11 — Desborde Línea 1 → Línea 2 (colchones C2000)');
+  console.log('═'.repeat(92));
+
+  const weekSegments = [{
+    isoWeek: 1, isoYear: 2026, mes: 6, anio: 2026, diasLaborales: 20,
+    tieneSabado: false, label: 'M6', weekKey: '2026W1|2026-6', satKey: '2026W1',
+  }] as any;
+  const tiemposCanon = [{
+    mesNumero: 6, mes: 6,
+    data: [
+      { nombre_linea: 'LINEA 1', minutos_horario_normal_TOTAL: 1000 },
+      { nombre_linea: 'LINEA 2', minutos_horario_normal_TOTAL: 1000 },
+    ],
+  }] as any;
+  // MX: principal LINEA 1 (cap 1000, tupp 1) pero demanda 1500 → faltan 500.
+  const effectiveData = [{
+    CodMaterial: 'MX', Mes: 6, ['Año']: 2026, Centro: '2000', LineaFabricacion: 'LINEA 1',
+    Sector: '01 COLCHONES', NombreMaterial: 'MX', NumeroPuestos: 1, TiempoPorUnidad: 1,
+    UnidadesProyectado: 1500, StockActual: 0, StockSeguridad: 0, ClaseAprovisionam: 'X',
+  }];
+  const base: any = {
+    weekSegments, effectiveData, tiemposCanon,
+    activeSatKeysC1000: new Set<string>(), activeSatKeysC2000: new Set<string>(),
+    horasTrabajo: 8, maxExtrasHoras: 0, horasExtrasFin: 0, pioMap: new Map() as any,
+    stockCap: { centro1000: 9e9, centro2000: 9e9, sectoresAplicables: ['01 COLCHONES'] },
+    maxSabadosMes: 0, wantC1000: false, wantC2000: true,
+  };
+  const sin = runIv5EngineRediseñado({ ...base });
+  const secMap = new Map<string, { linea: string; tupp: number }[]>([['MX', [{ linea: 'LINEA 2', tupp: 1 }]]]);
+  const con = runIv5EngineRediseñado({ ...base, lineasSecundarias: secMap });
+
+  const resumen = (res: any) => {
+    let b = 0, a = 0, back = 0;
+    for (const r of res.resultC2000?.ledger ?? []) { b += r.produccionBase || 0; a += r.produccionAlternativa || 0; back += r.backlogFinal || 0; }
+    return { base: b, alt: a, back };
+  };
+  const s = resumen(sin), c = resumen(con);
+  console.log(`  SIN secundaria: base=${s.base}  alternativa=${s.alt}  backlog=${s.back}   (esperado base=1000, alt=0, backlog=500)`);
+  console.log(`  CON secundaria: base=${c.base}  alternativa=${c.alt}  backlog=${c.back}   (esperado base=1000, alt=500, backlog=0)`);
+  verificarBalance(con.resultC2000, 'esc11');
+}
+
+escenario11_lineasSecundarias();

@@ -114,7 +114,8 @@ const NAVIGATION_ITEMS = [
   { id: ActiveView.DATA_IMPORT_V2, label: 'Importar Ventas 2', icon: <DataImportIcon />, href: '/dashboard/opciones/importar-ventasV2' },
   { id: ActiveView.DATA_IMPORT_V3, label: 'Importar Ventas 3', icon: <DataImportIcon />, href: '/dashboard/opciones/importar-ventasV3' },
   { id: ActiveView.DATA_IMPORT_V4, label: 'Importar Ventas 4', icon: <DataImportIcon />, href: '/dashboard/opciones/importar-ventasV4' },
-  { id: ActiveView.DATA_IMPORT_V5, label: 'Importar Ventas 5', icon: <DataImportIcon />, href: '/dashboard/opciones/importar-ventasV5' },
+  // Solo cambia la ETIQUETA visible; el id (DATA_IMPORT_V5) y la ruta siguen igual.
+  { id: ActiveView.DATA_IMPORT_V5, label: 'Planificación Mediano Plazo', icon: <DataImportIcon />, href: '/dashboard/opciones/importar-ventasV5' },
   { id: ActiveView.PLANES_MEDIANO_PLAZO, label: 'Planes a Mediano Plazo', icon: <CalendarClock className="w-5 h-5" />, href: '/dashboard/opciones/planes-mediano-plazo' },
   { id: ActiveView.ABSENTEEISM, label: 'Gestión Ausentismos', icon: <AbsenteeismIcon />, href: '/dashboard/opciones/gestion-ausentismos' },
   { id: ActiveView.PERSONNEL, label: 'Calificación Técnica', icon: <PersonnelIcon />, href: '/dashboard/opciones/calificacion-tecnica' },
@@ -138,23 +139,33 @@ const NAVIGATION_ITEMS = [
 ];
 
 // Items que van dentro de la sección "Opciones" (contraíble)
+//
+// NOTA (2026-07-30): el menu "Opciones" muestra UNICAMENTE "Planificación
+// Mediano Plazo" (DATA_IMPORT_V5). Todo lo demas quedo OCULTO, no borrado:
+//   - Las paginas, sus rutas y su codigo siguen existiendo tal cual.
+//   - Sus entradas en NAVIGATION_ITEMS/viewConfig tampoco se tocaron (de ahi
+//     sale el titulo y el icono de cada pagina; si se borraran, esas paginas
+//     romperian al abrirse).
+//   - Siguen accesibles por URL directa (p. ej. /dashboard/opciones/gestion-ausentismos).
+// Para volver a mostrar cualquiera, basta con descomentar su linea.
 export const OPCIONES_ITEMS: ActiveView[] = [
-  ActiveView.DATA_IMPORT_V2,
-  ActiveView.DATA_IMPORT_V3,
-  ActiveView.DATA_IMPORT_V4,
   ActiveView.DATA_IMPORT_V5,
-  ActiveView.ABSENTEEISM,
-  ActiveView.PERSONNEL,
-  ActiveView.MAINTENANCE,
-  ActiveView.MAESTRO_MATERIALES_BRUTOS,
-  ActiveView.VERSIONES_FABRICACION,
-  ActiveView.TACTICAL_SCHEDULING,
-  ActiveView.TACTICAL_SCHEDULING_2,
-  ActiveView.TACTICAL_SCHEDULING_MUEBLES,
-  ActiveView.WORK_SHIFT_PLANNING,
-  ActiveView.DICTIONARY,
-  ActiveView.PLAN_SEMANAL,
-  ActiveView.PLANES_MEDIANO_PLAZO,
+  // --- Ocultos del menu (no borrar) ---
+  // ActiveView.DATA_IMPORT_V2,
+  // ActiveView.DATA_IMPORT_V3,
+  // ActiveView.DATA_IMPORT_V4,
+  // ActiveView.ABSENTEEISM,
+  // ActiveView.PERSONNEL,
+  // ActiveView.MAINTENANCE,
+  // ActiveView.MAESTRO_MATERIALES_BRUTOS,
+  // ActiveView.VERSIONES_FABRICACION,
+  // ActiveView.TACTICAL_SCHEDULING,
+  // ActiveView.TACTICAL_SCHEDULING_2,
+  // ActiveView.TACTICAL_SCHEDULING_MUEBLES,
+  // ActiveView.WORK_SHIFT_PLANNING,
+  // ActiveView.DICTIONARY,
+  // ActiveView.PLAN_SEMANAL,
+  // ActiveView.PLANES_MEDIANO_PLAZO,
 ];
 
 // Items que van dentro de la sección "Parámetros" (contraíble)

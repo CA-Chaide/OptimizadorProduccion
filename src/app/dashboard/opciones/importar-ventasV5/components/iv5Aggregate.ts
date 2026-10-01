@@ -196,6 +196,12 @@ export function aggregateWeeklyToMonthly(ledger: Iv5WeeklyRow[]): Iv5MonthlySnap
     const stockFinalFisicoMes = tieneReservas
       ? (last.stockFinalFisico ?? last.stockFinal + (last.stockReservado ?? 0))
       : undefined;
+    // Físico al inicio del mes = stock regular + reservas vivas de la primera
+    // semana. Sin esto la identidad de balance mensual no cierra cuando hay
+    // anticipaciones abiertas al cruzar el mes.
+    const stockInicialFisicoMes = tieneReservas
+      ? first.stockInicial + (first.stockReservadoInicial ?? 0)
+      : undefined;
 
     out.push({
       centro: b.centro,
@@ -232,6 +238,7 @@ export function aggregateWeeklyToMonthly(ledger: Iv5WeeklyRow[]): Iv5MonthlySnap
       sabadosActivos,
       stockReservadoMes,
       stockFinalFisicoMes,
+      stockInicialFisicoMes,
     });
   }
 

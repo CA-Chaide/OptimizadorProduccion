@@ -23,6 +23,7 @@ import { getMesNombre } from '../../importar-ventasV2/components/utils';
 import type {
   Centro,
   Iv5StockCap,
+  Iv5TransportCap,
   Iv5RunResult,
   Iv5WeeklyRow,
   Iv5DiagnosticEntry,
@@ -53,8 +54,16 @@ export interface Iv5EngineRediseñadoParams {
   horasTrabajo: number;
   maxExtrasHoras: number;
   horasExtrasFin: number;
+  /** Factores de ajuste horas base -> netas (multiplicadores, 1 = sin ajuste),
+   *  por centro: { '1000': {normal,extra,sabado}, '2000': {...} }. */
+  factoresAjustePorCentro?: Record<string, { normal: number; extra: number; sabado: number }>;
   pioMap: PioMap;
   stockCap: Iv5StockCap;
+  /** Tope de transporte C1000->C2000 (uds/día). Si falta o udsPorDia<=0, sin efecto. */
+  transportCap?: Iv5TransportCap;
+  /** Líneas secundarias por material (colchones C2000) con su tupp propio, para el
+   *  desborde L1->L2. Si falta o vacío, sin efecto (sin desborde). */
+  lineasSecundarias?: Map<MaterialKey, { linea: LineaKey; tupp: number }[]>;
   maxSabadosMes: number;
   wantC1000: boolean;
   wantC2000: boolean;
@@ -78,6 +87,15 @@ export interface Iv5EngineRediseñadoResult {
   diagnosticos: Iv5DiagnosticEntry[];
   /** X/E con déficit en C2000 sin línea en C1000 (no respaldables). */
   xeSinLineaC1000: Iv5XESinLineaC1000[];
+}
+
+/**
+ * Avance del motor, para la barra de progreso de la UI.
+ * `pct` es 0-100 (monotono creciente); `etapa` describe en que esta el motor.
+ */
+export interface Iv5EngineProgreso {
+  pct: number;
+  etapa: string;
 }
 
 // ============================================================================
@@ -229,6 +247,13 @@ function procesarSemana(
   wantC2000: boolean,
   anticipacionesParaEstaSemana: AnticipacionPlaneada[],
   xeSinLineaCollector: Map<MaterialKey, { descripcion: string; cantidad: number }>,
+  lineasSecundarias: Map<MaterialKey, { linea: LineaKey; tupp: number }[]>,
+  // Acumula los minutos consumidos por el DESBORDE en líneas secundarias (paso
+  // B2), keyed por `${centro}|${linea}|${weekKey}`. Estos minutos NO quedan en
+  // el `minUsados` de ninguna fila (la fila del material vive en su línea
+  // PRINCIPAL), así que se pasan aparte a `corregirIdleLineas` para que la línea
+  // secundaria descuente el ocioso que realmente usó.
+  minAltPorLineaSemana: Map<string, number>,
 ): void {
   const wk = seg.weekKey;
 
@@ -254,6 +279,18 @@ function procesarSemana(
   for (const [k, v] of state.stockRegular.entries()) stockInicialMap.set(k, v);
   const backlogInicialMap = new Map<string, number>();
   for (const [k, v] of state.backlog.entries()) backlogInicialMap.set(k, v);
+  // Reservas vivas por (material, centro) DESPUES de madurar y ANTES de que
+  // esta semana genere nuevas. Es el complemento de `stockInicial` para formar
+  // el stock FISICO inicial; sin el, la identidad de balance no cierra en las
+  // semanas/meses en que hay anticipaciones abiertas.
+  const reservadoInicialMap = new Map<string, number>();
+  for (const [resKey, uds] of state.reservas.entries()) {
+    // resKey = `${material}|${centro}|t${targetWeekKey}` (el weekKey lleva '|',
+    // por eso se toman solo los dos primeros segmentos, como en la maduracion).
+    const parts = resKey.split('|');
+    const k = keyMC(parts[0], parts[1] as Centro);
+    reservadoInicialMap.set(k, (reservadoInicialMap.get(k) ?? 0) + uds);
+  }
 
   // ============================================================
   // A. Necesidades C2000
@@ -279,6 +316,9 @@ function procesarSemana(
   // B. C2000 X/E producción propia (incluye anticipaciones X/E intra-C2000)
   // ============================================================
   const prodPropiaC2000 = new Map<MaterialKey, number>();
+  // Desborde a líneas secundarias (colchones C2000): producción y minutos usados por línea.
+  const prodSecundariaC2000 = new Map<MaterialKey, number>();
+  const usadoPorLineaC2000 = new Map<LineaKey, number>();
   const necesidadTrasladoF = new Map<MaterialKey, { udsN1: number; udsN2: number }>();
 
   if (wantC2000 && capacityC2000) {
@@ -331,6 +371,9 @@ function procesarSemana(
       items.forEach((it, idx) => {
         const udsAsign = asign[idx];
         if (udsAsign <= 0) return;
+        // Minutos consumidos por la línea (propio + anticipaciones) → sirve para
+        // saber el ocioso real de cada línea en el desborde (paso B2).
+        usadoPorLineaC2000.set(linea, (usadoPorLineaC2000.get(linea) ?? 0) + udsAsign * Math.max(0.0001, it.tupp));
         if (it.tipo === 'NORMAL_XE') {
           prodPropiaC2000.set(
             it.material,
@@ -345,6 +388,58 @@ function procesarSemana(
           );
         }
       });
+    }
+  }
+
+  // ============================================================
+  // B2. Desborde a líneas SECUNDARIAS (colchones C2000)
+  // ------------------------------------------------------------
+  // Lo que la línea principal no pudo cubrir (parte operativa) se produce en
+  // la línea secundaria con MÁS ocioso, usando el TUPP propio de esa línea,
+  // ANTES de convertirse en necesidad de traslado a C1000. Cascadea: si la
+  // primera secundaria no alcanza, pasa a la siguiente (por más ocioso).
+  // `lineasSecundarias` solo trae colchones C2000, así que aplica solo a ellos.
+  // ============================================================
+  if (wantC2000 && capacityC2000 && lineasSecundarias.size > 0) {
+    for (const info of necesidadesC2000Sem) {
+      const n = info.need;
+      if (n.linea === IV5_VIRTUAL_TRANSFER_LINE) continue; // clase F no produce en C2000
+      const secundarias = lineasSecundarias.get(n.material);
+      if (!secundarias || secundarias.length === 0) continue;
+      const material = n.material;
+      const stockPrev = state.stockRegular.get(keyMC(material, '2000')) ?? 0;
+      const back = Math.round(state.backlog.get(keyMC(material, '2000')) ?? 0);
+      const operativo = Math.round(n.demanda) + back;
+      const yaProducido = (prodPropiaC2000.get(material) ?? 0) + (prodSecundariaC2000.get(material) ?? 0);
+      let faltante = Math.max(0, operativo - (stockPrev + yaProducido));
+      if (faltante <= 0) continue;
+
+      // Secundarias ordenadas por MÁS ocioso (capTotal − usado) esta semana.
+      const conOcioso = secundarias
+        .map((s) => {
+          const cell = getCapacityCell(capacityC2000, s.linea, wk);
+          const cap = cell?.capTotal ?? 0;
+          const usado = usadoPorLineaC2000.get(s.linea) ?? 0;
+          return { linea: s.linea, tupp: Math.max(0.0001, s.tupp), ocioso: Math.max(0, cap - usado) };
+        })
+        .filter((s) => s.ocioso > 0)
+        .sort((a, b) => b.ocioso - a.ocioso);
+
+      for (const s of conOcioso) {
+        if (faltante <= 0) break;
+        const udsCaben = Math.floor(s.ocioso / s.tupp);
+        if (udsCaben <= 0) continue;
+        const uds = Math.min(faltante, udsCaben);
+        if (uds <= 0) continue;
+        prodSecundariaC2000.set(material, (prodSecundariaC2000.get(material) ?? 0) + uds);
+        const minAlt = uds * s.tupp;
+        usadoPorLineaC2000.set(s.linea, (usadoPorLineaC2000.get(s.linea) ?? 0) + minAlt);
+        // Registra los minutos del desborde en la línea SECUNDARIA (no en la
+        // principal del material) para que su idle se descuente correctamente.
+        const kAlt = `2000|${s.linea}|${wk}`;
+        minAltPorLineaSemana.set(kAlt, (minAltPorLineaSemana.get(kAlt) ?? 0) + minAlt);
+        faltante -= uds;
+      }
     }
   }
 
@@ -367,7 +462,9 @@ function procesarSemana(
       const stockPrev = state.stockRegular.get(keyMC(material, '2000')) ?? 0;
       const back = Math.round(state.backlog.get(keyMC(material, '2000')) ?? 0);
       const operativo = Math.round(n.demanda) + back;
-      const producido = prodPropiaC2000.get(material) ?? 0;
+      // Incluye la producción en líneas secundarias (paso B2): el desborde
+      // reduce el traslado a C1000 (se produce en C2000, no se pide a C1000).
+      const producido = (prodPropiaC2000.get(material) ?? 0) + (prodSecundariaC2000.get(material) ?? 0);
       const faltante = Math.max(0, operativo - (stockPrev + producido));
       if (faltante > 0) {
         necesidadTrasladoXE.set(
@@ -523,6 +620,15 @@ function procesarSemana(
       keyMCW(material, '2000', wk),
       (state.produccion.get(keyMCW(material, '2000', wk)) ?? 0) + uds,
     );
+    const key = keyMC(material, '2000');
+    state.stockRegular.set(key, (state.stockRegular.get(key) ?? 0) + uds);
+  }
+
+  // Producción en líneas secundarias (desborde, paso B2): suma al stock de C2000
+  // pero se registra aparte para mostrarse como `produccionAlternativa` en el
+  // ledger (no infla `produccionBase`). El balance se mantiene (prod = base+alt).
+  for (const [material, uds] of prodSecundariaC2000.entries()) {
+    if (uds <= 0) continue;
     const key = keyMC(material, '2000');
     state.stockRegular.set(key, (state.stockRegular.get(key) ?? 0) + uds);
   }
@@ -693,6 +799,7 @@ function procesarSemana(
           backlogGenerado: backlogFinal,
           backlogFinal,
           stockReservado: reservasTotal,
+          stockReservadoInicial: reservadoInicialMap.get(keyMC(meta.material, '1000')) ?? 0,
         }),
       );
     }
@@ -737,6 +844,7 @@ function procesarSemana(
           trasladoSaliente: 0,
           trasladoEntrante: traslEnt,
           produccionBase: prod,
+          produccionAlternativa: prodSecundariaC2000.get(meta.material) ?? 0,
           stockInicial,
           stockFinal,
           stockSeguridad: need?.stockSeguridad ?? 0,
@@ -745,6 +853,7 @@ function procesarSemana(
           backlogGenerado: backlogFinal,
           backlogFinal,
           stockReservado: reservasTotal,
+          stockReservadoInicial: reservadoInicialMap.get(keyMC(meta.material, '2000')) ?? 0,
         }),
       );
     }
@@ -770,6 +879,7 @@ interface BuildLedgerRowParams {
   trasladoSaliente: number;
   trasladoEntrante: number;
   produccionBase: number;
+  produccionAlternativa?: number;
   stockInicial: number;
   stockFinal: number;
   stockSeguridad: number;
@@ -778,6 +888,8 @@ interface BuildLedgerRowParams {
   backlogGenerado: number;
   backlogFinal: number;
   stockReservado: number;
+  /** Reservas vivas al inicio de la semana (tras maduracion). Default 0. */
+  stockReservadoInicial?: number;
 }
 
 function buildLedgerRow(p: BuildLedgerRowParams): Iv5WeeklyRow {
@@ -809,7 +921,7 @@ function buildLedgerRow(p: BuildLedgerRowParams): Iv5WeeklyRow {
     trasladoSaliente: p.trasladoSaliente,
     trasladoEntrante: p.trasladoEntrante,
     produccionBase: p.produccionBase,
-    produccionAlternativa: 0,
+    produccionAlternativa: p.produccionAlternativa ?? 0,
     produccionAdelanto: 0,
     produccionPio: 0,
     stockInicial: p.stockInicial,
@@ -822,6 +934,7 @@ function buildLedgerRow(p: BuildLedgerRowParams): Iv5WeeklyRow {
     alertaStockBajoSeguridad: p.stockFinal < p.stockSeguridad,
     alertaTopeAgregado: false,
     stockReservado: p.stockReservado,
+    stockReservadoInicial: p.stockReservadoInicial ?? 0,
     stockFinalFisico: p.stockFinal + p.stockReservado,
   };
 }
@@ -939,6 +1052,128 @@ function detectarDeficits(
   return deficits;
 }
 
+// ============================================================================
+// TOPE DE TRANSPORTE C1000 -> C2000
+// ============================================================================
+
+/** Código de sector inicial ("01 COLCHONES" -> "01"). */
+function leadingSectorCodeIv5(sector: string): string {
+  const m = String(sector ?? '').trim().match(/^(\d+)/);
+  return m ? m[1].padStart(2, '0') : '';
+}
+
+interface TransporteAnalisis {
+  /** Excedente por semana convertido en objetivos de adelanto (déficits de transporte). */
+  deficitsTransporte: Deficit[];
+  /** Headroom de transporte por índice de semana (budget − usado Pasada1, >=0). Se decrementa al planificar. */
+  transporteRestantePorIdx: number[];
+  /** Materiales cuyo sector cae dentro del tope de transporte. */
+  esSectorTransporte: Set<MaterialKey>;
+  /** Presupuesto de transporte por índice de semana (uds/día × díasLaborables). */
+  budgetPorIdx: number[];
+  /** true si el tope está activo (udsPorDia > 0). */
+  activo: boolean;
+}
+
+/**
+ * Analiza los traslados C1000->C2000 de la Pasada 1 contra el tope de transporte.
+ * Detecta el excedente por semana y lo convierte en "déficits de transporte"
+ * (objetivos de adelanto): primero la clase F (mayor volumen), luego X/E a
+ * prorrata. Si el tope no está activo, devuelve una estructura sin efecto
+ * (headroom infinito, sin déficits) → comportamiento idéntico a hoy.
+ */
+function analizarTransporte(
+  ledgerC1000Pasada1: Iv5WeeklyRow[],
+  sortedSegs: WeekSegment[],
+  metasC2000: Map<MaterialKey, MaterialMeta>,
+  transportCap: Iv5TransportCap | undefined,
+): TransporteAnalisis {
+  const n = sortedSegs.length;
+  const udsPorDia = Number(transportCap?.udsPorDia);
+  if (!transportCap || !Number.isFinite(udsPorDia) || udsPorDia <= 0) {
+    return {
+      deficitsTransporte: [],
+      transporteRestantePorIdx: new Array(n).fill(Infinity),
+      esSectorTransporte: new Set(),
+      budgetPorIdx: new Array(n).fill(Infinity),
+      activo: false,
+    };
+  }
+
+  const sectores = new Set((transportCap.sectoresAplicables ?? []).map((s) => String(s).padStart(2, '0')));
+  const esSectorTransporte = new Set<MaterialKey>();
+  for (const meta of metasC2000.values()) {
+    if (sectores.has(leadingSectorCodeIv5(meta.sectorRef))) esSectorTransporte.add(meta.material);
+  }
+
+  const idxByWeek = new Map<WeekKey, number>();
+  sortedSegs.forEach((seg, i) => idxByWeek.set(seg.weekKey, i));
+
+  const budgetPorIdx = sortedSegs.map((seg) => udsPorDia * Math.max(0, seg.diasLaborales));
+  const usadoPorIdx = new Array<number>(n).fill(0);
+
+  type TrasFila = { material: MaterialKey; uds: number; linea: LineaKey; tupp: number; esF: boolean };
+  const filasPorIdx: TrasFila[][] = sortedSegs.map(() => []);
+  for (const row of ledgerC1000Pasada1) {
+    const sal = row.trasladoSaliente;
+    if (!sal || sal <= 0) continue;
+    if (!esSectorTransporte.has(row.material)) continue;
+    const idx = idxByWeek.get(row.weekKey);
+    if (idx == null) continue;
+    usadoPorIdx[idx] += sal;
+    const meta = metasC2000.get(row.material);
+    filasPorIdx[idx].push({ material: row.material, uds: sal, linea: row.linea, tupp: row.tupp, esF: !!meta?.esClaseF });
+  }
+
+  const transporteRestantePorIdx = budgetPorIdx.map((b, i) => Math.max(0, b - usadoPorIdx[i]));
+
+  // Excedente por semana -> déficits de transporte (F primero, luego X/E prorrata).
+  const deficitsTransporte: Deficit[] = [];
+  for (let i = 0; i < n; i++) {
+    let exceso = usadoPorIdx[i] - budgetPorIdx[i];
+    if (exceso <= 0) continue;
+    const filas = filasPorIdx[i];
+    const fFilas = filas.filter((f) => f.esF).sort((a, b) => b.uds - a.uds);
+    const xeFilas = filas.filter((f) => !f.esF);
+
+    // Prioridad 1: clase F.
+    for (const f of fFilas) {
+      if (exceso <= 0) break;
+      const mover = Math.min(f.uds, Math.ceil(exceso));
+      if (mover <= 0) continue;
+      deficitsTransporte.push({
+        material: f.material, centro: '2000', semanaKey: sortedSegs[i].weekKey, uds: mover,
+        lineaProduccion: f.linea, centroProduccion: '1000', destino: 'C2000_TRANSFER_F', tupp: f.tupp,
+      });
+      exceso -= mover;
+    }
+
+    // Prioridad 2: X/E proporcional al volumen trasladado.
+    if (exceso > 0 && xeFilas.length > 0) {
+      const totXE = xeFilas.reduce((s, f) => s + f.uds, 0);
+      const objetivo = exceso;
+      let repartido = 0;
+      xeFilas.forEach((f, k) => {
+        if (exceso <= 0) return;
+        const ultima = k === xeFilas.length - 1;
+        let mover = ultima
+          ? Math.min(f.uds, objetivo - repartido)
+          : Math.min(f.uds, Math.floor(objetivo * (f.uds / totXE)));
+        mover = Math.max(0, mover);
+        if (mover <= 0) return;
+        deficitsTransporte.push({
+          material: f.material, centro: '2000', semanaKey: sortedSegs[i].weekKey, uds: mover,
+          lineaProduccion: f.linea, centroProduccion: '1000', destino: 'C2000_TRANSFER_XE', tupp: f.tupp,
+        });
+        repartido += mover;
+        exceso -= mover;
+      });
+    }
+  }
+
+  return { deficitsTransporte, transporteRestantePorIdx, esSectorTransporte, budgetPorIdx, activo: true };
+}
+
 function planificarAnticipaciones(
   deficits: Deficit[],
   ledgerC2000Pasada1: Iv5WeeklyRow[],
@@ -948,10 +1183,18 @@ function planificarAnticipaciones(
   sortedSegs: WeekSegment[],
   stockCap: Iv5StockCap,
   metasC2000: Map<MaterialKey, MaterialMeta>,
+  transporte: TransporteAnalisis,
 ): AnticipacionPlaneada[] {
   const plan: AnticipacionPlaneada[] = [];
   const indexByWeek = new Map<WeekKey, number>();
   sortedSegs.forEach((seg, i) => indexByWeek.set(seg.weekKey, i));
+
+  // Headroom de transporte por semana (mutable): se decrementa al colocar
+  // anticipaciones de traslado en la semana origen. Infinito si el tope no aplica.
+  const transporteRestantePorIdx = transporte.transporteRestantePorIdx;
+  const esSectorTransporte = transporte.esSectorTransporte;
+  const aplicaTransporte = (d: Deficit): boolean =>
+    transporte.activo && d.destino !== 'C1000_PROPIO' && esSectorTransporte.has(d.material);
 
   // Minutos usados por (centro|linea|weekKey) en UNA pasada del ledger (antes
   // se filtraba el ledger completo por cada celda de capacidad → O(n²)).
@@ -1092,7 +1335,10 @@ function planificarAnticipaciones(
               .map((d) => {
                 const idx = idxPorDef.get(d)!;
                 const residual = residualPorDeficit.get(idx) ?? 0;
-                const maxUds = Math.max(0, Math.min(residual, capBoundPorTope(d)));
+                // Cota por presupuesto de transporte de la semana origen (i): solo
+                // para adelantos de traslado C1000->C2000 en sectores del tope.
+                const capTrans = aplicaTransporte(d) ? Math.max(0, transporteRestantePorIdx[i]) : Infinity;
+                const maxUds = Math.max(0, Math.min(residual, capBoundPorTope(d), capTrans));
                 return { d, idx, tupp: Math.max(0.0001, d.tupp), maxUds, asign: 0 };
               })
               .filter((x) => x.maxUds > 0);
@@ -1129,6 +1375,14 @@ function planificarAnticipaciones(
             let usadoMin = 0;
             for (const x of items) {
               if (x.asign <= 0) continue;
+              // Consume presupuesto de transporte de la semana origen (i) para
+              // adelantos de traslado; recorta a lo que quede disponible.
+              if (aplicaTransporte(x.d)) {
+                const disp = Math.max(0, transporteRestantePorIdx[i]);
+                if (x.asign > disp) x.asign = disp;
+                if (x.asign <= 0) continue;
+                transporteRestantePorIdx[i] -= x.asign;
+              }
               plan.push({
                 material: x.d.material,
                 uds: x.asign,
@@ -1180,8 +1434,17 @@ function planificarAnticipaciones(
  *
  * Esto permite que la columna "Idle" del Excel muestre el remanente real de
  * minutos disponibles de la línea, no un número inflado.
+ *
+ * `minAltPorLineaSemana` (opcional) aporta los minutos del DESBORDE a líneas
+ * secundarias (paso B2): esa producción vive como `produccionAlternativa` en la
+ * fila del material (que está en su línea PRINCIPAL), así que sus minutos no
+ * aparecen en ningún `minUsados`. Se suman aquí al total de la línea secundaria
+ * para que su idle refleje el ocioso realmente consumido.
  */
-function corregirIdleLineas(ledger: Iv5WeeklyRow[]): void {
+function corregirIdleLineas(
+  ledger: Iv5WeeklyRow[],
+  minAltPorLineaSemana?: Map<string, number>,
+): void {
   type Bucket = { capTotal: number; minUsadosTotal: number; rows: Iv5WeeklyRow[] };
   const buckets = new Map<string, Bucket>();
   for (const r of ledger) {
@@ -1194,8 +1457,9 @@ function corregirIdleLineas(ledger: Iv5WeeklyRow[]): void {
     b.minUsadosTotal += r.minUsados;
     b.rows.push(r);
   }
-  for (const b of buckets.values()) {
-    const idleReal = Math.max(0, b.capTotal - b.minUsadosTotal);
+  for (const [k, b] of buckets.entries()) {
+    const minAlt = minAltPorLineaSemana?.get(k) ?? 0;
+    const idleReal = Math.max(0, b.capTotal - b.minUsadosTotal - minAlt);
     for (const r of b.rows) {
       r.idleSem = idleReal;
     }
@@ -1206,9 +1470,18 @@ function corregirIdleLineas(ledger: Iv5WeeklyRow[]): void {
 // FUNCIÓN PRINCIPAL
 // ============================================================================
 
-export function runIv5EngineRediseñado(
+/**
+ * Cuerpo del motor como GENERADOR: hace exactamente el mismo trabajo que antes,
+ * pero cede el control (`yield`) en los hitos del calculo informando el avance.
+ *
+ * - `runIv5EngineRediseñado` lo consume de corrido (comportamiento identico al
+ *   de siempre; lo usan los fixtures y `decidirSabados`).
+ * - `runIv5EngineRediseñadoAsync` lo consume cediendo el hilo entre pasos, para
+ *   que el navegador pueda repintar la barra de progreso.
+ */
+function* iv5EngineSteps(
   params: Iv5EngineRediseñadoParams,
-): Iv5EngineRediseñadoResult {
+): Generator<Iv5EngineProgreso, Iv5EngineRediseñadoResult, void> {
   const {
     weekSegments,
     effectiveData,
@@ -1217,18 +1490,36 @@ export function runIv5EngineRediseñado(
     activeSatKeysC2000,
     maxExtrasHoras,
     horasExtrasFin,
+    factoresAjustePorCentro,
     pioMap,
     stockCap,
+    transportCap,
+    lineasSecundarias,
     maxSabadosMes,
     wantC1000,
     wantC2000,
   } = params;
+
+  // Mapa de líneas secundarias (colchones C2000). Vacío = sin desborde.
+  const lineasSecundariasMap = lineasSecundarias ?? new Map<MaterialKey, { linea: LineaKey; tupp: number }[]>();
+
+  // Resuelve los factores de ajuste de horas para un centro (default 1).
+  const factorCentro = (centro: string) => {
+    const f = factoresAjustePorCentro?.[String(centro)] ?? { normal: 1, extra: 1, sabado: 1 };
+    return {
+      factorAjusteNormal: f.normal ?? 1,
+      factorAjusteExtra: f.extra ?? 1,
+      factorAjusteSabado: f.sabado ?? 1,
+    };
+  };
 
   const diagnosticos: Iv5DiagnosticEntry[] = [];
 
   if (!weekSegments.length) {
     return { resultC1000: null, resultC2000: null, diagnosticos, xeSinLineaC1000: [] };
   }
+
+  yield { pct: 2, etapa: 'Preparando necesidades por material y semana...' };
 
   const needsBundleC1000 = wantC1000
     ? buildIv5Needs({ centro: '1000', effectiveData, weekSegments, pioMap })
@@ -1247,20 +1538,32 @@ export function runIv5EngineRediseñado(
         maxExtrasHoras,
         horasExtrasFin,
         maxSabadosMes,
+        ...factorCentro('1000'),
       })
     : null;
+  // Incluye las líneas secundarias en la capacidad de C2000 (aunque ninguna
+  // sea línea principal de otro material), para que el desborde pueda usarlas.
+  const lineasC2000ConSecundarias = (() => {
+    if (!needsBundleC2000) return [] as LineaKey[];
+    const set = new Set<LineaKey>(needsBundleC2000.lineas);
+    for (const secs of lineasSecundariasMap.values()) for (const s of secs) set.add(s.linea);
+    return Array.from(set);
+  })();
   const capacityC2000 = wantC2000 && needsBundleC2000
     ? buildIv5Capacity({
         centro: '2000',
-        lineas: needsBundleC2000.lineas,
+        lineas: lineasC2000ConSecundarias,
         weekSegments,
         tiemposCanon,
         activeSatKeys: activeSatKeysC2000,
         maxExtrasHoras,
         horasExtrasFin,
         maxSabadosMes,
+        ...factorCentro('2000'),
       })
     : null;
+
+  yield { pct: 8, etapa: 'Calculando capacidad de las lineas...' };
 
   const sortedSegs = [...weekSegments].sort((a, b) => {
     if (a.isoYear !== b.isoYear) return a.isoYear - b.isoYear;
@@ -1277,7 +1580,16 @@ export function runIv5EngineRediseñado(
   const ledgerC1000Pasada1: Iv5WeeklyRow[] = [];
   const ledgerC2000Pasada1: Iv5WeeklyRow[] = [];
   const xeSinLineaPasada1 = new Map<MaterialKey, { descripcion: string; cantidad: number }>();
+  // Minutos de desborde a líneas secundarias por `${centro}|${linea}|${weekKey}`.
+  const minAltPorLineaPasada1 = new Map<string, number>();
+  let semProcesadas1 = 0;
   for (const seg of sortedSegs) {
+    semProcesadas1 += 1;
+    yield {
+      // Pasada 1 ocupa el tramo 10% -> 45%.
+      pct: 10 + Math.round((35 * (semProcesadas1 - 1)) / sortedSegs.length),
+      etapa: `Pasada 1: produccion y traslados, semana ${semProcesadas1} de ${sortedSegs.length}`,
+    };
     procesarSemana(
       seg,
       needsBundleC1000?.needs ?? [],
@@ -1293,8 +1605,12 @@ export function runIv5EngineRediseñado(
       wantC2000,
       [],
       xeSinLineaPasada1,
+      lineasSecundariasMap,
+      minAltPorLineaPasada1,
     );
   }
+
+  yield { pct: 46, etapa: 'Detectando deficits y backlog...' };
 
   const deficits = detectarDeficits(
     ledgerC1000Pasada1,
@@ -1305,10 +1621,28 @@ export function runIv5EngineRediseñado(
     needsBundleC2000?.metas ?? new Map(),
   );
 
+  // Tope de transporte C1000->C2000: detecta el excedente por semana y lo
+  // convierte en déficits de transporte (adelantos), y aporta el headroom por
+  // semana que la anticipación respetará. Sin tope activo, no tiene efecto.
+  const transporte = analizarTransporte(
+    ledgerC1000Pasada1,
+    sortedSegs,
+    needsBundleC2000?.metas ?? new Map(),
+    transportCap,
+  );
+
+  // Los déficits de transporte se suman a los de stock para que la misma
+  // máquina de anticipación los adelante (F primero, luego X/E prorrata).
+  const deficitsTotales = [...deficits, ...transporte.deficitsTransporte];
+
   let plan: AnticipacionPlaneada[] = [];
-  if (deficits.length > 0) {
+  if (deficitsTotales.length > 0) {
+    yield {
+      pct: 52,
+      etapa: `Planificando anticipaciones (${deficitsTotales.length} deficits detectados)...`,
+    };
     plan = planificarAnticipaciones(
-      deficits,
+      deficitsTotales,
       ledgerC2000Pasada1,
       ledgerC1000Pasada1,
       capacityC1000,
@@ -1316,6 +1650,7 @@ export function runIv5EngineRediseñado(
       sortedSegs,
       stockCap,
       needsBundleC2000?.metas ?? new Map(),
+      transporte,
     );
   }
 
@@ -1324,6 +1659,8 @@ export function runIv5EngineRediseñado(
   // Colector de X/E sin línea C1000 correspondiente a la PASADA FINAL
   // (Pasada 1 si no hubo plan; Pasada 2 si hubo anticipaciones).
   let xeSinLineaFinal = xeSinLineaPasada1;
+  // Minutos de desborde de la PASADA FINAL (para corregir el idle de la línea 2).
+  let minAltPorLineaFinal = minAltPorLineaPasada1;
 
   if (plan.length === 0) {
     ledgerC1000Final = ledgerC1000Pasada1;
@@ -1336,7 +1673,15 @@ export function runIv5EngineRediseñado(
     ledgerC1000Final = [];
     ledgerC2000Final = [];
     const xeSinLineaPasada2 = new Map<MaterialKey, { descripcion: string; cantidad: number }>();
+    const minAltPorLineaPasada2 = new Map<string, number>();
+    let semProcesadas2 = 0;
     for (const seg of sortedSegs) {
+      semProcesadas2 += 1;
+      yield {
+        // Pasada 2 ocupa el tramo 70% -> 95%.
+        pct: 70 + Math.round((25 * (semProcesadas2 - 1)) / sortedSegs.length),
+        etapa: `Pasada 2: aplicando ${plan.length} anticipaciones, semana ${semProcesadas2} de ${sortedSegs.length}`,
+      };
       const anticipacionesEstaSemana = plan.filter(
         (p) => p.semanaOrigenKey === seg.weekKey,
       );
@@ -1355,10 +1700,15 @@ export function runIv5EngineRediseñado(
         wantC2000,
         anticipacionesEstaSemana,
         xeSinLineaPasada2,
+        lineasSecundariasMap,
+        minAltPorLineaPasada2,
       );
     }
     xeSinLineaFinal = xeSinLineaPasada2;
+    minAltPorLineaFinal = minAltPorLineaPasada2;
   }
+
+  yield { pct: 96, etapa: 'Consolidando resultados y diagnosticos...' };
 
   // Materializa el reporte de X/E sin línea C1000 (ordenado por cantidad desc).
   const xeSinLineaC1000: Iv5XESinLineaC1000[] = Array.from(xeSinLineaFinal.entries())
@@ -1372,8 +1722,8 @@ export function runIv5EngineRediseñado(
 
   // Corregir idleSem para que refleje el remanente REAL de la línea
   // (no el cálculo per-row que ignoraba a otros materiales de la misma línea).
-  corregirIdleLineas(ledgerC1000Final);
-  corregirIdleLineas(ledgerC2000Final);
+  corregirIdleLineas(ledgerC1000Final, minAltPorLineaFinal);
+  corregirIdleLineas(ledgerC2000Final, minAltPorLineaFinal);
 
   diagnosticos.push({
     severity: 'info',
@@ -1383,6 +1733,45 @@ export function runIv5EngineRediseñado(
       `Motor rediseñado (Turno 3): Pasadas 1 y 2 ejecutadas. ${deficits.length} déficits ` +
       `identificados, ${plan.length} anticipaciones planeadas.`,
   });
+
+  // Tope de transporte C1000->C2000: alerta por MES si, tras adelantar lo posible,
+  // el traslado del mes sigue por encima del tope (excedente que no se pudo mover).
+  if (transporte.activo && transportCap) {
+    const udsPorDia = Number(transportCap.udsPorDia);
+    const budgetMes = new Map<string, number>();     // `${anio}-${mes}` -> presupuesto
+    const usadoMes = new Map<string, number>();       // `${anio}-${mes}` -> traslado final
+    const refMes = new Map<string, { mes: number; anio: number }>();
+    for (const seg of sortedSegs) {
+      const k = `${seg.anio}-${seg.mes}`;
+      budgetMes.set(k, (budgetMes.get(k) ?? 0) + udsPorDia * Math.max(0, seg.diasLaborales));
+      if (!refMes.has(k)) refMes.set(k, { mes: seg.mes, anio: seg.anio });
+    }
+    for (const row of ledgerC1000Final) {
+      const sal = row.trasladoSaliente;
+      if (!sal || sal <= 0) continue;
+      if (!transporte.esSectorTransporte.has(row.material)) continue;
+      const k = `${row.anio}-${row.mes}`;
+      usadoMes.set(k, (usadoMes.get(k) ?? 0) + sal);
+    }
+    for (const [k, usado] of usadoMes.entries()) {
+      const budget = budgetMes.get(k) ?? Infinity;
+      const exceso = Math.round(usado - budget);
+      if (exceso > 0) {
+        const ref = refMes.get(k);
+        diagnosticos.push({
+          severity: 'warn',
+          centro: '1000',
+          mes: ref?.mes,
+          anio: ref?.anio,
+          code: 'TRANSPORTE_INSUFICIENTE',
+          mensaje:
+            `Transporte C1000→C2000 excedido en ${exceso} uds en el mes (traslado ${Math.round(usado)} ` +
+            `vs tope ${Math.round(budget)}). Se trasladan igual; no se pudieron adelantar más.`,
+          data: { usado: Math.round(usado), tope: Math.round(budget), exceso },
+        });
+      }
+    }
+  }
 
   for (const row of [...ledgerC1000Final, ...ledgerC2000Final]) {
     if (row.alertaStockBajoSeguridad) {
@@ -1424,4 +1813,43 @@ export function runIv5EngineRediseñado(
     diagnosticos,
     xeSinLineaC1000,
   };
+}
+
+/**
+ * Ejecucion SINCRONA (comportamiento historico, sin cambios): consume el
+ * generador de corrido e ignora el avance. La usan los fixtures y
+ * `decidirSabados` (que corre el motor muchas veces).
+ */
+export function runIv5EngineRediseñado(
+  params: Iv5EngineRediseñadoParams,
+): Iv5EngineRediseñadoResult {
+  const it = iv5EngineSteps(params);
+  let step = it.next();
+  while (!step.done) step = it.next();
+  return step.value;
+}
+
+/**
+ * Ejecucion ASINCRONA con reporte de avance: identica en resultado a la
+ * sincrona, pero cede el hilo despues de cada hito para que el navegador
+ * repinte la barra de progreso.
+ *
+ * Ojo: el trabajo entre dos hitos sigue siendo bloqueante (p. ej. la
+ * planificacion de anticipaciones es un solo bloque), asi que el porcentaje
+ * avanza a saltos, no de forma continua.
+ */
+export async function runIv5EngineRediseñadoAsync(
+  params: Iv5EngineRediseñadoParams,
+  onProgress?: (p: Iv5EngineProgreso) => void,
+): Promise<Iv5EngineRediseñadoResult> {
+  const it = iv5EngineSteps(params);
+  let step = it.next();
+  while (!step.done) {
+    onProgress?.(step.value);
+    // Macrotarea: da al navegador la oportunidad de repintar antes de seguir.
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    step = it.next();
+  }
+  onProgress?.({ pct: 100, etapa: 'Listo' });
+  return step.value;
 }

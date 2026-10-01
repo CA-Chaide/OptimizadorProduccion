@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { getWeekSegments } from '../../plan-semanal/components/weeklyCalendar';
 import { MultiSelectDropdown } from './MultiSelectDropdown';
 
@@ -68,6 +68,19 @@ function distributeByBusinessDays(total: number, segs: Segment[]): Map<string, n
     out.set(it.seg.weekKey, it.base);
   }
   return out;
+}
+
+/**
+ * Sectores que quedan preseleccionados al abrir la seccion (los de fabricacion
+ * propia: 01 COLCHONES, 02 BASES-CABECEROS-CAMA, 03 MUEBLES FABRICACION).
+ * El usuario puede luego elegir otros, todos o ninguno.
+ */
+const SECTORES_INICIALES = ['01', '02', '03'];
+
+/** Codigo lider del sector ("01 COLCHONES" -> "01"). Vacio si no arranca con digitos. */
+function leadingSectorCode(sector: string): string {
+  const m = String(sector ?? '').trim().match(/^(\d{1,2})/);
+  return m ? m[1].padStart(2, '0') : '';
 }
 
 /** Misma clave que byCodeMonth: ajuste agregado por (centro, sector, etiqueta, material, año-mes). */
@@ -139,6 +152,8 @@ export const DemandWeeklyAdjustmentSection: React.FC<Props> = ({ rawData, year, 
   const [selectedMonths, setSelectedMonths] = useState<string[]>([]);
   const [expandedCentros, setExpandedCentros] = useState<Set<string>>(new Set());
   const [expandedSectores, setExpandedSectores] = useState<Set<string>>(new Set());
+  /** Meses cuyas columnas de semanas estan expandidas. Vacio = todo colapsado a nivel MES. */
+  const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
 
   const segments = useMemo(() => {
     const y = Number(year);
@@ -274,9 +289,19 @@ export const DemandWeeklyAdjustmentSection: React.FC<Props> = ({ rawData, year, 
     [baseline],
   );
 
+  /**
+   * Seleccion inicial de sectores: solo 01, 02 y 03 (fabricacion propia).
+   * Si el dataset no trae ninguno de esos, se preseleccionan todos para no
+   * dejar la vista vacia. El usuario puede cambiarla libremente despues.
+   */
+  const sectoresPorDefecto = useCallback((disponibles: string[]) => {
+    const base = disponibles.filter(s => SECTORES_INICIALES.includes(leadingSectorCode(s)));
+    return base.length > 0 ? base : [...disponibles];
+  }, []);
+
   useEffect(() => {
-    setSelectedSectors([...allBaselineSectors]);
-  }, [allBaselineSectors]);
+    setSelectedSectors(sectoresPorDefecto(allBaselineSectors));
+  }, [allBaselineSectors, sectoresPorDefecto]);
 
   const sectorOptions = useMemo(() => {
     const all = Array.from(baseline.codes.values());
@@ -284,10 +309,11 @@ export const DemandWeeklyAdjustmentSection: React.FC<Props> = ({ rawData, year, 
     return Array.from(new Set(filtered.map(c => c.sector))).sort();
   }, [baseline, selectedCentro]);
 
-  /** Primera vista y cada nuevo baseline: centros abiertos para ver sectores; etiquetas ocultas hasta Expandir en el sector. */
+  /** Primera vista y cada nuevo baseline: todo colapsado hasta nivel CENTRO; el usuario expande centros (y luego sectores) segun su necesidad. */
   useEffect(() => {
-    setExpandedCentros(new Set(centers));
+    setExpandedCentros(new Set());
     setExpandedSectores(new Set());
+    setExpandedMonths(new Set());
   }, [baseline, centers]);
 
   const filteredCodes = useMemo(() => {
@@ -461,6 +487,15 @@ export const DemandWeeklyAdjustmentSection: React.FC<Props> = ({ rawData, year, 
     });
   };
 
+  const toggleMonth = (monthKeyStr: string) => {
+    setExpandedMonths(prev => {
+      const next = new Set(prev);
+      if (next.has(monthKeyStr)) next.delete(monthKeyStr);
+      else next.add(monthKeyStr);
+      return next;
+    });
+  };
+
   const toggleSector = (centro: string, sector: string) => {
     const key = `${centro}|${sector}`;
     setExpandedSectores(prev => {
@@ -511,8 +546,12 @@ export const DemandWeeklyAdjustmentSection: React.FC<Props> = ({ rawData, year, 
           <select
             value={selectedCentro}
             onChange={e => {
-              setSelectedCentro(e.target.value);
-              setSelectedSectors([]);
+              const centro = e.target.value;
+              setSelectedCentro(centro);
+              // Vuelve al default (01/02/03) sobre los sectores del centro elegido.
+              const all = Array.from(baseline.codes.values());
+              const delCentro = centro ? all.filter(c => c.centro === centro) : all;
+              setSelectedSectors(sectoresPorDefecto(Array.from(new Set(delCentro.map(c => c.sector))).sort()));
             }}
             className="w-full border border-gray-300 rounded-md px-2 py-1.5 text-xs bg-white"
           >
@@ -585,14 +624,23 @@ export const DemandWeeklyAdjustmentSection: React.FC<Props> = ({ rawData, year, 
               <th className="px-2 py-2 text-left border-b border-r border-gray-200 min-w-[120px]">Nivel</th>
               <th className="px-2 py-2 text-left border-b border-r border-gray-200 min-w-[120px]">Clave</th>
               {visibleMonthGroups.flatMap(g => [
-                ...g.segments.map(seg => (
-                  <th key={`${g.key}-${seg.weekKey}`} className="px-2 py-2 text-center border-b border-r border-gray-200 min-w-[96px]">
-                    <div className="font-bold">{seg.label}</div>
-                    <div className="text-[9px] text-gray-500">{seg.diasLaborales} L-V</div>
-                  </th>
-                )),
+                ...(expandedMonths.has(g.key)
+                  ? g.segments.map(seg => (
+                      <th key={`${g.key}-${seg.weekKey}`} className="px-2 py-2 text-center border-b border-r border-gray-200 min-w-[96px]">
+                        <div className="font-bold">{seg.label}</div>
+                        <div className="text-[9px] text-gray-500">{seg.diasLaborales} L-V</div>
+                      </th>
+                    ))
+                  : []),
                 <th key={`tm-${g.key}`} className="px-2 py-2 text-center border-b border-r border-blue-200 bg-blue-50 min-w-[96px]">
-                  Total {g.label}
+                  <button
+                    type="button"
+                    onClick={() => toggleMonth(g.key)}
+                    className="font-semibold text-blue-700 hover:underline"
+                    title={expandedMonths.has(g.key) ? 'Contraer semanas del mes' : 'Expandir a semanas del mes'}
+                  >
+                    {expandedMonths.has(g.key) ? '▼' : '▶'} Total {g.label}
+                  </button>
                 </th>,
               ])}
             </tr>
@@ -620,7 +668,7 @@ export const DemandWeeklyAdjustmentSection: React.FC<Props> = ({ rawData, year, 
                   {row.kind === 'nacionalTotal' && 'Nacional'}
                 </td>
                 {visibleMonthGroups.flatMap(g => {
-                  const weekCells = g.segments.map(seg => {
+                  const weekCells = expandedMonths.has(g.key) ? g.segments.map(seg => {
                     const sem = getWeeklySem(row, seg.weekKey);
                     const daily = seg.diasLaborales > 0 ? Math.round(sem / seg.diasLaborales) : 0;
                     const editable = row.kind === 'sector' || row.kind === 'etiqueta';
@@ -660,7 +708,7 @@ export const DemandWeeklyAdjustmentSection: React.FC<Props> = ({ rawData, year, 
                         )}
                       </td>
                     );
-                  });
+                  }) : [];
                   const monthTotal = g.segments.reduce((s, seg) => s + getWeeklySem(row, seg.weekKey), 0);
                   return [...weekCells, <td key={`${row.key}-mt-${g.key}`} className="px-1 py-1 text-right border-r border-blue-100 bg-blue-50/40">{monthTotal.toLocaleString()}</td>];
                 })}

@@ -145,12 +145,31 @@ export interface Iv5MonthlySnapshot {
   stockReservadoMes?: number;
   /** Stock físico total al cierre del mes (stockFinalMes + stockReservadoMes). */
   stockFinalFisicoMes?: number;
+  /**
+   * Stock físico total al INICIO del mes (stockInicialMes + reservas vivas al
+   * inicio de la primera semana del mes). Solo motor rediseñado. Es el que
+   * cierra la identidad de balance mes a mes:
+   * StockFinalFisico = StockInicialFisico + ProduccionTotal + TrasladoEntrante
+   *                    - Despachos - TrasladoSaliente
+   */
+  stockInicialFisicoMes?: number;
 }
 
 /** Configuracion editable por el usuario para el tope agregado. */
 export interface Iv5StockCap {
   centro1000: number;
   centro2000: number;
+  /** Sectores aplicables (codigos de inicio, ej: "01", "02", "03"). */
+  sectoresAplicables: string[];
+}
+
+/**
+ * Configuracion editable del tope de transporte C1000 -> C2000.
+ * Solo aplica al sentido C1000 -> C2000 y a la suma de los sectores indicados.
+ */
+export interface Iv5TransportCap {
+  /** Unidades por dia laborable que se pueden transportar. */
+  udsPorDia: number;
   /** Sectores aplicables (codigos de inicio, ej: "01", "02", "03"). */
   sectoresAplicables: string[];
 }
@@ -177,6 +196,7 @@ export interface Iv5DiagnosticEntry {
     | 'LINEA_ALTERNATIVA_USADA'
     | 'DRIFT_WEEK_VS_MONTH'
     | 'PIO_NO_COMPLETO'
+    | 'TRANSPORTE_INSUFICIENTE'
     | 'INFO';
   mensaje: string;
   /** Datos auxiliares para depuracion. */

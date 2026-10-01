@@ -68,6 +68,20 @@ interface RawBackendDataTableProps {
   meses: string[];
   centros: string[];
   onDataLoaded?: (data: any[]) => void;
+  /**
+   * Opcional: dada una fila (material, mes, centro), devuelve el override de
+   * puestos `n_puestos` para el cálculo del cuello de botella, o undefined si no
+   * hay cambios para ese período. Si no se pasa, el comportamiento es el de
+   * siempre (el SP usa los puestos que ya tiene). Solo IV5 lo provee.
+   */
+  resolveNPuestos?: (row: any) => { puesto: string; valor: string }[] | undefined;
+  /**
+   * Opcional: si es true, la tabla de detalle agrupado (sector/centro/material)
+   * solo se muestra cuando el usuario aplica algún filtro (material, sector o
+   * mes). Reduce el espacio en pantalla. Default false = comportamiento de
+   * siempre (mostrar todo el detalle tras cargar).
+   */
+  hideDetailUntilFilter?: boolean;
 }
 
 export interface RawBackendDataTableHandle {
@@ -75,7 +89,7 @@ export interface RawBackendDataTableHandle {
 }
 
 export const RawBackendDataTable = forwardRef<RawBackendDataTableHandle, RawBackendDataTableProps>(
-  ({ año, meses, centros, onDataLoaded }, ref) => {
+  ({ año, meses, centros, onDataLoaded, resolveNPuestos, hideDetailUntilFilter }, ref) => {
     const [pageSize, setPageSize] = useState<number>(20);
     const [page, setPage] = useState<number>(1);
     const [searchTerm, setSearchTerm] = useState<string>('');
@@ -209,9 +223,11 @@ export const RawBackendDataTable = forwardRef<RawBackendDataTableHandle, RawBack
               const LineaFabricacion = String(r.LineaFabricacion || '');
               const Categoria = String(r.Categoria || r.ClaseAprovisionam || '');
               const Necesidad = Math.round(Number(r._Necesidades ?? 0));
+              // Override de puestos para ESTA fila (material, mes, centro), si lo hay.
+              const nPuestos = resolveNPuestos?.(r);
 
               try {
-                const res = await serviciosService.getTiempoMaximoDeFabricacionMaterial(CodigoMaterial, centroFab, LineaFabricacion, Categoria, Necesidad);
+                const res = await serviciosService.getTiempoMaximoDeFabricacionMaterial(CodigoMaterial, centroFab, LineaFabricacion, Categoria, Necesidad, nPuestos);
                 if (res && res.data) {
                   const payload = Array.isArray(res.data) ? res.data[0] : res.data;
                   r.TiempoFabricacionNecesidad = payload?.Tiempo_Total ?? null;
@@ -328,12 +344,18 @@ export const RawBackendDataTable = forwardRef<RawBackendDataTableHandle, RawBack
       );
     }
 
+    const hasFilter = searchTerm.trim() !== '' || sectorFilter !== '' || mesFilter !== '';
+    const showDetail = !hideDetailUntilFilter || hasFilter;
+
     return (
       <div className="bg-white rounded-lg shadow-sm border border-gray-200">
         <div className="p-4 border-b border-gray-200">
           <p className="text-xs text-gray-600 mb-3">
             Vista agrupada: al cargar, los datos quedan <strong>contraídos</strong> por sector y centro. Use{' '}
             <span className="font-mono">+</span> para desplegar centros y materiales.
+            {hideDetailUntilFilter && (
+              <> El detalle se muestra al aplicar un <strong>filtro</strong> (material, sector o mes).</>
+            )}
           </p>
           <div className="flex flex-wrap items-end gap-4">
             <div className="flex-1 min-w-[200px]">
@@ -371,6 +393,12 @@ export const RawBackendDataTable = forwardRef<RawBackendDataTableHandle, RawBack
           </div>
         </div>
 
+        {!showDetail ? (
+          <div className="p-6 text-center text-xs text-gray-500 italic">
+            Datos cargados. Aplicá un filtro (material, sector o mes) para ver el detalle agrupado.
+          </div>
+        ) : (
+        <>
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead className="bg-gray-50 border-b">
@@ -474,6 +502,8 @@ export const RawBackendDataTable = forwardRef<RawBackendDataTableHandle, RawBack
             <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="px-3 py-1 border rounded bg-white">Siguiente</button>
           </div>
         </div>
+        </>
+        )}
       </div>
     );
   }

@@ -53,6 +53,10 @@ export interface Iv5EngineParams {
   horasTrabajo: number;
   maxExtrasHoras: number;
   horasExtrasFin: number;
+  /** Factores de ajuste horas base -> netas (multiplicadores, 1 = sin ajuste). */
+  factorAjusteNormal?: number;
+  factorAjusteExtra?: number;
+  factorAjusteSabado?: number;
   pioMap: PioMap;
   stockCap: Iv5StockCap;
   maxSabadosMes: number;
@@ -129,6 +133,9 @@ export function runIv5Engine(params: Iv5EngineParams): Iv5RunResult {
     maxExtrasHoras,
     horasExtrasFin,
     maxSabadosMes: params.maxSabadosMes,
+    factorAjusteNormal: params.factorAjusteNormal,
+    factorAjusteExtra: params.factorAjusteExtra,
+    factorAjusteSabado: params.factorAjusteSabado,
   });
 
   // Nota: la necesidadTraslado de C1000 ya se construyo dentro de

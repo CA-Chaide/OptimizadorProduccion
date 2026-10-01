@@ -4,7 +4,17 @@
       "Bash(npm run *)",
       "Bash(npx tsc *)",
       "Bash(npx tsx *)",
-      "Bash(curl -s \"https://apps.chaide.com/ProductionOptimizer/api/restriccion\" --max-time 15)"
+      "Bash(curl -s \"https://apps.chaide.com/ProductionOptimizer/api/restriccion\" --max-time 15)",
+      "Bash(curl -s \"https://apps.chaide.com/ProductionOptimizer/api/restriccion\" -o ./_restr.json -w \"HTTP %{http_code}\\\\n\")",
+      "Bash(node -e ' *)",
+      "Bash(curl -s \"https://apps.chaide.com/ProductionOptimizer/api/linea\" -o ./_l.json -w \"lineas HTTP %{http_code}\\\\n\")",
+      "Bash(curl -s \"https://apps.chaide.com/ProductionOptimizer/api/estacion\" -o ./_e.json -w \"estac HTTP %{http_code}\\\\n\")",
+      "PowerShell(npx tsx src/app/dashboard/opciones/importar-ventasV5/fixtures/verifBalance4b.ts 2>&1 | Select-Object -Last 40)",
+      "PowerShell($o = npx tsx src/app/dashboard/opciones/importar-ventasV5/fixtures/reproAnticipacion.ts 2>&1 | Out-String; \\($o -split \"`n\"\\) | Where-Object { $_ -match \"balance|ROTO|FALLA\" })",
+      "PowerShell($out = npx tsc --noEmit -p tsconfig.json 2>&1 | Out-String; $hits = \\($out -split \"`n\"\\) | Where-Object { $_ -match \"constants|main-nav|importar-ventas\" }; if \\($hits\\) { $hits } else { \"OK: sin errores TS en constants/main-nav/importar-ventas\" }; \"TOTAL errores proyecto \\(preexistentes\\): \" + \\(\\($out -split \"`n\" | Where-Object { $_ -match \"error TS\" }\\).Count\\))",
+      "PowerShell($out = npx tsc --noEmit -p tsconfig.json 2>&1 | Out-String; $hits = \\($out -split \"`n\"\\) | Where-Object { $_ -match \"main-nav\" }; if \\($hits\\) { $hits } else { \"OK: sin errores TS en main-nav\" }; \"TOTAL errores proyecto \\(preexistentes\\): \" + \\(\\($out -split \"`n\" | Where-Object { $_ -match \"error TS\" }\\).Count\\))",
+      "PowerShell($out = npx tsc --noEmit -p tsconfig.json 2>&1 | Out-String; $hits = \\($out -split \"`n\"\\) | Where-Object { $_ -match \"constants|main-nav\" }; if \\($hits\\) { $hits } else { \"OK: sin errores TS en constants/main-nav\" }; \"TOTAL errores proyecto \\(preexistentes\\): \" + \\(\\($out -split \"`n\" | Where-Object { $_ -match \"error TS\" }\\).Count\\))",
+      "PowerShell(Get-Location | Select-Object -ExpandProperty Path; \"\"; Get-ChildItem -Path C:\\\\ProyectosAI\\\\OptimizadorProduccion -Force | Where-Object { $_.Name -notmatch '^\\(node_modules|\\\\.next|\\\\.git\\)$' } | Select-Object Mode, Name | Format-Table -AutoSize)"
     ]
   }
 }

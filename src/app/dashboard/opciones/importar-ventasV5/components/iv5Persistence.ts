@@ -18,7 +18,7 @@
  *      - centro_produccion       <- sectorRef
  *      - codigo_material         <- material
  *      - linea_produccion        <- linea
- *      - semana                  <- isoWeek
+ *      - semana                  <- weekKey ({año}W{semana}|{año}-{mes})
  */
 
 import { detallesService } from '@/services/detalles.service';
@@ -73,7 +73,8 @@ export async function saveIv5DetailsBatch(
           (r.produccionAdelanto || 0) +
           (r.produccionPio || 0),
       ),
-      semana: Number(r.isoWeek || 0),
+      // Formato {año}W{semana}|{año}-{mes} (ej. "2026W36|2026-9"), igual que IV4.
+      semana: String(r.weekKey || ''),
       cantidad_transferencia: Number(r.trasladoSaliente || 0),
       linea_produccion: String(r.linea || ''),
       estado: 'A',

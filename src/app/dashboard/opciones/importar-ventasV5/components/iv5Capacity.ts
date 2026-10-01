@@ -53,6 +53,14 @@ export interface BuildIv5CapacityParams {
   horasExtrasFin: number;
   /** Tope mensual fisico de sabados que el motor puede contar (por centro). */
   maxSabadosMes?: number;
+  /**
+   * Factores de ajuste (multiplicadores) para convertir las horas BASE en horas
+   * NETAS que el motor consume. 1 = sin ajuste. Ej: jornada base 8h con factor
+   * 0.9516 -> 7.613h netas. Default 1 si no se pasan (comportamiento previo).
+   */
+  factorAjusteNormal?: number;
+  factorAjusteExtra?: number;
+  factorAjusteSabado?: number;
 }
 
 export type Iv5CapacityMatrix = Map<LineaKey, Map<WeekKey, Iv5LineWeekCapacity>>;
@@ -67,8 +75,16 @@ export function buildIv5Capacity(params: BuildIv5CapacityParams): Iv5CapacityMat
     maxExtrasHoras,
     horasExtrasFin,
     maxSabadosMes,
+    factorAjusteNormal,
+    factorAjusteExtra,
+    factorAjusteSabado,
   } = params;
   const out: Iv5CapacityMatrix = new Map();
+
+  // Multiplicadores horas base -> netas (1 = sin ajuste). Se validan finitos y >= 0.
+  const multNormal = Number.isFinite(factorAjusteNormal) && (factorAjusteNormal as number) >= 0 ? (factorAjusteNormal as number) : 1;
+  const multExtra = Number.isFinite(factorAjusteExtra) && (factorAjusteExtra as number) >= 0 ? (factorAjusteExtra as number) : 1;
+  const multSabado = Number.isFinite(factorAjusteSabado) && (factorAjusteSabado as number) >= 0 ? (factorAjusteSabado as number) : 1;
 
   const tcByMes = new Map<number, TiempoCanonResult>();
   for (const tc of tiemposCanon) tcByMes.set(tc.mesNumero, tc);
@@ -124,9 +140,10 @@ export function buildIv5Capacity(params: BuildIv5CapacityParams): Iv5CapacityMat
       const monthSegs = segsByAnioMes.get(`${seg.anio}-${seg.mes}`) ?? [];
       const totalDiasLV = monthSegs.reduce((s, m) => s + m.diasLaborales, 0);
       const lineJNmonth = tc && !esVirtual ? lineMonthlyJN(tc, linea) : 0;
-      const capJN = !esVirtual && totalDiasLV > 0 ? (lineJNmonth * seg.diasLaborales) / totalDiasLV : 0;
-      const capHE = esVirtual ? 0 : seg.diasLaborales * minutosHEporDia;
-      const capSab = sabadoEnTope ? horasExtrasFin * 60 : 0;
+      // Cada bloque se escala por su factor de ajuste (horas base -> netas).
+      const capJN = (!esVirtual && totalDiasLV > 0 ? (lineJNmonth * seg.diasLaborales) / totalDiasLV : 0) * multNormal;
+      const capHE = (esVirtual ? 0 : seg.diasLaborales * minutosHEporDia) * multExtra;
+      const capSab = (sabadoEnTope ? horasExtrasFin * 60 : 0) * multSabado;
       const capTotal = capJN + capHE + capSab;
       byWeek.set(seg.weekKey, {
         centro,

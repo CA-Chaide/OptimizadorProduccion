@@ -33,6 +33,16 @@ export const IV5_VERSIONS_STORAGE_KEY = 'iv5_versions';
 /** Clave de persistencia local para tope de sabados editable por usuario. */
 export const IV5_MAX_SABADOS_STORAGE_KEY = 'iv5_max_sabados_mes';
 
+/**
+ * Tope de transporte C1000 -> C2000 (unidades por dia laborable). Limita cuanto
+ * puede trasladarse fisicamente por dia; el motor lo prorratea por semana/mes.
+ * Aplica a la suma de los sectores 01+02+03. Default 548 uds/dia (~11.500/mes).
+ */
+export const IV5_DEFAULT_TRANSPORT_UDS_DIA = 548;
+
+/** Clave de persistencia local para el tope de transporte C1000->C2000. */
+export const IV5_TRANSPORT_CAP_STORAGE_KEY = 'iv5_transport_cap';
+
 /** Identificador de plan global para versiones IV5 (mismo schema PMP-V-{n} que IV3/IV4). */
 export const IV5_PLAN_PREFIX = 'PMP-V-';
 

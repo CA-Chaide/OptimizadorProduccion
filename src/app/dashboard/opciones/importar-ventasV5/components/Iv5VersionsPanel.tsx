@@ -53,7 +53,7 @@ export const Iv5VersionsPanel: React.FC<Props> = ({ buildSnapshot, onLoadVersion
   const handleSave = useCallback(() => {
     const snap = buildSnapshot();
     if (!snap) {
-      alert('No hay datos suficientes para guardar la version IV5.');
+      alert('No hay datos suficientes para guardar la version del plan.');
       return;
     }
     const v: Iv5Version = {
@@ -66,7 +66,7 @@ export const Iv5VersionsPanel: React.FC<Props> = ({ buildSnapshot, onLoadVersion
     saveIv5Versions(next);
     setVersions(next);
     setNota('');
-    alert(`Version IV5 guardada (${v.id}).`);
+    alert(`Version del plan guardada (${v.id}).`);
   }, [buildSnapshot, nota]);
 
   const handleLoad = useCallback(
@@ -79,7 +79,7 @@ export const Iv5VersionsPanel: React.FC<Props> = ({ buildSnapshot, onLoadVersion
   );
 
   const handleDelete = useCallback((id: string) => {
-    if (!confirm('Eliminar esta version IV5?')) return;
+    if (!confirm('Eliminar esta version del plan?')) return;
     const next = loadIv5Versions().filter((v) => v.id !== id);
     saveIv5Versions(next);
     setVersions(next);
@@ -101,9 +101,9 @@ export const Iv5VersionsPanel: React.FC<Props> = ({ buildSnapshot, onLoadVersion
         <button
           type="button"
           onClick={handleSave}
-          className="text-xs px-3 py-1.5 rounded bg-indigo-600 text-white hover:bg-indigo-700"
+          className="text-xs px-3 py-1.5 rounded bg-blue-600 text-white hover:bg-blue-700"
         >
-          Guardar version IV5 (local)
+          Guardar version del plan (local)
         </button>
       </div>
 

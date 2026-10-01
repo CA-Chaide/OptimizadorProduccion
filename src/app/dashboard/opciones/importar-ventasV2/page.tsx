@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { Suspense, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import { useSearchParams } from 'next/navigation';
 
@@ -93,7 +93,7 @@ function tabNavClasses(color: string, active: boolean): string {
   return `${base} ${activeByColor[color] ?? activeByColor.indigo}`;
 }
 
-export default function ImportarVentasPage() {
+function ImportarVentasPageContent() {
   const searchParams = useSearchParams();
   const [filterOptions, setFilterOptions] = useState<FilterOptions>({
     años: [],
@@ -937,5 +937,19 @@ export default function ImportarVentasPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function ImportarVentasPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center text-gray-500">
+          Cargando Importar Ventas V2…
+        </div>
+      }
+    >
+      <ImportarVentasPageContent />
+    </Suspense>
   );
 }

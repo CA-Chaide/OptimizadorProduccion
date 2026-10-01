@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,7 +11,7 @@ import { DetalleCalendario, Calendario } from '@/types/interfaces';
 import { calendarioService } from '@/services/calendario.service';
 import { useToast } from '@/hooks/use-toast';
 
-export default function DetallesCalendarioPage() {
+function DetallesCalendarioPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const codigoCalendario = searchParams.get('codigo');
@@ -120,5 +120,19 @@ export default function DetallesCalendarioPage() {
         />
       )}
     </div>
+  );
+}
+
+export default function DetallesCalendarioPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="p-6 md:p-8">
+          <div className="text-center py-12">Cargando…</div>
+        </div>
+      }
+    >
+      <DetallesCalendarioPageContent />
+    </Suspense>
   );
 }

@@ -96,7 +96,8 @@ export function MainNav({ className, isCollapsed = false, ...props }: Readonly<R
   const pathname = usePathname();
   const [mounted, setMounted] = useState(false);
   
-  const [opcionesOpen, setOpcionesOpen] = useState(true);
+  // Las tres secciones del menu arrancan CONTRAIDAS; el usuario abre la que necesita.
+  const [opcionesOpen, setOpcionesOpen] = useState(false);
   const [parametrosOpen, setParametrosOpen] = useState(false);
   const [configuracionesOpen, setConfiguracionesOpen] = useState(false);
 

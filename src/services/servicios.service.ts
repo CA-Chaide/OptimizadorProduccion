@@ -206,11 +206,15 @@ export const serviciosService = {
 
   /////////Metodos para el Plan de Mediano Plazo
 
-  async getTiempoMaximoDeFabricacionMaterial(CodigoMaterial: string, CentroFabricacion: string, LineaFabricacion: string, Categoria: string, Necesidad: number): Promise<BodyResponse<any>> {
+  async getTiempoMaximoDeFabricacionMaterial(CodigoMaterial: string, CentroFabricacion: string, LineaFabricacion: string, Categoria: string, Necesidad: number, nPuestos?: { puesto: string; valor: string }[]): Promise<BodyResponse<any>> {
+    // `n_puestos` es OPCIONAL: solo se envía cuando hay override de puestos para
+    // el período. Si no se manda, el SP usa los puestos que ya tiene.
+    const body: Record<string, any> = { CodigoMaterial: CodigoMaterial, CentroFabricacion: CentroFabricacion, LineaFabricacion: LineaFabricacion, Categoria: Categoria, Necesidad: Necesidad };
+    if (nPuestos && nPuestos.length > 0) body.n_puestos = nPuestos;
     const response = await fetch(API_URL + "/TiempoEstimadoFabricacionNecesidad", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ CodigoMaterial: CodigoMaterial, CentroFabricacion: CentroFabricacion, LineaFabricacion: LineaFabricacion, Categoria: Categoria, Necesidad: Necesidad }),
+      body: JSON.stringify(body),
     });
     if (!response.ok) {
       const errorBody = await response
@@ -371,6 +375,21 @@ export const serviciosService = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ page: page, rowsPerPage: rowsPerPage }),
+    });
+    if (!response.ok) {
+      const errorBody = await response
+        .json()
+        .catch(() => ({ message: "Error desconocido" }));
+      throw new Error(errorBody.message || "Failed to fecth Habilidades OP");
+    }
+    return response.json();
+  },
+
+  async getLineasFabricacionMaterialByCentroMaterial(Centro: string, Codigo: String): Promise<BodyResponse<any>> {
+    const response = await fetch(API_URL + "/lineasFabricacionMaterial", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ Centro: Centro, Codigo: Codigo }),
     });
     if (!response.ok) {
       const errorBody = await response

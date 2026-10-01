@@ -39,6 +39,10 @@ export interface ComputeC2000DeficitParams {
   maxExtrasHoras: number;
   horasExtrasFin: number;
   maxSabadosMes: number;
+  /** Factores de ajuste horas base -> netas (multiplicadores, 1 = sin ajuste). */
+  factorAjusteNormal?: number;
+  factorAjusteExtra?: number;
+  factorAjusteSabado?: number;
 }
 
 export interface Iv5C2000DeficitMonthSummary {
@@ -83,6 +87,9 @@ export function computeC2000Deficits(
     maxExtrasHoras,
     horasExtrasFin,
     maxSabadosMes,
+    factorAjusteNormal,
+    factorAjusteExtra,
+    factorAjusteSabado,
   } = params;
 
   const deficitByMatWeek = new Map<string, number>();
@@ -119,6 +126,9 @@ export function computeC2000Deficits(
     maxExtrasHoras,
     horasExtrasFin,
     maxSabadosMes,
+    factorAjusteNormal,
+    factorAjusteExtra,
+    factorAjusteSabado,
   });
 
   // 3) Indice esClaseF por material (sirve para reporte y para que el caller

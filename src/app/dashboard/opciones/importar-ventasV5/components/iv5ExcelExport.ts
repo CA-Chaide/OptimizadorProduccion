@@ -472,11 +472,18 @@ export function exportIv5Excel({ resultC1000, resultC2000, effectiveData, filena
   const sheets: { sheetName: string; data: any[] }[] = [];
   const etiquetaLookup = buildEtiquetaLookup(effectiveData);
 
+  // Acumulador para la hoja combinada ResumenMensual1000-2000. Reúne las mismas
+  // filas por (centro, sector, linea, mes) de ambos centros en una sola hoja
+  // para poder armar una tabla dinámica sobre los dos centros de una pasada.
+  const resumenMensualCombinado: any[] = [];
+
   for (const r of [resultC1000, resultC2000].filter(Boolean) as Iv5RunResult[]) {
     const sab = buildSabadoMaps(r.ledger);
+    const resumenMensual = buildResumenMensual(r.monthly, sab.byLineMes);
+    resumenMensualCombinado.push(...resumenMensual);
     sheets.push({
       sheetName: sheetName('ResumenMensual', r.centro),
-      data: buildResumenMensual(r.monthly, sab.byLineMes),
+      data: resumenMensual,
     });
     sheets.push({
       sheetName: sheetName('ResumenSemanal', r.centro),
